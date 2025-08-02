@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Inventory Products</title>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .result { background: #f0f0f0; padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .error { background: #ffebee; color: #c62828; }
+        .success { background: #e8f5e8; color: #2e7d32; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Test Inventory Products</h1>
+    <button onclick="testProducts()">Test Products</button>
+    <button onclick="testBrands()">Test Brands</button>
+    <button onclick="testProductVariants()">Test Product Variants</button>
+    <div id="results"></div>
+
+    <script>
+        // Initialize Supabase client
+        const supabaseUrl = 'https://jxhzveborezjhsmzsgbc.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpoeHp2ZWJvcmV6amhzbXpzZ2JjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzE5NzI5NzAsImV4cCI6MjA0NzU0ODk3MH0.Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8';
+        
+        const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+        async function testProducts() {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '<div class="result">🔄 Testing products...</div>';
+            
+            try {
+                const { data, error } = await supabase
+                    .from('products')
+                    .select('*')
+                    .limit(10);
+                
+                if (error) {
+                    resultsDiv.innerHTML = `<div class="result error">❌ Error: ${error.message}</div>`;
+                } else {
+                    resultsDiv.innerHTML = `
+                        <div class="result success">
+                            ✅ Products found: ${data.length}
+                            <pre>${JSON.stringify(data, null, 2)}</pre>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="result error">❌ Exception: ${error.message}</div>`;
+            }
+        }
+
+        async function testBrands() {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '<div class="result">🔄 Testing brands...</div>';
+            
+            try {
+                const { data, error } = await supabase
+                    .from('brands')
+                    .select('*')
+                    .limit(10);
+                
+                if (error) {
+                    resultsDiv.innerHTML = `<div class="result error">❌ Error: ${error.message}</div>`;
+                } else {
+                    resultsDiv.innerHTML = `
+                        <div class="result success">
+                            ✅ Brands found: ${data.length}
+                            <pre>${JSON.stringify(data, null, 2)}</pre>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="result error">❌ Exception: ${error.message}</div>`;
+            }
+        }
+
+        async function testProductVariants() {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '<div class="result">🔄 Testing product variants...</div>';
+            
+            try {
+                const { data, error } = await supabase
+                    .from('product_variants')
+                    .select('*')
+                    .limit(10);
+                
+                if (error) {
+                    resultsDiv.innerHTML = `<div class="result error">❌ Error: ${error.message}</div>`;
+                } else {
+                    resultsDiv.innerHTML = `
+                        <div class="result success">
+                            ✅ Product variants found: ${data.length}
+                            <pre>${JSON.stringify(data, null, 2)}</pre>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="result error">❌ Exception: ${error.message}</div>`;
+            }
+        }
+    </script>
+</body>
+</html> 

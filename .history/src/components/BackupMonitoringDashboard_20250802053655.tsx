@@ -1,0 +1,314 @@
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabaseClient';
+import { GlassCard } from './ui/GlassCard';
+import { GlassButton } from './ui/GlassButton';
+import { StatusBadge } from './ui/StatusBadge';
+
+interface BackupLog {
+  timestamp: string;
+  duration: number;
+  success: boolean;
+  summary?: {
+    totalTables: number;
+    totalRecords: number;
+    tablesWithData: number;
+    errors: any[];
+  };
+  error?: string;
+}
+
+interface BackupStatus {
+  lastBackup?: BackupLog;
+  nextBackup?: string;
+  totalBackups: number;
+  successRate: number;
+  averageDuration: number;
+}
+
+export const BackupMonitoringDashboard: React.FC = () => {
+  const [backupStatus, setBackupStatus] = useState<BackupStatus | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRunningBackup, setIsRunningBackup] = useState(false);
+  const [logs, setLogs] = useState<BackupLog[]>([]);
+
+  useEffect(() => {
+    loadBackupStatus();
+  }, []);
+
+  const loadBackupStatus = async () => {
+    try {
+      setIsLoading(true);
+      
+      // Load backup logs from local storage or API
+      const storedLogs = localStorage.getItem('backup_logs');
+      const backupLogs: BackupLog[] = storedLogs ? JSON.parse(storedLogs) : [];
+      
+      setLogs(backupLogs);
+      
+      if (backupLogs.length > 0) {
+        const lastBackup = backupLogs[backupLogs.length - 1];
+        const successfulBackups = backupLogs.filter(log => log.success);
+        const averageDuration = backupLogs.reduce((sum, log) => sum + log.duration, 0) / backupLogs.length;
+        
+        // Calculate next backup time (daily at 2 AM)
+        const now = new Date();
+        const nextBackup = new Date(now);
+        nextBackup.setHours(2, 0, 0, 0);
+        if (nextBackup <= now) {
+          nextBackup.setDate(nextBackup.getDate() + 1);
+        }
+        
+        setBackupStatus({
+          lastBackup,
+          nextBackup: nextBackup.toISOString(),
+          totalBackups: backupLogs.length,
+          successRate: (successfulBackups.length / backupLogs.length) * 100,
+          averageDuration
+        });
+      }
+    } catch (error) {
+      console.error('Error loading backup status:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const runManualBackup = async () => {
+    try {
+      setIsRunningBackup(true);
+      
+      // Call backup API endpoint
+      const response = await fetch('/api/backup/run', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error('Backup failed');
+      }
+      
+      const result = await response.json();
+      
+      // Add to logs
+      const newLog: BackupLog = {
+        timestamp: new Date().toISOString(),
+        duration: result.duration || 0,
+        success: result.success,
+        summary: result.summary,
+        error: result.error
+      };
+      
+      const updatedLogs = [...logs, newLog];
+      setLogs(updatedLogs);
+      localStorage.setItem('backup_logs', JSON.stringify(updatedLogs));
+      
+      // Reload status
+      await loadBackupStatus();
+      
+    } catch (error) {
+      console.error('Manual backup failed:', error);
+    } finally {
+      setIsRunningBackup(false);
+    }
+  };
+
+  const testBackupConnection = async () => {
+    try {
+      const response = await fetch('/api/backup/test', {
+        method: 'POST',
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        alert('✅ Backup connection test successful!');
+      } else {
+        alert('❌ Backup connection test failed: ' + result.error);
+      }
+    } catch (error) {
+      alert('❌ Backup connection test failed: ' + error);
+    }
+  };
+
+  const formatDuration = (seconds: number) => {
+    if (seconds < 60) return `${seconds.toFixed(1)}s`;
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}m ${remainingSeconds.toFixed(0)}s`;
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleString();
+  };
+
+  if (isLoading) {
+    return (
+      <GlassCard className="p-6">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+          <p className="mt-2 text-gray-600">Loading backup status...</p>
+        </div>
+      </GlassCard>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <GlassCard className="p-6">
+        <h2 className="text-2xl font-bold mb-4">🔄 Backup Monitoring</h2>
+        
+        {backupStatus ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div className="text-center">
+              <div className="text-3xl font-bold text-blue-600">
+                {backupStatus.totalBackups}
+              </div>
+              <div className="text-sm text-gray-600">Total Backups</div>
+            </div>
+            
+            <div className="text-center">
+              <div className="text-3xl font-bold text-green-600">
+                {backupStatus.successRate.toFixed(1)}%
+              </div>
+              <div className="text-sm text-gray-600">Success Rate</div>
+            </div>
+            
+            <div className="text-center">
+              <div className="text-3xl font-bold text-purple-600">
+                {formatDuration(backupStatus.averageDuration)}
+              </div>
+              <div className="text-sm text-gray-600">Avg Duration</div>
+            </div>
+            
+            <div className="text-center">
+              <StatusBadge 
+                status={backupStatus.lastBackup?.success ? 'success' : 'error'}
+                text={backupStatus.lastBackup?.success ? 'Last: Success' : 'Last: Failed'}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-8">
+            <p className="text-gray-600 mb-4">No backup history found</p>
+            <StatusBadge status="warning" text="No backups yet" />
+          </div>
+        )}
+        
+        <div className="flex flex-wrap gap-3">
+          <GlassButton
+            onClick={runManualBackup}
+            disabled={isRunningBackup}
+            className="bg-blue-500 hover:bg-blue-600"
+          >
+            {isRunningBackup ? '🔄 Running...' : '🚀 Run Manual Backup'}
+          </GlassButton>
+          
+          <GlassButton
+            onClick={testBackupConnection}
+            className="bg-green-500 hover:bg-green-600"
+          >
+            🧪 Test Connection
+          </GlassButton>
+          
+          <GlassButton
+            onClick={loadBackupStatus}
+            className="bg-purple-500 hover:bg-purple-600"
+          >
+            🔄 Refresh Status
+          </GlassButton>
+        </div>
+      </GlassCard>
+
+      {backupStatus?.lastBackup && (
+        <GlassCard className="p-6">
+          <h3 className="text-xl font-semibold mb-4">📊 Last Backup Details</h3>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <strong>Timestamp:</strong> {formatDate(backupStatus.lastBackup.timestamp)}
+            </div>
+            <div>
+              <strong>Duration:</strong> {formatDuration(backupStatus.lastBackup.duration)}
+            </div>
+            <div>
+              <strong>Status:</strong> 
+              <StatusBadge 
+                status={backupStatus.lastBackup.success ? 'success' : 'error'}
+                text={backupStatus.lastBackup.success ? 'Success' : 'Failed'}
+                className="ml-2"
+              />
+            </div>
+            {backupStatus.lastBackup.summary && (
+              <div>
+                <strong>Records:</strong> {backupStatus.lastBackup.summary.totalRecords.toLocaleString()}
+              </div>
+            )}
+          </div>
+          
+          {backupStatus.lastBackup.summary && (
+            <div className="mt-4">
+              <strong>Tables with data:</strong> {backupStatus.lastBackup.summary.tablesWithData} / {backupStatus.lastBackup.summary.totalTables}
+            </div>
+          )}
+          
+          {backupStatus.lastBackup.error && (
+            <div className="mt-4 p-3 bg-red-100 border border-red-300 rounded">
+              <strong>Error:</strong> {backupStatus.lastBackup.error}
+            </div>
+          )}
+        </GlassCard>
+      )}
+
+      {backupStatus?.nextBackup && (
+        <GlassCard className="p-6">
+          <h3 className="text-xl font-semibold mb-4">⏰ Next Scheduled Backup</h3>
+          <p className="text-lg">
+            {formatDate(backupStatus.nextBackup)}
+          </p>
+          <p className="text-sm text-gray-600 mt-2">
+            Daily at 2:00 AM (configured via cron job)
+          </p>
+        </GlassCard>
+      )}
+
+      {logs.length > 0 && (
+        <GlassCard className="p-6">
+          <h3 className="text-xl font-semibold mb-4">📋 Recent Backup Logs</h3>
+          
+          <div className="space-y-3 max-h-96 overflow-y-auto">
+            {logs.slice(-10).reverse().map((log, index) => (
+              <div key={index} className="border-b border-gray-200 pb-3">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <span className="font-medium">{formatDate(log.timestamp)}</span>
+                    <span className="ml-2 text-sm text-gray-600">
+                      ({formatDuration(log.duration)})
+                    </span>
+                  </div>
+                  <StatusBadge 
+                    status={log.success ? 'success' : 'error'}
+                    text={log.success ? 'Success' : 'Failed'}
+                  />
+                </div>
+                
+                {log.summary && (
+                  <div className="text-sm text-gray-600 mt-1">
+                    {log.summary.totalRecords.toLocaleString()} records from {log.summary.tablesWithData} tables
+                  </div>
+                )}
+                
+                {log.error && (
+                  <div className="text-sm text-red-600 mt-1">
+                    Error: {log.error}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </GlassCard>
+      )}
+    </div>
+  );
+}; 

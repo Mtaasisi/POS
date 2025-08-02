@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Inventory Products</title>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .product { border: 1px solid #ddd; padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .error { color: red; }
+        .success { color: green; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Test Inventory Products</h1>
+    <div id="results"></div>
+
+    <script>
+        const SUPABASE_URL = 'https://jxhzveborezjhsmzsgbc.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpoeHp2ZWJvcmV6amhzbXpzZ2JjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzE5NzI5NzAsImV4cCI6MjA0NzU0ODk3MH0.Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8';
+
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        async function testProducts() {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '<p>🔍 Testing database connection...</p>';
+
+            try {
+                // Test 1: Check if products table exists
+                console.log('Testing products table...');
+                const { data: products, error: productsError } = await supabase
+                    .from('products')
+                    .select('*')
+                    .limit(5);
+
+                if (productsError) {
+                    resultsDiv.innerHTML += `<p class="error">❌ Products table error: ${productsError.message}</p>`;
+                } else {
+                    resultsDiv.innerHTML += `<p class="success">✅ Products table accessible</p>`;
+                    resultsDiv.innerHTML += `<p>📦 Found ${products.length} products:</p>`;
+                    
+                    products.forEach(product => {
+                        resultsDiv.innerHTML += `
+                            <div class="product">
+                                <strong>${product.name}</strong><br>
+                                Brand: ${product.brand || 'N/A'}<br>
+                                Model: ${product.model || 'N/A'}<br>
+                                Product Code: ${product.product_code || 'N/A'}<br>
+                                Active: ${product.is_active ? 'Yes' : 'No'}
+                            </div>
+                        `;
+                    });
+                }
+
+                // Test 2: Check if product_variants table exists
+                console.log('Testing product_variants table...');
+                const { data: variants, error: variantsError } = await supabase
+                    .from('product_variants')
+                    .select('*')
+                    .limit(5);
+
+                if (variantsError) {
+                    resultsDiv.innerHTML += `<p class="error">❌ Product variants table error: ${variantsError.message}</p>`;
+                } else {
+                    resultsDiv.innerHTML += `<p class="success">✅ Product variants table accessible</p>`;
+                    resultsDiv.innerHTML += `<p>📦 Found ${variants.length} variants:</p>`;
+                    
+                    variants.forEach(variant => {
+                        resultsDiv.innerHTML += `
+                            <div class="product">
+                                <strong>${variant.variant_name}</strong><br>
+                                SKU: ${variant.sku}<br>
+                                Stock: ${variant.quantity_in_stock}<br>
+                                Price: $${variant.selling_price}<br>
+                                Active: ${variant.is_active ? 'Yes' : 'No'}
+                            </div>
+                        `;
+                    });
+                }
+
+                // Test 3: Check if brands table exists
+                console.log('Testing brands table...');
+                const { data: brands, error: brandsError } = await supabase
+                    .from('brands')
+                    .select('*')
+                    .limit(5);
+
+                if (brandsError) {
+                    resultsDiv.innerHTML += `<p class="error">❌ Brands table error: ${brandsError.message}</p>`;
+                } else {
+                    resultsDiv.innerHTML += `<p class="success">✅ Brands table accessible</p>`;
+                    resultsDiv.innerHTML += `<p>📦 Found ${brands.length} brands:</p>`;
+                    
+                    brands.forEach(brand => {
+                        resultsDiv.innerHTML += `
+                            <div class="product">
+                                <strong>${brand.name}</strong><br>
+                                Category: ${brand.category || 'N/A'}<br>
+                                Active: ${brand.is_active ? 'Yes' : 'No'}
+                            </div>
+                        `;
+                    });
+                }
+
+            } catch (error) {
+                resultsDiv.innerHTML += `<p class="error">❌ General error: ${error.message}</p>`;
+            }
+        }
+
+        // Run the test when page loads
+        testProducts();
+    </script>
+</body>
+</html> 

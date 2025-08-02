@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventory System Test</title>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 30px;
+            margin: 20px 0;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .success { background: rgba(34, 197, 94, 0.3); }
+        .error { background: rgba(239, 68, 68, 0.3); }
+        .info { background: rgba(59, 130, 246, 0.3); }
+        button {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        .category-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .category-card {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            border-left: 4px solid;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Inventory System Test</h1>
+        <p>Testing the inventory system connection and functionality</p>
+        
+        <div id="status"></div>
+        
+        <button onclick="testConnection()">Test Connection</button>
+        <button onclick="testCategories()">Test Categories</button>
+        <button onclick="testSuppliers()">Test Suppliers</button>
+        <button onclick="testProducts()">Test Products</button>
+        
+        <div id="results"></div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://jxhzveborezjhsmzsgbc.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHp2ZWJvcmV6amhzbXpzZ2JjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3MTE1MjQsImV4cCI6MjA2ODI4NzUyNH0.pIug4PlJ3Q14GxcYilW-u0blByYoyeOfN3q9RNIjgfw';
+        
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        function showStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+        
+        function showResults(content) {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = content;
+        }
+        
+        async function testConnection() {
+            showStatus('Testing connection...', 'info');
+            
+            try {
+                const { data, error } = await supabase
+                    .from('inventory_categories')
+                    .select('count')
+                    .limit(1);
+                
+                if (error) {
+                    showStatus(`❌ Connection failed: ${error.message}`, 'error');
+                } else {
+                    showStatus('✅ Connection successful!', 'success');
+                }
+            } catch (error) {
+                showStatus(`❌ Connection error: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testCategories() {
+            showStatus('Fetching categories...', 'info');
+            
+            try {
+                const { data, error } = await supabase
+                    .from('inventory_categories')
+                    .select('*')
+                    .eq('is_active', true)
+                    .order('name');
+                
+                if (error) {
+                    showStatus(`❌ Error fetching categories: ${error.message}`, 'error');
+                    return;
+                }
+                
+                showStatus(`✅ Found ${data.length} categories`, 'success');
+                
+                const categoriesHtml = `
+                    <div class="category-list">
+                        ${data.map(category => `
+                            <div class="category-card" style="border-left-color: ${category.color}">
+                                <h3>${category.name}</h3>
+                                <p>${category.description || 'No description'}</p>
+                                <small>Color: ${category.color}</small>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+                
+                showResults(categoriesHtml);
+                
+            } catch (error) {
+                showStatus(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testSuppliers() {
+            showStatus('Fetching suppliers...', 'info');
+            
+            try {
+                const { data, error } = await supabase
+                    .from('suppliers')
+                    .select('*')
+                    .eq('is_active', true)
+                    .order('name');
+                
+                if (error) {
+                    showStatus(`❌ Error fetching suppliers: ${error.message}`, 'error');
+                    return;
+                }
+                
+                showStatus(`✅ Found ${data.length} suppliers`, 'success');
+                
+                const suppliersHtml = `
+                    <div class="category-list">
+                        ${data.map(supplier => `
+                            <div class="category-card">
+                                <h3>${supplier.name}</h3>
+                                <p>${supplier.contact_person || 'No contact person'}</p>
+                                <p>${supplier.email || 'No email'}</p>
+                                <p>${supplier.phone || 'No phone'}</p>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+                
+                showResults(suppliersHtml);
+                
+            } catch (error) {
+                showStatus(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testProducts() {
+            showStatus('Fetching products...', 'info');
+            
+            try {
+                const { data, error } = await supabase
+                    .from('products')
+                    .select('*')
+                    .eq('is_active', true)
+                    .order('name');
+                
+                if (error) {
+                    showStatus(`❌ Error fetching products: ${error.message}`, 'error');
+                    return;
+                }
+                
+                showStatus(`✅ Found ${data.length} products`, 'success');
+                
+                const productsHtml = `
+                    <div class="category-list">
+                        ${data.map(product => `
+                            <div class="category-card">
+                                <h3>${product.name}</h3>
+                                <p>${product.brand || 'No brand'} ${product.model || ''}</p>
+                                <p>${product.description || 'No description'}</p>
+                                <p>Code: ${product.product_code || 'No code'}</p>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+                
+                showResults(productsHtml);
+                
+            } catch (error) {
+                showStatus(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+        
+        // Auto-test on load
+        window.addEventListener('load', () => {
+            testConnection();
+        });
+    </script>
+</body>
+</html> 

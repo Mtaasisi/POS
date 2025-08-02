@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Tables Test</title>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 30px;
+            margin: 20px 0;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .success { background: rgba(34, 197, 94, 0.3); }
+        .error { background: rgba(239, 68, 68, 0.3); }
+        .warning { background: rgba(245, 158, 11, 0.3); }
+        .info { background: rgba(59, 130, 246, 0.3); }
+        button {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        .table-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .table-card {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            border-left: 4px solid;
+        }
+        .table-card.exists { border-left-color: #10B981; }
+        .table-card.missing { border-left-color: #EF4444; }
+        .table-card.warning { border-left-color: #F59E0B; }
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .summary-card {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        .summary-number {
+            font-size: 2em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Database Tables Status Check</h1>
+        <p>Comprehensive test of all database tables and their availability</p>
+        
+        <div id="status"></div>
+        
+        <button onclick="testAllTables()">Test All Tables</button>
+        <button onclick="testMissingTables()">Test Missing Tables Only</button>
+        <button onclick="showSetupInstructions()">Show Setup Instructions</button>
+        
+        <div id="summary"></div>
+        <div id="results"></div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://jxhzveborezjhsmzsgbc.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHp2ZWJvcmV6amhzbXpzZ2JjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3MTE1MjQsImV4cCI6MjA2ODI4NzUyNH0.pIug4PlJ3Q14GxcYilW-u0blByYoyeOfN3q9RNIjgfw';
+        
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        // All tables that should exist
+        const ALL_TABLES = [
+            // Core tables (should exist)
+            { name: 'customers', category: 'core', required: true },
+            { name: 'devices', category: 'core', required: true },
+            { name: 'device_transitions', category: 'core', required: true },
+            { name: 'device_remarks', category: 'core', required: true },
+            { name: 'customer_payments', category: 'core', required: true },
+            { name: 'audit_logs', category: 'core', required: true },
+            { name: 'spare_parts', category: 'core', required: true },
+            { name: 'customer_notes', category: 'core', required: true },
+            { name: 'sms_logs', category: 'core', required: true },
+            
+            // Inventory tables (should exist)
+            { name: 'inventory_categories', category: 'inventory', required: true },
+            { name: 'suppliers', category: 'inventory', required: true },
+            { name: 'products', category: 'inventory', required: true },
+            { name: 'product_variants', category: 'inventory', required: true },
+            { name: 'stock_movements', category: 'inventory', required: true },
+            
+            // Missing tables (need to be created)
+            { name: 'inventory_products', category: 'missing', required: false },
+            { name: 'purchase_orders', category: 'missing', required: false },
+            { name: 'purchase_order_items', category: 'missing', required: false },
+            { name: 'whatsapp_chats', category: 'missing', required: false },
+            { name: 'whatsapp_messages', category: 'missing', required: false },
+            { name: 'scheduled_whatsapp_messages', category: 'missing', required: false },
+            { name: 'user_goals', category: 'missing', required: false },
+            { name: 'user_daily_goals', category: 'missing', required: false },
+            { name: 'staff_points', category: 'missing', required: false },
+            { name: 'customer_checkins', category: 'missing', required: false },
+            { name: 'communication_templates', category: 'missing', required: false }
+        ];
+        
+        function showStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+        
+        function showSummary(results) {
+            const summaryDiv = document.getElementById('summary');
+            const exists = results.filter(r => r.exists).length;
+            const missing = results.filter(r => !r.exists).length;
+            const required = results.filter(r => r.required && !r.exists).length;
+            
+            summaryDiv.innerHTML = `
+                <div class="summary">
+                    <div class="summary-card">
+                        <div class="summary-number">${exists}</div>
+                        <div>Tables Exist</div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="summary-number">${missing}</div>
+                        <div>Tables Missing</div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="summary-number">${required}</div>
+                        <div>Required Missing</div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="summary-number">${results.length}</div>
+                        <div>Total Tables</div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function showResults(results) {
+            const resultsDiv = document.getElementById('results');
+            
+            const resultsHtml = `
+                <div class="table-grid">
+                    ${results.map(result => `
+                        <div class="table-card ${result.exists ? 'exists' : result.required ? 'missing' : 'warning'}">
+                            <h3>${result.name}</h3>
+                            <p><strong>Status:</strong> ${result.exists ? '✅ Exists' : '❌ Missing'}</p>
+                            <p><strong>Category:</strong> ${result.category}</p>
+                            <p><strong>Required:</strong> ${result.required ? 'Yes' : 'No'}</p>
+                            ${result.error ? `<p><strong>Error:</strong> ${result.error}</p>` : ''}
+                            ${result.count !== null ? `<p><strong>Records:</strong> ${result.count}</p>` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            
+            resultsDiv.innerHTML = resultsHtml;
+        }
+        
+        async function testAllTables() {
+            showStatus('Testing all database tables...', 'info');
+            
+            const results = [];
+            
+            for (const table of ALL_TABLES) {
+                try {
+                    const { data, error } = await supabase
+                        .from(table.name)
+                        .select('count')
+                        .limit(1);
+                    
+                    if (error) {
+                        results.push({
+                            name: table.name,
+                            exists: false,
+                            required: table.required,
+                            category: table.category,
+                            error: error.message,
+                            count: null
+                        });
+                    } else {
+                        // Get actual count
+                        const { count } = await supabase
+                            .from(table.name)
+                            .select('*', { count: 'exact', head: true });
+                        
+                        results.push({
+                            name: table.name,
+                            exists: true,
+                            required: table.required,
+                            category: table.category,
+                            error: null,
+                            count: count || 0
+                        });
+                    }
+                } catch (error) {
+                    results.push({
+                        name: table.name,
+                        exists: false,
+                        required: table.required,
+                        category: table.category,
+                        error: error.message,
+                        count: null
+                    });
+                }
+            }
+            
+            const missingRequired = results.filter(r => r.required && !r.exists);
+            const missingOptional = results.filter(r => !r.required && !r.exists);
+            
+            if (missingRequired.length > 0) {
+                showStatus(`❌ ${missingRequired.length} required tables are missing!`, 'error');
+            } else if (missingOptional.length > 0) {
+                showStatus(`⚠️  ${missingOptional.length} optional tables are missing`, 'warning');
+            } else {
+                showStatus('✅ All tables exist!', 'success');
+            }
+            
+            showSummary(results);
+            showResults(results);
+        }
+        
+        async function testMissingTables() {
+            showStatus('Testing missing tables only...', 'info');
+            
+            const missingTables = ALL_TABLES.filter(t => t.category === 'missing');
+            const results = [];
+            
+            for (const table of missingTables) {
+                try {
+                    const { data, error } = await supabase
+                        .from(table.name)
+                        .select('count')
+                        .limit(1);
+                    
+                    if (error) {
+                        results.push({
+                            name: table.name,
+                            exists: false,
+                            required: table.required,
+                            category: table.category,
+                            error: error.message,
+                            count: null
+                        });
+                    } else {
+                        const { count } = await supabase
+                            .from(table.name)
+                            .select('*', { count: 'exact', head: true });
+                        
+                        results.push({
+                            name: table.name,
+                            exists: true,
+                            required: table.required,
+                            category: table.category,
+                            error: null,
+                            count: count || 0
+                        });
+                    }
+                } catch (error) {
+                    results.push({
+                        name: table.name,
+                        exists: false,
+                        required: table.required,
+                        category: table.category,
+                        error: error.message,
+                        count: null
+                    });
+                }
+            }
+            
+            showSummary(results);
+            showResults(results);
+        }
+        
+        function showSetupInstructions() {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = `
+                <div class="container">
+                    <h2>🔧 Setup Instructions</h2>
+                    <p>To create the missing tables, follow these steps:</p>
+                    
+                    <ol>
+                        <li>Go to <a href="https://supabase.com/dashboard/project/jxhzveborezjhsmzsgbc/editor" target="_blank">Supabase SQL Editor</a></li>
+                        <li>Open the SQL editor</li>
+                        <li>Copy the contents of <code>setup_missing_tables.sql</code></li>
+                        <li>Paste and execute the SQL</li>
+                        <li>Run this test again to verify</li>
+                    </ol>
+                    
+                    <h3>📋 Missing Tables to Create:</h3>
+                    <ul>
+                        <li><strong>inventory_products</strong> - Product catalog (alias for products)</li>
+                        <li><strong>purchase_orders</strong> - Purchase order management</li>
+                        <li><strong>purchase_order_items</strong> - Purchase order line items</li>
+                        <li><strong>whatsapp_chats</strong> - WhatsApp chat management</li>
+                        <li><strong>whatsapp_messages</strong> - WhatsApp message storage</li>
+                        <li><strong>scheduled_whatsapp_messages</strong> - Scheduled WhatsApp messages</li>
+                        <li><strong>user_goals</strong> - User goal tracking</li>
+                        <li><strong>user_daily_goals</strong> - Daily goal tracking</li>
+                        <li><strong>staff_points</strong> - Staff point system</li>
+                        <li><strong>customer_checkins</strong> - Customer check-in tracking</li>
+                        <li><strong>communication_templates</strong> - Message templates</li>
+                    </ul>
+                    
+                    <h3>🎯 After Setup:</h3>
+                    <ul>
+                        <li>The 404 errors in your app should be resolved</li>
+                        <li>WhatsApp features will be available</li>
+                        <li>Purchase order management will work</li>
+                        <li>User goal tracking will be functional</li>
+                    </ul>
+                </div>
+            `;
+        }
+        
+        // Auto-test on load
+        window.addEventListener('load', () => {
+            testAllTables();
+        });
+    </script>
+</body>
+</html> 

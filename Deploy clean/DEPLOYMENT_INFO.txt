@@ -1,0 +1,25 @@
+Clean App - Hostinger Deployment
+Build Date: Sat Aug  2 05:56:18 EAT 2025
+Version: 0.0.0
+Environment: Production
+
+Deployment Instructions:
+1. Upload all files from this directory to your Hostinger public_html folder
+2. Ensure .htaccess file is uploaded (important for routing)
+3. Configure your domain to point to the public_html directory
+4. Test the application at your domain
+
+Files included:
+- index.html (main entry point)
+- assets/ (compiled JavaScript and CSS)
+- config.js (environment configuration)
+- .htaccess (server configuration)
+- sw.js (service worker for PWA)
+- manifest.webmanifest (PWA manifest)
+- bg-blue-glass.svg (background image)
+- logos/ (app icons)
+
+Note: Make sure your Hostinger hosting supports:
+- PHP (for .htaccess processing)
+- mod_rewrite (for SPA routing)
+- HTTPS (recommended for PWA features)

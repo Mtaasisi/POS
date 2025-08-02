@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Query Comparison</title>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>Customer Query Comparison</h1>
+    <div id="results"></div>
+
+    <script>
+        const supabaseUrl = 'https://jxhzveborezjhsmzsgbc.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHp2ZWJvcmV6amhzbXpzZ2JjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3MTE1MjQsImV4cCI6MjA2ODI4NzUyNH0.pIug4PlJ3Q14GxcYilW-u0blByYoyeOfN3q9RNIjgfw';
+        
+        const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+        async function compareQueries() {
+            const resultsDiv = document.getElementById('results');
+            
+            try {
+                // Test 1: Get total count
+                console.log('Getting total count...');
+                const { count, error: countError } = await supabase
+                    .from('customers')
+                    .select('*', { count: 'exact', head: true });
+                
+                if (countError) {
+                    resultsDiv.innerHTML += `<p style="color: red;">Count Error: ${countError.message}</p>`;
+                } else {
+                    resultsDiv.innerHTML += `<p style="color: green;">Total customers in database: ${count}</p>`;
+                }
+
+                // Test 2: Simple query (like the new function)
+                console.log('Testing simple query...');
+                const startTime1 = Date.now();
+                const { data: simpleCustomers, error: simpleError } = await supabase
+                    .from('customers')
+                    .select('id, name, email, phone, gender, city, joined_date, loyalty_level, color_tag, referred_by, total_spent, points, last_visit, is_active, whatsapp, birth_month, birth_day, referral_source, initial_notes, total_returns, profile_image, created_at, updated_at')
+                    .limit(1000);
+                const endTime1 = Date.now();
+                
+                if (simpleError) {
+                    resultsDiv.innerHTML += `<p style="color: red;">Simple query error: ${simpleError.message}</p>`;
+                } else {
+                    resultsDiv.innerHTML += `<p style="color: green;">Simple query: ${simpleCustomers.length} customers in ${endTime1 - startTime1}ms</p>`;
+                }
+
+                // Test 3: Complex query (like the original function)
+                console.log('Testing complex query...');
+                const startTime2 = Date.now();
+                const { data: complexCustomers, error: complexError } = await supabase
+                    .from('customers')
+                    .select(`
+                        id, name, email, phone, gender, city, joined_date, loyalty_level, color_tag, referred_by, total_spent, points, last_visit, is_active, whatsapp, birth_month, birth_day, referral_source, initial_notes, total_returns, profile_image, created_at, updated_at
+                    `)
+                    .limit(1000);
+                const endTime2 = Date.now();
+                
+                if (complexError) {
+                    resultsDiv.innerHTML += `<p style="color: red;">Complex query error: ${complexError.message}</p>`;
+                } else {
+                    resultsDiv.innerHTML += `<p style="color: green;">Complex query: ${complexCustomers.length} customers in ${endTime2 - startTime2}ms</p>`;
+                }
+
+                // Test 4: Check if there are any differences
+                if (simpleCustomers && complexCustomers) {
+                    if (simpleCustomers.length !== complexCustomers.length) {
+                        resultsDiv.innerHTML += `<p style="color: orange;">⚠️ Different results: Simple=${simpleCustomers.length}, Complex=${complexCustomers.length}</p>`;
+                    } else {
+                        resultsDiv.innerHTML += `<p style="color: green;">✅ Both queries returned same number of customers</p>`;
+                    }
+                }
+
+                // Test 5: Check for any timeout issues
+                if (endTime2 - startTime2 > 10000) {
+                    resultsDiv.innerHTML += `<p style="color: orange;">⚠️ Complex query took ${endTime2 - startTime2}ms (slow)</p>`;
+                }
+
+            } catch (error) {
+                resultsDiv.innerHTML += `<p style="color: red;">General error: ${error.message}</p>`;
+                console.error('General error:', error);
+            }
+        }
+
+        // Run the test when page loads
+        window.addEventListener('load', compareQueries);
+    </script>
+</body>
+</html> 

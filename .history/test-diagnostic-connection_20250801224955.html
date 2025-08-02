@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diagnostic System Connection Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .test-section {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .success { background: rgba(76, 175, 80, 0.3); }
+        .error { background: rgba(244, 67, 54, 0.3); }
+        .warning { background: rgba(255, 152, 0, 0.3); }
+        button {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        pre {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 Diagnostic System Database Connection Test</h1>
+    
+    <div class="test-section">
+        <h2>📊 Database Connection Status</h2>
+        <div id="db-status" class="status">Testing database connection...</div>
+        <button onclick="testDatabaseConnection()">Test Database Connection</button>
+    </div>
+
+    <div class="test-section">
+        <h2>🔍 Diagnostic Tables Check</h2>
+        <div id="diagnostic-tables-status" class="status">Checking diagnostic tables...</div>
+        <button onclick="checkDiagnosticTables()">Check Diagnostic Tables</button>
+    </div>
+
+    <div class="test-section">
+        <h2>📋 Diagnostic API Test</h2>
+        <div id="diagnostic-api-status" class="status">Testing diagnostic API...</div>
+        <button onclick="testDiagnosticAPI()">Test Diagnostic API</button>
+    </div>
+
+    <div class="test-section">
+        <h2>📊 Test Results</h2>
+        <pre id="test-results">No tests run yet...</pre>
+    </div>
+
+    <script>
+        let testResults = [];
+
+        function addResult(test, status, message, data = null) {
+            const result = {
+                test,
+                status,
+                message,
+                data,
+                timestamp: new Date().toISOString()
+            };
+            testResults.push(result);
+            updateResultsDisplay();
+        }
+
+        function updateResultsDisplay() {
+            const resultsDiv = document.getElementById('test-results');
+            resultsDiv.textContent = JSON.stringify(testResults, null, 2);
+        }
+
+        async function testDatabaseConnection() {
+            const statusDiv = document.getElementById('db-status');
+            statusDiv.textContent = 'Testing...';
+            statusDiv.className = 'status warning';
+
+            try {
+                const response = await fetch('https://jxhzveborezjhsmzsgbc.supabase.co/rest/v1/', {
+                    headers: {
+                        'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHp2ZWJvcmV6amhzbXpzZ2JjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3MTE1MjQsImV4cCI6MjA2ODI4NzUyNH0.pIug4PlJ3Q14GxcYilW-u0blByYoyeOfN3q9RNIjgfw',
+                        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHp2ZWJvcmV6amhzbXpzZ2JjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3MTE1MjQsImV4cCI6MjA2ODI4NzUyNH0.pIug4PlJ3Q14GxcYilW-u0blByYoyeOfN3q9RNIjgfw'
+                    }
+                });
+
+                if (response.ok) {
+                    statusDiv.textContent = '✅ Database connection successful';
+                    statusDiv.className = 'status success';
+                    addResult('Database Connection', 'SUCCESS', 'Supabase connection is working');
+                } else {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+            } catch (error) {
+                statusDiv.textContent = '❌ Database connection failed: ' + error.message;
+                statusDiv.className = 'status error';
+                addResult('Database Connection', 'FAILED', error.message);
+            }
+        }
+
+        async function checkDiagnosticTables() {
+            const statusDiv = document.getElementById('diagnostic-tables-status');
+            statusDiv.textContent = 'Checking...';
+            statusDiv.className = 'status warning';
+
+            try {
+                // Test diagnostic_requests table
+                const requestsResponse = await fetch('https://jxhzveborezjhsmzsgbc.supabase.co/rest/v1/diagnostic_requests?select=count', {
+                    headers: {
+                        'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHp2ZWJvcmV6amhzbXpzZ2JjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3MTE1MjQsImV4cCI6MjA2ODI4NzUyNH0.pIug4PlJ3Q14GxcYilW-u0blByYoyeOfN3q9RNIjgfw',
+                        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHp2ZWJvcmV6amhzbXpzZ2JjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3MTE1MjQsImV4cCI6MjA2ODI4NzUyNH0.pIug4PlJ3Q14GxcYilW-u0blByYoyeOfN3q9RNIjgfw'
+                    }
+                });
+
+                // Test diagnostic_devices table
+                const devicesResponse = await fetch('https://jxhzveborezjhsmzsgbc.supabase.co/rest/v1/diagnostic_devices?select=count', {
+                    headers: {
+                        'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHp2ZWJvcmV6amhzbXpzZ2JjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3MTE1MjQsImV4cCI6MjA2ODI4NzUyNH0.pIug4PlJ3Q14GxcYilW-u0blByYoyeOfN3q9RNIjgfw',
+                        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHp2ZWJvcmV6amhzbXpzZ2JjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3MTE1MjQsImV4cCI6MjA2ODI4NzUyNH0.pIug4PlJ3Q14GxcYilW-u0blByYoyeOfN3q9RNIjgfw'
+                    }
+                });
+
+                // Test diagnostic_checks table
+                const checksResponse = await fetch('https://jxhzveborezjhsmzsgbc.supabase.co/rest/v1/diagnostic_checks?select=count', {
+                    headers: {
+                        'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHp2ZWJvcmV6amhzbXpzZ2JjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3MTE1MjQsImV4cCI6MjA2ODI4NzUyNH0.pIug4PlJ3Q14GxcYilW-u0blByYoyeOfN3q9RNIjgfw',
+                        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHp2ZWJvcmV6amhzbXpzZ2JjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3MTE1MjQsImV4cCI6MjA2ODI4NzUyNH0.pIug4PlJ3Q14GxcYilW-u0blByYoyeOfN3q9RNIjgfw'
+                    }
+                });
+
+                if (requestsResponse.ok && devicesResponse.ok && checksResponse.ok) {
+                    statusDiv.textContent = '✅ Diagnostic tables are accessible';
+                    statusDiv.className = 'status success';
+                    addResult('Diagnostic Tables', 'SUCCESS', 'diagnostic_requests, diagnostic_devices, and diagnostic_checks tables are accessible');
+                } else {
+                    throw new Error('One or more diagnostic tables are not accessible');
+                }
+            } catch (error) {
+                statusDiv.textContent = '❌ Diagnostic tables check failed: ' + error.message;
+                statusDiv.className = 'status error';
+                addResult('Diagnostic Tables', 'FAILED', error.message);
+            }
+        }
+
+        async function testDiagnosticAPI() {
+            const statusDiv = document.getElementById('diagnostic-api-status');
+            statusDiv.textContent = 'Testing...';
+            statusDiv.className = 'status warning';
+
+            try {
+                // Test creating a diagnostic request
+                const testRequestResponse = await fetch('https://jxhzveborezjhsmzsgbc.supabase.co/rest/v1/diagnostic_requests', {
+                    method: 'POST',
+                    headers: {
+                        'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHp2ZWJvcmV6amhzbXpzZ2JjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3MTE1MjQsImV4cCI6MjA2ODI4NzUyNH0.pIug4PlJ3Q14GxcYilW-u0blByYoyeOfN3q9RNIjgfw',
+                        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHp2ZWJvcmV6amhzbXpzZ2JjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3MTE1MjQsImV4cCI6MjA2ODI4NzUyNH0.pIug4PlJ3Q14GxcYilW-u0blByYoyeOfN3q9RNIjgfw',
+                        'Content-Type': 'application/json',
+                        'Prefer': 'return=representation'
+                    },
+                    body: JSON.stringify({
+                        title: 'Test Diagnostic Request',
+                        created_by: 'test-user',
+                        status: 'pending'
+                    })
+                });
+
+                if (testRequestResponse.ok) {
+                    const testRequest = await testRequestResponse.json();
+                    
+                    // Clean up the test entry
+                    await fetch(`https://jxhzveborezjhsmzsgbc.supabase.co/rest/v1/diagnostic_requests?id=eq.${testRequest[0].id}`, {
+                        method: 'DELETE',
+                        headers: {
+                            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHp2ZWJvcmV6amhzbXpzZ2JjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3MTE1MjQsImV4cCI6MjA2ODI4NzUyNH0.pIug4PlJ3Q14GxcYilW-u0blByYoyeOfN3q9RNIjgfw',
+                            'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHp2ZWJvcmV6amhzbXpzZ2JjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3MTE1MjQsImV4cCI6MjA2ODI4NzUyNH0.pIug4PlJ3Q14GxcYilW-u0blByYoyeOfN3q9RNIjgfw'
+                        }
+                    });
+
+                    statusDiv.textContent = '✅ Diagnostic API is working';
+                    statusDiv.className = 'status success';
+                    addResult('Diagnostic API', 'SUCCESS', 'Diagnostic request creation and deletion working', testRequest[0]);
+                } else {
+                    throw new Error(`Diagnostic request creation failed: ${testRequestResponse.status}`);
+                }
+            } catch (error) {
+                statusDiv.textContent = '❌ Diagnostic API test failed: ' + error.message;
+                statusDiv.className = 'status error';
+                addResult('Diagnostic API', 'FAILED', error.message);
+            }
+        }
+
+        // Run initial tests
+        window.onload = function() {
+            setTimeout(testDatabaseConnection, 1000);
+            setTimeout(checkDiagnosticTables, 2000);
+            setTimeout(testDiagnosticAPI, 3000);
+        };
+    </script>
+</body>
+</html> 
