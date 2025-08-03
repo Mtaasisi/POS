@@ -1,0 +1,67 @@
+#!/bin/bash
+
+echo "🔧 Fixing Database Issues"
+echo "========================="
+echo ""
+
+echo "📋 Issues detected:"
+echo "1. ❌ user_daily_goals table missing (causing 406 errors)"
+echo "2. ❌ Authentication failing (400 Bad Request)"
+echo ""
+
+echo "🚀 Solution Steps:"
+echo "=================="
+echo ""
+
+echo "Step 1: Create Missing Tables"
+echo "----------------------------"
+echo "1. Go to your Supabase Dashboard: https://supabase.com/dashboard"
+echo "2. Select your project: jxhzveborezjhsmzsgbc"
+echo "3. Go to SQL Editor"
+echo "4. Copy and paste the contents of fix_missing_user_goals_tables.sql"
+echo "5. Click 'Run' to execute"
+echo ""
+
+echo "Step 2: Check Authentication"
+echo "---------------------------"
+echo "1. In Supabase Dashboard, go to Authentication > Users"
+echo "2. Check if your user exists"
+echo "3. If not, create a new user or reset password"
+echo ""
+
+echo "Step 3: Verify Tables Created"
+echo "----------------------------"
+echo "Run this query in SQL Editor to verify:"
+echo ""
+echo "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('user_daily_goals', 'user_goals', 'staff_points', 'customer_checkins');"
+echo ""
+
+echo "Step 4: Test the Application"
+echo "---------------------------"
+echo "1. Refresh your application"
+echo "2. Try logging in again"
+echo "3. Check console for errors"
+echo ""
+
+echo "📊 Expected Results:"
+echo "==================="
+echo "✅ No more 406 errors for user_daily_goals"
+echo "✅ Login should work properly"
+echo "✅ Dashboard should load without errors"
+echo ""
+
+echo "🔍 If issues persist:"
+echo "===================="
+echo "1. Check Supabase logs in Dashboard > Logs"
+echo "2. Verify your environment variables"
+echo "3. Clear browser cache and localStorage"
+echo ""
+
+echo "💡 Quick Commands:"
+echo "================="
+echo "• Clear localStorage: localStorage.clear() (in browser console)"
+echo "• Check tables: SELECT * FROM user_daily_goals LIMIT 5;"
+echo "• Check auth: SELECT * FROM auth.users LIMIT 5;"
+echo ""
+
+echo "🎉 Ready to fix! Follow the steps above." 

@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POS Customer Search Test</title>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 8px; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        .info { background-color: #d1ecf1; border-color: #bee5eb; }
+        input { padding: 8px; margin: 5px; border: 1px solid #ddd; border-radius: 4px; }
+        button { padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .results { margin-top: 10px; }
+        .customer-item { padding: 8px; margin: 5px 0; background: #f8f9fa; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h1>POS Customer Search Test</h1>
+    
+    <div class="test-section info">
+        <h3>Database Connection Test</h3>
+        <div id="connection-status">Testing connection...</div>
+    </div>
+    
+    <div class="test-section">
+        <h3>Customer Search Test</h3>
+        <input type="text" id="searchInput" placeholder="Search customers..." style="width: 300px;">
+        <button onclick="searchCustomers()">Search</button>
+        <div id="searchResults" class="results"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>All Customers (First 10)</h3>
+        <button onclick="loadAllCustomers()">Load Customers</button>
+        <div id="allCustomers" class="results"></div>
+    </div>
+
+    <script>
+        const supabaseUrl = 'https://jxhzveborezjhsmzsgbc.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHp2ZWJvcmV6amhzbXpzZ2JjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3MTE1MjQsImV4cCI6MjA2ODI4NzUyNH0.pIug4PlJ3Q14GxcYilW-u0blByYoyeOfN3q9RNIjgfw';
+        
+        const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+        
+        // Test database connection
+        async function testConnection() {
+            try {
+                const { data, error } = await supabase
+                    .from('customers')
+                    .select('count', { count: 'exact', head: true });
+                
+                if (error) {
+                    document.getElementById('connection-status').innerHTML = 
+                        `<span style="color: red;">❌ Connection failed: ${error.message}</span>`;
+                } else {
+                    document.getElementById('connection-status').innerHTML = 
+                        `<span style="color: green;">✅ Connected successfully! Found ${data} customers</span>`;
+                }
+            } catch (e) {
+                document.getElementById('connection-status').innerHTML = 
+                    `<span style="color: red;">❌ Exception: ${e.message}</span>`;
+            }
+        }
+        
+        // Search customers function (simulating POS search)
+        async function searchCustomers() {
+            const query = document.getElementById('searchInput').value.trim();
+            const resultsDiv = document.getElementById('searchResults');
+            
+            if (query.length < 2) {
+                resultsDiv.innerHTML = '<p style="color: orange;">Please enter at least 2 characters to search</p>';
+                return;
+            }
+            
+            try {
+                console.log('Searching for:', query);
+                
+                const { data: customers, error } = await supabase
+                    .from('customers')
+                    .select('id, name, phone, email, city')
+                    .or(`name.ilike.%${query}%,phone.ilike.%${query}%,email.ilike.%${query}%`)
+                    .limit(10);
+                
+                if (error) {
+                    console.error('Search error:', error);
+                    resultsDiv.innerHTML = `<p style="color: red;">❌ Search failed: ${error.message}</p>`;
+                    return;
+                }
+                
+                console.log('Search results:', customers);
+                
+                if (customers.length === 0) {
+                    resultsDiv.innerHTML = '<p style="color: gray;">No customers found</p>';
+                } else {
+                    const html = customers.map(customer => `
+                        <div class="customer-item">
+                            <strong>${customer.name}</strong><br>
+                            Phone: ${customer.phone}<br>
+                            ${customer.email ? `Email: ${customer.email}<br>` : ''}
+                            ${customer.city ? `City: ${customer.city}` : ''}
+                        </div>
+                    `).join('');
+                    resultsDiv.innerHTML = html;
+                }
+                
+            } catch (error) {
+                console.error('Exception during search:', error);
+                resultsDiv.innerHTML = `<p style="color: red;">❌ Exception: ${error.message}</p>`;
+            }
+        }
+        
+        // Load all customers
+        async function loadAllCustomers() {
+            try {
+                const { data: customers, error } = await supabase
+                    .from('customers')
+                    .select('id, name, phone, email, city')
+                    .limit(10);
+                
+                if (error) {
+                    document.getElementById('allCustomers').innerHTML = 
+                        `<p style="color: red;">❌ Failed to load customers: ${error.message}</p>`;
+                    return;
+                }
+                
+                const html = customers.map(customer => `
+                    <div class="customer-item">
+                        <strong>${customer.name}</strong><br>
+                        Phone: ${customer.phone}<br>
+                        ${customer.email ? `Email: ${customer.email}<br>` : ''}
+                        ${customer.city ? `City: ${customer.city}` : ''}
+                    </div>
+                `).join('');
+                
+                document.getElementById('allCustomers').innerHTML = html;
+                
+            } catch (error) {
+                document.getElementById('allCustomers').innerHTML = 
+                    `<p style="color: red;">❌ Exception: ${error.message}</p>`;
+            }
+        }
+        
+        // Initialize
+        testConnection();
+        
+        // Add event listener for search input
+        document.getElementById('searchInput').addEventListener('input', function() {
+            if (this.value.length >= 2) {
+                searchCustomers();
+            } else {
+                document.getElementById('searchResults').innerHTML = '';
+            }
+        });
+    </script>
+</body>
+</html> 
