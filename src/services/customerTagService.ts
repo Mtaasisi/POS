@@ -29,19 +29,29 @@ export class CustomerTagService {
 
   static async updateCustomerTag(customerId: string, tag: string): Promise<boolean> {
     try {
+      console.log('🔧 CustomerTagService: Updating customer tag for ID:', customerId);
+      console.log('🔧 CustomerTagService: New tag:', tag);
+      
       const { error } = await supabase
         .from('customers')
         .update({ color_tag: tag })
         .eq('id', customerId);
 
       if (error) {
-        console.error('Error updating customer tag:', error);
+        console.error('❌ CustomerTagService: Error updating customer tag:', error);
+        console.error('❌ CustomerTagService: Error details:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
         return false;
       }
 
+      console.log('✅ CustomerTagService: Successfully updated customer tag');
       return true;
     } catch (error) {
-      console.error('Error in updateCustomerTag:', error);
+      console.error('❌ CustomerTagService: Error in updateCustomerTag:', error);
       return false;
     }
   }

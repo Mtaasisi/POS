@@ -1,0 +1,13 @@
+{
+  "timestamp": "2025-08-05T06:30:25.359Z",
+  "description": "Brand logos for Hostinger upload",
+  "instructions": [
+    "1. Upload all files from public/brand-logos/ to your Hostinger public_html/brand-logos/ folder",
+    "2. Ensure the folder structure matches: public_html/brand-logos/",
+    "3. Update the database logo_url fields to point to your domain",
+    "4. Example: /public/brand-logos/logo.png becomes https://yourdomain.com/brand-logos/logo.png"
+  ],
+  "files": [
+    "backup"
+  ]
+}

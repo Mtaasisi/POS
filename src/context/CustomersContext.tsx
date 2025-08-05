@@ -149,6 +149,9 @@ export const CustomersProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // Also auto-update after any updateCustomer call
   const updateCustomer = async (customerId: string, updates: Partial<Customer>): Promise<boolean> => {
     try {
+      console.log('🔧 CustomersContext: Starting customer update for ID:', customerId);
+      console.log('🔧 CustomersContext: Updates received:', updates);
+      
       if (!currentUser) return false;
       // Fetch current customer for logic
       const current = customers.find(c => c.id === customerId);
@@ -179,8 +182,12 @@ export const CustomersProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           newIsActive = true;
         }
       }
+      
+      const finalUpdates = { ...updates, colorTag: newColorTag as CustomerTag, isActive: newIsActive };
+      console.log('🔧 CustomersContext: Final update data:', finalUpdates);
+      
       // Always enforce colorTag and isActive
-      const updated = await updateCustomerInDb(customerId, { ...updates, colorTag: newColorTag, isActive: newIsActive });
+      const updated = await updateCustomerInDb(customerId, finalUpdates);
       if (!updated) return false;
       // Auto-mark active/inactive after update
       const now = Date.now();
