@@ -1,0 +1,2563 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import GlassCard from '../components/ui/GlassCard';
+import GlassButton from '../components/ui/GlassButton';
+import POSSettingsModal from '../components/pos/POSSettingsModal';
+import AddCustomerModal from '../components/forms/AddCustomerModal';
+import MiniSalesDashboard from '../components/pos/MiniSalesDashboard';
+import SmartNotifications from '../components/pos/SmartNotifications';
+import DarkModeToggle from '../components/pos/DarkModeToggle';
+import SmartProductSearch from '../components/pos/SmartProductSearch';
+import LocationSelector from '../components/pos/LocationSelector';
+import AdvancedInventory from '../components/pos/AdvancedInventory';
+import LoyaltyProgram from '../components/pos/LoyaltyProgram';
+import GiftCardManager from '../components/pos/GiftCardManager';
+import FinanceAccountsModal from '../components/pos/FinanceAccountsModal';
+import PaymentSelectionModal from '../components/pos/PaymentSelectionModal';
+
+import { posApi } from '../lib/posApi';
+import { supabase } from '../lib/supabaseClient';
+import { getProducts, searchProducts, Product } from '../lib/inventoryApi';
+import { financeAccountService, FinanceAccount } from '../lib/financeAccountService';
+import { 
+  Search, 
+  ShoppingCart, 
+  User, 
+  CreditCard, 
+  Truck, 
+  Plus,
+  X,
+  Receipt,
+  Save,
+  RotateCcw,
+  Scan,
+  Package,
+  Calculator,
+  Clock,
+  Calendar,
+  MapPin,
+  Printer,
+  DollarSign,
+  Package as PackageIcon,
+  Settings,
+  ArrowLeft,
+  TrendingUp,
+  Bell,
+  Building,
+  Crown,
+  Gift,
+  FileText,
+  Calculator as CalculatorIcon,
+  CreditCard as CreditCardIcon,
+  RotateCcw as RotateCcwIcon,
+  Users,
+  Star,
+  UserPlus,
+  Award,
+  ChevronRight,
+  Bolt,
+  Mic,
+  HelpCircle,
+  Wifi,
+  Battery,
+  Cloud,
+  Activity,
+  Phone,
+  MessageSquare,
+  Tag,
+  Eye,
+  Edit,
+  MessageCircle
+} from 'lucide-react';
+
+interface CartItem {
+  id: string;
+  name: string;
+  variant?: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+  isExternal?: boolean;
+}
+
+interface Customer {
+  id: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  type: 'retail' | 'wholesale';
+  city?: string;
+  colorTag?: string;
+  loyaltyLevel?: string;
+  points?: number;
+  whatsapp?: string;
+  referralSource?: string;
+  birthMonth?: string;
+  birthDay?: string;
+  payments?: Array<{
+    id: string;
+    amount: number;
+    status: string;
+    source: string;
+    date: string;
+    orderItems?: Array<any>;
+  }>;
+  devices?: Array<{
+    id: string;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  loyalty?: {
+    points: number;
+    tier: 'bronze' | 'silver' | 'gold' | 'platinum';
+    totalSpent: number;
+    joinDate: string | null;
+    lastVisit: string | null;
+    rewardsRedeemed: number;
+    isLoyaltyMember: boolean;
+  };
+}
+
+const POSPage: React.FC = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [customerType, setCustomerType] = useState<'retail' | 'wholesale'>('retail');
+  const [paymentAccount, setPaymentAccount] = useState<string>('');
+  const [paymentAccounts, setPaymentAccounts] = useState<FinanceAccount[]>([]);
+  const [paymentAccountsLoading, setPaymentAccountsLoading] = useState(false);
+  const [amountPaid, setAmountPaid] = useState<number>(0);
+
+  const [deliveryMethod, setDeliveryMethod] = useState<string>('pickup');
+  const [deliveryAddress, setDeliveryAddress] = useState<string>('');
+  const [deliveryCity, setDeliveryCity] = useState<string>('');
+  const [deliveryNotes, setDeliveryNotes] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [customerSearchQuery, setCustomerSearchQuery] = useState<string>('');
+  const [customerSearchResults, setCustomerSearchResults] = useState<any[]>([]);
+  const [showCustomerSearch, setShowCustomerSearch] = useState(false);
+  const [activeTab, setActiveTab] = useState<'products' | 'customers'>('products');
+  const [showQuickActions, setShowQuickActions] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showAddCustomer, setShowAddCustomer] = useState(false);
+  const [showDashboard, setShowDashboard] = useState(false);
+  const [showSmartSearch, setShowSmartSearch] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [showLocationSelector, setShowLocationSelector] = useState(false);
+  const [showAdvancedInventory, setShowAdvancedInventory] = useState(false);
+  const [showLoyaltyProgram, setShowLoyaltyProgram] = useState(false);
+  const [showGiftCardManager, setShowGiftCardManager] = useState(false);
+  const [showPaymentsAccounts, setShowPaymentsAccounts] = useState(false);
+  const [showPaymentSelection, setShowPaymentSelection] = useState(false);
+
+  const [paymentSelected, setPaymentSelected] = useState(false);
+  const [currentLocation, setCurrentLocation] = useState<any>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [productsLoading, setProductsLoading] = useState(false);
+  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customersLoading, setCustomersLoading] = useState(false);
+  const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
+  const [selectingCustomer, setSelectingCustomer] = useState<string | null>(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [editingCartIndex, setEditingCartIndex] = useState<number | null>(null);
+  const cartListRef = useRef<HTMLDivElement>(null);
+
+  // Enhanced header state variables
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [todaySales, setTodaySales] = useState(1247.50);
+  const [todayOrders, setTodayOrders] = useState(12);
+  const [weatherInfo, setWeatherInfo] = useState({ city: 'Nairobi', temp: 24 });
+  const [batteryLevel, setBatteryLevel] = useState(85);
+  const [isOnline, setIsOnline] = useState(true);
+  const [quickSearchQuery, setQuickSearchQuery] = useState('');
+  const [showQuickSearch, setShowQuickSearch] = useState(false);
+  const [systemStatus, setSystemStatus] = useState({
+    printer: true,
+    cashDrawer: true,
+    scanner: false,
+    network: true
+  });
+
+  // Load products on component mount
+  useEffect(() => {
+    loadProducts();
+    loadCustomers();
+    loadPaymentAccounts();
+    loadDefaultLocation();
+  }, []);
+
+  // Filter products based on search query
+  useEffect(() => {
+    if (searchQuery.trim()) {
+      const filtered = products.filter(product => 
+        product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (product.brand && product.brand.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (product.model && product.model.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (product.product_code && product.product_code.toLowerCase().includes(searchQuery.toLowerCase()))
+      );
+      setFilteredProducts(filtered);
+    } else {
+      setFilteredProducts(products);
+    }
+  }, [searchQuery, products]);
+
+  // Filter customers based on search query
+  useEffect(() => {
+    if (customerSearchQuery.trim()) {
+      const filtered = customers.filter(customer => 
+        customer.name.toLowerCase().includes(customerSearchQuery.toLowerCase()) ||
+        (customer.phone && customer.phone.toLowerCase().includes(customerSearchQuery.toLowerCase())) ||
+        (customer.email && customer.email.toLowerCase().includes(customerSearchQuery.toLowerCase()))
+      );
+      setFilteredCustomers(filtered);
+    } else {
+      setFilteredCustomers(customers);
+    }
+  }, [customerSearchQuery, customers]);
+
+  // Auto-fill amount paid with total when cart changes
+  useEffect(() => {
+    if (cart.length > 0) {
+      const totals = calculateTotals();
+      setAmountPaid(totals.total);
+    } else {
+      setAmountPaid(0);
+    }
+  }, [cart, deliveryMethod]);
+
+  // Handle return from delivery options page
+  useEffect(() => {
+    if (location.state?.orderCompleted) {
+      // Process the completed order
+      const deliveryData = location.state.deliveryData;
+      if (deliveryData) {
+        setDeliveryMethod(deliveryData.method);
+        setDeliveryAddress(deliveryData.address);
+        setDeliveryCity(deliveryData.city);
+        setDeliveryNotes(deliveryData.notes);
+      }
+      
+      // Process the sale
+      processSaleWithDelivery();
+      
+      // Clear the state
+      navigate(location.pathname, { replace: true });
+    } else if (location.state?.returnToPayment) {
+      // Return to payment selection
+      const deliveryData = location.state.deliveryData;
+      if (deliveryData) {
+        setDeliveryMethod(deliveryData.method);
+        setDeliveryAddress(deliveryData.address);
+        setDeliveryCity(deliveryData.city);
+        setDeliveryNotes(deliveryData.notes);
+      }
+      
+      // Clear the state
+      navigate(location.pathname, { replace: true });
+    }
+  }, [location.state, navigate]);
+
+  const loadProducts = async () => {
+    setProductsLoading(true);
+    try {
+      const allProducts = await getProducts();
+      setProducts(allProducts);
+      setFilteredProducts(allProducts);
+    } catch (error) {
+      console.error('Error loading products:', error);
+      setProducts([]);
+      setFilteredProducts([]);
+    } finally {
+      setProductsLoading(false);
+    }
+  };
+
+  const loadCustomers = async () => {
+    setCustomersLoading(true);
+    try {
+      // First get all customers
+      const { data: customersData, error: customersError } = await supabase
+        .from('customers')
+        .select('*')
+        .order('name');
+      
+      if (customersError) throw customersError;
+
+      // Then get loyalty data
+      const { data: loyaltyData, error: loyaltyError } = await supabase
+        .from('loyalty_customers')
+        .select('*');
+
+      if (loyaltyError) throw loyaltyError;
+
+      // Create a map of loyalty data by customer_id
+      const loyaltyMap = new Map();
+      (loyaltyData || []).forEach((loyalty: any) => {
+        loyaltyMap.set(loyalty.customer_id, loyalty);
+      });
+
+      // Combine customers with their loyalty data
+      const customersList = (customersData || []).map((customer: any) => {
+        const loyaltyInfo = loyaltyMap.get(customer.id);
+        
+        return {
+          ...customer,
+          loyalty: loyaltyInfo ? {
+            points: loyaltyInfo.points || 0,
+            tier: loyaltyInfo.tier || 'bronze',
+            totalSpent: loyaltyInfo.total_spent || 0,
+            joinDate: loyaltyInfo.join_date,
+            lastVisit: loyaltyInfo.last_visit,
+            rewardsRedeemed: loyaltyInfo.rewards_redeemed || 0,
+            isLoyaltyMember: true
+          } : undefined
+        };
+      });
+      
+      setCustomers(customersList);
+      setFilteredCustomers(customersList);
+    } catch (error) {
+      console.error('Error loading customers:', error);
+      setCustomers([]);
+      setFilteredCustomers([]);
+    } finally {
+      setCustomersLoading(false);
+    }
+  };
+
+  const loadPaymentAccounts = async () => {
+    setPaymentAccountsLoading(true);
+    try {
+      const accounts = await financeAccountService.getPaymentMethods();
+      console.log('🔧 Loaded payment accounts:', accounts);
+      setPaymentAccounts(accounts);
+      
+      // Set default payment account if available
+      if (accounts.length > 0 && !accounts.find(a => a.id === paymentAccount)) {
+        setPaymentAccount(accounts[0].id);
+        console.log('🔧 Set default payment account:', accounts[0].id);
+      }
+    } catch (error) {
+      console.error('❌ Error loading payment accounts:', error);
+      setPaymentAccounts([]);
+      
+      // Add fallback payment methods if none available
+      const fallbackAccounts = [
+        {
+          id: 'cash-fallback',
+          name: 'Cash',
+          type: 'cash' as const,
+          balance: 0,
+          currency: 'TZS',
+          is_active: true,
+          is_payment_method: true,
+          payment_icon: 'cash.svg',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        },
+        {
+          id: 'card-fallback',
+          name: 'Card Payment',
+          type: 'credit_card' as const,
+          balance: 0,
+          currency: 'TZS',
+          is_active: true,
+          is_payment_method: true,
+          payment_icon: 'mastercard.svg',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }
+      ];
+      
+      setPaymentAccounts(fallbackAccounts);
+      setPaymentAccount('cash-fallback');
+      console.log('🔧 Using fallback payment accounts');
+    } finally {
+      setPaymentAccountsLoading(false);
+    }
+  };
+
+  const loadDefaultLocation = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('locations')
+        .select('*')
+        .eq('name', 'Main Repair Center')
+        .single();
+      
+      if (error) {
+        console.error('Error loading default location:', error);
+        // Set a fallback location
+        setCurrentLocation({
+          id: null,
+          name: 'Main Repair Center',
+          address: '123 Tech Street, Lagos',
+          status: 'active'
+        });
+      } else {
+        setCurrentLocation(data);
+      }
+    } catch (error) {
+      console.error('Error loading default location:', error);
+      // Set a fallback location
+      setCurrentLocation({
+        id: null,
+        name: 'Main Repair Center',
+        address: '123 Tech Street, Lagos',
+        status: 'active'
+      });
+    }
+  };
+
+  const calculateTotals = () => {
+    const subtotal = cart.reduce((sum, item) => sum + item.total, 0);
+    const tax = subtotal * 0.16;
+    const shipping = deliveryMethod === 'pickup' ? 0 : 500;
+    const total = subtotal + tax + shipping;
+    const balance = total - amountPaid;
+
+    return {
+      subtotal,
+      tax,
+      shipping,
+      total,
+      balance
+    };
+  };
+
+  const addToCart = (product: any) => {
+    const existingItem = cart.find(item => item.id === product.id);
+    
+    if (existingItem) {
+      setCart(cart.map(item => 
+        item.id === product.id 
+          ? { ...item, quantity: item.quantity + 1, total: (item.quantity + 1) * item.unitPrice }
+          : item
+      ));
+    } else {
+      const newItem: CartItem = {
+        id: product.id,
+        name: product.name,
+        variant: product.variant,
+        quantity: 1,
+        unitPrice: product.price,
+        total: product.price
+      };
+      setCart([...cart, newItem]);
+    }
+
+    // Visual feedback - add a temporary highlight class
+    const element = document.querySelector(`[data-product-id="${product.id}"]`);
+    if (element) {
+      element.classList.add('animate-pulse', 'bg-green-100');
+      setTimeout(() => {
+        element.classList.remove('animate-pulse', 'bg-green-100');
+      }, 1000);
+    }
+  };
+
+  const removeFromCart = (itemId: string) => {
+    setCart(cart.filter(item => item.id !== itemId));
+  };
+
+  const updateQuantity = (itemId: string, newQuantity: number) => {
+    if (newQuantity <= 0) {
+      removeFromCart(itemId);
+      return;
+    }
+    
+    setCart(cart.map(item => 
+      item.id === itemId 
+        ? { ...item, quantity: newQuantity, total: newQuantity * item.unitPrice }
+        : item
+    ));
+  };
+
+  const processSale = async () => {
+    if (cart.length === 0) {
+      addNotification('warning', 'Empty Cart', 'Please add items to cart before proceeding');
+      return;
+    }
+
+    if (!selectedCustomer) {
+      addNotification('warning', 'No Customer Selected', 'Please select a customer before proceeding');
+      return;
+    }
+    
+    // Show payment selection modal instead of directly processing
+    setShowPaymentSelection(true);
+  };
+
+  const handlePaymentSelect = (selectedPaymentAccountId: string, amountPaid: number) => {
+    console.log('🔧 Payment selected:', selectedPaymentAccountId, 'amountPaid:', amountPaid);
+    setPaymentAccount(selectedPaymentAccountId);
+    setAmountPaid(amountPaid);
+    setPaymentSelected(true);
+    setShowPaymentSelection(false);
+    
+    // Navigate to delivery options page with order data
+    const orderData = {
+      summary: {
+        customer: {
+          name: selectedCustomer?.name || 'Customer',
+          phone: selectedCustomer?.phone || ''
+        },
+        items: cart.map(item => ({
+          name: item.name,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          total: item.total
+        })),
+        totals: calculateTotals()
+      }
+    };
+    
+    navigate('/delivery-options', { state: { orderData } });
+  };
+
+  const processSaleWithDelivery = async () => {
+    console.log('🔧 Processing sale with delivery...');
+    
+    // Validation
+    if (cart.length === 0) {
+      addNotification('warning', 'Empty Cart', 'Please add items to cart before proceeding');
+      return;
+    }
+
+    if (!selectedCustomer) {
+      addNotification('warning', 'No Customer Selected', 'Please select a customer before proceeding');
+      return;
+    }
+
+    if (!paymentAccount) {
+      addNotification('warning', 'No Payment Method', 'Please select a payment method before proceeding');
+      return;
+    }
+
+    try {
+      // Calculate totals
+      const totals = calculateTotals();
+      
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+      
+      // Create sale order
+      const orderData = {
+        customer_id: selectedCustomer?.id || undefined,
+        total_amount: totals.subtotal,
+        discount_amount: 0,
+        tax_amount: totals.tax,
+        shipping_cost: totals.shipping,
+        final_amount: totals.total,
+        amount_paid: amountPaid,
+        balance_due: totals.balance,
+        payment_method: 'card' as 'cash' | 'card' | 'transfer' | 'installment' | 'payment_on_delivery',
+        customer_type: customerType,
+        delivery_address: deliveryAddress,
+        delivery_city: deliveryCity,
+        delivery_method: deliveryMethod as 'local_transport' | 'air_cargo' | 'bus_cargo' | 'pickup',
+        delivery_notes: deliveryNotes,
+        location_id: currentLocation?.id || null,
+        created_by: user.id,
+        status: (amountPaid >= totals.total ? 'completed' : 'partially_paid') as 'completed' | 'partially_paid'
+      };
+      
+      console.log('🔧 Creating sale order with data:', orderData);
+      const saleOrder = await posApi.createSaleOrder(orderData);
+      
+      // Create sale order items
+      for (const item of cart) {
+        const isVariant = item.id.includes('-variant-') || item.variant;
+        
+        const orderItem = {
+          order_id: saleOrder.id,
+          product_id: isVariant ? null : item.id,
+          variant_id: isVariant ? item.id : null,
+          quantity: item.quantity,
+          unit_price: item.unitPrice,
+          unit_cost: item.unitPrice * 0.7,
+          item_total: item.total,
+          is_external_product: item.isExternal || false,
+          external_product_details: item.isExternal ? {
+            name: item.name,
+            description: item.variant || 'External product',
+            price: item.unitPrice
+          } : null
+        };
+        
+        console.log('🔧 Creating order item:', orderItem);
+        
+        const { error: itemError } = await supabase
+          .from('sales_order_items')
+          .insert([orderItem]);
+        
+        if (itemError) {
+          console.error('Error creating order item:', itemError);
+          throw new Error(`Failed to create order item: ${itemError.message}`);
+        }
+        
+        // Deduct inventory if not external product and it's a variant
+        if (!item.isExternal && isVariant) {
+          try {
+            await posApi.deductInventory(item.id, item.quantity);
+            console.log(`🔧 Deducted ${item.quantity} from variant ${item.id}`);
+          } catch (error) {
+            console.warn('Failed to deduct inventory:', error);
+            addNotification('warning', 'Inventory Warning', `Could not update stock for ${item.name}`);
+          }
+        }
+      }
+      
+      // Update loyalty points if customer is selected
+      if (selectedCustomer) {
+        try {
+          const pointsToAdd = Math.floor(totals.total / 100);
+          await posApi.updateLoyaltyPoints(selectedCustomer.id, pointsToAdd);
+          console.log(`🔧 Added ${pointsToAdd} loyalty points to customer ${selectedCustomer.id}`);
+        } catch (error) {
+          console.warn('Failed to update loyalty points:', error);
+          addNotification('warning', 'Loyalty Warning', 'Could not update loyalty points');
+        }
+      }
+      
+      // Clear cart and reset form
+      setCart([]);
+      setSelectedCustomer(null);
+      setAmountPaid(0);
+      setDeliveryAddress('');
+      setDeliveryCity('');
+      setDeliveryNotes('');
+      setPaymentSelected(false);
+      setPaymentAccount('');
+      setActiveTab('products');
+      
+      addNotification('success', 'Sale Completed', `Transaction processed successfully. Order ID: ${saleOrder.id}`);
+      
+    } catch (error: any) {
+      console.error('❌ Error processing sale:', error);
+      addNotification('error', 'Sale Failed', `Failed to process transaction: ${error.message || 'Unknown error'}`);
+    }
+  };
+
+  const holdOrder = () => {
+    console.log('Holding order');
+    addNotification('warning', 'Order Held', 'Order has been placed on hold');
+  };
+
+  const clearCart = () => {
+    setCart([]);
+    setAmountPaid(0);
+    setPaymentSelected(false);
+    addNotification('info', 'Cart Cleared', 'Shopping cart has been cleared');
+  };
+
+  const printReceipt = () => {
+    console.log('Printing receipt...');
+    addNotification('success', 'Receipt Printed', 'Receipt has been sent to printer');
+  };
+
+  const openCashDrawer = () => {
+    // Simulate cash drawer opening
+    console.log('Opening cash drawer...');
+    // TODO: Integrate with actual cash drawer hardware
+    addNotification('success', 'Cash Drawer', 'Cash drawer opened successfully!');
+  };
+
+  const quickSale = () => {
+    // Quick sale mode - pre-fill common items
+    console.log('Quick sale mode...');
+    const quickItems = [
+      { id: 'quick1', name: 'Quick Sale Item 1', price: 50000, quantity: 1 },
+      { id: 'quick2', name: 'Quick Sale Item 2', price: 75000, quantity: 1 },
+    ];
+    
+    quickItems.forEach(item => {
+      const existingItem = cart.find(cartItem => cartItem.id === item.id);
+      if (!existingItem) {
+        setCart(prev => [...prev, {
+          id: item.id,
+          name: item.name,
+          variant: 'Quick Sale',
+          quantity: item.quantity,
+          unitPrice: item.price,
+          total: item.price * item.quantity,
+          isExternal: true
+        }]);
+      }
+    });
+    
+    addNotification('success', 'Quick Sale', 'Quick sale items added to cart');
+  };
+
+  const openSettings = () => {
+    setShowSettings(true);
+  };
+
+  const openGiftCards = () => {
+    setShowGiftCardManager(true);
+  };
+
+  const openSplitPayment = () => {
+    addNotification('info', 'Split Payment', 'Split payment feature coming soon!');
+  };
+
+  const openReturns = () => {
+    addNotification('info', 'Returns & Refunds', 'Returns management coming soon!');
+  };
+
+  const openTaxSettings = () => {
+    addNotification('info', 'Tax Settings', 'Tax management coming soon!');
+  };
+
+  // Customer search functionality
+  const searchCustomers = async (query: string) => {
+    if (query.length < 2) {
+      setCustomerSearchResults([]);
+      return;
+    }
+
+    try {
+      // Search customers
+      const { data: customers, error: customersError } = await supabase
+        .from('customers')
+        .select('*')
+        .or(`name.ilike.%${query}%, phone.ilike.%${query}%, email.ilike.%${query}%`)
+        .limit(10);
+
+      if (customersError) throw customersError;
+
+      // Get loyalty data for the found customers
+      const customerIds = (customers || []).map((c: any) => c.id);
+      const { data: loyaltyData, error: loyaltyError } = await supabase
+        .from('loyalty_customers')
+        .select('*')
+        .in('customer_id', customerIds);
+
+      if (loyaltyError) throw loyaltyError;
+
+      // Create a map of loyalty data by customer_id
+      const loyaltyMap = new Map();
+      (loyaltyData || []).forEach((loyalty: any) => {
+        loyaltyMap.set(loyalty.customer_id, loyalty);
+      });
+
+      // Format the results to include loyalty information
+      const formattedResults = (customers || []).map((customer: any) => {
+        const loyaltyInfo = loyaltyMap.get(customer.id);
+        
+        return {
+          ...customer,
+          loyalty: loyaltyInfo ? {
+            points: loyaltyInfo.points || 0,
+            tier: loyaltyInfo.tier || 'bronze',
+            totalSpent: loyaltyInfo.total_spent || 0,
+            joinDate: loyaltyInfo.join_date,
+            lastVisit: loyaltyInfo.last_visit,
+            rewardsRedeemed: loyaltyInfo.rewards_redeemed || 0,
+            isLoyaltyMember: true
+          } : undefined
+        };
+      });
+
+      setCustomerSearchResults(formattedResults);
+    } catch (error) {
+      console.error('Error searching customers:', error);
+      addNotification('error', 'Search Error', 'Failed to search customers');
+    }
+  };
+
+  const handleCustomerSearch = (query: string) => {
+    setCustomerSearchQuery(query);
+    if (query.length >= 2) {
+      searchCustomers(query);
+      setShowCustomerSearch(true);
+    } else {
+      setCustomerSearchResults([]);
+      setShowCustomerSearch(false);
+    }
+  };
+
+  const selectCustomer = (customer: any) => {
+    // Add selection effect
+    setSelectingCustomer(customer.id);
+    
+    // Show selection animation
+    setTimeout(() => {
+      setSelectedCustomer({
+        id: customer.id,
+        name: customer.name,
+        phone: customer.phone,
+        email: customer.email,
+        type: customerType,
+        loyalty: customer.loyalty
+      });
+      setCustomerSearchQuery('');
+      setCustomerSearchResults([]);
+      setShowCustomerSearch(false);
+      
+      // Show loyalty information in notification if available
+      if (customer.loyalty?.isLoyaltyMember) {
+        addNotification('success', 'Customer Selected', 
+          `${customer.name} selected (${customer.loyalty.tier.toUpperCase()} member - ${customer.loyalty.points} points)`);
+      } else {
+        addNotification('success', 'Customer Selected', `${customer.name} selected`);
+      }
+
+      // Clear selection effect without switching tabs
+      setTimeout(() => {
+        setSelectingCustomer(null);
+      }, 200);
+    }, 300);
+  };
+
+  const removeSelectedCustomer = () => {
+    setSelectedCustomer(null);
+    addNotification('info', 'Customer Removed', 'Customer selection cleared');
+  };
+
+  const addCustomerToLoyalty = async (customer: Customer) => {
+    try {
+      // Insert into loyalty_customers table
+      const { error } = await supabase
+        .from('loyalty_customers')
+        .insert([{
+          customer_id: customer.id,
+          points: 0,
+          tier: 'bronze',
+          total_spent: 0,
+          join_date: new Date().toISOString(),
+          last_visit: new Date().toISOString(),
+          rewards_redeemed: 0
+        }]);
+      
+      if (error) throw error;
+
+      // Create updated customer object with loyalty data
+      const updatedCustomer = {
+        ...customer,
+        loyalty: {
+          points: 0,
+          tier: 'bronze' as const,
+          totalSpent: 0,
+          joinDate: new Date().toISOString(),
+          lastVisit: new Date().toISOString(),
+          rewardsRedeemed: 0,
+          isLoyaltyMember: true
+        }
+      };
+
+      // Update customers list
+      setCustomers(prevCustomers => 
+        prevCustomers.map(c => c.id === customer.id ? updatedCustomer : c)
+      );
+      
+      // Update filtered customers
+      setFilteredCustomers(prevFiltered => 
+        prevFiltered.map(c => c.id === customer.id ? updatedCustomer : c)
+      );
+
+      // Update selected customer if it's the same customer
+      if (selectedCustomer?.id === customer.id) {
+        setSelectedCustomer(updatedCustomer);
+      }
+
+      addNotification('success', 'Loyalty Enrollment', `${customer.name} has been successfully enrolled in the loyalty program!`);
+    } catch (error) {
+      console.error('Error adding customer to loyalty:', error);
+      addNotification('error', 'Enrollment Failed', 'Failed to enroll customer in loyalty program. Please try again.');
+    }
+  };
+
+  const quickActions = [
+    { label: 'Hold Order', action: holdOrder, icon: Save, variant: 'warning' as const },
+    { label: 'Print Receipt', action: printReceipt, icon: Printer, variant: 'outline' as const },
+    { label: 'Clear Cart', action: clearCart, icon: RotateCcw, variant: 'danger' as const },
+    { label: 'Smart Search', action: () => setShowSmartSearch(true), icon: Search, variant: 'secondary' as const },
+    { label: 'Dashboard', action: () => setShowDashboard(true), icon: TrendingUp, variant: 'outline' as const },
+    { label: 'Location', action: () => setShowLocationSelector(true), icon: Building, variant: 'outline' as const },
+    { label: 'Inventory', action: () => setShowAdvancedInventory(true), icon: Package, variant: 'secondary' as const },
+    { label: 'Loyalty', action: () => setShowLoyaltyProgram(true), icon: Crown, variant: 'primary' as const },
+    { label: 'Gift Cards', action: openGiftCards, icon: Gift, variant: 'outline' as const },
+    { label: 'Split Payment', action: openSplitPayment, icon: CreditCard, variant: 'secondary' as const },
+    { label: 'Payments Accounts', action: () => setShowPaymentsAccounts(true), icon: CreditCard, variant: 'primary' as const },
+    { label: 'Returns', action: openReturns, icon: RotateCcw, variant: 'warning' as const },
+    { label: 'Tax Settings', action: openTaxSettings, icon: FileText, variant: 'outline' as const },
+  ];
+
+  const exitPOS = () => {
+    navigate('/dashboard');
+  };
+
+  const addNotification = (type: 'success' | 'warning' | 'error' | 'info', title: string, message: string) => {
+    const newNotification = {
+      id: Date.now().toString(),
+      type,
+      title,
+      message,
+      timestamp: new Date()
+    };
+    setNotifications(prev => [newNotification, ...prev.slice(0, 4)]);
+    
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== newNotification.id));
+    }, 5000);
+  };
+
+  const dismissNotification = (id: string) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  };
+
+  const handleProductSelect = (product: any) => {
+    // Handle both old format and new CartProduct format
+    const cartItem = {
+      id: product.id,
+      name: product.name,
+      variant: product.variant,
+      price: product.price,
+      stock: product.stock
+    };
+    
+    addToCart(cartItem);
+    addNotification('success', 'Product Added', `${product.name} added to cart`);
+  };
+
+  const handleLocationSelect = (location: any) => {
+    setCurrentLocation(location);
+    addNotification('success', 'Location Changed', `Switched to ${location.name}`);
+  };
+
+
+
+  const handleInventoryItemSelect = (item: any) => {
+    addToCart({
+      id: item.id,
+      name: item.name,
+      price: item.sellingPrice,
+      quantity: 1
+    });
+    addNotification('success', 'Item Added', `${item.name} added to cart`);
+  };
+
+  const handleLoyaltyCustomerSelect = (customer: any) => {
+    setSelectedCustomer(customer);
+    addNotification('success', 'Customer Selected', `${customer.name} selected`);
+  };
+
+  const handleGiftCardRedeem = (cardNumber: string, amount: number) => {
+    // Add gift card redemption to cart as a discount
+    const giftCardItem: CartItem = {
+      id: `gift_card_${Date.now()}`,
+      name: `Gift Card Redemption`,
+      quantity: 1,
+      unitPrice: -amount, // Negative price for discount
+      total: -amount,
+      isExternal: true
+    };
+    
+    setCart(prev => [...prev, giftCardItem]);
+          addNotification('success', 'Gift Card Applied', `Tsh${amount.toLocaleString()} redeemed from gift card`);
+  };
+
+  const handleGiftCardPurchase = (amount: number) => {
+    // Add gift card purchase to cart
+    const giftCardItem: CartItem = {
+      id: `gift_card_purchase_${Date.now()}`,
+      name: `Gift Card Purchase`,
+      quantity: 1,
+      unitPrice: amount,
+      total: amount,
+      isExternal: true
+    };
+    
+    setCart(prev => [...prev, giftCardItem]);
+    addNotification('success', 'Gift Card Added', `Gift card purchase added to cart`);
+  };
+
+  // Helper functions for customer display (from CustomersPage)
+  const getColorTagStyle = (tag: string) => {
+    switch (tag) {
+      case 'vip':
+        return 'bg-emerald-500/20 text-emerald-700 border-emerald-300/30';
+      case 'complainer':
+        return 'bg-rose-500/20 text-rose-700 border-rose-300/30';
+      case 'purchased':
+        return 'bg-blue-500/20 text-blue-700 border-blue-300/30';
+      case 'new':
+        return 'bg-purple-500/20 text-purple-700 border-purple-300/30';
+      default:
+        return 'bg-gray-500/20 text-gray-700 border-gray-300/30';
+    }
+  };
+
+  const getLoyaltyStyle = (level: string) => {
+    switch (level) {
+      case 'platinum':
+        return 'bg-purple-500/20 text-purple-700 border-purple-300/30';
+      case 'gold':
+        return 'bg-amber-500/20 text-amber-700 border-amber-300/30';
+      case 'silver':
+        return 'bg-gray-400/20 text-gray-700 border-gray-300/30';
+      default:
+        return 'bg-orange-500/20 text-orange-700 border-orange-300/30';
+    }
+  };
+
+  // Helper: get total spent for a customer from their payments
+  const getCustomerTotalSpent = (customerId: string) => {
+    const customer = customers.find(c => c.id === customerId);
+    if (!customer || !customer.payments) return 0;
+    return customer.payments.filter(p => p.status === 'completed').reduce((sum, p) => sum + (p.amount || 0), 0);
+  };
+
+  // Helper: get customer devices count and last activity
+  const getCustomerDeviceInfo = (customerId: string) => {
+    const customer = customers.find(c => c.id === customerId);
+    if (!customer || !customer.devices) return { count: 0, lastActivity: 'No devices' };
+    
+    const deviceCount = customer.devices.length;
+    let lastActivity = '';
+    
+    if (deviceCount > 0) {
+      const lastDevice = customer.devices.reduce((latest, device) => {
+        const deviceDate = new Date(device.updatedAt || device.createdAt);
+        const latestDate = new Date(latest.updatedAt || latest.createdAt);
+        return deviceDate > latestDate ? device : latest;
+      }, customer.devices[0]);
+      
+      const lastDate = new Date(lastDevice.updatedAt || lastDevice.createdAt);
+      const now = new Date();
+      const diffMs = now.getTime() - lastDate.getTime();
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      
+      if (diffDays === 0) lastActivity = 'Today';
+      else if (diffDays === 1) lastActivity = '1 day ago';
+      else lastActivity = `${diffDays} days ago`;
+    } else {
+      lastActivity = 'No devices';
+    }
+    
+    return { count: deviceCount, lastActivity };
+  };
+
+  // Helper: get purchase summary for a customer
+  const getCustomerPurchaseSummary = (customerId: string) => {
+    const customer = customers.find(c => c.id === customerId);
+    if (!customer || !customer.payments) return { totalPurchases: 0, totalItems: 0, lastPurchase: null };
+    
+    const posSales = customer.payments.filter(p => p.source === 'pos_sale' && p.status === 'completed');
+    const totalPurchases = posSales.length;
+    const totalItems = posSales.reduce((sum, sale) => sum + (sale.orderItems?.length || 0), 0);
+    
+    let lastPurchase = null;
+    if (posSales.length > 0) {
+      const latestSale = posSales.reduce((latest, sale) => {
+        const saleDate = new Date(sale.date);
+        const latestDate = new Date(latest.date);
+        return saleDate > latestDate ? sale : latest;
+      }, posSales[0]);
+      lastPurchase = latestSale;
+    }
+    
+    return { totalPurchases, totalItems, lastPurchase };
+  };
+
+  const totals = calculateTotals();
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      // Prevent shortcuts when typing in input fields
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        switch(e.key) {
+          case 'Enter':
+            if (cart.length > 0) processSale();
+            break;
+          case 'Escape':
+            exitPOS();
+            break;
+          case 'h':
+            if (cart.length > 0) holdOrder();
+            break;
+          case 'c':
+            if (cart.length > 0) clearCart();
+            break;
+          case 'p':
+            if (cart.length > 0) printReceipt();
+            break;
+          case '1':
+            setActiveTab('products');
+            break;
+          case '2':
+            setActiveTab('customers');
+            break;
+          case '3':
+            
+            break;
+          case 'q':
+            quickSale();
+            break;
+          case 's':
+            setShowSmartSearch(true);
+            break;
+        }
+      } else if (e.key === 'Escape') {
+        exitPOS();
+      } else if (e.key === 'F1') {
+        e.preventDefault();
+        // Show keyboard shortcuts help
+        addNotification('info', 'Keyboard Shortcuts', 
+          'Ctrl+1: Products | Ctrl+2: Customers | Ctrl+3: Payment | Ctrl+Enter: Process Sale | Ctrl+H: Hold Order | Ctrl+C: Clear Cart | Ctrl+P: Print Receipt | Ctrl+Q: Quick Sale | Ctrl+S: Smart Search');
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyPress);
+    return () => document.removeEventListener('keydown', handleKeyPress);
+  }, [cart.length, selectedCustomer]);
+
+  // Click outside to close customer search
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (!target.closest('.customer-search-container')) {
+        setShowCustomerSearch(false);
+      }
+    };
+
+    if (showCustomerSearch) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showCustomerSearch]);
+
+  // Keyboard navigation for cart
+  useEffect(() => {
+    const handleCartKey = (e: KeyboardEvent) => {
+      if (!cart.length) return;
+      if (document.activeElement && (document.activeElement as HTMLElement).tagName === 'INPUT') return;
+      if (editingCartIndex !== null) return;
+      if (e.key === 'ArrowDown') {
+        setEditingCartIndex((prev) => prev === null ? 0 : Math.min(cart.length - 1, prev + 1));
+        e.preventDefault();
+      } else if (e.key === 'ArrowUp') {
+        setEditingCartIndex((prev) => prev === null ? 0 : Math.max(0, prev - 1));
+        e.preventDefault();
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (editingCartIndex !== null && cart[editingCartIndex]) {
+          removeFromCart(cart[editingCartIndex].id);
+          setEditingCartIndex(null);
+          e.preventDefault();
+        }
+      }
+    };
+    document.addEventListener('keydown', handleCartKey);
+    return () => document.removeEventListener('keydown', handleCartKey);
+  }, [cart, editingCartIndex]);
+
+  // Real-time clock effect
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Simulate battery level changes
+  useEffect(() => {
+    const batteryTimer = setInterval(() => {
+      setBatteryLevel(prev => Math.max(10, prev - Math.random() * 0.1));
+    }, 60000); // Update every minute
+    return () => clearInterval(batteryTimer);
+  }, []);
+
+  // Simulate online status
+  useEffect(() => {
+    const networkTimer = setInterval(() => {
+      setIsOnline(Math.random() > 0.05); // 95% uptime
+    }, 30000); // Check every 30 seconds
+    return () => clearInterval(networkTimer);
+  }, []);
+
+  return (
+    <div className={`min-h-screen ${isDarkMode ? 'dark' : ''}`}>
+      <style>{`
+        @keyframes slide-in {
+          from { transform: translateX(100%); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+        .animate-slide-in {
+          animation: slide-in 0.3s ease-out forwards;
+        }
+      `}</style>
+      {/* Enhanced Header */}
+      <div className="bg-white/80 backdrop-blur-xl border-b border-gray-200/50 sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            {/* Left Side - Logo and Title */}
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-blue-500 flex items-center justify-center">
+                <User size={24} className="text-white" />
+              </div>
+              <div className="flex flex-col">
+                <h1 className="text-2xl font-bold text-gray-900">LATS CHANCE</h1>
+                <p className="text-sm text-gray-600 font-medium">Point of Sale System</p>
+              </div>
+            </div>
+
+
+
+            {/* Right Side - Icon-Only Display */}
+            <div className="flex items-center gap-2">
+              {/* Weather/Location */}
+              <div className="flex items-center gap-1 p-2 rounded-lg hover:bg-gray-50 transition-colors">
+                <MapPin size={20} className="text-blue-600" />
+                <span className="text-sm font-medium">{weatherInfo.temp}°</span>
+              </div>
+
+              {/* Real-time Clock */}
+              <div className="flex items-center gap-1 p-2 rounded-lg hover:bg-gray-50 transition-colors">
+                <Clock size={20} className="text-blue-600" />
+                <span className="text-sm font-medium">{currentTime.toLocaleTimeString()}</span>
+              </div>
+
+              {/* Sales with Dollar Icon */}
+              <div className="flex items-center gap-1 p-2 rounded-lg hover:bg-gray-50 transition-colors">
+                <DollarSign size={20} className="text-green-600" />
+                <span className="text-sm font-medium text-green-600">${todaySales.toFixed(0)}</span>
+              </div>
+
+              {/* Orders with Package Icon */}
+              <div className="flex items-center gap-1 p-2 rounded-lg hover:bg-gray-50 transition-colors">
+                <Package size={20} className="text-blue-600" />
+                <span className="text-sm font-medium">{todayOrders}</span>
+              </div>
+
+
+
+              {/* Online Status */}
+              <div className="flex items-center gap-1 p-2 rounded-lg hover:bg-gray-50 transition-colors">
+                <div className={`w-3 h-3 rounded-full ${isOnline ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                <Wifi size={20} className={isOnline ? 'text-green-600' : 'text-red-600'} />
+              </div>
+
+              {/* Battery Status */}
+              <div className="flex items-center gap-1 p-2 rounded-lg hover:bg-gray-50 transition-colors">
+                <div className="w-6 h-3 border border-gray-300 rounded-sm relative">
+                  <div 
+                    className={`h-1.5 rounded-sm absolute top-0.5 left-0.5 transition-all duration-300 ${
+                      batteryLevel > 50 ? 'bg-green-500' : batteryLevel > 20 ? 'bg-yellow-500' : 'bg-red-500'
+                    }`}
+                    style={{ width: `${batteryLevel}%` }}
+                  ></div>
+                </div>
+                <span className="text-xs text-gray-600">{Math.round(batteryLevel)}%</span>
+              </div>
+
+
+
+              {/* Quick Action Buttons - Icon Only */}
+              <button 
+                onClick={() => setShowQuickSearch(!showQuickSearch)}
+                className="p-2 rounded-lg hover:bg-gray-50 transition-colors"
+                title="Notifications"
+              >
+                <Bell size={20} className="text-blue-600" />
+              </button>
+
+
+
+
+
+              {/* Dark Mode Toggle */}
+              <DarkModeToggle
+                isDark={isDarkMode}
+                onToggle={() => setIsDarkMode(!isDarkMode)}
+              />
+
+              {/* Quick Actions Button */}
+              <GlassButton
+                variant="outline"
+                size="sm"
+                onClick={() => setShowQuickActions(true)}
+                className="p-2"
+              >
+                <PackageIcon size={20} />
+              </GlassButton>
+              
+              <GlassButton
+                variant="outline"
+                size="sm"
+                onClick={exitPOS}
+                className="p-2"
+              >
+                <ArrowLeft size={20} />
+              </GlassButton>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Header - Matches App Theme */}
+      <div className="bg-gradient-to-r from-blue-50 via-white to-purple-50 backdrop-blur-xl border-b border-gray-200/50 sticky top-[88px] z-10 shadow-lg">
+        <div className="max-w-7xl mx-auto px-4 py-4">
+          <div className="flex items-center gap-4">
+            {/* Tab Navigation - Matches App Theme */}
+            <div className="flex space-x-1 bg-white/80 backdrop-blur-sm rounded-xl p-1.5 border border-gray-200/50 shadow-sm">
+              <button
+                onClick={() => setActiveTab('products')}
+                className={`py-2.5 px-4 rounded-lg text-sm font-semibold transition-all duration-200 ${
+                  activeTab === 'products'
+                    ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-md'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Package size={14} />
+                  <span>Products</span>
+                </div>
+              </button>
+              <button
+                onClick={() => setActiveTab('customers')}
+                className={`py-2.5 px-4 rounded-lg text-sm font-semibold transition-all duration-200 ${
+                  activeTab === 'customers'
+                    ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-md'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <User size={14} />
+                  <span>Customers</span>
+                </div>
+              </button>
+            </div>
+
+            {/* Search Bar - Matches App Theme */}
+            <div className="flex-1 relative">
+              {false && selectedCustomer ? (
+                // Light Theme Customer Display
+                <div className="w-full border-2 border-green-200 rounded-xl bg-gradient-to-r from-green-50 to-emerald-50 backdrop-blur-sm p-4 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-gradient-to-r from-green-400 to-emerald-500 rounded-full flex items-center justify-center shadow-sm">
+                        <User size={16} className="text-white" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-gray-900 text-sm">{selectedCustomer.name}</h3>
+                        <div className="flex items-center gap-3 text-xs text-gray-600">
+                          {selectedCustomer.phone && <span className="flex items-center gap-1">📞 {selectedCustomer.phone}</span>}
+                          {selectedCustomer.email && <span className="flex items-center gap-1">📧 {selectedCustomer.email}</span>}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs px-3 py-1.5 rounded-full font-semibold ${
+                        selectedCustomer.type === 'retail' 
+                          ? 'bg-blue-100 text-blue-700 border border-blue-200' 
+                          : 'bg-green-100 text-green-700 border border-green-200'
+                      }`}>
+                        {selectedCustomer.type === 'retail' ? '👤 Retail' : '🏢 Wholesale'}
+                      </span>
+                      {selectedCustomer.loyalty?.isLoyaltyMember && (
+                        <span className={`text-xs px-3 py-1.5 rounded-full font-semibold border ${
+                          selectedCustomer.loyalty.tier === 'platinum' ? 'bg-purple-100 text-purple-700 border-purple-200' :
+                          selectedCustomer.loyalty.tier === 'gold' ? 'bg-yellow-100 text-yellow-700 border-yellow-200' :
+                          selectedCustomer.loyalty.tier === 'silver' ? 'bg-gray-100 text-gray-700 border-gray-200' :
+                          'bg-orange-100 text-orange-700 border-orange-200'
+                        }`}>
+                          <Crown size={10} className="inline mr-1" />
+                          {selectedCustomer.loyalty.points} pts
+                        </span>
+                      )}
+                      <button 
+                        onClick={removeSelectedCustomer}
+                        className="p-2 bg-red-100 hover:bg-red-200 text-red-600 hover:text-red-700 rounded-lg border border-red-200 transition-all duration-200 hover:scale-105"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                // Minimal Search Bar
+                <div className="relative">
+                  <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                  <input
+                    type="text"
+                    placeholder={
+                      activeTab === 'products' 
+                        ? "Search products, scan barcode, or say 'add iPhone 13'..."
+                        : activeTab === 'customers'
+                        ? "Search customers by name, phone, or email..."
+                        : "Search..."
+                    }
+                    value={activeTab === 'customers' ? customerSearchQuery : searchQuery}
+                    onChange={(e) => {
+                      if (activeTab === 'customers') {
+                        handleCustomerSearch(e.target.value);
+                      } else {
+                        setSearchQuery(e.target.value);
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && activeTab === 'products' && searchQuery.trim()) {
+                        // Auto-add first product if only one result
+                        const filtered = products.filter(product => 
+                          product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          (product.brand && product.brand.toLowerCase().includes(searchQuery.toLowerCase())) ||
+                          (product.model && product.model.toLowerCase().includes(searchQuery.toLowerCase())) ||
+                          (product.product_code && product.product_code.toLowerCase().includes(searchQuery.toLowerCase()))
+                        );
+                        if (filtered.length === 1) {
+                          const firstVariant = filtered[0].variants && filtered[0].variants.length > 0 ? filtered[0].variants[0] : null;
+                          if (firstVariant) {
+                            addToCart({
+                              id: firstVariant.id,
+                              name: `${filtered[0].name} - ${firstVariant.variant_name}`,
+                              variant: firstVariant.variant_name,
+                              price: firstVariant.selling_price,
+                              quantity: 1
+                            });
+                            setSearchQuery('');
+                            addNotification('success', 'Product Added', `${filtered[0].name} added to cart`);
+                          }
+                        }
+                      }
+                    }}
+                    className="w-full pl-12 pr-32 py-4 text-base border-0 bg-transparent focus:ring-0 focus:outline-none placeholder-gray-400"
+                  />
+                  <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex gap-1.5">
+                    {activeTab === 'products' && (
+                        <>
+                          <button 
+                            onClick={loadProducts}
+                            disabled={productsLoading}
+                            className="p-2 bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-700 rounded-lg border border-gray-200 transition-all duration-200 hover:scale-105 disabled:opacity-50"
+                          >
+                            <RotateCcw size={14} className={productsLoading ? 'animate-spin' : ''} />
+                          </button>
+                          <button 
+                            onClick={() => {
+                              addNotification('info', 'Barcode Scanner', 'Barcode scanning feature coming soon!');
+                            }}
+                            className="p-2 bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-700 rounded-lg border border-gray-200 transition-all duration-200 hover:scale-105"
+                          >
+                            <Scan size={14} />
+                          </button>
+                          <button 
+                            onClick={() => setShowSmartSearch(true)}
+                            className="p-2 bg-gradient-to-r from-purple-500/80 to-pink-500/80 hover:from-purple-600/90 hover:to-pink-600/90 text-white rounded-lg border border-purple-400/50 transition-all duration-200 hover:scale-105"
+                          >
+                            <Search size={14} />
+                          </button>
+                          <button 
+                            onClick={() => {
+                              addNotification('info', 'Voice Search', 'Voice search feature coming soon!');
+                            }}
+                            className="p-2 bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-700 rounded-lg border border-gray-200 transition-all duration-200 hover:scale-105"
+                          >
+                            <Mic size={14} />
+                          </button>
+                        </>
+                      )}
+                      {activeTab === 'customers' && (
+                        <>
+                          <button 
+                            onClick={loadCustomers}
+                            disabled={customersLoading}
+                            className="p-2 bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-700 rounded-lg border border-gray-200 transition-all duration-200 hover:scale-105 disabled:opacity-50"
+                          >
+                            <RotateCcw size={14} className={customersLoading ? 'animate-spin' : ''} />
+                          </button>
+                          <button 
+                            onClick={() => setShowAddCustomer(true)}
+                            className="p-2 bg-gradient-to-r from-purple-500/80 to-pink-500/80 hover:from-purple-600/90 hover:to-pink-600/90 text-white rounded-lg border border-purple-400/50 transition-all duration-200 hover:scale-105"
+                          >
+                            <UserPlus size={14} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Customer Search Suggestions Dropdown */}
+                  {activeTab === 'customers' && showCustomerSearch && customerSearchResults.length > 0 && !selectedCustomer && (
+                    <div className="absolute top-full left-0 right-0 mt-3 bg-white/95 backdrop-blur-xl border border-gray-200/50 rounded-xl shadow-xl z-50 max-h-96 overflow-y-auto">
+                      <div className="p-3">
+                        <div className="text-xs font-semibold text-gray-500 mb-3 px-2 uppercase tracking-wide">Search Results</div>
+                        {customerSearchResults.map((customer: any) => (
+                          <div
+                            key={customer.id}
+                            onClick={() => selectCustomer(customer)}
+                            className="flex items-center justify-between p-3 hover:bg-gradient-to-r hover:from-blue-50 hover:to-purple-50 rounded-lg cursor-pointer transition-all duration-200 border border-transparent hover:border-blue-200/50"
+                          >
+                            <div className="flex items-center gap-3 flex-1">
+                              <div className="w-12 h-12 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full flex items-center justify-center shadow-sm">
+                                <User size={18} className="text-white" />
+                              </div>
+                              <div className="flex-1">
+                                <div className="font-semibold text-gray-900">{customer.name}</div>
+                                <div className="text-sm text-gray-600">
+                                  {customer.phone && `📞 ${customer.phone}`}
+                                  {customer.phone && customer.email && ' • '}
+                                  {customer.email && `📧 ${customer.email}`}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {/* Loyalty Status */}
+                              {customer.loyalty?.isLoyaltyMember ? (
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-xs px-3 py-1.5 rounded-full font-semibold border ${
+                                    customer.loyalty.tier === 'platinum' ? 'bg-purple-100 text-purple-700 border-purple-200' :
+                                    customer.loyalty.tier === 'gold' ? 'bg-yellow-100 text-yellow-700 border-yellow-200' :
+                                    customer.loyalty.tier === 'silver' ? 'bg-gray-100 text-gray-700 border-gray-200' :
+                                    'bg-orange-100 text-orange-700 border-orange-200'
+                                  }`}>
+                                    <Crown size={10} className="inline mr-1" />
+                                    {customer.loyalty.tier.toUpperCase()}
+                                  </span>
+                                  <span className="text-xs text-gray-500 font-medium">
+                                    {customer.loyalty.points} pts
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded-full">Not enrolled</span>
+                              )}
+                              <ChevronRight size={16} className="text-gray-400" />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 py-6 pb-32">
+        <div className="grid grid-cols-12 gap-6">
+          {/* Left Side - Main Content */}
+          <div className="col-span-8 space-y-6">
+            {/* Tab Content */}
+            <div className="min-h-[400px]">
+              {activeTab === 'products' && (
+                <div>
+                  {/* Loading State */}
+                  {productsLoading && (
+                    <div className="flex items-center justify-center py-12">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                      <span className="ml-3 text-gray-600">Loading products...</span>
+                    </div>
+                  )}
+
+                  {/* Products Grid */}
+                  {!productsLoading && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {filteredProducts.map((product) => {
+                        // Get the first variant for pricing and stock info
+                        const firstVariant = product.variants && product.variants.length > 0 ? product.variants[0] : null;
+                        const price = firstVariant ? firstVariant.selling_price : 0;
+                        const stock = firstVariant ? firstVariant.available_quantity : 0;
+                        
+                        return (
+                          <GlassCard
+                            key={product.id}
+                            data-product-id={product.id}
+                            className="hover:shadow-lg transition-all cursor-pointer group"
+                            onClick={() => {
+                              if (firstVariant) {
+                                addToCart({
+                                  id: firstVariant.id,
+                                  name: `${product.name} - ${firstVariant.variant_name}`,
+                                  variant: firstVariant.variant_name,
+                                  price: firstVariant.selling_price,
+                                  quantity: 1
+                                });
+                              } else {
+                                addToCart({
+                                  id: product.id,
+                                  name: product.name,
+                                  price: 0,
+                                  quantity: 1
+                                });
+                              }
+                            }}
+                          >
+                            <div className="flex items-center justify-between mb-3">
+                              <h3 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors text-sm line-clamp-2">
+                                {product.name}
+                              </h3>
+                              <span className={`text-xs px-2 py-1 rounded-full ${
+                                stock > 10 
+                                  ? 'bg-green-100 text-green-800' 
+                                  : stock > 3 
+                                    ? 'bg-yellow-100 text-yellow-800'
+                                    : 'bg-red-100 text-red-800'
+                              }`}>
+                                {stock} in stock
+                              </span>
+                            </div>
+                            
+                            {product.brand && (
+                              <p className="text-xs text-gray-600 mb-1">Brand: {product.brand}</p>
+                            )}
+                            
+                            {product.category && (
+                              <p className="text-xs text-gray-600 mb-2">Category: {product.category.name}</p>
+                            )}
+
+                            {firstVariant ? (
+                              <p className="text-2xl font-bold text-blue-600 mb-3">Tsh{price.toLocaleString()}</p>
+                            ) : (
+                              <p className="text-sm text-gray-500 mb-3">No variants available</p>
+                            )}
+
+                            <div className="flex items-center gap-2">
+                              <GlassButton 
+                                variant="primary" 
+                                size="sm" 
+                                className="flex-1 group-hover:scale-105 transition-transform"
+                              >
+                                <Plus size={14} />
+                                Add to Cart
+                              </GlassButton>
+                              {stock <= 3 && stock > 0 && (
+                                <div className="text-xs text-red-600 font-medium">
+                                  Low Stock!
+                                </div>
+                              )}
+
+                            </div>
+
+                            {/* Show variant count if multiple variants */}
+                            {product.variants && product.variants.length > 1 && (
+                              <div className="mt-2 text-xs text-gray-500">
+                                {product.variants.length} variants available
+                              </div>
+                            )}
+                          </GlassCard>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* No Products Found */}
+                  {!productsLoading && filteredProducts.length === 0 && (
+                    <div className="text-center py-12">
+                      <Package size={48} className="mx-auto text-gray-400 mb-4" />
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">No products found</h3>
+                      <p className="text-gray-600">Try adjusting your search or check if products are available.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+
+
+              {activeTab === 'customers' && (
+                <div>
+                  {/* Loading State */}
+                  {customersLoading && (
+                    <div className="flex items-center justify-center py-12">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+                      <span className="ml-3 text-gray-600">Loading customers...</span>
+                    </div>
+                  )}
+
+                  {/* Selected Customer Display */}
+                  {selectedCustomer && (
+                    <div className="mb-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                          <User size={20} className="text-green-600" />
+                          Selected Customer
+                        </h3>
+                        <GlassButton
+                          onClick={removeSelectedCustomer}
+                          variant="outline"
+                          size="sm"
+                          className="text-red-600 hover:text-red-700"
+                        >
+                          <X size={16} />
+                          <span>Clear</span>
+                        </GlassButton>
+                      </div>
+                      
+                      {/* Modern Customer Card */}
+                      <GlassCard className="bg-gradient-to-br from-slate-50 to-blue-50 border border-slate-200">
+                        {/* Top Section - Customer Identity */}
+                        <div className="flex items-center gap-4 mb-6">
+                          <div className="relative">
+                            <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center text-white font-bold text-xl shadow-lg">
+                              {selectedCustomer.name.charAt(0)}
+                            </div>
+                            {selectedCustomer.loyalty?.isLoyaltyMember && (
+                              <div className="absolute -top-1 -right-1 w-6 h-6 bg-yellow-400 rounded-full flex items-center justify-center shadow-md">
+                                <Crown size={12} className="text-yellow-800" />
+                              </div>
+                            )}
+                          </div>
+                          
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-1">
+                              <h3 className="font-bold text-gray-900 text-xl">{selectedCustomer.name}</h3>
+                              <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                                selectedCustomer.type === 'retail' 
+                                  ? 'bg-blue-100 text-blue-700' 
+                                  : 'bg-emerald-100 text-emerald-700'
+                              }`}>
+                                {selectedCustomer.type === 'retail' ? '👤 Retail' : '🏢 Wholesale'}
+                              </span>
+                            </div>
+                            <p className="text-gray-600 mb-2">{selectedCustomer.phone}</p>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-gray-500">
+                                {selectedCustomer.loyalty?.isLoyaltyMember 
+                                  ? `Loyalty Member • ${selectedCustomer.loyalty.tier} tier`
+                                  : 'New Customer'
+                                }
+                              </span>
+                              <span className="text-xs text-green-600 font-medium">✓ Active for POS</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Middle Section - Key Metrics */}
+                        <div className="grid grid-cols-3 gap-4 mb-6">
+                          <div className="text-center">
+                            <div className="text-2xl font-bold text-purple-600 mb-1">
+                              {selectedCustomer.loyalty?.isLoyaltyMember ? selectedCustomer.loyalty.points : '0'}
+                            </div>
+                            <div className="text-xs text-gray-600 font-medium">LOYALTY POINTS</div>
+                          </div>
+                          
+                          <div className="text-center">
+                            <div className="text-2xl font-bold text-blue-600 mb-1">
+                              {selectedCustomer.loyalty?.isLoyaltyMember ? selectedCustomer.loyalty.totalSpent.toLocaleString() : '0'}
+                            </div>
+                            <div className="text-xs text-gray-600 font-medium">TOTAL SPENT</div>
+                          </div>
+                          
+                          <div className="text-center">
+                            <div className="text-2xl font-bold text-emerald-600 mb-1">0</div>
+                            <div className="text-xs text-gray-600 font-medium">ORDERS</div>
+                          </div>
+                        </div>
+
+                        {/* Bottom Section - Actions */}
+                        <div className="space-y-3">
+                          <div className="flex gap-2">
+                            {!selectedCustomer.loyalty?.isLoyaltyMember ? (
+                              <GlassButton
+                                onClick={() => addCustomerToLoyalty(selectedCustomer)}
+                                className="flex-1 bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-medium"
+                              >
+                                <Crown size={16} className="mr-2" />
+                                Add to Loyalty Program
+                              </GlassButton>
+                            ) : (
+                              <GlassButton
+                                onClick={() => setShowLoyaltyProgram(true)}
+                                variant="outline"
+                                className="flex-1"
+                              >
+                                <Award size={16} className="mr-2" />
+                                Manage Loyalty
+                              </GlassButton>
+                            )}
+                            
+
+                          </div>
+                          
+
+                          
+
+                        </div>
+                      </GlassCard>
+                    </div>
+                  )}
+
+                  {/* Customers Grid - Enhanced Cards Style */}
+                  {!customersLoading && !selectedCustomer && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                      {filteredCustomers.slice(0, 8).map((customer) => {
+                        const deviceInfo = getCustomerDeviceInfo(customer.id);
+                        return (
+                          <GlassCard
+                            key={customer.id}
+                            onClick={() => selectCustomer(customer)}
+                            className={`cursor-pointer hover:scale-105 transition-transform duration-300 ${
+                              selectingCustomer === customer.id 
+                                ? 'ring-4 ring-green-500 ring-opacity-50 scale-105 shadow-xl bg-gradient-to-br from-green-50 to-emerald-50' 
+                                : ''
+                            }`}
+                          >
+                            <div className="relative mb-3">
+                              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-lg">
+                                {customer.name.charAt(0)}
+                              </div>
+                              <div className={`
+                                absolute -top-1 -right-1 px-1.5 py-0.5 rounded-full text-[10px] border
+                                ${getColorTagStyle(customer.colorTag || 'new')}
+                              `}>
+                                {customer.colorTag || 'new'}
+                              </div>
+                            </div>
+                            <h3 className="font-semibold text-gray-900">{customer.name}</h3>
+                            <p className="text-sm text-gray-600 mb-1">{customer.city || 'Unknown City'}</p>
+                            <div className="flex items-center gap-2 text-sm mb-1">
+                              <Phone className="w-4 h-4 text-gray-500" />
+                              <span className="text-gray-700">{customer.phone}</span>
+                            </div>
+                            
+                            {/* Referral Source */}
+                            {customer.referralSource && (
+                              <div className="flex items-center gap-2 text-xs text-purple-600 mb-1">
+                                <Tag className="w-3 h-3" />
+                                <span>From: {customer.referralSource}</span>
+                              </div>
+                            )}
+                            
+                            {/* Birthday Information */}
+                            {(customer.birthMonth || customer.birthDay) && (
+                              <div className="flex items-center gap-2 text-xs text-pink-600 mb-1">
+                                <Calendar className="w-3 h-3" />
+                                <span>
+                                  {customer.birthMonth} {customer.birthDay}
+                                </span>
+                              </div>
+                            )}
+                            
+                            {/* Loyalty Information */}
+                            <div className="flex items-center justify-between mb-2">
+                              <div className={`
+                                inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] border
+                                ${getLoyaltyStyle(customer.loyaltyLevel || 'bronze')}
+                              `}>
+                                <Star size={10} />
+                                <span className="capitalize">{customer.loyaltyLevel || 'bronze'}</span>
+                              </div>
+                              <span className="text-[10px] font-semibold text-gray-900">{customer.points || 0} pts</span>
+                            </div>
+                            
+                            {/* Total Spent */}
+                            <div className="flex items-center justify-between text-xs mb-2">
+                              <span className="text-gray-600">Total Spent:</span>
+                              <span className="font-semibold text-gray-900">Tsh{getCustomerTotalSpent(customer.id).toLocaleString()}</span>
+                            </div>
+                            
+                            {/* Payment Sources Breakdown */}
+                            {(() => {
+                              if (!customer?.payments?.length) return null;
+                              
+                              const devicePayments = customer.payments.filter(p => p.source === 'device_payment' && p.status === 'completed');
+                              const posSales = customer.payments.filter(p => p.source === 'pos_sale' && p.status === 'completed');
+                              
+                              const deviceTotal = devicePayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+                              const posTotal = posSales.reduce((sum, p) => sum + (p.amount || 0), 0);
+                              
+                              if (deviceTotal > 0 && posTotal > 0) {
+                                return (
+                                  <div className="flex items-center gap-2 text-xs text-gray-500 mb-2">
+                                    <span className="flex items-center gap-1">
+                                      <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                                      <span>Repairs: Tsh{deviceTotal.toLocaleString()}</span>
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                      <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                                      <span>Sales: Tsh{posTotal.toLocaleString()}</span>
+                                    </span>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
+                            
+                            {/* Purchase Summary */}
+                            {(() => {
+                              const purchaseSummary = getCustomerPurchaseSummary(customer.id);
+                              if (purchaseSummary.totalPurchases > 0) {
+                                return (
+                                  <div className="text-xs text-gray-500 mb-2">
+                                    <div className="flex items-center gap-1 mb-1">
+                                      <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                                      <span>{purchaseSummary.totalPurchases} purchase{purchaseSummary.totalPurchases !== 1 ? 's' : ''}</span>
+                                      <span>•</span>
+                                      <span>{purchaseSummary.totalItems} item{purchaseSummary.totalItems !== 1 ? 's' : ''}</span>
+                                    </div>
+                                    {purchaseSummary.lastPurchase && (
+                                      <div className="text-xs text-gray-400">
+                                        Last: {new Date(purchaseSummary.lastPurchase.date).toLocaleDateString()}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
+                            
+                            {/* No Action Buttons - Clean Design */}
+                          </GlassCard>
+                        );
+                      })}
+                    </div>
+                  )}
+
+
+
+                  {/* No Customers Found */}
+                  {!customersLoading && filteredCustomers.length === 0 && (
+                    <div className="text-center py-12">
+                      <User size={48} className="mx-auto text-gray-400 mb-4" />
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">No customers found</h3>
+                      <p className="text-gray-600">Try adjusting your search or add a new customer.</p>
+                    </div>
+                  )}
+
+
+                </div>
+              )}
+
+
+            </div>
+          </div>
+
+          {/* Right Side - Cart & Summary */}
+          <div className="col-span-4 space-y-6">
+            {/* Order Summary */}
+            <div className="p-3 rounded-xl bg-gradient-to-br from-emerald-50 to-green-50 border border-emerald-200/60 hover:border-emerald-300/70 hover:shadow-lg transition-all duration-300 relative overflow-hidden">
+              {/* Background Pattern */}
+              <div className="absolute inset-0 bg-gradient-to-br from-emerald-100/20 to-green-100/20 opacity-50"></div>
+              
+              {/* Content */}
+              <div className="relative z-10">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 bg-gradient-to-r from-emerald-500 to-green-500 rounded-full flex items-center justify-center shadow-sm">
+                      <DollarSign size={16} className="text-white" />
+                    </div>
+                    <span className="text-sm font-semibold text-gray-700">Total Amount</span>
+                  </div>
+                  <span className="text-xl font-bold bg-gradient-to-r from-emerald-600 to-green-600 bg-clip-text text-transparent">
+                    Tsh{totals.total.toLocaleString()}
+                  </span>
+                </div>
+                
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-1 text-gray-600">
+                    <Package size={12} className="text-gray-500" />
+                    <span className="font-medium">{cart.length} items</span>
+                  </div>
+                  <div className="flex items-center gap-1 text-gray-600">
+                    <Receipt size={12} className="text-gray-500" />
+                    <span className="font-medium">Tax: Tsh{totals.tax.toLocaleString()}</span>
+                  </div>
+                </div>
+                
+                {/* Progress Bar */}
+                <div className="mt-2 h-1 bg-gray-200 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-gradient-to-r from-emerald-500 to-green-500 rounded-full transition-all duration-300"
+                    style={{ width: Math.min((cart.length / 10) * 100, 100) + '%' }}
+                  ></div>
+                </div>
+              </div>
+            </div>
+
+            {/* Cart */}
+            <GlassCard className="bg-white/90">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-3">
+                  <ShoppingCart size={20} />
+                  Cart ({cart.length})
+                </h2>
+                <button 
+                  className="p-3 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={clearCart}
+                  disabled={cart.length === 0}
+                  title="Clear Cart"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+
+
+              {cart.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  <ShoppingCart size={48} className="mx-auto mb-4 text-gray-300" />
+                  <p className="font-medium text-base">Your cart is empty</p>
+                  <p className="text-sm">Search and add products to get started</p>
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {cart.map((item, idx) => (
+                    <div key={item.id} className={`bg-white/80 backdrop-blur-sm rounded-lg p-3 border border-gray-200/50 hover:border-blue-300/50 transition-all duration-200 ${editingCartIndex === idx ? 'ring-2 ring-blue-400 shadow-md' : 'hover:shadow-sm'}`}
+                      tabIndex={0}
+                      onClick={() => setEditingCartIndex(idx)}
+                      onFocus={() => setEditingCartIndex(idx)}
+                      ref={idx === 0 ? cartListRef : undefined}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start gap-3">
+                            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 mt-1">
+                              <Package size={16} className="text-blue-600" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <h3 className="font-bold text-gray-900 text-lg mb-1">{item.name}</h3>
+                              {item.variant && (
+                                <p className="text-sm text-gray-600 font-medium mb-2">{item.variant}</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-3 ml-3">
+                          {/* Quantity Controls */}
+                          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1.5">
+                            <button
+                              className="w-10 h-10 rounded-md bg-white text-gray-600 hover:bg-gray-200 transition-colors flex items-center justify-center text-lg font-bold"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                updateQuantity(item.id, item.quantity - 1);
+                              }}
+                            >
+                              -
+                            </button>
+                            {editingCartIndex === idx ? (
+                              <input
+                                type="number"
+                                className="w-12 text-center text-base font-medium border-0 bg-transparent focus:ring-0 focus:outline-none"
+                                value={item.quantity}
+                                autoFocus
+                                min={1}
+                                onChange={e => updateQuantity(item.id, Number(e.target.value))}
+                                onBlur={() => setEditingCartIndex(null)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter' || e.key === 'Escape') setEditingCartIndex(null);
+                                }}
+                              />
+                            ) : (
+                              <span
+                                className="w-12 text-center text-base font-medium cursor-pointer hover:bg-blue-50 rounded px-2 py-1"
+                                tabIndex={0}
+                                onClick={() => setEditingCartIndex(idx)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') setEditingCartIndex(idx);
+                                }}
+                              >
+                                {item.quantity}
+                              </span>
+                            )}
+                            <button
+                              className="w-10 h-10 rounded-md bg-white text-gray-600 hover:bg-gray-200 transition-colors flex items-center justify-center text-lg font-bold"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                updateQuantity(item.id, item.quantity + 1);
+                              }}
+                            >
+                              +
+                            </button>
+                          </div>
+                          
+                          {/* Price */}
+                          <div className="text-right min-w-0">
+                            <p className="text-sm text-gray-500">Tsh{item.unitPrice.toLocaleString()}</p>
+                            <p className="font-semibold text-gray-900 text-base">Tsh{item.total.toLocaleString()}</p>
+                          </div>
+                          
+                          {/* Remove Button */}
+                          <button
+                            className="w-10 h-10 rounded-md bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center justify-center"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeFromCart(item.id);
+                            }}
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </GlassCard>
+          </div>
+        </div>
+      </div>
+
+
+
+      {/* Fixed Action Buttons */}
+      <div className="fixed bottom-0 left-0 right-0 z-50 pointer-events-auto">
+        {/* Background with gradient */}
+        <div className="absolute inset-0 bg-gradient-to-t from-white/95 via-white/90 to-white/80 backdrop-blur-xl border-t border-gray-200/50 shadow-lg"></div>
+        
+        {/* Content */}
+        <div className="relative max-w-7xl mx-auto px-6 py-4 pointer-events-auto">
+          <div className="flex items-center justify-center">
+            {/* Left Side - Utility Actions */}
+            {/* Action buttons hidden - div className="flex items-center gap-2" */}
+            {/* <div className="flex items-center gap-2">
+              <button
+                onClick={printReceipt}
+                disabled={cart.length === 0}
+                className="group relative p-3 rounded-xl bg-white/60 hover:bg-white/80 border border-gray-200/50 hover:border-gray-300/50 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Printer size={18} className="text-gray-600 group-hover:text-blue-600 transition-colors" />
+                <span className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                  Print Receipt
+                </span>
+              </button>
+              
+              <button
+                onClick={openCashDrawer}
+                className="group relative p-3 rounded-xl bg-white/60 hover:bg-white/80 border border-gray-200/50 hover:border-gray-300/50 transition-all duration-200"
+              >
+                <DollarSign size={18} className="text-gray-600 group-hover:text-green-600 transition-colors" />
+                <span className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                  Cash Drawer
+                </span>
+              </button>
+              
+              <button
+                onClick={quickSale}
+                className="group relative p-3 rounded-xl bg-white/60 hover:bg-white/80 border border-gray-200/50 hover:border-gray-300/50 transition-all duration-200"
+              >
+                <PackageIcon size={18} className="text-gray-600 group-hover:text-purple-600 transition-colors" />
+                <span className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                  Quick Sale
+                </span>
+              </button>
+              
+              <button
+                onClick={() => setShowSmartSearch(true)}
+                className="group relative p-3 rounded-xl bg-white/60 hover:bg-white/80 border border-gray-200/50 hover:border-gray-300/50 transition-all duration-200"
+              >
+                <Search size={18} className="text-gray-600 group-hover:text-purple-600 transition-colors" />
+                <span className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                  Smart Search
+                </span>
+              </button>
+              
+              <button
+                onClick={() => setShowDashboard(true)}
+                className="group relative p-3 rounded-xl bg-white/60 hover:bg-white/80 border border-gray-200/50 hover:border-gray-300/50 transition-all duration-200"
+              >
+                <TrendingUp size={18} className="text-gray-600 group-hover:text-blue-600 transition-colors" />
+                <span className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                  Dashboard
+                </span>
+              </button>
+              
+              <button
+                onClick={openSplitPayment}
+                className="group relative p-3 rounded-xl bg-white/60 hover:bg-white/80 border border-gray-200/50 hover:border-gray-300/50 transition-all duration-200"
+              >
+                <CreditCardIcon size={18} className="text-gray-600 group-hover:text-indigo-600 transition-colors" />
+                <span className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                  Split Payment
+                </span>
+              </button>
+              
+              <button
+                onClick={openReturns}
+                className="group relative p-3 rounded-xl bg-white/60 hover:bg-white/80 border border-gray-200/50 hover:border-gray-300/50 transition-all duration-200"
+              >
+                <RotateCcwIcon size={18} className="text-gray-600 group-hover:text-red-600 transition-colors" />
+                <span className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                  Returns
+                </span>
+              </button>
+            </div> */}
+
+            {/* Center - Primary Actions */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={holdOrder}
+                disabled={cart.length === 0}
+                className="group relative p-4 rounded-xl bg-amber-500/90 hover:bg-amber-600/90 text-white transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-lg hover:scale-105"
+              >
+                <Save size={20} />
+                <span className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                  Hold Order
+                </span>
+              </button>
+              
+              {activeTab === 'products' && !selectedCustomer ? (
+                // Show Customers shortcut button when no customer is selected on products tab
+                <button 
+                  className="group relative px-12 py-4 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white transition-all duration-200 hover:shadow-xl hover:scale-105 min-w-[320px]"
+                  onClick={() => setActiveTab('customers')}
+                >
+                  <div className="flex items-center justify-center gap-4">
+                    <Users size={28} />
+                    <span className="font-bold text-xl text-center">Customers</span>
+                  </div>
+                  <span className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Select Customer</span>
+                </button>
+              ) : activeTab === 'customers' && !selectedCustomer ? (
+                // Show disabled "Select Customer" button when on customers tab but no customer selected
+                <button 
+                  disabled
+                  className="group relative px-12 py-4 rounded-xl bg-gradient-to-r from-gray-400 to-gray-500 text-white transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed min-w-[360px]"
+                >
+                  <div className="flex items-center justify-center gap-4">
+                    <Users size={28} />
+                    <span className="font-bold text-xl text-center">Select Customer</span>
+                  </div>
+                  <span className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Choose a customer first</span>
+                </button>
+              ) : (
+                // Show Process Sale button when customer is selected
+                <button
+                  onClick={processSale}
+                  disabled={cart.length === 0}
+                  className="group relative px-12 py-4 rounded-xl bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-xl hover:scale-105 min-w-[320px]"
+                >
+                  <div className="flex items-center justify-center gap-4">
+                    <Receipt size={28} />
+                    <span className="font-bold text-xl text-center">Process Sale</span>
+                  </div>
+                  <span className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Complete Transaction</span>
+                </button>
+              )}
+              
+              <button
+                onClick={clearCart}
+                disabled={cart.length === 0}
+                className="group relative p-4 rounded-xl bg-gray-500/90 hover:bg-gray-600/90 text-white transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-lg hover:scale-105"
+              >
+                <RotateCcw size={20} />
+                <span className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                  Clear Cart
+                </span>
+              </button>
+            </div>
+
+            {/* Right Side - Settings - HIDDEN */}
+            {/* <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowLoyaltyProgram(true)}
+                className="group relative p-3 rounded-xl bg-white/60 hover:bg-white/80 border border-gray-200/50 hover:border-gray-300/50 transition-all duration-200"
+              >
+                <Crown size={18} className="text-gray-600 group-hover:text-yellow-600 transition-colors" />
+                <span className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                  Loyalty
+                </span>
+              </button>
+              
+              <button
+                onClick={() => setShowLocationSelector(true)}
+                className="group relative p-3 rounded-xl bg-white/60 hover:bg-white/80 border border-gray-200/50 hover:border-gray-300/50 transition-all duration-200"
+              >
+                <Building size={18} className="text-gray-600 group-hover:text-green-600 transition-colors" />
+                <span className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                  Location
+                </span>
+              </button>
+              
+              <button
+                onClick={() => setShowAdvancedInventory(true)}
+                className="group relative p-3 rounded-xl bg-white/60 hover:bg-white/80 border border-gray-200/50 hover:border-gray-300/50 transition-all duration-200"
+              >
+                <Package size={18} className="text-gray-600 group-hover:text-orange-600 transition-colors" />
+                <span className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                  Inventory
+                </span>
+              </button>
+              
+              <button
+                onClick={openGiftCards}
+                className="group relative p-3 rounded-xl bg-white/60 hover:bg-white/80 border border-gray-200/50 hover:border-gray-300/50 transition-all duration-200"
+              >
+                <Gift size={18} className="text-gray-600 group-hover:text-pink-600 transition-colors" />
+                <span className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                  Gift Cards
+                </span>
+              </button>
+              
+              <button
+                onClick={openSettings}
+                className="group relative p-3 rounded-xl bg-white/60 hover:bg-white/80 border border-gray-200/50 hover:border-gray-300/50 transition-all duration-200"
+              >
+                <Settings size={18} className="text-gray-600 group-hover:text-blue-600 transition-colors" />
+                <span className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                  POS Settings
+                </span>
+              </button>
+            </div> */}
+          </div>
+        </div>
+      </div>
+
+      {/* Settings Modal */}
+      <POSSettingsModal
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+      />
+
+      {/* Customer Modal - Using Existing Component */}
+      <AddCustomerModal
+        isOpen={showAddCustomer}
+        onClose={() => setShowAddCustomer(false)}
+      />
+
+      {/* Mini Sales Dashboard */}
+      <MiniSalesDashboard
+        isOpen={showDashboard}
+        onClose={() => setShowDashboard(false)}
+      />
+
+      {/* Smart Product Search */}
+      <SmartProductSearch
+        isOpen={showSmartSearch}
+        onProductSelect={handleProductSelect}
+        onClose={() => setShowSmartSearch(false)}
+      />
+
+      {/* Smart Notifications */}
+      <SmartNotifications
+        notifications={notifications}
+        onDismiss={dismissNotification}
+      />
+
+      {/* Location Selector */}
+      <LocationSelector
+        isOpen={showLocationSelector}
+        onClose={() => setShowLocationSelector(false)}
+        onLocationSelect={handleLocationSelect}
+        currentLocation={currentLocation}
+      />
+
+      {/* Advanced Inventory Management */}
+      <AdvancedInventory
+        isOpen={showAdvancedInventory}
+        onClose={() => setShowAdvancedInventory(false)}
+        onItemSelect={handleInventoryItemSelect}
+      />
+
+      {/* Loyalty Program */}
+      <LoyaltyProgram
+        isOpen={showLoyaltyProgram}
+        onClose={() => setShowLoyaltyProgram(false)}
+        onCustomerSelect={handleLoyaltyCustomerSelect}
+      />
+
+      {/* Gift Card Manager */}
+      <GiftCardManager
+        isOpen={showGiftCardManager}
+        onClose={() => setShowGiftCardManager(false)}
+        onGiftCardRedeem={handleGiftCardRedeem}
+        onGiftCardPurchase={handleGiftCardPurchase}
+      />
+
+      {/* Finance Accounts Modal */}
+      <FinanceAccountsModal
+        isOpen={showPaymentsAccounts}
+        onClose={() => setShowPaymentsAccounts(false)}
+      />
+
+      {/* Payment Selection Modal */}
+      <PaymentSelectionModal
+        isOpen={showPaymentSelection}
+        onClose={() => setShowPaymentSelection(false)}
+        onPaymentSelect={handlePaymentSelect}
+        totalAmount={calculateTotals().total}
+      />
+
+      {/* Quick Actions Modal */}
+      {showQuickActions && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-gray-200/50">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
+                  <PackageIcon size={24} className="text-white" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">Quick Actions</h2>
+                  <p className="text-sm text-gray-600">Access all POS features and tools</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowQuickActions(false)}
+                className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {quickActions.map((action, index) => (
+                  <button
+                    key={index}
+                    onClick={() => {
+                      action.action();
+                      setShowQuickActions(false);
+                    }}
+                    className="group relative p-6 rounded-xl border-2 border-gray-200/50 hover:border-blue-300/50 bg-white/80 hover:bg-white/90 transition-all duration-200 hover:shadow-lg hover:scale-105"
+                  >
+                    <div className="flex flex-col items-center text-center">
+                      <div className="w-16 h-16 rounded-full bg-gradient-to-r from-blue-100 to-purple-100 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                        <action.icon size={24} className="text-blue-600" />
+                      </div>
+                      <h3 className="font-semibold text-gray-900 text-lg mb-2">{action.label}</h3>
+                      <div className="w-8 h-1 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              {/* Additional Quick Actions */}
+              <div className="mt-8 pt-6 border-t border-gray-200/50">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Additional Tools</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <button
+                    onClick={() => {
+                      openCashDrawer();
+                      setShowQuickActions(false);
+                    }}
+                    className="group p-4 rounded-lg border border-gray-200/50 hover:border-green-300/50 bg-white/60 hover:bg-white/80 transition-all duration-200"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+                        <DollarSign size={20} className="text-green-600" />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-medium text-gray-900">Cash Drawer</p>
+                        <p className="text-xs text-gray-500">Open cash drawer</p>
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      quickSale();
+                      setShowQuickActions(false);
+                    }}
+                    className="group p-4 rounded-lg border border-gray-200/50 hover:border-purple-300/50 bg-white/60 hover:bg-white/80 transition-all duration-200"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
+                        <PackageIcon size={20} className="text-purple-600" />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-medium text-gray-900">Quick Sale</p>
+                        <p className="text-xs text-gray-500">Fast sale mode</p>
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowSmartSearch(true);
+                      setShowQuickActions(false);
+                    }}
+                    className="group p-4 rounded-lg border border-gray-200/50 hover:border-blue-300/50 bg-white/60 hover:bg-white/80 transition-all duration-200"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                        <Search size={20} className="text-blue-600" />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-medium text-gray-900">Smart Search</p>
+                        <p className="text-xs text-gray-500">Advanced search</p>
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowDashboard(true);
+                      setShowQuickActions(false);
+                    }}
+                    className="group p-4 rounded-lg border border-gray-200/50 hover:border-orange-300/50 bg-white/60 hover:bg-white/80 transition-all duration-200"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center">
+                        <TrendingUp size={20} className="text-orange-600" />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-medium text-gray-900">Dashboard</p>
+                        <p className="text-xs text-gray-500">View analytics</p>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+
+      {/* Floating Shortcuts Button */}
+      <div className="fixed bottom-6 right-6 z-50">
+        <GlassButton
+          variant="primary"
+          size="lg"
+          className="rounded-full shadow-lg"
+          onClick={() => setShowShortcuts(true)}
+          aria-label="Show Keyboard Shortcuts"
+        >
+          <HelpCircle size={28} />
+        </GlassButton>
+      </div>
+
+      {/* Shortcuts Modal */}
+      {showShortcuts && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-8 max-w-lg w-full relative">
+            <button
+              className="absolute top-3 right-3 text-gray-400 hover:text-gray-700"
+              onClick={() => setShowShortcuts(false)}
+              aria-label="Close Shortcuts"
+            >
+              <X size={24} />
+            </button>
+            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+              <HelpCircle size={24} /> Keyboard Shortcuts & Quick Actions
+            </h2>
+            <ul className="space-y-2 text-lg">
+              <li><b>Ctrl+1</b>: Products tab</li>
+              <li><b>Ctrl+2</b>: Customers tab</li>
+
+              <li><b>Ctrl+Enter</b>: Process Sale</li>
+              <li><b>Ctrl+H</b>: Hold Order</li>
+              <li><b>Ctrl+C</b>: Clear Cart</li>
+              <li><b>Ctrl+P</b>: Print Receipt</li>
+              <li><b>Ctrl+Q</b>: Quick Sale</li>
+              <li><b>Ctrl+S</b>: Smart Search</li>
+              <li><b>F1</b>: Show this help</li>
+              <li><b>Esc</b>: Exit POS</li>
+            </ul>
+            <div className="mt-6 text-sm text-gray-500">Tip: You can use these shortcuts anywhere in the POS for super-fast sales!</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default POSPage; 
