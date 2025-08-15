@@ -43,6 +43,25 @@ export interface PaymentData {
   created_at?: string | null;
   device_name?: string;
   customer_name?: string;
+  // Enhanced fields for better data identification
+  source?: 'device_payment' | 'pos_sale' | 'repair_payment';
+  orderId?: string;
+  orderStatus?: string;
+  totalAmount?: number;
+  discountAmount?: number;
+  taxAmount?: number;
+  shippingCost?: number;
+  amountPaid?: number;
+  balanceDue?: number;
+  customerType?: string;
+  deliveryMethod?: string;
+  deliveryAddress?: string;
+  deliveryCity?: string;
+  deliveryNotes?: string;
+  repairType?: string;
+  diagnosis?: string;
+  deviceBrand?: string;
+  deviceModel?: string;
 }
 
 export interface ExpenseData {
@@ -120,20 +139,22 @@ export interface FinancialAnalytics {
 }
 
 class FinancialService {
-  // Fetch comprehensive financial data
+  // Fetch comprehensive financial data with ALL sources
   async getComprehensiveFinancialData(): Promise<FinancialAnalytics | null> {
     try {
       const [
-        payments,
+        devicePayments,
         posSales,
+        repairPayments,
         expenses,
         accounts,
         transfers,
         revenue,
         trends
       ] = await Promise.all([
-        this.getPayments(),
+        this.getDevicePayments(),
         this.getPOSSales(),
+        this.getRepairPayments(),
         this.getExpenses(),
         this.getAccounts(),
         this.getTransfers(),
@@ -141,8 +162,12 @@ class FinancialService {
         this.getFinancialTrends()
       ]);
 
-      // Combine regular payments with POS sales
-      const allPayments = [...(payments || []), ...(posSales || [])];
+      // Combine all payment sources
+      const allPayments = [
+        ...(devicePayments || []),
+        ...(posSales || []),
+        ...(repairPayments || [])
+      ];
 
       if (!allPayments) {
         console.error('Failed to fetch required financial data');
@@ -166,8 +191,8 @@ class FinancialService {
     }
   }
 
-  // Fetch all payments
-  async getPayments(): Promise<PaymentData[]> {
+  // Fetch device payments (repair payments)
+  async getDevicePayments(): Promise<PaymentData[]> {
     try {
       const { data, error } = await supabase
         .from('customer_payments')
@@ -178,29 +203,47 @@ class FinancialService {
         `)
         .order('payment_date', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.log('Device payments table not found or error:', error);
+        return [];
+      }
 
       return data?.map((payment: any) => ({
-        ...payment,
+        id: payment.id,
+        customer_id: payment.customer_id,
+        amount: payment.amount,
+        method: payment.payment_method,
+        device_id: payment.device_id,
+        payment_date: payment.payment_date,
+        payment_type: payment.payment_type,
+        status: payment.status,
+        created_by: payment.created_by,
+        created_at: payment.created_at,
         device_name: payment.devices 
           ? `${payment.devices.brand || ''} ${payment.devices.model || ''}`.trim() 
           : undefined,
-        customer_name: payment.customers?.name || undefined
+        customer_name: payment.customers?.name || undefined,
+        source: 'device_payment',
+        repairType: payment.repair_type,
+        diagnosis: payment.diagnosis,
+        deviceBrand: payment.devices?.brand,
+        deviceModel: payment.devices?.model
       })) || [];
     } catch (error) {
-      console.error('Error fetching payments:', error);
+      console.error('Error fetching device payments:', error);
       return [];
     }
   }
 
-  // Fetch POS sales data
+  // Fetch POS sales data with enhanced details
   async getPOSSales(): Promise<PaymentData[]> {
     try {
       const { data, error } = await supabase
-        .from('sales_orders')
+        .from('lats_sales')
         .select(`
           *,
-          customers(name)
+          customers(name),
+          lats_sale_items(*)
         `)
         .order('created_at', { ascending: false });
 
@@ -209,25 +252,134 @@ class FinancialService {
         return [];
       }
 
-      // Transform POS sales to match PaymentData format
+      // Transform POS sales to match PaymentData format with enhanced details
       return data?.map((sale: any) => ({
         id: sale.id,
         customer_id: sale.customer_id,
-        amount: sale.final_amount,
+        amount: sale.total_amount,
         method: sale.payment_method,
         device_id: null, // POS sales don't have device_id
-        payment_date: sale.order_date,
+        payment_date: sale.created_at,
         payment_type: 'payment',
         status: sale.status === 'completed' ? 'completed' : 
                 sale.status === 'pending' ? 'pending' : 'failed',
         created_by: sale.created_by,
         created_at: sale.created_at,
         device_name: undefined, // POS sales don't have device names
-        customer_name: sale.customers?.name || undefined
+        customer_name: sale.customers?.name || undefined,
+        source: 'pos_sale',
+        // Enhanced POS-specific fields
+        orderId: sale.id,
+        orderStatus: sale.status,
+        totalAmount: sale.total_amount,
+        discountAmount: 0, // Not available in new schema
+        taxAmount: 0, // Not available in new schema
+        shippingCost: 0, // Not available in new schema
+        amountPaid: sale.total_amount, // Assuming full payment for completed sales
+        balanceDue: 0, // Not available in new schema
+        customerType: 'retail', // Default value
+        deliveryMethod: 'pickup', // Default value
+        deliveryAddress: '', // Not available in new schema
+        deliveryCity: '', // Not available in new schema
+        deliveryNotes: '' // Not available in new schema
       })) || [];
     } catch (error) {
       console.error('Error fetching POS sales:', error);
       return [];
+    }
+  }
+
+  // Fetch repair payments (separate from device payments for clarity)
+  async getRepairPayments(): Promise<PaymentData[]> {
+    try {
+      // This is essentially the same as device payments but with different source identification
+      const devicePayments = await this.getDevicePayments();
+      
+      // Mark them as repair payments for better categorization
+      return devicePayments.map(payment => ({
+        ...payment,
+        source: 'repair_payment'
+      }));
+    } catch (error) {
+      console.error('Error fetching repair payments:', error);
+      return [];
+    }
+  }
+
+  // Enhanced getPayments method that combines all payment sources
+  async getPayments(): Promise<PaymentData[]> {
+    try {
+      const [devicePayments, posSales] = await Promise.all([
+        this.getDevicePayments(),
+        this.getPOSSales()
+      ]);
+
+      // Combine and sort all payments by date
+      const allPayments = [...devicePayments, ...posSales];
+      allPayments.sort((a, b) => {
+        const dateA = new Date(a.payment_date || a.created_at);
+        const dateB = new Date(b.payment_date || b.created_at);
+        return dateB.getTime() - dateA.getTime();
+      });
+
+      return allPayments;
+    } catch (error) {
+      console.error('Error fetching all payments:', error);
+      return [];
+    }
+  }
+
+  // Get financial data breakdown by source
+  async getFinancialDataBySource(): Promise<{
+    devicePayments: PaymentData[];
+    posSales: PaymentData[];
+    repairPayments: PaymentData[];
+    totalRevenue: number;
+    devicePaymentsRevenue: number;
+    posSalesRevenue: number;
+    repairPaymentsRevenue: number;
+  }> {
+    try {
+      const [devicePayments, posSales, repairPayments] = await Promise.all([
+        this.getDevicePayments(),
+        this.getPOSSales(),
+        this.getRepairPayments()
+      ]);
+
+      const devicePaymentsRevenue = devicePayments
+        .filter(p => p.status === 'completed')
+        .reduce((sum, p) => sum + (p.amount || 0), 0);
+
+      const posSalesRevenue = posSales
+        .filter(p => p.status === 'completed')
+        .reduce((sum, p) => sum + (p.amount || 0), 0);
+
+      const repairPaymentsRevenue = repairPayments
+        .filter(p => p.status === 'completed')
+        .reduce((sum, p) => sum + (p.amount || 0), 0);
+
+      const totalRevenue = devicePaymentsRevenue + posSalesRevenue + repairPaymentsRevenue;
+
+      return {
+        devicePayments,
+        posSales,
+        repairPayments,
+        totalRevenue,
+        devicePaymentsRevenue,
+        posSalesRevenue,
+        repairPaymentsRevenue
+      };
+    } catch (error) {
+      console.error('Error fetching financial data by source:', error);
+      return {
+        devicePayments: [],
+        posSales: [],
+        repairPayments: [],
+        totalRevenue: 0,
+        devicePaymentsRevenue: 0,
+        posSalesRevenue: 0,
+        repairPaymentsRevenue: 0
+      };
     }
   }
 
@@ -250,7 +402,11 @@ class FinancialService {
 
       // If no data, return sample data for demonstration
       if (!data || data.length === 0) {
-        console.log('No expenses found, returning sample data for demonstration');
+        // Only log once per session to reduce console spam
+        if (!window.financialSampleDataLogged) {
+          console.log('No expenses found, returning sample data for demonstration');
+          window.financialSampleDataLogged = true;
+        }
         return [
           {
             id: 'sample-1',
@@ -309,7 +465,11 @@ class FinancialService {
 
       // If no data, return sample data for demonstration
       if (!data || data.length === 0) {
-        console.log('No accounts found, returning sample data for demonstration');
+        // Only log once per session to reduce console spam
+        if (!window.financialAccountsSampleDataLogged) {
+          console.log('No accounts found, returning sample data for demonstration');
+          window.financialAccountsSampleDataLogged = true;
+        }
         return [
           {
             id: 'sample-account',

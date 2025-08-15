@@ -49,6 +49,9 @@ export const CustomersProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const { currentUser } = useAuth();
 
   useEffect(() => {
+    // Only initialize if we have a current user and customers array is empty
+    if (!currentUser || customers.length > 0) return;
+    
     console.log('🚀 CustomersContext: Initializing...');
     fetchAllCustomers()
       .then(async (fetched) => {
@@ -70,14 +73,14 @@ export const CustomersProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       .catch((error) => {
         console.error('❌ CustomersContext: Error fetching customers:', error);
       });
-  }, []);
+  }, [currentUser, customers.length]);
 
   const addCustomer = async (customerData: Omit<Customer, 'id' | 'joinedDate' | 'promoHistory' | 'payments'>): Promise<Customer> => {
     try {
       if (!currentUser) throw new Error('User not authenticated');
       const newCustomerId = crypto.randomUUID();
       const timestamp = new Date().toISOString();
-      // Always set colorTag to 'normal' for new customers
+      // Always set colorTag to 'new' for new customers
       const newCustomer = {
         id: newCustomerId,
         name: customerData.name,
@@ -87,7 +90,7 @@ export const CustomersProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         city: customerData.city || '',
         joinedDate: timestamp,
         loyaltyLevel: 'bronze' as LoyaltyLevel,
-        colorTag: 'normal' as CustomerTag, // always normal
+        colorTag: 'new' as CustomerTag, // always new
         referredBy: customerData.referredBy || undefined,
         referrals: [],
         totalSpent: 0,
@@ -155,7 +158,7 @@ export const CustomersProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (!currentUser) return false;
       // Fetch current customer for logic
       const current = customers.find(c => c.id === customerId);
-      let newColorTag = current?.colorTag || 'normal';
+              let newColorTag = current?.colorTag || 'new';
       let newIsActive = current?.isActive ?? true;
       let notes = updates.notes || current?.notes || [];
       // Check for complaints
@@ -168,7 +171,7 @@ export const CustomersProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         if (visitCount >= 10) {
           newColorTag = 'vip';
         } else {
-          newColorTag = 'normal';
+          newColorTag = 'new';
         }
       }
       // Check inactivity (12 months)

@@ -105,17 +105,7 @@ export const useQuickActions = () => {
       category: 'action',
       requiresPermission: 'customer'
     },
-    { 
-      id: 'inventory-management', 
-      name: 'Inventory', 
-      description: 'Manage products and stock', 
-      icon: 'Package', 
-      path: '/inventory', 
-      color: 'bg-indigo-500 hover:bg-indigo-600', 
-      isEnabled: true, 
-      order: 3, 
-      category: 'navigation' 
-    },
+
     { 
       id: 'customer-hub', 
       name: 'Customer Hub', 
@@ -139,17 +129,7 @@ export const useQuickActions = () => {
       category: 'action',
       requiresPermission: 'customer'
     },
-    { 
-      id: 'view-inventory', 
-      name: 'View Inventory', 
-      description: 'Check stock levels', 
-      icon: 'Package', 
-      path: '/inventory', 
-      color: 'bg-purple-500 hover:bg-purple-600', 
-      isEnabled: true, 
-      order: 6, 
-      category: 'navigation' 
-    },
+
     { 
       id: 'sales-report', 
       name: 'Sales Report', 

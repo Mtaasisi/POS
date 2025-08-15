@@ -15,12 +15,42 @@ export interface PaymentRow {
   // Added fields for device and customer names
   device_name?: string;
   customer_name?: string;
+  // Enhanced fields for better data identification
+  source?: 'device_payment' | 'pos_sale' | 'repair_payment';
+  orderId?: string;
+  orderStatus?: string;
+  totalAmount?: number;
+  discountAmount?: number;
+  taxAmount?: number;
+  shippingCost?: number;
+  amountPaid?: number;
+  balanceDue?: number;
+  customerType?: string;
+  deliveryMethod?: string;
+  deliveryAddress?: string;
+  deliveryCity?: string;
+  deliveryNotes?: string;
+  repairType?: string;
+  diagnosis?: string;
+  deviceBrand?: string;
+  deviceModel?: string;
 }
 
 interface PaymentsContextType {
   payments: PaymentRow[];
   loading: boolean;
   refreshPayments: () => Promise<void>;
+  // Enhanced methods for data filtering
+  getPaymentsBySource: (source: 'device_payment' | 'pos_sale' | 'repair_payment') => PaymentRow[];
+  getPaymentsByStatus: (status: 'completed' | 'pending' | 'failed') => PaymentRow[];
+  getPaymentsByDateRange: (startDate: string, endDate: string) => PaymentRow[];
+  getTotalRevenue: () => number;
+  getRevenueBySource: () => {
+    devicePayments: number;
+    posSales: number;
+    repairPayments: number;
+    total: number;
+  };
 }
 
 const PaymentsContext = createContext<PaymentsContextType | undefined>(undefined);
@@ -33,8 +63,8 @@ export const PaymentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setLoading(true);
     
     try {
-      // Fetch regular payments
-      const { data: paymentsData, error: paymentsError } = await supabase
+      // Fetch device payments (repair payments)
+      const { data: devicePaymentsData, error: devicePaymentsError } = await supabase
         .from('customer_payments')
         .select(`
           *,
@@ -45,26 +75,40 @@ export const PaymentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       
       // Fetch POS sales
       const { data: posSalesData, error: posSalesError } = await supabase
-        .from('sales_orders')
+        .from('lats_sales')
         .select(`
           *,
-          customers(name)
+          customers(name),
+          lats_sale_items(*)
         `)
         .order('created_at', { ascending: false });
 
       let allPayments: any[] = [];
 
-      // Transform regular payments
-      if (!paymentsError && paymentsData) {
-        const transformedPayments = paymentsData.map((payment: any) => ({
-          ...payment,
+      // Transform device payments
+      if (!devicePaymentsError && devicePaymentsData) {
+        const transformedDevicePayments = devicePaymentsData.map((payment: any) => ({
+          id: payment.id,
+          customer_id: payment.customer_id,
+          amount: payment.amount,
+          method: payment.payment_method,
+          device_id: payment.device_id,
+          payment_date: payment.payment_date,
+          payment_type: payment.payment_type,
+          status: payment.status,
+          created_by: payment.created_by,
+          created_at: payment.created_at,
           device_name: payment.devices 
             ? `${payment.devices.brand || ''} ${payment.devices.model || ''}`.trim() 
             : undefined,
           customer_name: payment.customers?.name || undefined,
-          source: 'device_payment'
+          source: 'device_payment',
+          repairType: payment.repair_type,
+          diagnosis: payment.diagnosis,
+          deviceBrand: payment.devices?.brand,
+          deviceModel: payment.devices?.model
         }));
-        allPayments.push(...transformedPayments);
+        allPayments.push(...transformedDevicePayments);
       }
 
       // Transform POS sales
@@ -72,10 +116,10 @@ export const PaymentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const transformedPOSSales = posSalesData.map((sale: any) => ({
           id: sale.id,
           customer_id: sale.customer_id,
-          amount: sale.final_amount,
+          amount: sale.total_amount,
           method: sale.payment_method,
           device_id: null,
-          payment_date: sale.order_date,
+          payment_date: sale.created_at,
           payment_type: 'payment',
           status: sale.status === 'completed' ? 'completed' : 
                   sale.status === 'pending' ? 'pending' : 'failed',
@@ -83,7 +127,21 @@ export const PaymentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           created_at: sale.created_at,
           device_name: undefined,
           customer_name: sale.customers?.name || undefined,
-          source: 'pos_sale'
+          source: 'pos_sale',
+          // Enhanced POS-specific fields
+          orderId: sale.id,
+          orderStatus: sale.status,
+          totalAmount: sale.total_amount,
+          discountAmount: 0, // Not available in new schema
+          taxAmount: 0, // Not available in new schema
+          shippingCost: 0, // Not available in new schema
+          amountPaid: sale.total_amount, // Assuming full payment for completed sales
+          balanceDue: 0, // Not available in new schema
+          customerType: 'retail', // Default value
+          deliveryMethod: 'pickup', // Default value
+          deliveryAddress: '', // Not available in new schema
+          deliveryCity: '', // Not available in new schema
+          deliveryNotes: '' // Not available in new schema
         }));
         allPayments.push(...transformedPOSSales);
       }
@@ -98,10 +156,54 @@ export const PaymentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setPayments(allPayments);
     } catch (error) {
       console.error('Error fetching payments:', error);
-      setPayments([]);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Enhanced filtering methods
+  const getPaymentsBySource = (source: 'device_payment' | 'pos_sale' | 'repair_payment') => {
+    return payments.filter(payment => payment.source === source);
+  };
+
+  const getPaymentsByStatus = (status: 'completed' | 'pending' | 'failed') => {
+    return payments.filter(payment => payment.status === status);
+  };
+
+  const getPaymentsByDateRange = (startDate: string, endDate: string) => {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    return payments.filter(payment => {
+      const paymentDate = new Date(payment.payment_date || payment.created_at);
+      return paymentDate >= start && paymentDate <= end;
+    });
+  };
+
+  const getTotalRevenue = () => {
+    return payments
+      .filter(payment => payment.status === 'completed')
+      .reduce((sum, payment) => sum + (payment.amount || 0), 0);
+  };
+
+  const getRevenueBySource = () => {
+    const devicePayments = getPaymentsBySource('device_payment')
+      .filter(p => p.status === 'completed')
+      .reduce((sum, p) => sum + (p.amount || 0), 0);
+
+    const posSales = getPaymentsBySource('pos_sale')
+      .filter(p => p.status === 'completed')
+      .reduce((sum, p) => sum + (p.amount || 0), 0);
+
+    const repairPayments = getPaymentsBySource('repair_payment')
+      .filter(p => p.status === 'completed')
+      .reduce((sum, p) => sum + (p.amount || 0), 0);
+
+    return {
+      devicePayments,
+      posSales,
+      repairPayments,
+      total: devicePayments + posSales + repairPayments
+    };
   };
 
   useEffect(() => {
@@ -109,7 +211,16 @@ export const PaymentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, []);
 
   return (
-    <PaymentsContext.Provider value={{ payments, loading, refreshPayments: fetchPayments }}>
+    <PaymentsContext.Provider value={{
+      payments,
+      loading,
+      refreshPayments: fetchPayments,
+      getPaymentsBySource,
+      getPaymentsByStatus,
+      getPaymentsByDateRange,
+      getTotalRevenue,
+      getRevenueBySource
+    }}>
       {children}
     </PaymentsContext.Provider>
   );
@@ -117,6 +228,8 @@ export const PaymentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
 export const usePayments = () => {
   const context = useContext(PaymentsContext);
-  if (!context) throw new Error('usePayments must be used within a PaymentsProvider');
+  if (context === undefined) {
+    throw new Error('usePayments must be used within a PaymentsProvider');
+  }
   return context;
 }; 

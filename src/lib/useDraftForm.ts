@@ -30,9 +30,10 @@ export function useDraftForm<T extends object>({
       try {
         const parsed = JSON.parse(saved);
         setFormData(parsed);
-      } catch {}
+      } catch (error) {
+        console.warn('Failed to parse saved form data:', error);
+      }
     }
-    // eslint-disable-next-line
   }, [key]);
 
   // Save draft on change
@@ -42,7 +43,6 @@ export function useDraftForm<T extends object>({
       return;
     }
     localStorage.setItem(key, JSON.stringify(formData));
-    // eslint-disable-next-line
   }, [formData, key]);
 
   // Clear draft on submit

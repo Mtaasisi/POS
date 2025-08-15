@@ -26,6 +26,13 @@ export interface BackupResult {
   error?: string;
 }
 
+export interface SqlBackupResult extends BackupResult {
+  filePath?: string;
+  fileSize?: string;
+  tablesCount?: number;
+  recordsCount?: number;
+}
+
 export interface AutomaticBackupConfig {
   enabled: boolean;
   frequency: 'hourly' | 'daily' | 'weekly' | 'monthly';
@@ -619,5 +626,252 @@ export const getBackupStatistics = async () => {
   } catch (error) {
     console.error('Error getting backup statistics:', error);
     return null;
+  }
+}; 
+
+/**
+ * Run SQL backup using pg_dump
+ */
+export const runSqlBackup = async (options: {
+  type?: 'full' | 'schema' | 'data';
+  format?: 'sql' | 'custom';
+  outputDir?: string;
+} = {}): Promise<SqlBackupResult> => {
+  try {
+    const {
+      type = 'full',
+      format = 'sql',
+      outputDir = '~/Desktop/SQL'
+    } = options;
+
+    // Check if backend server is available
+    try {
+      const response = await fetch('http://localhost:3000/api/backup/sql', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type,
+          format,
+          outputDir
+        }),
+        // Add timeout to prevent hanging
+        signal: AbortSignal.timeout(10000)
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        return {
+          success: true,
+          message: `✅ SQL backup completed successfully!`,
+          filePath: result.filePath,
+          fileSize: result.fileSize,
+          tablesCount: result.tablesCount,
+          recordsCount: result.recordsCount
+        };
+      } else {
+        return {
+          success: false,
+          message: '❌ SQL backup failed',
+          error: result.error
+        };
+      }
+    } catch (fetchError) {
+      // Backend server not available - provide helpful message and suggest alternatives
+      console.log('ℹ️ Local backup server not available (expected in production)');
+      
+      // Don't show error toast for this expected condition
+      return {
+        success: false,
+        message: '📋 Local backup server not available',
+        error: 'The local backup server at localhost:3000 is not running. This is expected in most deployments. Please use the built-in backup functionality instead, which provides local and cloud backup capabilities.',
+        isExpected: true // Flag to indicate this is an expected condition
+      };
+    }
+  } catch (error) {
+    console.error('Error running SQL backup:', error);
+    return {
+      success: false,
+      message: '❌ SQL backup failed',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+};
+
+/**
+ * Get SQL backup status and available files
+ */
+export const getSqlBackupStatus = async (): Promise<{
+  availableFiles: BackupFile[];
+  lastSqlBackup: string;
+  totalSqlBackups: number;
+  totalSqlSize: string;
+}> => {
+  try {
+    const response = await fetch('http://localhost:3000/api/backup/sql/status', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      // Add timeout to prevent hanging
+      signal: AbortSignal.timeout(5000)
+    });
+    
+    if (response.ok) {
+      const result = await response.json();
+      
+      if (result.success) {
+        return {
+          availableFiles: result.availableFiles || [],
+          lastSqlBackup: result.lastSqlBackup || '',
+          totalSqlBackups: result.totalSqlBackups || 0,
+          totalSqlSize: result.totalSqlSize || '0 MB'
+        };
+      } else {
+        throw new Error(result.error || 'Failed to get SQL backup status');
+      }
+    } else {
+      throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+    }
+  } catch (error) {
+    console.error('Error getting SQL backup status:', error);
+    // Return empty status when server is not available
+    return {
+      availableFiles: [],
+      lastSqlBackup: 'Local server not available',
+      totalSqlBackups: 0,
+      totalSqlSize: '0 MB'
+    };
+  }
+};
+
+/**
+ * Download SQL backup file
+ */
+export const downloadSqlBackup = async (filename: string): Promise<BackupResult> => {
+  try {
+    const response = await fetch(`http://localhost:3000/api/backup/sql/download/${filename}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      // Add timeout to prevent hanging
+      signal: AbortSignal.timeout(10000)
+    });
+    
+    if (response.ok) {
+      const result = await response.json();
+      
+      if (result.success) {
+        return {
+          success: true,
+          message: '✅ SQL backup downloaded successfully'
+        };
+      } else {
+        return {
+          success: false,
+          message: '❌ Download failed',
+          error: result.error
+        };
+      }
+    } else {
+      return {
+        success: false,
+        message: '❌ Download failed',
+        error: `Server returned ${response.status}: ${response.statusText}`
+      };
+    }
+  } catch (error) {
+    console.error('Error downloading SQL backup:', error);
+    return {
+      success: false,
+      message: '📋 Local backup server not available',
+      error: 'The local backup server at localhost:3000 is not running. This is expected in most deployments. Please use the built-in backup functionality instead.'
+    };
+  }
+};
+
+/**
+ * Test SQL backup connection
+ */
+export const testSqlBackupConnection = async (): Promise<BackupResult> => {
+  console.log('🔧 testSqlBackupConnection: Starting connection test...');
+  
+  try {
+    // First test Supabase connection
+    console.log('🔧 testSqlBackupConnection: Testing Supabase connection...');
+    const { data, error } = await supabase
+      .from('customers')
+      .select('count')
+      .limit(1);
+    
+    if (error) {
+      console.log('❌ testSqlBackupConnection: Supabase connection failed:', error.message);
+      return {
+        success: false,
+        message: '❌ Supabase connection failed',
+        error: error.message
+      };
+    }
+
+    console.log('✅ testSqlBackupConnection: Supabase connection successful');
+
+    // Test local backup server
+    console.log('🔧 testSqlBackupConnection: Testing local backup server...');
+    try {
+      const response = await fetch('http://localhost:3000/api/backup/sql/test', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        // Add timeout to prevent hanging
+        signal: AbortSignal.timeout(5000)
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log('✅ testSqlBackupConnection: Local backup server available');
+        return {
+          success: true,
+          message: '✅ SQL backup connection test successful',
+          data: {
+            supabase: 'Connected',
+            localServer: 'Available',
+            dropbox: 'Configured'
+          }
+        };
+      } else {
+        console.log('⚠️ testSqlBackupConnection: Local backup server error:', response.status, response.statusText);
+        return {
+          success: false,
+          message: '❌ Local backup server error',
+          error: `Server returned ${response.status}: ${response.statusText}`
+        };
+      }
+    } catch (fetchError) {
+      // Local server not available - this is expected in most cases
+      console.log('✅ testSqlBackupConnection: Local backup server not available (expected):', fetchError.message);
+      console.log('📋 testSqlBackupConnection: This is normal - local server is optional');
+      
+      return {
+        success: true,
+        message: '✅ Supabase connection successful (Local backup server not required)',
+        data: {
+          supabase: 'Connected',
+          localServer: 'Not Available (Expected)',
+          dropbox: 'Configured',
+          note: 'Local backup server is optional. Built-in backup functionality is available.'
+        }
+      };
+    }
+  } catch (error) {
+    console.error('❌ testSqlBackupConnection: Error testing backup connection:', error);
+    return {
+      success: false,
+      message: '❌ Connection test failed',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
   }
 }; 

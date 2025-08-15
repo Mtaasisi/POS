@@ -45,15 +45,7 @@ export const usePaymentMethods = () => {
     }
   }, []);
 
-  // Get POS-specific payment methods (cash, mobile money, cards)
-  const getPOSPaymentMethods = useCallback(async () => {
-    try {
-      return await financeAccountService.getPOSPaymentMethods();
-    } catch (err) {
-      console.error('Error fetching POS payment methods:', err);
-      return [];
-    }
-  }, []);
+
 
   // Get Finance-specific payment methods (bank, savings, investment)
   const getFinancePaymentMethods = useCallback(async () => {
@@ -163,7 +155,7 @@ export const usePaymentMethods = () => {
     fetchPaymentMethods,
     getPaymentMethodsByType,
     getPaymentMethodById,
-    getPOSPaymentMethods,
+
     getFinancePaymentMethods,
     getDefaultPaymentMethod,
     createPaymentMethod,

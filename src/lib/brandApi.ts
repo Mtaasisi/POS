@@ -1,3 +1,4 @@
+import { createClient } from '@supabase/supabase-js';
 import { supabase } from './supabaseClient';
 
 export interface BrandCategory {
@@ -10,8 +11,10 @@ export interface Brand {
   id: string;
   name: string;
   description?: string;
-  logo_url?: string;
-  category?: string[]; // Simplified to just string array
+  logo?: string;           // Database column name
+  logo_url?: string;       // API interface name (alias)
+  category?: string[];     // Array of categories
+  categories?: string[];   // Backward compatibility
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -37,9 +40,8 @@ export interface UpdateBrandData {
 export const getActiveBrands = async (): Promise<Brand[]> => {
   try {
     const { data, error } = await supabase
-      .from('brands')
+      .from('lats_brands')
       .select('*')
-      .eq('is_active', true)
       .order('name');
 
     if (error) {
@@ -58,7 +60,7 @@ export const getActiveBrands = async (): Promise<Brand[]> => {
 export const getAllBrands = async (): Promise<Brand[]> => {
   try {
     const { data, error } = await supabase
-      .from('brands')
+      .from('lats_brands')
       .select('*')
       .order('name');
 
@@ -77,14 +79,29 @@ export const getAllBrands = async (): Promise<Brand[]> => {
 // Create a new brand
 export const createBrand = async (brandData: CreateBrandData): Promise<Brand> => {
   try {
+    console.log('🔍 createBrand: Starting with data:', brandData);
+    
     // Clean up the data to avoid type conflicts
     const dataToInsert: any = { ...brandData };
     
     // Handle category field properly
     if (brandData.category) {
       dataToInsert.category = brandData.category;
+      // Also set categories for backward compatibility
+      dataToInsert.categories = brandData.category;
       // Remove categories field to avoid conflicts
       delete dataToInsert.categories;
+    }
+    
+    // Handle logo_url field properly
+    if (brandData.logo_url) {
+      dataToInsert.logo = brandData.logo_url;
+      dataToInsert.logo_url = brandData.logo_url;
+    }
+    
+    // Ensure is_active has a default value
+    if (dataToInsert.is_active === undefined) {
+      dataToInsert.is_active = true;
     }
     
     // Remove any undefined values
@@ -94,20 +111,29 @@ export const createBrand = async (brandData: CreateBrandData): Promise<Brand> =>
       }
     });
 
+    console.log('🔍 createBrand: Data to insert:', dataToInsert);
+
     const { data, error } = await supabase
-      .from('brands')
+      .from('lats_brands')
       .insert(dataToInsert)
       .select()
       .single();
 
     if (error) {
-      console.error('Error creating brand:', error);
-      throw new Error('Failed to create brand');
+      console.error('❌ Error creating brand:', error);
+      console.error('❌ Error details:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      });
+      throw new Error(`Failed to create brand: ${error.message}`);
     }
 
+    console.log('✅ createBrand: Successfully created brand:', data);
     return data;
   } catch (error) {
-    console.error('Error in createBrand:', error);
+    console.error('❌ Error in createBrand:', error);
     throw error;
   }
 };
@@ -115,14 +141,24 @@ export const createBrand = async (brandData: CreateBrandData): Promise<Brand> =>
 // Update an existing brand
 export const updateBrand = async (id: string, brandData: UpdateBrandData): Promise<Brand> => {
   try {
+    console.log('🔍 updateBrand: Starting with ID:', id, 'and data:', brandData);
+    
     // Clean up the data to avoid type conflicts
     const dataToUpdate: any = { ...brandData };
     
     // Handle category field properly
     if (brandData.category) {
       dataToUpdate.category = brandData.category;
+      // Also set categories for backward compatibility
+      dataToUpdate.categories = brandData.category;
       // Remove categories field to avoid conflicts
       delete dataToUpdate.categories;
+    }
+    
+    // Handle logo_url field properly
+    if (brandData.logo_url) {
+      dataToUpdate.logo = brandData.logo_url;
+      dataToUpdate.logo_url = brandData.logo_url;
     }
     
     // Remove any undefined values
@@ -132,21 +168,30 @@ export const updateBrand = async (id: string, brandData: UpdateBrandData): Promi
       }
     });
 
+    console.log('🔍 updateBrand: Data to update:', dataToUpdate);
+
     const { data, error } = await supabase
-      .from('brands')
+      .from('lats_brands')
       .update(dataToUpdate)
       .eq('id', id)
       .select()
       .single();
 
     if (error) {
-      console.error('Error updating brand:', error);
-      throw new Error('Failed to update brand');
+      console.error('❌ Error updating brand:', error);
+      console.error('❌ Error details:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      });
+      throw new Error(`Failed to update brand: ${error.message}`);
     }
 
+    console.log('✅ updateBrand: Successfully updated brand:', data);
     return data;
   } catch (error) {
-    console.error('Error in updateBrand:', error);
+    console.error('❌ Error in updateBrand:', error);
     throw error;
   }
 };
@@ -155,7 +200,7 @@ export const updateBrand = async (id: string, brandData: UpdateBrandData): Promi
 export const deleteBrand = async (id: string): Promise<void> => {
   try {
     const { error } = await supabase
-      .from('brands')
+      .from('lats_brands')
       .update({ is_active: false })
       .eq('id', id);
 
@@ -173,7 +218,7 @@ export const deleteBrand = async (id: string): Promise<void> => {
 export const hardDeleteBrand = async (id: string): Promise<void> => {
   try {
     const { error } = await supabase
-      .from('brands')
+      .from('lats_brands')
       .delete()
       .eq('id', id);
 
@@ -191,7 +236,7 @@ export const hardDeleteBrand = async (id: string): Promise<void> => {
 export const restoreBrand = async (id: string): Promise<void> => {
   try {
     const { error } = await supabase
-      .from('brands')
+      .from('lats_brands')
       .update({ is_active: true })
       .eq('id', id);
 
@@ -209,7 +254,7 @@ export const restoreBrand = async (id: string): Promise<void> => {
 export const getBrandById = async (id: string): Promise<Brand | null> => {
   try {
     const { data, error } = await supabase
-      .from('brands')
+      .from('lats_brands')
       .select('*')
       .eq('id', id)
       .single();
@@ -230,7 +275,7 @@ export const getBrandById = async (id: string): Promise<Brand | null> => {
 export const searchBrands = async (query: string): Promise<Brand[]> => {
   try {
     const { data, error } = await supabase
-      .from('brands')
+      .from('lats_brands')
       .select('*')
       .ilike('name', `%${query}%`)
       .order('name');

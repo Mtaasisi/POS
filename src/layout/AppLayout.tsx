@@ -4,11 +4,12 @@ import { useAuth } from '../context/AuthContext';
 import { useDevices } from '../context/DevicesContext';
 import { useCustomers } from '../context/CustomersContext';
 
-import AddCustomerModal from '../components/forms/AddCustomerModal';
-import TopBar from '../components/TopBar';
+import AddCustomerModal from '../features/customers/components/forms/AddCustomerModal';
+import TopBar from '../features/shared/components/TopBar';
+import GlobalSearchShortcut from '../features/shared/components/GlobalSearchShortcut';
 
-import AdHeader from '../components/AdHeader';
-import ActivityCounter from '../components/ui/ActivityCounter';
+import AdHeader from '../features/shared/components/AdHeader';
+import ActivityCounter from '../features/shared/components/ui/ActivityCounter';
 import {
   LayoutDashboard, 
   LogOut, 
@@ -37,8 +38,14 @@ import {
   Package,
   TestTube,
   ShoppingCart,
+  Calendar,
+  Briefcase,
+  UserCheck,
+  TrendingUp,
+  Smartphone as MobileIcon,
+  Clock,
 } from 'lucide-react';
-import GlassButton from '../components/ui/GlassButton';
+import GlassButton from '../features/shared/components/ui/GlassButton';
 
 const AppLayout: React.FC = () => {
   const { currentUser, logout } = useAuth();
@@ -49,6 +56,9 @@ const AppLayout: React.FC = () => {
   const [showAddCustomer, setShowAddCustomer] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Check if we're on the POS page
+  const isOnPOSPage = location.pathname === '/pos';
 
   // Calculate activity counts
   const getActivityCounts = () => {
@@ -90,23 +100,13 @@ const AppLayout: React.FC = () => {
       return customer.isRead === false || customer.isRead === undefined;
     }).length;
 
-    // Due today devices
-    const dueTodayDevices = devices.filter(device => {
-      if (device.status === 'done' || device.status === 'failed') return false;
-      if (!device.expectedReturnDate) return false;
-      const dueDate = new Date(device.expectedReturnDate);
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      return dueDate.getTime() === today.getTime();
-    }).length;
-
     return {
       totalDevices,
       activeDevices,
       recentDevices,
       overdueDevices,
       recentCustomers,
-      newCustomers,
-      dueTodayDevices
+      newCustomers
     };
   };
 
@@ -123,8 +123,6 @@ const AppLayout: React.FC = () => {
     navigate('/login');
   };
 
-
-
   const getNavItems = () => {
     const items = [
       {
@@ -134,56 +132,29 @@ const AppLayout: React.FC = () => {
         roles: ['admin', 'customer-care', 'technician'],
         count: activityCounts.activeDevices
       },
-      {
-        path: '/admin-dashboard',
-        label: 'Admin Dashboard',
-        icon: <BarChart2 size={20} />,
-        roles: ['admin'],
-        count: activityCounts.overdueDevices
-      },
 
+      // Core Business Operations
       {
-        path: '/finance',
-        label: 'Finance Management',
-        icon: <DollarSign size={20} />,
-        roles: ['admin']
-      },
-      {
-        path: '/payments-accounts',
-        label: 'Payments Accounts',
-        icon: <CreditCard size={20} />,
-        roles: ['admin']
+        path: '/devices',
+        label: 'Devices',
+        icon: <Smartphone size={20} />,
+        roles: ['admin', 'customer-care', 'technician'],
+        count: activityCounts.activeDevices
       },
       {
         path: '/pos',
-        label: 'Point of Sale',
+        label: 'POS System',
         icon: <ShoppingCart size={20} />,
         roles: ['admin', 'customer-care']
       },
       {
-        path: '/pos-sales',
-        label: 'POS Sales',
-        icon: <Receipt size={20} />,
+        path: '/lats/unified-inventory',
+        label: 'Unified Inventory',
+        icon: <Package size={20} />,
         roles: ['admin', 'customer-care']
       },
-      // {
-      //   path: '/payments-report',
-      //   label: 'Payments',
-      //   icon: <Receipt size={20} />,
-      //   roles: ['admin', 'customer-care']
-      // },
-      // {
-      //   path: '/brand-management',
-      //   label: 'Brand Management',
-      //   icon: <Settings size={20} />,
-      //   roles: ['admin']
-      // },
-      // {
-      //   path: '/category-management',
-      //   label: 'Category Management',
-      //   icon: <Building size={20} />,
-      //   roles: ['admin']
-      // },
+
+      // Customer Management
       {
         path: '/customers',
         label: 'Customers',
@@ -192,23 +163,49 @@ const AppLayout: React.FC = () => {
         count: activityCounts.newCustomers
       },
       {
-        path: '/inventory',
-        label: 'Inventory',
-        icon: <Package size={20} />,
+        path: '/appointments',
+        label: 'Appointments',
+        icon: <Calendar size={20} />,
         roles: ['admin', 'customer-care']
       },
       {
-        path: '/spare-parts',
-        label: 'Spare Parts',
-        icon: <Package size={20} />,
-        roles: ['admin', 'technician']
+        path: '/services',
+        label: 'Service Management',
+        icon: <Briefcase size={20} />,
+        roles: ['admin', 'customer-care']
+      },
+
+      // Business Management
+      {
+        path: '/business',
+        label: 'Business Management',
+        icon: <BarChart2 size={20} />,
+        roles: ['admin', 'manager', 'customer-care']
+      },
+
+      // Employee & User Management
+      {
+        path: '/employees',
+        label: 'Employee Management',
+        icon: <Users size={20} />,
+        roles: ['admin', 'manager']
       },
       {
-        path: '/sms',
-        label: 'SMS Centre',
-        icon: <MessageSquare size={20} />,
+        path: '/attendance',
+        label: 'My Attendance',
+        icon: <Clock size={20} />,
+        roles: ['admin', 'manager', 'technician', 'customer-care']
+      },
+
+      // Admin Management
+      {
+        path: '/admin',
+        label: 'Admin Management',
+        icon: <Settings size={20} />,
         roles: ['admin']
       },
+
+      // Diagnostics (Role-specific)
       {
         path: '/diagnostics/assigned',
         label: 'My Diagnostics',
@@ -220,37 +217,6 @@ const AppLayout: React.FC = () => {
         label: 'Diagnostic Reports',
         icon: <Stethoscope size={20} />,
         roles: ['admin']
-      },
-      {
-        path: '/diagnostics/my-requests',
-        label: 'My Diagnostic Requests',
-        icon: <Stethoscope size={20} />,
-        roles: ['customer-care']
-      },
-      {
-        path: '/diagnostics/new',
-        label: 'New Diagnostic Request',
-        icon: <Plus size={20} />,
-        roles: ['customer-care']
-      },
-
-      {
-        path: '/backup-management',
-        label: 'Backup Management',
-        icon: <RotateCcw size={20} />,
-        roles: ['admin']
-      },
-      {
-        path: '/admin-settings',
-        label: 'Admin Settings',
-        icon: <Settings size={20} />,
-        roles: ['admin']
-      },
-      {
-        path: '/settings',
-        label: 'Settings',
-        icon: <Settings size={20} />,
-        roles: ['admin']
       }
     ];
     
@@ -258,21 +224,29 @@ const AppLayout: React.FC = () => {
   };
 
   const navItems = getNavItems();
-  const isPOSPage = location.pathname === '/pos';
+
+  // If on POS page, render without TopBar and sidebar
+  if (isOnPOSPage) {
+    return (
+      <div className="min-h-screen" style={{ backgroundColor: 'transparent' }}>
+        {/* Main Content - Full width for POS */}
+        <main className="min-h-screen relative z-10 pt-0 pb-8">
+          <Outlet />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'transparent' }}>
-      {/* TopBar - Hide on POS page */}
-      {!isPOSPage && (
-        <TopBar 
-          onMenuToggle={() => setIsMenuOpen(!isMenuOpen)}
-          isMenuOpen={isMenuOpen}
-          isNavCollapsed={isNavCollapsed}
-        />
-      )}
+      <TopBar 
+        onMenuToggle={() => setIsMenuOpen(!isMenuOpen)}
+        isMenuOpen={isMenuOpen}
+        isNavCollapsed={isNavCollapsed}
+      />
       
       {/* Mobile Menu Overlay */}
-      {isMenuOpen && !isPOSPage && (
+      {isMenuOpen && (
         <div
           className="fixed inset-0 bg-black/30 backdrop-blur-sm z-30 md:hidden"
           onClick={() => setIsMenuOpen(false)}
@@ -281,10 +255,9 @@ const AppLayout: React.FC = () => {
       
 
       
-      {/* Sidebar - Hide on POS page */}
-      {!isPOSPage && (
-        <div
-          className={`
+      {/* Sidebar */}
+      <div
+        className={`
           fixed top-0 bottom-0 left-0 z-40 w-64 md:w-72 
           bg-white/80 backdrop-blur-xl border-r border-white/30 shadow-xl
           transition-all duration-500 transform
@@ -316,31 +289,7 @@ const AppLayout: React.FC = () => {
             </div>
           </div>
           
-          {/* Toggle Button */}
-          <button
-            onClick={() => setIsNavCollapsed(!isNavCollapsed)}
-            className={`
-              hidden md:flex items-center justify-center 
-              fixed top-8 z-50
-              w-8 h-8 rounded-full
-              bg-gradient-to-br from-blue-500/40 to-indigo-500/40
-              hover:from-blue-500/50 hover:to-indigo-500/50
-              border border-white/40
-              text-white
-              shadow-lg backdrop-blur-md
-              transition-all duration-500
-              hover:scale-105 hover:rotate-180
-              hover:shadow-blue-500/20 hover:shadow-xl
-              group
-              ${isNavCollapsed ? 'left-[4.25rem]' : 'left-[16.5rem]'}
-            `}
-          >
-            {isNavCollapsed ? (
-              <ChevronRight size={16} className="group-hover:scale-110 transition-transform duration-300" />
-            ) : (
-              <ChevronLeft size={16} className="group-hover:scale-110 transition-transform duration-300" />
-            )}
-          </button>
+
            
           {/* Navigation */}
           <nav className={`flex-1 ${isNavCollapsed ? 'p-2' : 'p-4'} overflow-y-auto`}>
@@ -428,10 +377,9 @@ const AppLayout: React.FC = () => {
           </div>
         </div>
       </div>
-      )}
       
       {/* Main Content */}
-      <main className={`transition-all duration-500 min-h-screen relative z-10 pt-0 pb-8 ${isPOSPage ? 'ml-0' : isNavCollapsed ? 'md:ml-[5.5rem]' : 'md:ml-72'}`}>
+      <main className={`transition-all duration-500 min-h-screen relative z-10 pt-0 pb-8 ${isNavCollapsed ? 'md:ml-[5.5rem]' : 'md:ml-72'}`}>
         <Outlet />
         
 
@@ -445,6 +393,8 @@ const AppLayout: React.FC = () => {
           </>
         )}
         
+        {/* Global Search Shortcut */}
+        <GlobalSearchShortcut />
 
       </main>
     </div>

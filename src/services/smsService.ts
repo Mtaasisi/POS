@@ -608,7 +608,7 @@ export class SMSService {
     // Combine brand and model for the SMS
     const fullModelName = `${deviceBrand} ${deviceModel}`.trim();
 
-    let message = template.message
+    const message = template.message
       .replace(/\[Jina la Mteja\]/g, customerName)
       .replace(/\[Model ya Kifaa\]/g, fullModelName)
       .replace(/\[Namba ya Tiketi\]/g, ticketNumber)
@@ -643,7 +643,7 @@ export class SMSService {
     // Combine brand and model for the SMS
     const fullModelName = `${deviceBrand} ${deviceModel}`.trim();
 
-    let message = template.message
+    const message = template.message
       .replace(/\[Jina la Mteja\]/g, customerName)
       .replace(/\[Model ya Kifaa\]/g, fullModelName)
       .replace(/\[Namba ya Tiketi\]/g, ticketNumber)
@@ -678,7 +678,7 @@ export class SMSService {
     // Combine brand and model for the SMS
     const fullModelName = `${deviceBrand} ${deviceModel}`.trim();
 
-    let message = template.message
+    const message = template.message
       .replace(/\[Jina la Mteja\]/g, customerName)
       .replace(/\[Model ya Kifaa\]/g, fullModelName)
       .replace(/\[Namba ya Return\]/g, returnId)
@@ -714,7 +714,7 @@ export class SMSService {
     // Combine brand and model for the SMS
     const fullModelName = `${deviceBrand} ${deviceModel}`.trim();
 
-    let message = template.message
+    const message = template.message
       .replace(/\[Jina la Mteja\]/g, customerName)
       .replace(/\[Model ya Kifaa\]/g, fullModelName)
       .replace(/\[Namba ya Return\]/g, returnId)
@@ -750,7 +750,7 @@ export class SMSService {
     // Combine brand and model for the SMS
     const fullModelName = `${deviceBrand} ${deviceModel}`.trim();
 
-    let message = template.message
+    const message = template.message
       .replace(/\[Jina la Mteja\]/g, customerName)
       .replace(/\[Model ya Kifaa\]/g, fullModelName)
       .replace(/\[Namba ya Return\]/g, returnId)

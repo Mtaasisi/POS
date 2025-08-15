@@ -11,7 +11,7 @@ export const formatTanzaniaPhoneNumber = (phone: string): string => {
   if (!phone) return '';
   
   // Remove all spaces, dashes, parentheses, dots, and other formatting
-  const cleanPhone = phone.replace(/[\s\-\(\)\.]/g, '');
+  const cleanPhone = phone.replace(/[\s\-().]/g, '');
   
   // If already has +255 prefix, return as is
   if (cleanPhone.startsWith('+255')) {

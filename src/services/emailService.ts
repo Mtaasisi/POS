@@ -183,16 +183,18 @@ class EmailService {
       case 'vip':
         query = query.eq('color_tag', 'vip');
         break;
-      case 'inactive':
+      case 'inactive': {
         const cutoffDate = new Date();
         cutoffDate.setDate(cutoffDate.getDate() - 90);
         query = query.lt('last_visit', cutoffDate.toISOString());
         break;
-      case 'active':
+      }
+      case 'active': {
         const activeCutoff = new Date();
         activeCutoff.setDate(activeCutoff.getDate() - 30);
         query = query.gte('last_visit', activeCutoff.toISOString());
         break;
+      }
       case 'all':
       default:
         // No additional filters

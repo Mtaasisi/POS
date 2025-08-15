@@ -28,7 +28,7 @@ export interface UpdateCategoryData {
 export const getCategories = async (): Promise<Category[]> => {
   try {
     const { data, error } = await supabase
-      .from('inventory_categories')
+      .from('lats_categories')
       .select('*')
       .order('name');
 
@@ -44,7 +44,7 @@ export const getCategories = async (): Promise<Category[]> => {
 export const getActiveCategories = async (): Promise<Category[]> => {
   try {
     const { data, error } = await supabase
-      .from('inventory_categories')
+      .from('lats_categories')
       .select('*')
       .eq('is_active', true)
       .order('name');
@@ -61,7 +61,7 @@ export const getActiveCategories = async (): Promise<Category[]> => {
 export const createCategory = async (categoryData: CreateCategoryData): Promise<Category> => {
   try {
     const { data, error } = await supabase
-      .from('inventory_categories')
+      .from('lats_categories')
       .insert([{
         ...categoryData,
         is_active: categoryData.is_active ?? true
@@ -81,7 +81,7 @@ export const createCategory = async (categoryData: CreateCategoryData): Promise<
 export const updateCategory = async (id: string, categoryData: UpdateCategoryData): Promise<Category> => {
   try {
     const { data, error } = await supabase
-      .from('inventory_categories')
+      .from('lats_categories')
       .update({
         ...categoryData,
         updated_at: new Date().toISOString()
@@ -102,7 +102,7 @@ export const updateCategory = async (id: string, categoryData: UpdateCategoryDat
 export const deleteCategory = async (id: string): Promise<void> => {
   try {
     const { error } = await supabase
-      .from('inventory_categories')
+      .from('lats_categories')
       .update({
         is_active: false,
         updated_at: new Date().toISOString()
@@ -120,7 +120,7 @@ export const deleteCategory = async (id: string): Promise<void> => {
 export const restoreCategory = async (id: string): Promise<void> => {
   try {
     const { error } = await supabase
-      .from('inventory_categories')
+      .from('lats_categories')
       .update({
         is_active: true,
         updated_at: new Date().toISOString()
@@ -138,7 +138,7 @@ export const restoreCategory = async (id: string): Promise<void> => {
 export const getCategoryById = async (id: string): Promise<Category | null> => {
   try {
     const { data, error } = await supabase
-      .from('inventory_categories')
+      .from('lats_categories')
       .select('*')
       .eq('id', id)
       .single();
@@ -155,7 +155,7 @@ export const getCategoryById = async (id: string): Promise<Category | null> => {
 export const getCategoryByName = async (name: string): Promise<Category | null> => {
   try {
     const { data, error } = await supabase
-      .from('inventory_categories')
+      .from('lats_categories')
       .select('*')
       .eq('name', name)
       .single();
@@ -172,7 +172,7 @@ export const getCategoryByName = async (name: string): Promise<Category | null> 
 export const searchCategories = async (query: string): Promise<Category[]> => {
   try {
     const { data, error } = await supabase
-      .from('inventory_categories')
+      .from('lats_categories')
       .select('*')
       .or(`name.ilike.%${query}%,description.ilike.%${query}%`)
       .eq('is_active', true)
@@ -190,7 +190,7 @@ export const searchCategories = async (query: string): Promise<Category[]> => {
 export const getCategoriesWithDeviceCount = async (): Promise<(Category & { device_count: number })[]> => {
   try {
     const { data, error } = await supabase
-      .from('inventory_categories')
+      .from('lats_categories')
       .select(`
         *,
         devices:devices(count)

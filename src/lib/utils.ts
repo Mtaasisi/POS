@@ -1,6 +1,27 @@
 // Utility functions for the application
 
 /**
+ * Combine class names with conditional logic
+ * Similar to clsx or classnames libraries
+ */
+export function cn(...classes: (string | undefined | null | false | Record<string, boolean>)[]): string {
+  return classes
+    .filter(Boolean)
+    .map(cls => {
+      if (typeof cls === 'string') return cls;
+      if (typeof cls === 'object' && cls !== null) {
+        return Object.entries(cls)
+          .filter(([, value]) => value)
+          .map(([key]) => key)
+          .join(' ');
+      }
+      return '';
+    })
+    .join(' ')
+    .trim();
+}
+
+/**
  * Generate a UUID that works across all browsers
  * Falls back to a simple timestamp-based ID if crypto.randomUUID is not available
  */
