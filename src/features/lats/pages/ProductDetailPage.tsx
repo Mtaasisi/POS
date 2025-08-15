@@ -4,12 +4,13 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import { getLatsProvider } from '../lib/data/provider';
 import type { Product, ProductVariant } from '../types/inventory';
 import { ImageUploadService, type UploadedImage } from '../../../lib/imageUpload';
+import { supabase } from '../../../lib/supabaseClient';
 import GlassBadge from '../../../features/shared/components/ui/GlassBadge';
 import GlassCard from '../../../features/shared/components/ui/GlassCard';
 import LoadingSkeleton, { TextSkeleton } from '../../../features/shared/components/ui/LoadingSkeleton';
 import ImageDisplay from '../../../features/shared/components/ui/ImageDisplay';
 import EditProductModal from '../components/inventory/EditProductModal';
-import { ArrowLeft, Package, Tag, Hash, DollarSign, TrendingUp, AlertTriangle, CheckCircle, XCircle, Image as ImageIcon, Edit } from 'lucide-react';
+import { ArrowLeft, Package, Tag, Hash, DollarSign, TrendingUp, AlertTriangle, CheckCircle, XCircle, Image as ImageIcon, Edit, RefreshCw } from 'lucide-react';
 import { 
 	calculateTotalStock, 
 	calculateTotalCostValue, 
@@ -20,6 +21,7 @@ import {
 	formatCurrency,
 	formatNumber
 } from '../lib/productCalculations';
+import { generateProductPlaceholder, generateThumbnailPlaceholder, generateAvatarPlaceholder } from '../lib/placeholderUtils';
 
 const ProductDetailPage: React.FC = () => {
 	const { id } = useParams<{ id: string }>();
@@ -29,6 +31,23 @@ const ProductDetailPage: React.FC = () => {
 	const [product, setProduct] = useState<Product | null>(null);
 	const [images, setImages] = useState<UploadedImage[]>([]);
 	const [showEditModal, setShowEditModal] = useState(false);
+
+	// Function to refresh product data and images
+	const refreshProductData = async () => {
+		if (!id) return;
+		try {
+			const provider = getLatsProvider();
+			const { ok, data, message } = await provider.getProduct(id);
+			if (ok && data) {
+				setProduct(data as Product);
+				const refreshedImages = await ImageUploadService.getProductImages(id);
+				setImages(refreshedImages || []);
+				console.log('🔄 ProductDetailPage: Data refreshed successfully');
+			}
+		} catch (error) {
+			console.error('❌ Failed to refresh product data:', error);
+		}
+	};
 
 	useEffect(() => {
 		let isMounted = true;
@@ -42,12 +61,15 @@ const ProductDetailPage: React.FC = () => {
 				if (!ok || !data) {
 					throw new Error(message || 'Failed to load product');
 				}
+				console.log('🔍 ProductDetailPage: Fetching images for product:', id);
 				const imgs = await ImageUploadService.getProductImages(id);
+				console.log('🔍 ProductDetailPage: Raw images response:', imgs);
+				
 				if (!isMounted) return;
 				setProduct(data as Product);
 				setImages(imgs || []);
 				
-				// Debug logging for images
+				// Enhanced debug logging for images
 				console.log('🔍 ProductDetailPage: Images loaded:', {
 					productId: id,
 					imageCount: imgs?.length || 0,
@@ -56,7 +78,9 @@ const ProductDetailPage: React.FC = () => {
 						url: img.url,
 						thumbnailUrl: img.thumbnailUrl,
 						fileName: img.fileName,
-						isPrimary: img.isPrimary
+						isPrimary: img.isPrimary,
+						fileSize: img.fileSize,
+						mimeType: img.mimeType
 					}))
 				});
 			} catch (e: any) {
@@ -84,6 +108,340 @@ const ProductDetailPage: React.FC = () => {
 	const potentialProfit = useMemo(() => calculatePotentialProfit(variants), [variants]);
 	const profitMargin = useMemo(() => calculateProfitMargin(variants), [variants]);
 	const stockStatus = useMemo(() => getStockStatus(variants), [variants]);
+	
+	// Manual image fetch function for debugging (available in console)
+	useEffect(() => {
+		if (product && id) {
+			// Make the function available globally for debugging
+			(window as any).fetchProductImages = async () => {
+				console.log('🔍 Manual image fetch for product:', id);
+				try {
+					const images = await ImageUploadService.getProductImages(id);
+					console.log('🔍 Manual fetch result:', images);
+					return images;
+				} catch (error) {
+					console.error('❌ Manual fetch error:', error);
+					return null;
+				}
+			};
+			
+			// Also add a function to check the database directly
+			(window as any).checkProductImagesDB = async () => {
+				console.log('🔍 Checking product_images table for product:', id);
+				try {
+					const { data, error } = await supabase
+						.from('product_images')
+						.select('*')
+						.eq('product_id', id);
+					
+					console.log('🔍 Database query result:', { data, error });
+					return { data, error };
+				} catch (error) {
+					console.error('❌ Database query error:', error);
+					return { data: null, error };
+				}
+			};
+			
+			// Add a function to check all product_images records
+			(window as any).checkAllProductImages = async () => {
+				console.log('🔍 Checking all product_images records...');
+				try {
+					const { data, error } = await supabase
+						.from('product_images')
+						.select('*')
+						.limit(10);
+					
+					console.log('🔍 All product_images records:', { data, error });
+					return { data, error };
+				} catch (error) {
+					console.error('❌ Error checking all product_images:', error);
+					return { data: null, error };
+				}
+			};
+			
+			// Add a function to test the new placeholder system
+			(window as any).testPlaceholderSystem = () => {
+				console.log('🧪 Testing placeholder system...');
+				
+				console.log('Product placeholder:', generateProductPlaceholder('Test Product'));
+				console.log('Thumbnail placeholder:', generateThumbnailPlaceholder());
+				console.log('Avatar placeholder:', generateAvatarPlaceholder('JD'));
+				
+				return 'Placeholder system test completed. Check console for results.';
+			};
+			
+			// Add a function to manually insert a test image record
+			(window as any).insertTestImage = async () => {
+				console.log('🔍 Inserting test image record for product:', id);
+				try {
+					const { data: { user } } = await supabase.auth.getUser();
+					if (!user) {
+						console.error('❌ No authenticated user found');
+						return;
+					}
+					
+					// First, verify the product exists
+					console.log('🔍 Verifying product exists in lats_products table...');
+					const { data: productCheck, error: productError } = await supabase
+						.from('lats_products')
+						.select('id, name')
+						.eq('id', id)
+						.single();
+					
+					if (productError) {
+						console.error('❌ Product not found in lats_products table:', productError);
+						return { data: null, error: productError };
+					}
+					
+					console.log('✅ Product found:', productCheck);
+					
+					const testImageData = {
+						product_id: id,
+						image_url: generateProductPlaceholder('Test Product'),
+						file_name: 'test-image.svg',
+						file_size: 1024,
+						is_primary: true,
+						uploaded_by: user.id
+					};
+					
+					console.log('🔍 Inserting test image data:', testImageData);
+					
+					const { data, error } = await supabase
+						.from('product_images')
+						.insert(testImageData)
+						.select()
+						.single();
+					
+					if (error) {
+						console.error('❌ Error inserting test image:', error);
+						console.error('❌ Error details:', {
+							message: error.message,
+							details: error.details,
+							hint: error.hint,
+							code: error.code
+						});
+					} else {
+						console.log('✅ Test image inserted successfully:', data);
+					}
+					
+					return { data, error };
+				} catch (error) {
+					console.error('❌ Error in insertTestImage:', error);
+					return { data: null, error };
+				}
+			};
+			
+			// Add a function to fix image associations
+			(window as any).fixImageAssociations = async () => {
+				console.log('🔧 Fixing image associations for product:', id);
+				try {
+					// Check for images with temp product IDs
+					const { data: tempImages, error: tempError } = await supabase
+						.from('product_images')
+						.select('*')
+						.like('product_id', 'temp-product-%');
+					
+					console.log('🔍 Found temp images:', tempImages);
+					
+					if (tempImages && tempImages.length > 0) {
+						// Update them to use the real product ID
+						const { data: updateData, error: updateError } = await supabase
+							.from('product_images')
+							.update({ product_id: id })
+							.like('product_id', 'temp-product-%')
+							.select();
+						
+						console.log('🔧 Update result:', { data: updateData, error: updateError });
+						
+						if (!updateError) {
+							// Refresh the page to show the images
+							window.location.reload();
+						}
+					}
+				} catch (error) {
+					console.error('❌ Error fixing image associations:', error);
+				}
+			};
+			
+			// Add a function to manually create image records from temp storage
+			(window as any).createImageRecordsFromTemp = async (tempProductId: string) => {
+				console.log('🔧 Creating image records from temp storage for product:', id);
+				console.log('🔧 Temp product ID:', tempProductId);
+				
+				try {
+					const result = await ImageUploadService.updateProductImages(tempProductId, id);
+					console.log('🔧 Image records creation result:', result);
+					
+					if (result.success) {
+						console.log('✅ Successfully created image records');
+						// Refresh the page to show the images
+						window.location.reload();
+					} else {
+						console.error('❌ Failed to create image records:', result.error);
+					}
+					
+					return result;
+				} catch (error) {
+					console.error('❌ Error creating image records:', error);
+					return { success: false, error: error instanceof Error ? error.message : 'Unknown error occurred' };
+				}
+			};
+			
+			// Add a function to check temp storage directory
+			(window as any).checkTempStorage = async () => {
+				console.log('🔍 Checking temp storage directory...');
+				try {
+					const { data: storageFiles, error: storageError } = await supabase.storage
+						.from('product-images')
+						.list('temp', {
+							limit: 100,
+							offset: 0
+						});
+					
+					if (storageError) {
+						console.error('❌ Failed to list temp storage files:', storageError);
+						return { success: false, error: storageError.message };
+					}
+					
+					console.log('🔍 Temp storage files:', storageFiles);
+					return { success: true, files: storageFiles };
+				} catch (error) {
+					console.error('❌ Error checking temp storage:', error);
+					return { success: false, error: error instanceof Error ? error.message : 'Unknown error occurred' };
+				}
+			};
+			
+			// Comprehensive relationship check function
+			(window as any).checkImageRelationship = async () => {
+				console.log('🔍 Comprehensive image relationship check for product:', id);
+				
+				try {
+					// 1. Check product_images table
+					const { data: imageRecords, error: imageError } = await supabase
+						.from('product_images')
+						.select('*')
+						.eq('product_id', id);
+					
+					console.log('1️⃣ Product images in database:', { data: imageRecords, error: imageError });
+					
+					// 2. Check if product exists
+					const { data: productData, error: productError } = await supabase
+						.from('lats_products')
+						.select('id, name, created_at')
+						.eq('id', id)
+						.single();
+					
+					console.log('2️⃣ Product data:', { data: productData, error: productError });
+					
+					// 3. Check storage buckets
+					const { data: buckets, error: bucketError } = await supabase.storage.listBuckets();
+					console.log('3️⃣ Storage buckets:', { data: buckets, error: bucketError });
+					
+					// 4. Check files in product-images bucket
+					if (buckets && buckets.find(b => b.name === 'product-images')) {
+						const { data: files, error: filesError } = await supabase.storage
+							.from('product-images')
+							.list();
+						console.log('4️⃣ Files in product-images bucket:', { data: files, error: filesError });
+					}
+					
+					// 5. Test image URL accessibility
+					if (imageRecords && imageRecords.length > 0) {
+						const sampleImage = imageRecords[0];
+						console.log('5️⃣ Testing image URL:', sampleImage.image_url);
+						
+						try {
+							const response = await fetch(sampleImage.image_url);
+							console.log('5️⃣ Image URL test result:', {
+								url: sampleImage.image_url,
+								status: response.status,
+								ok: response.ok
+							});
+						} catch (error) {
+							console.log('5️⃣ Image URL test failed:', error instanceof Error ? error.message : 'Unknown error');
+						}
+					}
+					
+					// 6. Summary
+					console.log('6️⃣ Relationship Summary:', {
+						productId: id,
+						productExists: !!productData,
+						imageRecordsCount: imageRecords?.length || 0,
+						productImagesBucketExists: buckets?.some(b => b.name === 'product-images'),
+						primaryImage: imageRecords?.find(img => img.is_primary),
+						allImages: imageRecords?.map(img => ({
+							id: img.id,
+							url: img.image_url,
+							fileName: img.file_name,
+							isPrimary: img.is_primary
+						}))
+					});
+					
+				} catch (error) {
+					console.error('❌ Relationship check failed:', error);
+				}
+			};
+
+			// Add a comprehensive test function for debugging image issues
+			(window as any).testImageSystem = async () => {
+				console.log('🧪 Testing image system for product:', id);
+				
+				try {
+					// Step 1: Check current product images
+					console.log('📸 Step 1: Checking current product images...');
+					const currentImages = await ImageUploadService.getProductImages(id);
+					console.log('📸 Current images:', currentImages);
+					
+					// Step 2: Check temp storage
+					console.log('📁 Step 2: Checking temp storage...');
+					const tempStorageResult = await (window as any).checkTempStorage();
+					console.log('📁 Temp storage result:', tempStorageResult);
+					
+					// Step 3: Check database records
+					console.log('🗄️ Step 3: Checking database records...');
+					const { data: dbImages, error: dbError } = await supabase
+						.from('product_images')
+						.select('*')
+						.eq('product_id', id);
+					
+					console.log('🗄️ Database images:', dbImages);
+					console.log('🗄️ Database error:', dbError);
+					
+					// Step 4: Check for temp product IDs in database
+					console.log('🔍 Step 4: Checking for temp product IDs...');
+					const { data: tempDbImages, error: tempDbError } = await supabase
+						.from('product_images')
+						.select('*')
+						.like('product_id', 'temp-product-%');
+					
+					console.log('🔍 Temp database images:', tempDbImages);
+					console.log('🔍 Temp database error:', tempDbError);
+					
+					// Summary
+					console.log('📊 Summary:');
+					console.log('- Current images from service:', currentImages.length);
+					console.log('- Database images for this product:', dbImages?.length || 0);
+					console.log('- Temp storage files:', tempStorageResult.files?.length || 0);
+					console.log('- Temp database records:', tempDbImages?.length || 0);
+					
+					return {
+						success: true,
+						currentImages,
+						tempStorage: tempStorageResult,
+						dbImages,
+						tempDbImages
+					};
+					
+				} catch (error) {
+					console.error('❌ Error testing image system:', error);
+					return { success: false, error: error instanceof Error ? error.message : 'Unknown error occurred' };
+				}
+			};
+			
+			// Add a global refresh function for debugging
+			(window as any).refreshProductDetailPage = refreshProductData;
+		}
+	}, [product, id, refreshProductData]);
 	
 	// Debug logging
 	useEffect(() => {
@@ -166,6 +524,36 @@ const ProductDetailPage: React.FC = () => {
 						>
 							<Edit size={18} />
 						</button>
+						<button
+							onClick={refreshProductData}
+							className="p-2 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-colors"
+							aria-label="Refresh product data"
+						>
+							<RefreshCw size={18} />
+						</button>
+						<button
+							onClick={async () => {
+								console.log('🔍 Manual test: Fetching images for product:', id);
+								if (!id) return;
+								const testImages = await ImageUploadService.getProductImages(id);
+								console.log('🔍 Manual test result:', testImages);
+								alert(`Found ${testImages.length} images for product ${id}`);
+							}}
+							className="p-2 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-colors"
+							aria-label="Test image fetch"
+						>
+							📷
+						</button>
+						<button
+							onClick={async () => {
+								if (!id) return;
+								await (window as any).fixImageAssociations();
+							}}
+							className="p-2 text-orange-600 hover:text-orange-800 hover:bg-orange-50 rounded-lg transition-colors"
+							aria-label="Fix image associations"
+						>
+							🔧
+						</button>
 					</div>
 				</div>
 
@@ -174,6 +562,7 @@ const ProductDetailPage: React.FC = () => {
 				<div className="flex flex-col lg:flex-row gap-6">
 					{/* Product Image */}
 					<div className="lg:w-1/3">
+						
 						<div className="aspect-square w-full overflow-hidden rounded-lg bg-gray-50 border border-gray-200">
 							{primaryImage ? (
 								<ImageDisplay 
@@ -450,7 +839,7 @@ const ProductDetailPage: React.FC = () => {
 													'bg-green-100 text-green-700'
 												}`}>
 													{(variant.quantity ?? 0) <= 0 ? 'Out of Stock' :
-													 (variant.quantity ?? 0) <= 5 ? 'Low Stock' : 'In Stock'}
+														(variant.quantity ?? 0) <= 5 ? 'Low Stock' : 'In Stock'}
 												</div>
 											</div>
 
@@ -651,8 +1040,18 @@ const ProductDetailPage: React.FC = () => {
 			isOpen={showEditModal}
 			onClose={() => setShowEditModal(false)}
 			productId={id || ''}
-			onProductUpdated={(updatedProduct) => {
+			onProductUpdated={async (updatedProduct) => {
 				setProduct(updatedProduct);
+				// Refresh images after product update
+				if (id) {
+					try {
+						const refreshedImages = await ImageUploadService.getProductImages(id);
+						setImages(refreshedImages || []);
+						console.log('🔄 ProductDetailPage: Images refreshed after update:', refreshedImages);
+					} catch (error) {
+						console.error('❌ Failed to refresh images after update:', error);
+					}
+				}
 				setShowEditModal(false);
 			}}
 		/>

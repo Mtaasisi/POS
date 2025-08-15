@@ -1,8 +1,9 @@
 import React from 'react';
 import { useInventoryAnalytics } from '../../hooks/useAnalytics';
 import GlassCard from '../../../shared/components/ui/GlassCard';
-import { Tag, Package, DollarSign, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Tag, Package, DollarSign, RefreshCw, AlertTriangle, Bug } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { DebugAnalytics } from '../../lib/debugAnalytics';
 
 interface AnalyticsCardsProps {
   className?: string;
@@ -21,6 +22,17 @@ const AnalyticsCards: React.FC<AnalyticsCardsProps> = ({
       toast.success('Analytics refreshed successfully');
     } catch (err) {
       toast.error('Failed to refresh analytics');
+    }
+  };
+
+  const handleDebug = async () => {
+    try {
+      console.log('🔍 Starting debug analysis...');
+      await DebugAnalytics.runFullDebug();
+      toast.success('Debug analysis complete! Check console for details.');
+    } catch (err) {
+      console.error('Debug error:', err);
+      toast.error('Debug analysis failed');
     }
   };
 
@@ -158,15 +170,24 @@ const AnalyticsCards: React.FC<AnalyticsCardsProps> = ({
             </div>
             <div className="text-sm text-purple-600">Total Value</div>
           </div>
-          {showRefreshButton && (
+          <div className="flex gap-1">
+            {showRefreshButton && (
+              <button
+                onClick={handleRefresh}
+                className="p-1 text-purple-600 hover:text-purple-800 transition-colors"
+                title="Refresh analytics"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </button>
+            )}
             <button
-              onClick={handleRefresh}
+              onClick={handleDebug}
               className="p-1 text-purple-600 hover:text-purple-800 transition-colors"
-              title="Refresh analytics"
+              title="Debug analytics"
             >
-              <RefreshCw className="w-4 h-4" />
+              <Bug className="w-4 h-4" />
             </button>
-          )}
+          </div>
         </div>
       </GlassCard>
 

@@ -24,13 +24,24 @@ import { supabase } from '../../../../lib/supabaseClient';
 // ProductImage interface for form validation
 const ProductImageSchema = z.object({
   id: z.string().optional(),
-  image_url: z.string(),
+  image_url: z.string().optional(),
+  url: z.string().optional(),
   thumbnail_url: z.string().optional(),
-  file_name: z.string(),
-  file_size: z.number(),
-  is_primary: z.boolean(),
+  file_name: z.string().optional(),
+  fileName: z.string().optional(),
+  file_size: z.number().optional(),
+  fileSize: z.number().optional(),
+  is_primary: z.boolean().optional(),
+  isPrimary: z.boolean().optional(),
   uploaded_by: z.string().optional(),
-  created_at: z.string().optional()
+  created_at: z.string().optional(),
+  uploadedAt: z.string().optional(),
+  mimeType: z.string().optional()
+}).refine((data) => {
+  // At least one of image_url or url must be present
+  return data.image_url || data.url;
+}, {
+  message: "Either image_url or url must be provided"
 });
 
 // Validation schema for product form
@@ -133,14 +144,10 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
   // Watch specific form values for completion calculation
   const [name, sku, categoryId, price, costPrice, stockQuantity, minStockLevel] = watch(['name', 'sku', 'categoryId', 'price', 'costPrice', 'stockQuantity', 'minStockLevel']);
   
-  // Debug form state
-  console.log('🔍 Form state debug:', {
-    isDirty,
-    nameExists,
-    isSubmitting,
-    errors: Object.keys(errors),
-    formValues: { name, sku, categoryId, price, costPrice, stockQuantity, minStockLevel }
-  });
+  // Debug form state (reduced logging)
+  if (Object.keys(errors).length > 0) {
+    console.log('🔍 Form validation errors:', errors);
+  }
 
   // Calculate form completion percentage
   useEffect(() => {
@@ -223,10 +230,10 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
     console.log('🔍 Form data values:', Object.values(data));
     
     // Temporarily disable nameExists check for testing
-    // if (nameExists) {
-    //   toast.error('Please choose a different product name. A product with this name already exists.');
-    //   return;
-    // }
+    if (nameExists) {
+      toast.error('Please choose a different product name. A product with this name already exists.');
+      return;
+    }
     
     setIsSubmitting(true);
     
@@ -240,6 +247,12 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
       
       // Store images for upload after product creation
       const imagesToUpload = data.images || [];
+      console.log('🔍 Debug: Form data images:', data.images);
+      console.log('🔍 Debug: imagesToUpload:', imagesToUpload);
+      console.log('🔍 Debug: imagesToUpload type:', typeof imagesToUpload);
+      console.log('🔍 Debug: imagesToUpload length:', imagesToUpload.length);
+      console.log('🔍 Debug: Form data keys:', Object.keys(data));
+      console.log('🔍 Debug: Form data values:', Object.values(data));
       
       // Transform form data to match LATS ProductFormData structure
       // Handle variants - if no variants are provided, create a basic one from the main form data
@@ -310,57 +323,31 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
       
       if (result.ok) {
         // Upload images after product creation
+        console.log('🔍 Debug: Checking if images need to be uploaded...');
+        console.log('🔍 Debug: imagesToUpload.length:', imagesToUpload.length);
+        console.log('🔍 Debug: imagesToUpload.length > 0:', imagesToUpload.length > 0);
+        
         if (imagesToUpload.length > 0) {
-          console.log('🖼️ Uploading images after product creation...');
+          console.log('🖼️ Updating product images after product creation...');
           try {
             const actualProductId = result.data.id;
             
             console.log('✅ Product created with ID:', actualProductId);
+            console.log('🔄 Updating images from temp ID to real ID:', { tempProductId, actualProductId });
             
-            // Verify that the product exists in the database
-            console.log('🔍 Verifying product exists in database...');
-            const { data: productCheck, error: productCheckError } = await supabase
-              .from('lats_products')
-              .select('id, name')
-              .eq('id', actualProductId)
-              .single();
+            // Update the product images to use the real product ID
+            const updateResult = await ImageUploadService.updateProductImages(tempProductId, actualProductId);
             
-            if (productCheckError || !productCheck) {
-              console.error('❌ Product not found in database:', productCheckError);
-              toast.error('Product was created but not found in database. Image upload skipped.');
-              return;
+            if (updateResult.success) {
+              console.log('✅ Successfully updated product images');
+            } else {
+              console.error('❌ Failed to update product images:', updateResult.error);
+              toast.error('Product created but image association failed. Images may not be visible.');
             }
             
-            console.log('✅ Product verified in database:', productCheck);
-            
-            // Check if product_images table exists
-            console.log('🔍 Checking if product_images table exists...');
-            const { data: tableCheck, error: tableCheckError } = await supabase
-              .from('product_images')
-              .select('count')
-              .limit(1);
-            
-            if (tableCheckError) {
-              console.error('❌ product_images table not accessible:', tableCheckError);
-              toast.error('Product images table not accessible. Please contact administrator.');
-              return;
-            }
-            
-            console.log('✅ product_images table is accessible');
-            
-            // Skip image upload for now to focus on product creation
-            console.log('⚠️ Image upload temporarily disabled to focus on product creation');
-            console.log('📝 Images to upload:', imagesToUpload.length);
-            
-            // TODO: Re-enable image upload after product creation is working
-            // for (let i = 0; i < imagesToUpload.length; i++) {
-            //   // Image upload logic here
-            // }
-            
-            console.log('✅ All images uploaded successfully');
           } catch (uploadError) {
-            console.error('❌ Failed to upload images:', uploadError);
-            // Don't fail the product creation for image upload errors
+            console.error('❌ Failed to update product images:', uploadError);
+            toast.error('Product created but image association failed. Images may not be visible.');
           }
         }
         
@@ -523,8 +510,10 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
               console.log('🔍 Form validation state:', {
                 isValid: Object.keys(errors).length === 0,
                 errors: errors,
+                errorCount: Object.keys(errors).length,
                 isDirty: isDirty
               });
+              console.log('🔍 Detailed errors:', errors);
               try {
                 await handleSubmit(handleFormSubmit)(e);
               } catch (error) {
@@ -1152,7 +1141,7 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
                 type="submit"
                 variant="primary"
                 loading={isSubmitting}
-                disabled={!isDirty}
+                disabled={!isDirty || nameExists}
                 className="flex-1 sm:flex-none"
                 onClick={() => {
                   console.log('🔘 Submit button clicked');

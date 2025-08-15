@@ -1,5 +1,6 @@
 // Import the main Supabase client and use it for uploads
 import { supabase } from './supabaseClient';
+import { LocalProductImageStorageService } from './localProductImageStorage';
 
 // Use the main Supabase client for uploads to ensure proper authentication
 const uploadSupabase = supabase;
@@ -11,6 +12,7 @@ export interface UploadedImage {
   fileName: string;
   fileSize: number;
   mimeType: string;
+  isPrimary: boolean;
   uploadedAt: string;
 }
 
@@ -21,6 +23,9 @@ export interface UploadResult {
 }
 
 export class ImageUploadService {
+  // Development mode storage for temporary images
+  private static devImageStorage: Map<string, UploadedImage[]> = new Map();
+  
   private static readonly MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
   private static readonly ALLOWED_TYPES = [
     'image/jpeg',
@@ -31,7 +36,7 @@ export class ImageUploadService {
   ];
 
   /**
-   * Upload a single image to Supabase storage
+   * Upload a single image to hosting storage
    */
   static async uploadImage(
     file: File,
@@ -79,253 +84,67 @@ export class ImageUploadService {
 
       console.log('✅ DEBUG: Authentication successful, user:', user.id);
 
-      // Generate safe filename
-      const timestamp = Date.now();
-      const randomId = Math.random().toString(36).substring(2, 15);
-      const fileExtension = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-      const safeFileName = `${timestamp}_${randomId}.${fileExtension}`;
+      // Use the local storage service for hosting storage
+      console.log('🚀 Using local storage service for product images');
       
-      // Use a simpler path format for temporary products
-      const filePath = productId.startsWith('temp-') || productId.startsWith('test-') 
-        ? `temp/${safeFileName}`
-        : `${productId}/${safeFileName}`;
-
-      console.log('📤 Uploading image:', {
-        fileName: file.name,
-        fileSize: file.size,
-        fileType: file.type,
-        path: filePath
-      });
+      // Get product name for the upload (we'll use a placeholder if not available)
+      const productName = 'product'; // This will be overridden by the actual product name
       
-      // Additional debugging for file object
-      console.log('🔍 DEBUG: File object details:', {
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        lastModified: file.lastModified,
-        isFile: file instanceof File,
-        constructor: file.constructor.name
-      });
+      // Use the local storage service
+      const result = await LocalProductImageStorageService.uploadProductImage(
+        file,
+        productName,
+        productId,
+        isPrimary ? 'main' : 'gallery'
+      );
       
-      // Debug the actual file content type
-      console.log('🔍 DEBUG: File type check:', {
-        type: file.type,
-        typeStartsWithImage: file.type.startsWith('image/'),
-        typeIsJson: file.type === 'application/json',
-        typeIsUndefined: file.type === undefined,
-        typeIsNull: file.type === null
-      });
-      
-      // Create a new File object to ensure it's properly formatted
-      const cleanFile = new File([file], file.name, {
-        type: file.type,
-        lastModified: file.lastModified
-      });
-      
-      console.log('🔍 DEBUG: Clean file object:', {
-        name: cleanFile.name,
-        size: cleanFile.size,
-        type: cleanFile.type,
-        isFile: cleanFile instanceof File
-      });
-      
-      // Alternative: Try using a Blob
-      const fileBlob = new Blob([file], { type: file.type });
-      console.log('🔍 DEBUG: File blob:', {
-        size: fileBlob.size,
-        type: fileBlob.type,
-        isBlob: fileBlob instanceof Blob
-      });
-
-      // Upload to storage
-      console.log('🔍 DEBUG: About to upload to Supabase storage');
-      console.log('🔍 DEBUG: Upload path:', filePath);
-      console.log('🔍 DEBUG: Bucket: product-images');
-      
-      // Test bucket access - but don't fail if this doesn't work
-      try {
-        const { data: buckets, error: bucketError } = await uploadSupabase.storage.listBuckets();
-        console.log('🔍 DEBUG: Available buckets:', buckets);
-        if (bucketError) {
-          console.error('❌ DEBUG: Bucket list error:', bucketError);
-        }
-      } catch (error) {
-        console.error('❌ DEBUG: Failed to list buckets:', error);
+      if (!result.success) {
+        console.error('❌ Local storage upload failed:', result.error);
+        return { success: false, error: result.error };
       }
       
-      console.log('🔍 DEBUG: About to call Supabase upload with:', {
-        filePath,
-        fileName: cleanFile.name,
-        fileSize: cleanFile.size,
-        fileType: cleanFile.type,
-        fileConstructor: cleanFile.constructor.name,
-        isFile: cleanFile instanceof File,
-        isBlob: cleanFile instanceof Blob
-      });
-      
-      // Try different bucket names in case the bucket doesn't exist
-      const bucketNames = ['product-images', 'images', 'uploads', 'files'];
-      let uploadData, uploadError;
-      let successfulBucket = null;
-      
-      for (const bucketName of bucketNames) {
-        try {
-          console.log(`🔍 DEBUG: Trying bucket: ${bucketName}`);
-          const result = await uploadSupabase.storage
-            .from(bucketName)
-            .upload(filePath, file, {
-              cacheControl: '3600',
-              upsert: false
-            });
-          
-          uploadData = result.data;
-          uploadError = result.error;
-          
-          if (!uploadError) {
-            console.log(`✅ DEBUG: Upload successful with bucket: ${bucketName}`);
-            successfulBucket = bucketName;
-            break;
-          } else {
-            console.log(`❌ DEBUG: Failed with bucket ${bucketName}:`, uploadError);
-          }
-        } catch (error) {
-          console.log(`❌ DEBUG: Exception with bucket ${bucketName}:`, error);
-        }
-      }
-      
-      // If no bucket worked, try to create the product-images bucket
-      if (!successfulBucket) {
-        try {
-          console.log('🔍 DEBUG: Attempting to create product-images bucket...');
-          const { data: bucketData, error: bucketError } = await uploadSupabase.storage.createBucket('product-images', {
-            public: true,
-            allowedMimeTypes: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'],
-            fileSizeLimit: 52428800 // 50MB
-          });
-          
-          if (!bucketError) {
-            console.log('✅ DEBUG: Created product-images bucket, trying upload again...');
-            const result = await uploadSupabase.storage
-              .from('product-images')
-              .upload(filePath, file, {
-                cacheControl: '3600',
-                upsert: false
-              });
-            uploadData = result.data;
-            uploadError = result.error;
-            successfulBucket = 'product-images';
-          } else {
-            console.error('❌ DEBUG: Failed to create bucket:', bucketError);
-          }
-        } catch (error) {
-          console.error('❌ DEBUG: Exception creating bucket:', error);
-        }
-      }
-
-      if (uploadError) {
-        console.error('❌ DEBUG: Upload failed:', uploadError);
-        console.error('❌ DEBUG: Upload error details:', {
-          message: uploadError.message,
-          statusCode: uploadError.statusCode,
-          error: uploadError.error,
-          details: uploadError.details
-        });
-        return { 
-          success: false, 
-          error: this.getErrorMessage(uploadError) 
-        };
-      }
-
-      console.log('✅ DEBUG: File uploaded to storage successfully');
-      console.log('✅ DEBUG: Upload data:', uploadData);
-
-      // Get public URL
-      console.log('🔍 DEBUG: Getting public URL...');
-      const { data: urlData } = uploadSupabase.storage
-        .from(successfulBucket || 'product-images')
-        .getPublicUrl(filePath);
-
-      console.log('✅ DEBUG: Public URL obtained:', urlData.publicUrl);
-
       // Handle temporary product IDs (don't create database records yet)
       if (productId.startsWith('temp-product-') || productId.startsWith('test-product-')) {
         console.log('📝 DEBUG: Uploading to storage only for temporary product:', productId);
         
         const uploadedImage: UploadedImage = {
           id: `temp-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`,
-          url: urlData.publicUrl,
-          fileName: file.name,
+          url: result.url || '',
+          fileName: result.fileName || file.name, // Use the generated filename if available
           fileSize: file.size,
           mimeType: file.type,
+          isPrimary: isPrimary,
           uploadedAt: new Date().toISOString()
         };
 
+        // Store in development mode storage for later retrieval
+        if (!this.devImageStorage.has(productId)) {
+          this.devImageStorage.set(productId, []);
+        }
+        this.devImageStorage.get(productId)!.push(uploadedImage);
+
         console.log('✅ DEBUG: Image uploaded to storage (temporary):', uploadedImage);
+        console.log('📦 DEBUG: Stored in dev storage for product:', productId);
         return {
           success: true,
           image: uploadedImage
         };
       }
 
-      // Create database record for real products
-      console.log('🔍 DEBUG: Creating database record for real product...');
-      console.log('🔍 DEBUG: Database insert data:', {
-        product_id: productId,
-        image_url: urlData.publicUrl,
-        file_name: file.name,
-        file_size: file.size,
-        is_primary: isPrimary,
-        uploaded_by: userId
-      });
-
-      const { data: dbData, error: dbError } = await uploadSupabase
-        .from('product_images')
-        .insert({
-          product_id: productId,
-          image_url: urlData.publicUrl,
-          file_name: file.name,
-          file_size: file.size,
-          is_primary: isPrimary,
-          uploaded_by: userId
-        })
-        .select()
-        .single();
-
-      if (dbError) {
-        console.error('❌ DEBUG: Database insert failed:', dbError);
-        console.error('❌ DEBUG: Database error details:', {
-          message: dbError.message,
-          details: dbError.details,
-          hint: dbError.hint
-        });
-        // Clean up uploaded file if database insert fails
-        await uploadSupabase.storage
-          .from(successfulBucket || 'product-images')
-          .remove([filePath]);
-        
-        return { 
-          success: false, 
-          error: `Upload succeeded but database record failed: ${dbError.message}` 
-        };
-      }
-
-      console.log('✅ DEBUG: Database record created successfully');
-      console.log('✅ DEBUG: Database data:', dbData);
-
-      const uploadedImage: UploadedImage = {
-        id: dbData.id,
-        url: urlData.publicUrl,
+      // For real products, the database record is already created by the PHP handler
+      console.log('✅ DEBUG: Image uploaded successfully via local storage');
+      
+      // Get the uploaded image data from the database
+      const images = await this.getProductImages(productId);
+      const uploadedImage = images.find(img => img.fileName === file.name) || {
+        id: `temp-${Date.now()}`,
+        url: result.url || '',
         fileName: file.name,
         fileSize: file.size,
         mimeType: file.type,
-        uploadedAt: dbData.created_at
+        isPrimary: isPrimary,
+        uploadedAt: new Date().toISOString()
       };
-
-      console.log('✅ DEBUG: Image uploaded successfully:', uploadedImage);
-      console.log('✅ DEBUG: Final result:', {
-        success: true,
-        image: uploadedImage
-      });
 
       return {
         success: true,
@@ -376,41 +195,12 @@ export class ImageUploadService {
    */
   static async deleteImage(imageId: string): Promise<{ success: boolean; error?: string }> {
     try {
-      // Get image record
-      const { data: image, error: fetchError } = await uploadSupabase
-        .from('product_images')
-        .select('*')
-        .eq('id', imageId)
-        .single();
-
-      if (fetchError || !image) {
-        return { success: false, error: 'Image not found' };
-      }
-
-      // Delete from storage
-      const urlParts = image.image_url.split('/');
-      const fileName = urlParts[urlParts.length - 1];
-      const productId = urlParts[urlParts.length - 2];
-      const filePath = `${productId}/${fileName}`;
-
-      const { error: storageError } = await uploadSupabase.storage
-        .from('product-images')
-        .remove([filePath]);
-
-      if (storageError) {
-        console.error('❌ Storage delete failed:', storageError);
-        return { success: false, error: 'Failed to delete from storage' };
-      }
-
-      // Delete database record
-      const { error: dbError } = await uploadSupabase
-        .from('product_images')
-        .delete()
-        .eq('id', imageId);
-
-      if (dbError) {
-        console.error('❌ Database delete failed:', dbError);
-        return { success: false, error: 'Failed to delete database record' };
+      // Use the local storage service to delete the image
+      const result = await LocalProductImageStorageService.deleteProductImage(imageId);
+      
+      if (!result.success) {
+        console.error('❌ Delete failed:', result.error);
+        return { success: false, error: result.error };
       }
 
       console.log('✅ Image deleted successfully:', imageId);
@@ -426,6 +216,172 @@ export class ImageUploadService {
   }
 
   /**
+   * Update product images when temporary product ID is replaced with real one
+   * Since temporary products don't create database records, we need to create them now
+   */
+  static async updateProductImages(tempProductId: string, realProductId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      console.log('🔄 Updating product images from temp ID to real ID:', { tempProductId, realProductId });
+      
+      // Get the current user
+      const { data: { user }, error: userError } = await uploadSupabase.auth.getUser();
+      if (userError || !user) {
+        console.error('❌ Failed to get authenticated user:', userError);
+        return { success: false, error: 'Authentication required' };
+      }
+
+      // Check if we have development mode images stored
+      const devImages = this.devImageStorage.get(tempProductId);
+      if (devImages && devImages.length > 0) {
+        console.log('🛠️ Found development mode images:', devImages.length);
+        
+        // Create database records for development mode images
+        const imageRecords = devImages.map((img, index) => ({
+          product_id: realProductId,
+          image_url: img.url,
+          file_name: img.fileName,
+          file_size: img.fileSize,
+          is_primary: index === 0, // First image is primary
+          uploaded_by: user.id
+        }));
+
+        // Insert all image records
+        const { data: insertedImages, error: insertError } = await uploadSupabase
+          .from('product_images')
+          .insert(imageRecords)
+          .select();
+
+        if (insertError) {
+          console.error('❌ Failed to insert development mode image records:', insertError);
+          return { success: false, error: insertError.message };
+        }
+
+        console.log('✅ Successfully created development mode image records:', { 
+          tempProductId, 
+          realProductId, 
+          createdCount: insertedImages?.length || 0 
+        });
+
+        // Clean up development storage
+        this.devImageStorage.delete(tempProductId);
+
+        return { success: true };
+      }
+      
+      // Since temporary products don't create database records, we need to create them now
+      // The images are already uploaded to storage with the temporary product ID in the path
+      // We'll create database records pointing to those storage files
+      
+      // List files in storage for the temporary product
+      // Temporary images are stored in the 'temp/' directory with filenames like '1755242708996_wmsxec3ekz.png'
+      const { data: storageFiles, error: storageError } = await uploadSupabase.storage
+        .from('product-images')
+        .list('temp', {
+          limit: 100,
+          offset: 0
+        });
+      
+      if (storageError) {
+        console.error('❌ Failed to list storage files:', storageError);
+        return { success: false, error: storageError.message };
+      }
+      
+      if (!storageFiles || storageFiles.length === 0) {
+        console.log('📝 No storage files found in temp directory');
+        return { success: true }; // No images to process
+      }
+      
+      console.log('🔍 Found storage files in temp directory:', storageFiles);
+      
+      // Filter files that match the timestamp pattern from the temporary product ID
+      // The tempProductId format is 'temp-product-1755242684294' where 1755242684294 is the timestamp
+      const tempTimestamp = tempProductId.replace('temp-product-', '');
+      console.log('🔍 Looking for files with timestamp:', tempTimestamp);
+      
+      // Create database records for each image
+      const imageRecords = [];
+      let primaryImageSet = false;
+      
+      for (const file of storageFiles) {
+        // Skip non-image files
+        if (!file.name.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+          continue;
+        }
+        
+        // Check if this file was uploaded during the same session
+        // Files are named like 'product_1755242708996_xxx.png' where the second part is the timestamp
+        const fileNameParts = file.name.split('_');
+        if (fileNameParts.length < 2) {
+          console.log('📝 Skipping file with invalid format:', file.name);
+          continue;
+        }
+        
+        const fileTimestamp = fileNameParts[1]; // Get the timestamp part
+        if (fileTimestamp !== tempTimestamp) {
+          console.log('📝 Skipping file with different timestamp:', file.name, 'expected:', tempTimestamp, 'got:', fileTimestamp);
+          continue;
+        }
+        
+        console.log('✅ Found matching file:', file.name);
+        
+        // Generate the storage path
+        const storagePath = `temp/${file.name}`;
+        
+        // Get public URL for the file
+        const { data: urlData } = uploadSupabase.storage
+          .from('product-images')
+          .getPublicUrl(storagePath);
+        
+        // Create database record
+        const imageRecord = {
+          product_id: realProductId,
+          image_url: urlData.publicUrl,
+          file_name: file.name,
+          file_size: file.metadata?.size || 0,
+          is_primary: !primaryImageSet, // First matching image is primary
+          uploaded_by: user.id
+        };
+        
+        if (!primaryImageSet) {
+          primaryImageSet = true;
+        }
+        
+        imageRecords.push(imageRecord);
+      }
+      
+      if (imageRecords.length === 0) {
+        console.log('📝 No valid image files found');
+        return { success: true };
+      }
+      
+      // Insert all image records
+      const { data: insertedImages, error: insertError } = await uploadSupabase
+        .from('product_images')
+        .insert(imageRecords)
+        .select();
+      
+      if (insertError) {
+        console.error('❌ Failed to insert image records:', insertError);
+        return { success: false, error: insertError.message };
+      }
+      
+      console.log('✅ Successfully created image records:', { 
+        tempProductId, 
+        realProductId, 
+        createdCount: insertedImages?.length || 0 
+      });
+      
+      return { success: true };
+    } catch (error) {
+      console.error('❌ Error updating product images:', error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Unknown error occurred' 
+      };
+    }
+  }
+
+  /**
    * Get images for a product
    */
   static async getProductImages(productId: string): Promise<UploadedImage[]> {
@@ -436,26 +392,19 @@ export class ImageUploadService {
         return [];
       }
 
-      const { data: images, error } = await uploadSupabase
-        .from('product_images')
-        .select('*')
-        .eq('product_id', productId)
-        .order('is_primary', { ascending: false })
-        .order('created_at', { ascending: true });
-
-      if (error) {
-        console.error('❌ Failed to fetch images:', error);
-        return [];
-      }
-
-      return images.map(img => ({
+      // Use the local storage service to get images
+      const localImages = await LocalProductImageStorageService.getProductImages(productId);
+      
+      // Convert to UploadedImage format
+      return localImages.map(img => ({
         id: img.id,
-        url: img.image_url,
-        thumbnailUrl: img.thumbnail_url,
-        fileName: img.file_name,
-        fileSize: img.file_size,
-        mimeType: img.mime_type || 'image/jpeg',
-        uploadedAt: img.created_at
+        url: img.url,
+        thumbnailUrl: img.thumbnailUrl,
+        fileName: img.fileName,
+        fileSize: img.fileSize,
+        mimeType: img.mimeType,
+        isPrimary: img.isPrimary,
+        uploadedAt: img.uploadedAt
       }));
 
     } catch (error) {

@@ -34,23 +34,28 @@ export class AnalyticsService {
    */
   static async getInventoryAnalytics(): Promise<InventoryAnalytics> {
     try {
+      console.log('🔍 Starting inventory analytics calculation...');
+      
       // Get total variants count
       const { count: totalVariants, error: variantsError } = await supabase
         .from('lats_product_variants')
         .select('*', { count: 'exact', head: true });
 
       if (variantsError) throw variantsError;
+      console.log('📊 Total variants found:', totalVariants);
 
       // Get total stock and value from products
       const { data: products, error: productsError } = await supabase
         .from('lats_products')
         .select(`
           id,
+          name,
           is_active,
           total_quantity,
           total_value,
           variants:lats_product_variants(
             id,
+            name,
             quantity,
             cost_price,
             selling_price
@@ -58,6 +63,7 @@ export class AnalyticsService {
         `);
 
       if (productsError) throw productsError;
+      console.log('📦 Products found:', products?.length || 0);
 
       // Calculate metrics
       const totalProducts = products?.length || 0;
@@ -73,17 +79,26 @@ export class AnalyticsService {
       console.log('📦 Total products found:', products?.length || 0);
 
       products?.forEach((product, index) => {
-        console.log(`🔍 Product ${index + 1}: ${product.name}`);
+        console.log(`🔍 Product ${index + 1}: ${product.name || 'Unnamed Product'}`);
+        console.log(`   Product ID: ${product.id}`);
+        console.log(`   Is Active: ${product.is_active}`);
+        console.log(`   Total Quantity: ${product.total_quantity}`);
+        console.log(`   Total Value: ${product.total_value}`);
         console.log(`   Variants count: ${product.variants?.length || 0}`);
         
         const productStock = product.variants?.reduce((sum: number, variant: any) => {
           const quantity = variant.quantity || 0;
-          console.log(`     Variant ${variant.name}: ${quantity} units`);
+          console.log(`     Variant ${variant.name || 'Unnamed'}: ${quantity} units @ $${variant.cost_price || 0}`);
           return sum + quantity;
         }, 0) || 0;
         
-        const productValue = product.variants?.reduce((sum: number, variant: any) => 
-          sum + ((variant.cost_price || 0) * (variant.quantity || 0)), 0) || 0;
+        const productValue = product.variants?.reduce((sum: number, variant: any) => {
+          const costPrice = variant.cost_price || 0;
+          const quantity = variant.quantity || 0;
+          const variantValue = costPrice * quantity;
+          console.log(`     Variant value: $${costPrice} × ${quantity} = $${variantValue}`);
+          return sum + variantValue;
+        }, 0) || 0;
 
         console.log(`   Product stock: ${productStock}, Product value: $${productValue}`);
 
@@ -117,7 +132,7 @@ export class AnalyticsService {
         .from('lats_suppliers')
         .select('*', { count: 'exact', head: true });
 
-      return {
+      const result = {
         totalVariants: totalVariants || 0,
         totalStock,
         totalValue,
@@ -129,8 +144,11 @@ export class AnalyticsService {
         brandsCount: brandsCount || 0,
         suppliersCount: suppliersCount || 0
       };
+
+      console.log('✅ Final analytics result:', result);
+      return result;
     } catch (error) {
-      console.error('Error fetching inventory analytics:', error);
+      console.error('❌ Error fetching inventory analytics:', error);
       return {
         totalVariants: 0,
         totalStock: 0,
