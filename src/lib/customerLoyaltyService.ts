@@ -29,17 +29,18 @@ export interface LoyaltyTier {
 export interface LoyaltyReward {
   id: string;
   name: string;
-  points: number;
+  pointsRequired: number;
   description: string;
   active: boolean;
+  type: string;
 }
 
 export interface PointTransaction {
   customerId: string;
-  type: 'earned' | 'spent' | 'adjusted' | 'redeemed' | 'expired';
-  points: number;
+  type: 'earned' | 'spent' | 'adjusted' | 'redeemed' | 'expired' | 'purchase' | 'manual';
+  amount: number;
   reason: string;
-  date: string;
+  timestamp: Date;
   orderId?: string;
   deviceId?: string;
   createdBy?: string;
@@ -660,6 +661,183 @@ class CustomerLoyaltyService {
     if (points >= 2000) return 'gold';
     if (points >= 1000) return 'silver';
     return 'bronze';
+  }
+
+  // Additional methods for the modal
+  async getCustomers(): Promise<LoyaltyCustomer[]> {
+    try {
+      const { data, error } = await supabase
+        .from('customers')
+        .select('*')
+        .limit(100);
+
+      if (error) {
+        console.error('Error fetching customers:', error);
+        return [];
+      }
+
+      return data?.map(customer => ({
+        id: customer.id,
+        name: customer.name || 'Unknown',
+        phone: customer.phone || '',
+        email: customer.email || '',
+        points: customer.points || 0,
+        tier: this.mapLoyaltyLevel(customer.loyalty_level),
+        totalSpent: customer.total_spent || 0,
+        joinDate: customer.created_at || '',
+        lastPurchase: customer.last_purchase || '',
+        orders: customer.orders || 0,
+        status: customer.is_active ? 'active' : 'inactive',
+        loyaltyLevel: customer.loyalty_level || 'bronze',
+        lastVisit: customer.last_visit || '',
+        isActive: customer.is_active || false,
+        customerId: customer.id
+      })) || [];
+    } catch (error) {
+      console.error('Error in getCustomers:', error);
+      return [];
+    }
+  }
+
+  async getMetrics(): Promise<LoyaltyMetrics> {
+    try {
+      const { data: customers, error } = await supabase
+        .from('customers')
+        .select('points, total_spent, is_active, loyalty_level');
+
+      if (error) {
+        console.error('Error fetching metrics:', error);
+        return {
+          totalCustomers: 0,
+          totalPoints: 0,
+          vipCustomers: 0,
+          activeCustomers: 0,
+          totalSpent: 0,
+          averagePoints: 0
+        };
+      }
+
+      const totalCustomers = customers?.length || 0;
+      const totalPoints = customers?.reduce((sum, c) => sum + (c.points || 0), 0) || 0;
+      const vipCustomers = customers?.filter(c => c.loyalty_level === 'platinum' || c.loyalty_level === 'gold').length || 0;
+      const activeCustomers = customers?.filter(c => c.is_active).length || 0;
+      const totalSpent = customers?.reduce((sum, c) => sum + (c.total_spent || 0), 0) || 0;
+      const averagePoints = totalCustomers > 0 ? totalPoints / totalCustomers : 0;
+
+      return {
+        totalCustomers,
+        totalPoints,
+        vipCustomers,
+        activeCustomers,
+        totalSpent,
+        averagePoints
+      };
+    } catch (error) {
+      console.error('Error in getMetrics:', error);
+      return {
+        totalCustomers: 0,
+        totalPoints: 0,
+        vipCustomers: 0,
+        activeCustomers: 0,
+        totalSpent: 0,
+        averagePoints: 0
+      };
+    }
+  }
+
+  async getTiers(): Promise<LoyaltyTier[]> {
+    return [
+      { name: 'Bronze', minPoints: 0, maxPoints: 999, discount: 5, benefits: ['Basic rewards'] },
+      { name: 'Silver', minPoints: 1000, maxPoints: 1999, discount: 10, benefits: ['Enhanced rewards', 'Priority support'] },
+      { name: 'Gold', minPoints: 2000, maxPoints: 4999, discount: 15, benefits: ['Premium rewards', 'Exclusive offers'] },
+      { name: 'Platinum', minPoints: 5000, maxPoints: 999999, discount: 20, benefits: ['VIP rewards', 'Personal concierge'] }
+    ];
+  }
+
+  async getRewards(): Promise<LoyaltyReward[]> {
+    return [
+      { id: '1', name: '10% Discount', pointsRequired: 100, description: 'Get 10% off your next purchase', active: true, type: 'discount' },
+      { id: '2', name: 'Free Shipping', pointsRequired: 200, description: 'Free shipping on your next order', active: true, type: 'discount' },
+      { id: '3', name: 'Free Product', pointsRequired: 500, description: 'Get a free product of your choice', active: true, type: 'free_item' },
+      { id: '4', name: 'VIP Treatment', pointsRequired: 1000, description: 'Exclusive VIP treatment and priority service', active: true, type: 'cashback' }
+    ];
+  }
+
+  async getPointHistory(customerId: string): Promise<PointTransaction[]> {
+    try {
+      const { data, error } = await supabase
+        .from('points_transactions')
+        .select('*')
+        .eq('customer_id', customerId)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (error) {
+        console.error('Error fetching point history:', error);
+        return [];
+      }
+
+      return data?.map(transaction => ({
+        customerId: transaction.customer_id,
+        type: transaction.transaction_type as any,
+        amount: transaction.points_change,
+        reason: transaction.reason,
+        timestamp: new Date(transaction.created_at),
+        orderId: transaction.metadata?.order_id,
+        deviceId: transaction.device_id,
+        createdBy: transaction.created_by
+      })) || [];
+    } catch (error) {
+      console.error('Error in getPointHistory:', error);
+      return [];
+    }
+  }
+
+  async addPoints(customerId: string, points: number, reason: string): Promise<boolean> {
+    return this.updateCustomerPoints(customerId, points, reason, 'adjusted');
+  }
+
+  async redeemReward(customerId: string, rewardId: string): Promise<boolean> {
+    try {
+      const rewards = await this.getRewards();
+      const reward = rewards.find(r => r.id === rewardId);
+      
+      if (!reward) {
+        console.error('Reward not found:', rewardId);
+        return false;
+      }
+
+      return this.updateCustomerPoints(customerId, -reward.pointsRequired, `Redeemed: ${reward.name}`, 'redeemed');
+    } catch (error) {
+      console.error('Error redeeming reward:', error);
+      return false;
+    }
+  }
+
+  async getRedemptionHistory(customerId: string): Promise<any[]> {
+    try {
+      const { data, error } = await supabase
+        .from('points_transactions')
+        .select('*')
+        .eq('customer_id', customerId)
+        .eq('transaction_type', 'redeemed')
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (error) {
+        console.error('Error fetching redemption history:', error);
+        return [];
+      }
+
+      return data?.map(transaction => ({
+        rewardName: transaction.reason,
+        pointsUsed: Math.abs(transaction.points_change),
+        redeemedAt: transaction.created_at
+      })) || [];
+    } catch (error) {
+      console.error('Error in getRedemptionHistory:', error);
+      return [];
+    }
   }
 }
 

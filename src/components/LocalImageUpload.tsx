@@ -230,7 +230,10 @@ export const LocalImageUpload: React.FC<LocalImageUploadProps> = ({
                 {/* File Info */}
                 <div className="mt-2 text-xs text-gray-600">
                   <div className="font-medium truncate">{fileWrapper.file.name}</div>
-                  <div>{(fileWrapper.file.size / 1024 / 1024).toFixed(2)} MB</div>
+                  <div>{(() => {
+                  const formatted = (fileWrapper.file.size / 1024 / 1024).toFixed(2);
+                  return formatted.replace(/\.00$/, '').replace(/\.0$/, '');
+                })()} MB</div>
                 </div>
               </div>
             ))}

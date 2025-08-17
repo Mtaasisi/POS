@@ -345,7 +345,7 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
               <tbody>
                 {products.map((product) => {
                   const category = categories.find(c => c.id === product.categoryId);
-                  const brand = brands.find(b => b.id === product.brandId);
+                  const brand = product.brand;
                   const mainVariant = product.variants?.[0];
                   const totalStock = product.variants?.reduce((sum, variant) => sum + (variant.quantity || 0), 0) || 0;
                   const stockStatus = totalStock <= 0 ? 'out-of-stock' : totalStock <= 10 ? 'low-stock' : 'in-stock';
@@ -445,7 +445,7 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {products.map((product) => {
             const category = categories.find(c => c.id === product.categoryId);
-            const brand = brands.find(b => b.id === product.brandId);
+            const brand = product.brand;
             
             return (
               <VariantProductCard

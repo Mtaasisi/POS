@@ -76,11 +76,16 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({
   const [activeTab, setActiveTab] = useState('overview');
 
   const formatCurrency = (amount: number) => {
-    return 'Tsh ' + Number(amount).toLocaleString('en-TZ', { maximumFractionDigits: 0 });
+    const formatted = Number(amount).toLocaleString('en-TZ', { 
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2 
+    });
+    return 'Tsh ' + formatted.replace(/\.00$/, '').replace(/\.0$/, '');
   };
 
   const formatPercentage = (value: number) => {
-    return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`;
+    const formatted = value.toFixed(1);
+    return `${value >= 0 ? '+' : ''}${formatted.replace(/\.0$/, '')}%`;
   };
 
   const getGrowthIcon = (value: number) => {

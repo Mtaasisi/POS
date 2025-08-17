@@ -320,8 +320,11 @@ const EmployeeManagementPage: React.FC = () => {
                 <p className="text-sm font-medium text-purple-600">Avg. Performance</p>
                 <p className="text-2xl font-bold text-purple-900">
                   {employees.length > 0 
-                    ? (employees.reduce((sum, e) => sum + e.performance, 0) / employees.length).toFixed(1)
-                    : '0.0'
+                                    ? (() => {
+                    const formatted = (employees.reduce((sum, e) => sum + e.performance, 0) / employees.length).toFixed(1);
+                    return formatted.replace(/\.0$/, '');
+                  })()
+                : '0'
                   }
                 </p>
               </div>
@@ -554,12 +557,15 @@ const EmployeeManagementPage: React.FC = () => {
                     </td>
                     <td className="py-3 px-4">
                       <p className="font-medium text-gray-900">
-                        {new Intl.NumberFormat('en-TZ', {
-                          style: 'currency',
-                          currency: 'TZS',
-                          minimumFractionDigits: 0,
-                          maximumFractionDigits: 0
-                        }).format(employee.salary)}
+                        {(() => {
+                          const formatted = new Intl.NumberFormat('en-TZ', {
+                            style: 'currency',
+                            currency: 'TZS',
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 2
+                          }).format(employee.salary);
+                          return formatted.replace(/\.00$/, '').replace(/\.0$/, '');
+                        })()}
                       </p>
                     </td>
                     <td className="py-3 px-4">

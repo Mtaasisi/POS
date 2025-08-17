@@ -217,7 +217,10 @@ export const PaymentAccountCardSelector: React.FC<PaymentAccountCardSelectorProp
               <div className="font-medium text-gray-900 truncate">{account.name}</div>
               {showDescriptions && (
                 <div className="text-sm text-gray-500 truncate">
-                  {account.type} • ${account.balance.toFixed(2)}
+                  {account.type} • ${(() => {
+                  const formatted = account.balance.toFixed(2);
+                  return formatted.replace(/\.00$/, '').replace(/\.0$/, '');
+                })()}
                 </div>
               )}
             </div>
@@ -301,7 +304,10 @@ export const PaymentAccountDisplay: React.FC<PaymentAccountDisplayProps> = ({
         <div className="font-medium">{account.name}</div>
         {showDescription && (
           <div className="text-sm text-gray-500">
-            {account.type} • ${account.balance.toFixed(2)}
+                            {account.type} • ${(() => {
+                  const formatted = account.balance.toFixed(2);
+                  return formatted.replace(/\.00$/, '').replace(/\.0$/, '');
+                })()}
           </div>
         )}
       </div>

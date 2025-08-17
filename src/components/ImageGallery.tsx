@@ -187,7 +187,10 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({
             {/* Image Info */}
             <div className="mt-2 text-xs text-gray-600">
               <div className="font-medium truncate">{image.fileName}</div>
-              <div>{(image.fileSize / 1024 / 1024).toFixed(2)} MB</div>
+                              <div>{(() => {
+                  const formatted = (image.fileSize / 1024 / 1024).toFixed(2);
+                  return formatted.replace(/\.00$/, '').replace(/\.0$/, '');
+                })()} MB</div>
               <div className="text-gray-400">
                 {new Date(image.uploadedAt).toLocaleDateString()}
               </div>

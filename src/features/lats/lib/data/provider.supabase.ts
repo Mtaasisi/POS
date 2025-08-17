@@ -272,7 +272,9 @@ class SupabaseDataProvider implements LatsDataProvider {
       }
 
       console.log('✅ User authenticated:', user.email);
+      console.log('🔧 Filters received:', filters);
 
+      // Build the select query properly - avoid using both columns and select
       let query = supabase
         .from('lats_products')
         .select(`
@@ -284,7 +286,7 @@ class SupabaseDataProvider implements LatsDataProvider {
         `)
         .order('name');
 
-      // Apply filters
+      // Apply filters with proper validation
       if (filters?.categoryId) {
         // Validate categoryId is a string
         if (typeof filters.categoryId === 'object') {
@@ -322,85 +324,169 @@ class SupabaseDataProvider implements LatsDataProvider {
         query = query.eq('is_active', filters.isActive);
       }
 
+      console.log('🔍 Executing products query...');
+      console.log('🔍 Query URL will be:', query.url);
+      
       const { data, error, count } = await query;
 
       if (error) {
         console.error('❌ Database error:', error);
+        console.error('❌ Error details:', error.details);
+        console.error('❌ Error hint:', error.hint);
+        console.error('❌ Error message:', error.message);
+        console.error('❌ Error code:', error.code);
+        
         if (error.code === 'PGRST116') {
           return { 
             ok: false, 
             message: 'Row Level Security (RLS) policy violation. Please ensure you are properly authenticated.' 
           };
         }
+        
+        // Check for malformed query errors
+        if (error.message?.includes('columns') && error.message?.includes('select')) {
+          console.error('🔍 This appears to be a columns/select conflict error');
+          return {
+            ok: false,
+            message: 'Invalid query format. Please contact support.'
+          };
+        }
+        
+        // Check for other common errors
+        if (error.code === 'PGRST301') {
+          return {
+            ok: false,
+            message: 'Invalid query parameters. Please check your filters.'
+          };
+        }
+        
         throw error;
       }
 
-      // Transform data to match expected format
-      const products = (data || []).map((product: any) => ({
-        id: product.id,
-        name: product.name,
-        description: product.description,
-        shortDescription: product.short_description,
-        sku: product.lats_product_variants?.[0]?.sku || '', // Use first variant's SKU as main product SKU
-        barcode: product.lats_product_variants?.[0]?.barcode || '', // Use first variant's barcode as main product barcode
-        categoryId: product.category_id,
-        brandId: product.brand_id,
-        supplierId: product.supplier_id,
-        images: product.images || [],
-        tags: product.tags || [],
-        isActive: product.is_active,
-        isFeatured: product.is_featured || false,
-        isDigital: product.is_digital || false,
-        requiresShipping: product.requires_shipping !== false, // Default to true
-        taxRate: product.tax_rate || 0.16,
-        variants: (product.lats_product_variants || []).map((variant: any) => ({
-          id: variant.id,
-          productId: variant.product_id,
-          sku: variant.sku,
-          name: variant.name,
-          attributes: variant.attributes || {},
-          costPrice: variant.cost_price || 0,
-          sellingPrice: variant.selling_price || 0, // primary field used across UI
-          price: variant.selling_price, // keep for backward compatibility
-          quantity: variant.quantity,
-          stockQuantity: variant.quantity, // UI convenience
-          minQuantity: variant.min_quantity,
-          minStockLevel: variant.min_quantity,
-          maxQuantity: variant.max_quantity,
-          maxStockLevel: variant.max_quantity,
-          barcode: variant.barcode,
-          weight: variant.weight,
-          dimensions: variant.dimensions,
-          isActive: true,
-          createdAt: variant.created_at,
-          updatedAt: variant.updated_at
-        })),
-        totalQuantity: product.total_quantity || 0,
-        totalValue: product.total_value || 0,
-        debutDate: product.debut_date,
-        debutNotes: product.debut_notes,
-        debutFeatures: product.debut_features || [],
-        metadata: product.metadata || {},
-        category: product.lats_categories,
-        brand: product.lats_brands,
-        supplier: product.lats_suppliers,
-        createdAt: product.created_at,
-        updatedAt: product.updated_at
-      }));
+      console.log('✅ Products query successful, processing data...');
+      console.log('📊 Raw data count:', data?.length || 0);
 
-      return { 
-        ok: true, 
+      // Fetch images for all products
+      const productIds = (data || []).map((product: any) => product.id);
+      let productImages: any[] = [];
+      
+      if (productIds.length > 0) {
+        try {
+          const { data: imagesData, error: imagesError } = await supabase
+            .from('product_images')
+            .select('*')
+            .in('product_id', productIds)
+            .order('is_primary', { ascending: false })
+            .order('created_at', { ascending: true });
+
+          if (imagesError) {
+            console.error('❌ Error fetching product images:', imagesError);
+          } else {
+            productImages = imagesData || [];
+            console.log('📸 Fetched images for', productImages.length, 'products');
+          }
+        } catch (imagesError) {
+          console.error('❌ Exception fetching product images:', imagesError);
+        }
+      }
+
+      // Transform the data to match the expected format
+      const transformedProducts = (data || []).map((product: any) => {
+        // Group images by product
+        const productImageList = productImages
+          .filter((img: any) => img.product_id === product.id)
+          .map((img: any) => img.image_url);
+
+        return {
+          id: product.id,
+          name: product.name,
+          description: product.description,
+          shortDescription: product.description,
+          sku: product.sku || '',
+          barcode: product.barcode,
+          categoryId: product.category_id,
+          brandId: product.brand_id,
+          supplierId: product.supplier_id,
+          images: productImageList.length > 0 ? productImageList : (product.images || []),
+          tags: product.tags || [],
+          isActive: product.is_active ?? true,
+          isFeatured: product.is_featured ?? false,
+          isDigital: product.is_digital ?? false,
+          requiresShipping: product.requires_shipping ?? true,
+          taxRate: product.tax_rate || 0,
+          totalQuantity: product.total_quantity || 0,
+          totalValue: product.total_value || 0,
+          condition: product.condition || 'new',
+          storeShelf: product.store_shelf,
+          category: product.lats_categories ? {
+            id: product.lats_categories.id,
+            name: product.lats_categories.name,
+            description: product.lats_categories.description,
+            color: product.lats_categories.color,
+            createdAt: product.lats_categories.created_at,
+            updatedAt: product.lats_categories.updated_at
+          } : undefined,
+          brand: product.lats_brands ? {
+            id: product.lats_brands.id,
+            name: product.lats_brands.name,
+            logo: product.lats_brands.logo,
+            website: product.lats_brands.website,
+            description: product.lats_brands.description,
+            createdAt: product.lats_brands.created_at,
+            updatedAt: product.lats_brands.updated_at
+          } : undefined,
+          supplier: product.lats_suppliers ? {
+            id: product.lats_suppliers.id,
+            name: product.lats_suppliers.name,
+            contactPerson: product.lats_suppliers.contact_person,
+            email: product.lats_suppliers.email,
+            phone: product.lats_suppliers.phone,
+            address: product.lats_suppliers.address,
+            website: product.lats_suppliers.website,
+            notes: product.lats_suppliers.notes,
+            createdAt: product.lats_suppliers.created_at,
+            updatedAt: product.lats_suppliers.updated_at
+          } : undefined,
+          variants: (product.lats_product_variants || []).map((variant: any) => ({
+            id: variant.id,
+            productId: variant.product_id,
+            sku: variant.sku,
+            name: variant.name,
+            attributes: variant.attributes || {},
+            costPrice: variant.cost_price || 0,
+            sellingPrice: variant.selling_price || 0,
+            quantity: variant.quantity || 0,
+            minQuantity: variant.min_quantity || 0,
+            maxQuantity: variant.max_quantity,
+            barcode: variant.barcode,
+            weight: variant.weight,
+            dimensions: variant.dimensions,
+            createdAt: variant.created_at,
+            updatedAt: variant.updated_at
+          })),
+          createdAt: product.created_at,
+          updatedAt: product.updated_at
+        };
+      });
+
+      console.log(`✅ Successfully processed ${transformedProducts.length} products`);
+
+      return {
+        ok: true,
         data: {
-          data: products,
-          total: count || 0,
-          page: filters?.page || 1,
-          limit: filters?.limit || 20,
-          totalPages: Math.ceil((count || 0) / (filters?.limit || 20))
+          data: transformedProducts,
+          total: count || transformedProducts.length,
+          page: 1,
+          limit: transformedProducts.length,
+          totalPages: 1
         }
       };
     } catch (error) {
-      console.error('Error fetching products:', error);
-      return { ok: false, message: 'Failed to fetch products' };
+      console.error('💥 Exception in getProducts:', error);
+      return { 
+        ok: false, 
+        message: 'Failed to load products. Please try again.' 
+      };
     }
   }
 
@@ -475,6 +561,25 @@ class SupabaseDataProvider implements LatsDataProvider {
       console.log('🔍 [DEBUG] Raw data from database:', data);
       console.log('🔍 [DEBUG] Variants data:', data.lats_product_variants);
       
+      // Fetch product images
+      let productImages: string[] = [];
+      try {
+        const { data: imagesData, error: imagesError } = await supabase
+          .from('product_images')
+          .select('image_url')
+          .eq('product_id', sanitizedId)
+          .order('is_primary', { ascending: false })
+          .order('created_at', { ascending: true });
+
+        if (imagesError) {
+          console.error('❌ Error fetching product images:', imagesError);
+        } else {
+          productImages = (imagesData || []).map((img: any) => img.image_url);
+        }
+      } catch (imagesError) {
+        console.error('❌ Exception fetching product images:', imagesError);
+      }
+      
       const product = {
         id: data.id,
         name: data.name,
@@ -485,7 +590,7 @@ class SupabaseDataProvider implements LatsDataProvider {
         categoryId: data.category_id,
         brandId: data.brand_id,
         supplierId: data.supplier_id,
-        images: data.images || [],
+        images: productImages, // Use fetched images
         tags: data.tags || [],
         isActive: data.is_active,
         isFeatured: data.is_featured || false,
@@ -615,7 +720,13 @@ class SupabaseDataProvider implements LatsDataProvider {
       const mainProductCreateData: any = {
         name: data.name,
         description: data.description || null,
-        is_active: Boolean(data.isActive)
+        is_active: Boolean(data.isActive),
+        // Add fields that already exist in database schema
+        tags: data.tags || [],
+        images: data.images || [],
+        // Add new fields from the migration
+        condition: data.condition || 'new',
+        store_shelf: data.storeShelf || null
       };
       
       // Only add category_id if it's a valid UUID
@@ -820,7 +931,10 @@ class SupabaseDataProvider implements LatsDataProvider {
         supplier_id: data.supplierId || null,
         images: data.images || [],
         tags: data.tags || [],
-        is_active: Boolean(data.isActive)
+        is_active: Boolean(data.isActive),
+        // Add new fields from the migration
+        condition: data.condition || 'new',
+        store_shelf: data.storeShelf || null
       };
       
       console.log('📦 [DEBUG] Main product update data:', mainProductUpdateData);
@@ -1080,12 +1194,7 @@ class SupabaseDataProvider implements LatsDataProvider {
     try {
       const { data, error } = await supabase
         .from('lats_sale_items')
-        .select(`
-          *,
-          sale:lats_sales(*),
-          product:lats_products(name),
-          variant:lats_product_variants(sku)
-        `)
+        .select('*')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -1100,11 +1209,7 @@ class SupabaseDataProvider implements LatsDataProvider {
     try {
       const { data, error } = await supabase
         .from('lats_sale_items')
-        .select(`
-          *,
-          sale:lats_sales(*),
-          variant:lats_product_variants(sku)
-        `)
+        .select('*')
         .eq('product_id', productId)
         .order('created_at', { ascending: false });
 

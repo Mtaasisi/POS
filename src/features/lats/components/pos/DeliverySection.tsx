@@ -19,16 +19,21 @@ interface DeliverySectionProps {
   isOpen: boolean;
   onClose: () => void;
   onDeliverySet: (delivery: DeliveryFormData) => void;
+  selectedCustomer?: {
+    name: string;
+    phone: string;
+  } | null;
 }
 
 const DeliverySection: React.FC<DeliverySectionProps> = ({
   isOpen,
   onClose,
-  onDeliverySet
+  onDeliverySet,
+  selectedCustomer
 }) => {
   const [formData, setFormData] = useState<DeliveryFormData>({
-    customerName: '',
-    customerPhone: '',
+    customerName: selectedCustomer?.name || '',
+    customerPhone: selectedCustomer?.phone || '',
     deliveryAddress: '',
     deliveryDate: '',
     deliveryTime: '',
@@ -36,6 +41,17 @@ const DeliverySection: React.FC<DeliverySectionProps> = ({
     deliveryFee: 0,
     deliveryMethod: 'standard'
   });
+
+  // Update form data when selectedCustomer changes
+  React.useEffect(() => {
+    if (selectedCustomer) {
+      setFormData(prev => ({
+        ...prev,
+        customerName: selectedCustomer.name,
+        customerPhone: selectedCustomer.phone
+      }));
+    }
+  }, [selectedCustomer]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -85,7 +101,7 @@ const DeliverySection: React.FC<DeliverySectionProps> = ({
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-100 rounded-lg">
+              <div className="p-2 bg-gradient-to-br from-blue-100 to-blue-200 rounded-xl">
                 <Truck className="w-5 h-5 text-blue-600" />
               </div>
               <div>
@@ -176,8 +192,8 @@ const DeliverySection: React.FC<DeliverySectionProps> = ({
                     key={method.id}
                     className={`p-4 border rounded-lg cursor-pointer transition-all ${
                       formData.deliveryMethod === method.id
-                        ? 'border-blue-500 bg-blue-50'
-                        : 'border-gray-200 hover:border-gray-300'
+                        ? 'border-blue-500 bg-gradient-to-br from-blue-50 to-blue-100'
+                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                     }`}
                     onClick={() => {
                       handleInputChange('deliveryMethod', method.id);
@@ -191,7 +207,7 @@ const DeliverySection: React.FC<DeliverySectionProps> = ({
                       )}
                     </div>
                     <p className="text-sm text-gray-600">{method.time}</p>
-                    <p className="text-sm font-medium text-gray-900">TZS {method.fee}</p>
+                    <p className="text-sm font-medium text-blue-600">TZS {method.fee}</p>
                   </div>
                 ))}
               </div>
@@ -288,7 +304,7 @@ const DeliverySection: React.FC<DeliverySectionProps> = ({
               <GlassButton
                 type="submit"
                 disabled={isSubmitting}
-                className="flex-1 bg-gradient-to-r from-blue-500 to-indigo-600 text-white"
+                className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 text-white"
               >
                 {isSubmitting ? 'Setting Delivery...' : 'Set Delivery'}
               </GlassButton>

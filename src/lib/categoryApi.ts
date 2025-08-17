@@ -5,7 +5,6 @@ export interface Category {
   name: string;
   description?: string;
   color?: string;
-  is_active: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -14,14 +13,12 @@ export interface CreateCategoryData {
   name: string;
   description?: string;
   color?: string;
-  is_active?: boolean;
 }
 
 export interface UpdateCategoryData {
   name?: string;
   description?: string;
   color?: string;
-  is_active?: boolean;
 }
 
 // Get all categories
@@ -40,13 +37,12 @@ export const getCategories = async (): Promise<Category[]> => {
   }
 };
 
-// Get active categories only
+// Get active categories only (since there's no is_active column, return all categories)
 export const getActiveCategories = async (): Promise<Category[]> => {
   try {
     const { data, error } = await supabase
       .from('lats_categories')
       .select('*')
-      .eq('is_active', true)
       .order('name');
 
     if (error) throw error;
@@ -62,10 +58,7 @@ export const createCategory = async (categoryData: CreateCategoryData): Promise<
   try {
     const { data, error } = await supabase
       .from('lats_categories')
-      .insert([{
-        ...categoryData,
-        is_active: categoryData.is_active ?? true
-      }])
+      .insert([categoryData])
       .select()
       .single();
 
@@ -98,15 +91,12 @@ export const updateCategory = async (id: string, categoryData: UpdateCategoryDat
   }
 };
 
-// Delete a category (soft delete by setting is_active to false)
+// Delete a category (hard delete since there's no is_active column)
 export const deleteCategory = async (id: string): Promise<void> => {
   try {
     const { error } = await supabase
       .from('lats_categories')
-      .update({
-        is_active: false,
-        updated_at: new Date().toISOString()
-      })
+      .delete()
       .eq('id', id);
 
     if (error) throw error;
@@ -116,22 +106,9 @@ export const deleteCategory = async (id: string): Promise<void> => {
   }
 };
 
-// Restore a deleted category
+// Restore a deleted category (not applicable since we're doing hard delete)
 export const restoreCategory = async (id: string): Promise<void> => {
-  try {
-    const { error } = await supabase
-      .from('lats_categories')
-      .update({
-        is_active: true,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', id);
-
-    if (error) throw error;
-  } catch (error) {
-    console.error('Error restoring category:', error);
-    throw error;
-  }
+  throw new Error('Restore functionality not available - categories are permanently deleted');
 };
 
 // Get category by ID
@@ -175,7 +152,6 @@ export const searchCategories = async (query: string): Promise<Category[]> => {
       .from('lats_categories')
       .select('*')
       .or(`name.ilike.%${query}%,description.ilike.%${query}%`)
-      .eq('is_active', true)
       .order('name');
 
     if (error) throw error;
@@ -193,9 +169,8 @@ export const getCategoriesWithDeviceCount = async (): Promise<(Category & { devi
       .from('lats_categories')
       .select(`
         *,
-        devices:devices(count)
+        devices:lats_products(count)
       `)
-      .eq('is_active', true)
       .order('name');
 
     if (error) throw error;

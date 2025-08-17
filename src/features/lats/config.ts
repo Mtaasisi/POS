@@ -40,7 +40,7 @@ export const LATS_ROUTES = {
   purchaseOrderNew: '/lats/purchase-orders/new',
   purchaseOrderDetail: (id: string) => `/lats/purchase-orders/${id}`,
   spareParts: '/lats/spare-parts',
-  quickCash: '/lats/quick-cash',
+  // quickCash: '/lats/quick-cash', // Removed - not using this functionality
   variantSelection: '/lats/variant-selection'
 } as const;
 

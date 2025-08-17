@@ -49,7 +49,10 @@ const BusinessAnalyticsPage: React.FC = () => {
     const totalProfit = analyticsData.kpis.profit.current;
     const totalCustomers = analyticsData.kpis.customers.current;
     const totalOrders = analyticsData.kpis.orders.current;
-    const profitMargin = (totalProfit / totalRevenue * 100).toFixed(1);
+    const profitMargin = (() => {
+      const formatted = (totalProfit / totalRevenue * 100).toFixed(1);
+      return formatted.replace(/\.0$/, '');
+    })();
     const customerLifetimeValue = (totalRevenue / totalCustomers).toFixed(0);
 
     return {
@@ -73,9 +76,11 @@ const BusinessAnalyticsPage: React.FC = () => {
   // Format number with K/M suffix
   const formatNumber = (num: number) => {
     if (num >= 1000000) {
-      return (num / 1000000).toFixed(1) + 'M';
+      const formatted = (num / 1000000).toFixed(1);
+    return formatted.replace(/\.0$/, '') + 'M';
     } else if (num >= 1000) {
-      return (num / 1000).toFixed(1) + 'K';
+              const formatted = (num / 1000).toFixed(1);
+        return formatted.replace(/\.0$/, '') + 'K';
     }
     return num.toString();
   };
@@ -256,7 +261,10 @@ const BusinessAnalyticsPage: React.FC = () => {
             <span className={`text-sm font-medium ${
               analyticsData.kpis.revenue.growth >= 0 ? 'text-green-600' : 'text-red-600'
             }`}>
-              {analyticsData.kpis.revenue.growth >= 0 ? '↗' : '↘'} {Math.abs(analyticsData.kpis.revenue.growth).toFixed(1)}%
+                              {analyticsData.kpis.revenue.growth >= 0 ? '↗' : '↘'} {(() => {
+                  const formatted = Math.abs(analyticsData.kpis.revenue.growth).toFixed(1);
+                  return formatted.replace(/\.0$/, '');
+                })()}%
             </span>
           </div>
         </GlassCard>

@@ -80,16 +80,15 @@ export interface Product {
   images?: string[];
   tags: string[];
   isActive: boolean;
-  isFeatured: boolean;
-  isDigital: boolean;
-  requiresShipping: boolean;
-  taxRate: number;
   totalQuantity: number;
   totalValue: number;
   variants: ProductVariant[];
   category?: Category;
   brand?: Brand;
   supplier?: Supplier;
+  // Add new fields from database
+  condition?: string;
+  storeShelf?: string;
   // Debut information
   debutDate?: string;
   debutNotes?: string;

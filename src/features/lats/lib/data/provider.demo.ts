@@ -30,13 +30,7 @@ class DemoDataProvider implements LatsDataProvider {
     receiptHeader: 'LATS Device Repair',
     receiptFooter: 'Thank you for your business!',
     enableBarcode: true,
-    enableQuickCash: true,
-    quickCashAmounts: [
-      { amount: 100, label: '100', type: 'fixed' },
-      { amount: 500, label: '500', type: 'fixed' },
-      { amount: 1000, label: '1K', type: 'fixed' },
-      { amount: 10, label: '10%', type: 'percentage' }
-    ],
+    enableQuickCash: false, // Disabled - not using this functionality
     defaultPaymentMethod: 'cash'
   };
 

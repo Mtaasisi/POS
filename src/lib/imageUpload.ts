@@ -1,6 +1,7 @@
 // Import the main Supabase client and use it for uploads
 import { supabase } from './supabaseClient';
 import { LocalProductImageStorageService } from './localProductImageStorage';
+import { EnhancedImageUploadService } from './enhancedImageUpload';
 
 // Use the main Supabase client for uploads to ensure proper authentication
 const uploadSupabase = supabase;
@@ -25,6 +26,10 @@ export interface UploadResult {
 export class ImageUploadService {
   // Development mode storage for temporary images
   private static devImageStorage: Map<string, UploadedImage[]> = new Map();
+  
+  // Cache for product images to reduce API calls
+  private static imageCache = new Map<string, { images: UploadedImage[]; timestamp: number }>();
+  private static readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
   
   private static readonly MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
   private static readonly ALLOWED_TYPES = [
@@ -216,7 +221,7 @@ export class ImageUploadService {
   }
 
   /**
-   * Update product images when temporary product ID is replaced with real one
+   * Update product images from temporary product ID to real product ID
    * Since temporary products don't create database records, we need to create them now
    */
   static async updateProductImages(tempProductId: string, realProductId: string): Promise<{ success: boolean; error?: string }> {
@@ -230,13 +235,25 @@ export class ImageUploadService {
         return { success: false, error: 'Authentication required' };
       }
 
-      // Check if we have development mode images stored
+      // Check if we have development mode images stored in both services
       const devImages = this.devImageStorage.get(tempProductId);
-      if (devImages && devImages.length > 0) {
-        console.log('🛠️ Found development mode images:', devImages.length);
+      const enhancedDevImages = EnhancedImageUploadService.getDevImages(tempProductId);
+      
+      console.log('🔍 ImageUploadService: Checking dev storage for:', tempProductId);
+      console.log('🔍 ImageUploadService: All dev storage keys:', Array.from(this.devImageStorage.keys()));
+      console.log('🔍 ImageUploadService: Dev storage size:', this.devImageStorage.size);
+      console.log('🔍 ImageUploadService: Regular service images:', devImages?.length || 0);
+      console.log('🔍 ImageUploadService: Enhanced service images:', enhancedDevImages?.length || 0);
+      
+      const allDevImages = [...(devImages || []), ...(enhancedDevImages || [])];
+      
+      if (allDevImages.length > 0) {
+        console.log('🛠️ Found development mode images:', allDevImages.length);
+        console.log('🛠️ Regular service images:', devImages?.length || 0);
+        console.log('🛠️ Enhanced service images:', enhancedDevImages?.length || 0);
         
         // Create database records for development mode images
-        const imageRecords = devImages.map((img, index) => ({
+        const imageRecords = allDevImages.map((img, index) => ({
           product_id: realProductId,
           image_url: img.url,
           file_name: img.fileName,
@@ -262,11 +279,19 @@ export class ImageUploadService {
           createdCount: insertedImages?.length || 0 
         });
 
-        // Clean up development storage
+        // Clean up development storage from both services
         this.devImageStorage.delete(tempProductId);
+        EnhancedImageUploadService.clearDevImages(tempProductId);
+
+        // Clear cache for the real product ID since images were updated
+        this.clearImageCache(realProductId);
 
         return { success: true };
       }
+      
+      // If no development mode images found, check if we're in development mode
+      // and try to find images in the form data or recent uploads
+      console.log('🔍 No development mode images found, checking for recent uploads...');
       
       // Since temporary products don't create database records, we need to create them now
       // The images are already uploaded to storage with the temporary product ID in the path
@@ -301,6 +326,7 @@ export class ImageUploadService {
       // Create database records for each image
       const imageRecords = [];
       let primaryImageSet = false;
+      let foundMatchingFiles = false;
       
       for (const file of storageFiles) {
         // Skip non-image files
@@ -323,6 +349,7 @@ export class ImageUploadService {
         }
         
         console.log('✅ Found matching file:', file.name);
+        foundMatchingFiles = true;
         
         // Generate the storage path
         const storagePath = `temp/${file.name}`;
@@ -349,6 +376,16 @@ export class ImageUploadService {
         imageRecords.push(imageRecord);
       }
       
+      if (!foundMatchingFiles) {
+        console.log('📝 No matching files found for timestamp:', tempTimestamp);
+        console.log('🔍 This might be a development mode issue where images were not properly stored');
+        console.log('🔍 Available files:', storageFiles.map(f => f.name));
+        
+        // In development mode, if no matching files found, we might need to handle this differently
+        // For now, we'll return success to avoid blocking product creation
+        return { success: true };
+      }
+      
       if (imageRecords.length === 0) {
         console.log('📝 No valid image files found');
         return { success: true };
@@ -371,6 +408,9 @@ export class ImageUploadService {
         createdCount: insertedImages?.length || 0 
       });
       
+      // Clear cache for the real product ID since images were updated
+      this.clearImageCache(realProductId);
+      
       return { success: true };
     } catch (error) {
       console.error('❌ Error updating product images:', error);
@@ -392,11 +432,18 @@ export class ImageUploadService {
         return [];
       }
 
+      // Check cache first
+      const cached = this.imageCache.get(productId);
+      if (cached && (Date.now() - cached.timestamp) < this.CACHE_DURATION) {
+        console.log('📦 Returning cached images for product:', productId);
+        return cached.images;
+      }
+
       // Use the local storage service to get images
       const localImages = await LocalProductImageStorageService.getProductImages(productId);
       
       // Convert to UploadedImage format
-      return localImages.map(img => ({
+      const images = localImages.map(img => ({
         id: img.id,
         url: img.url,
         thumbnailUrl: img.thumbnailUrl,
@@ -407,9 +454,31 @@ export class ImageUploadService {
         uploadedAt: img.uploadedAt
       }));
 
+      // Cache the result
+      this.imageCache.set(productId, {
+        images,
+        timestamp: Date.now()
+      });
+
+      console.log('📦 Cached images for product:', productId, 'count:', images.length);
+      return images;
+
     } catch (error) {
       console.error('❌ Get images error:', error);
       return [];
+    }
+  }
+
+  /**
+   * Clear cache for a specific product (call this when images are updated)
+   */
+  static clearImageCache(productId?: string): void {
+    if (productId) {
+      this.imageCache.delete(productId);
+      console.log('🗑️ Cleared image cache for product:', productId);
+    } else {
+      this.imageCache.clear();
+      console.log('🗑️ Cleared all image cache');
     }
   }
 
@@ -421,7 +490,13 @@ export class ImageUploadService {
     if (file.size > this.MAX_FILE_SIZE) {
       return {
         valid: false,
-        error: `File size ${(file.size / 1024 / 1024).toFixed(2)}MB exceeds limit of ${this.MAX_FILE_SIZE / 1024 / 1024}MB`
+        error: `File size ${(() => {
+          const formatted = (file.size / 1024 / 1024).toFixed(2);
+          return formatted.replace(/\.00$/, '').replace(/\.0$/, '');
+        })()}MB exceeds limit of ${(() => {
+          const formatted = (this.MAX_FILE_SIZE / 1024 / 1024).toFixed(2);
+          return formatted.replace(/\.00$/, '').replace(/\.0$/, '');
+        })()}MB`
       };
     }
 

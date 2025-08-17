@@ -1,5 +1,5 @@
 // POSPage component for LATS module
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
 import { useCustomers } from '../../../context/CustomersContext';
@@ -12,12 +12,13 @@ import { BackButton } from '../../../features/shared/components/ui/BackButton';
 import LATSBreadcrumb from '../components/ui/LATSBreadcrumb';
 import POSTopBar from '../components/pos/POSTopBar';
 import {
-  ShoppingCart, Search, Barcode, CreditCard, Receipt, Plus, Minus, Trash2, DollarSign, Package, TrendingUp, Users, Activity, Calculator, Scan, ArrowLeft, ArrowRight, CheckCircle, XCircle, RefreshCw, AlertCircle, User, Phone, Mail, Crown
+  ShoppingCart, Search, Barcode, CreditCard, Receipt, Plus, Minus, Trash2, DollarSign, Package, TrendingUp, Users, Activity, Calculator, Scan, ArrowLeft, ArrowRight, CheckCircle, XCircle, RefreshCw, AlertCircle, User, Phone, Mail, Crown, ChevronDown, ChevronUp, Clock, Smartphone, Warehouse, Command, FileText, BarChart3, Settings, Truck, Zap, Star, Gift, Clock as ClockIcon, Hash as HashIcon
 } from 'lucide-react';
 import { useDynamicDataStore, simulateSale } from '../lib/data/dynamicDataStore';
 import { useInventoryStore } from '../stores/useInventoryStore';
 import { posService } from '../../../lib/posService';
 import { supabase } from '../../../lib/supabaseClient';
+import { getExternalProductBySku, markExternalProductAsSold } from '../../../lib/externalProductApi';
 import { 
   isSingleVariantProduct, 
   isMultiVariantProduct, 
@@ -27,13 +28,43 @@ import {
   getProductStockStatus 
 } from '../lib/productUtils';
 
+// Import new smart services
+import { smartSearchService } from '../lib/smartSearch';
+import { realTimeStockService } from '../lib/realTimeStock';
+import { dynamicPricingService } from '../lib/dynamicPricing';
+
 // Import variant-aware POS components
 import VariantProductCard from '../components/pos/VariantProductCard';
 import VariantCartItem from '../components/pos/VariantCartItem';
 import AddExternalProductModal from '../components/pos/AddExternalProductModal';
-import QuickCashPage from './QuickCashPage';
+// QuickCash feature removed - not using this functionality
 import DeliverySection from '../components/pos/DeliverySection';
 import AddCustomerModal from '../../../features/customers/components/forms/AddCustomerModal';
+import SalesAnalyticsModal from '../components/pos/SalesAnalyticsModal';
+import ZenoPayPaymentModal from '../components/pos/ZenoPayPaymentModal';
+import PaymentTrackingModal from '../components/pos/PaymentTrackingModal';
+import CustomerLoyaltyModal from '../components/pos/CustomerLoyaltyModal';
+import POSBottomBar from '../components/pos/POSBottomBar';
+import DynamicPricingDisplay from '../components/pos/DynamicPricingDisplay';
+import POSPricingSettings from '../components/pos/POSPricingSettings';
+import DynamicPricingSettings from '../components/pos/DynamicPricingSettings';
+import ReceiptSettings from '../components/pos/ReceiptSettings';
+import BarcodeScannerSettingsTab from '../components/pos/BarcodeScannerSettingsTab';
+import DeliverySettingsTab from '../components/pos/DeliverySettingsTab';
+import SearchFilterSettingsTab from '../components/pos/SearchFilterSettingsTab';
+import UserPermissionsSettingsTab from '../components/pos/UserPermissionsSettingsTab';
+import LoyaltyCustomerSettingsTab from '../components/pos/LoyaltyCustomerSettingsTab';
+import AnalyticsReportingSettingsTab from '../components/pos/AnalyticsReportingSettingsTab';
+              import AdvancedNotificationSettingsTab from '../components/pos/AdvancedNotificationSettingsTab';
+              import AdvancedSettingsTab from '../components/pos/AdvancedSettingsTab';
+              import GeneralSettingsTab from '../components/pos/GeneralSettingsTab';
+import DynamicPricingSettingsTab from '../components/pos/DynamicPricingSettingsTab';
+import ReceiptSettingsTab from '../components/pos/ReceiptSettingsTab';
+
+// Performance optimization constants
+const PRODUCTS_PER_PAGE = 20;
+const SEARCH_DEBOUNCE_MS = 300;
+const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
 // Demo products data
 const DEMO_PRODUCTS = [
@@ -192,6 +223,7 @@ const DEMO_CUSTOMERS: Customer[] = [
 // Payment methods
 const PAYMENT_METHODS = [
   { id: 'cash', name: 'Cash', icon: '💵', description: 'Cash payment' },
+  { id: 'zenopay', name: 'ZenoPay', icon: '📱', description: 'Mobile money via ZenoPay (phone required)' },
   { id: 'mpesa', name: 'M-Pesa', icon: '📱', description: 'Mobile money' },
   { id: 'card', name: 'Card', icon: '💳', description: 'Credit/Debit card' },
   { id: 'bank', name: 'Bank Transfer', icon: '🏦', description: 'Bank transfer' }
@@ -208,6 +240,20 @@ interface CartItem {
   quantity: number;
   totalPrice: number;
   availableQuantity?: number;
+  metadata?: {
+    supplierName?: string;
+    supplierPhone?: string;
+    purchaseDate?: string;
+    purchasePrice?: number;
+    purchaseQuantity?: number;
+    warrantyInfo?: string;
+    returnPolicy?: string;
+    productCondition?: string;
+    category?: string;
+    brand?: string;
+    barcode?: string;
+    notes?: string;
+  };
 }
 
 interface Customer {
@@ -245,6 +291,23 @@ interface Receipt {
   receiptNumber: string;
 }
 
+// Performance optimization hook
+const useDebounce = (value: string, delay: number) => {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+};
+
 const POSPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -255,8 +318,7 @@ const POSPage: React.FC = () => {
   // Get real customers from CustomersContext
   const { customers } = useCustomers();
 
-  // Global loading system
-  const { withLoading, fetchWithLoading } = useLoadingOperations();
+  // Global loading system - not used in this component
   
   // Database state management
   const { 
@@ -270,21 +332,233 @@ const POSPage: React.FC = () => {
     loadBrands,
     loadSuppliers,
     searchProducts,
-    adjustStock
+    adjustStock,
+    getSoldQuantity,
+    loadSales
   } = useInventoryStore();
+
+  // Performance optimization: Cache data loading state
+  const [dataLoaded, setDataLoaded] = useState(false);
+  const [lastLoadTime, setLastLoadTime] = useState(0);
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+
+  // Debounced search for better performance
+  const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearchQuery = useDebounce(searchQuery, SEARCH_DEBOUNCE_MS);
+
+  // Add state for enhanced search and filtering - moved to top to avoid temporal dead zone
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [selectedBrand, setSelectedBrand] = useState<string>('');
+  const [priceRange, setPriceRange] = useState({ min: '', max: '' });
+  const [stockFilter, setStockFilter] = useState<'all' | 'in-stock' | 'low-stock' | 'out-of-stock'>('all');
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [sortBy, setSortBy] = useState<'name' | 'price' | 'stock' | 'recent' | 'sales'>('sales');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   // Use database products instead of demo data and transform them to include required properties
   const products = useMemo(() => {
     return dbProducts.map(product => ({
       ...product,
       categoryName: categories.find(c => c.id === product.categoryId)?.name || 'Unknown Category',
-      brandName: brands.find(b => b.id === product.brandId)?.name || undefined,
+              brandName: product.brand?.name || undefined,
       images: product.images || []
     }));
   }, [dbProducts, categories, brands]);
 
+  // Optimized filtered products with pagination
+  const filteredProducts = useMemo(() => {
+    let filtered = products;
+    
+    // Basic search filter
+    if (debouncedSearchQuery.trim()) {
+      const query = debouncedSearchQuery.toLowerCase();
+      filtered = filtered.filter(product => {
+        const mainVariant = product.variants?.[0];
+        const category = categories.find(c => c.id === product.categoryId)?.name || '';
+        const brand = product.brand?.name || '';
+        
+        return (product.name?.toLowerCase() || '').includes(query) ||
+               (mainVariant?.sku?.toLowerCase() || '').includes(query) ||
+               (brand.toLowerCase() || '').includes(query) ||
+               (category.toLowerCase() || '').includes(query);
+      });
+    }
+    
+    // Category filter
+    if (selectedCategory) {
+      filtered = filtered.filter(product => product.categoryId === selectedCategory);
+    }
+    
+    // Brand filter
+    if (selectedBrand) {
+      filtered = filtered.filter(product => product.brandId === selectedBrand);
+    }
+    
+    // Price range filter
+    if (priceRange.min || priceRange.max) {
+      filtered = filtered.filter(product => {
+        const mainVariant = product.variants?.[0];
+        const price = mainVariant?.sellingPrice || 0;
+        const min = priceRange.min ? parseFloat(priceRange.min) : 0;
+        const max = priceRange.max ? parseFloat(priceRange.max) : Infinity;
+        return price >= min && price <= max;
+      });
+    }
+    
+    // Stock filter
+    if (stockFilter !== 'all') {
+      filtered = filtered.filter(product => {
+        const mainVariant = product.variants?.[0];
+        const stock = mainVariant?.quantity || 0;
+        
+        switch (stockFilter) {
+          case 'in-stock':
+            return stock > 10;
+          case 'low-stock':
+            return stock > 0 && stock <= 10;
+          case 'out-of-stock':
+            return stock === 0;
+          default:
+            return true;
+        }
+      });
+    }
+    
+    // Sorting
+    filtered.sort((a, b) => {
+      let aValue: any, bValue: any;
+      
+      switch (sortBy) {
+        case 'name':
+          aValue = a.name?.toLowerCase() || '';
+          bValue = b.name?.toLowerCase() || '';
+          break;
+        case 'price':
+          aValue = a.variants?.[0]?.sellingPrice || 0;
+          bValue = b.variants?.[0]?.sellingPrice || 0;
+          break;
+        case 'stock':
+          aValue = a.variants?.[0]?.quantity || 0;
+          bValue = b.variants?.[0]?.quantity || 0;
+          break;
+        case 'recent':
+          aValue = new Date(a.createdAt || '').getTime();
+          bValue = new Date(b.createdAt || '').getTime();
+          break;
+        case 'sales':
+          // Calculate total sold quantity for all variants of each product
+          const aSoldQuantity = a.variants?.reduce((sum, variant) => {
+            return sum + getSoldQuantity(a.id, variant.id);
+          }, 0) || 0;
+          const bSoldQuantity = b.variants?.reduce((sum, variant) => {
+            return sum + getSoldQuantity(b.id, variant.id);
+          }, 0) || 0;
+          aValue = aSoldQuantity;
+          bValue = bSoldQuantity;
+          break;
+        default:
+          return 0;
+      }
+      
+      if (sortOrder === 'asc') {
+        return aValue > bValue ? 1 : -1;
+      } else {
+        return aValue < bValue ? 1 : -1;
+      }
+    });
+    
+    return filtered;
+  }, [products, categories, brands, debouncedSearchQuery, selectedCategory, selectedBrand, priceRange, stockFilter, sortBy, sortOrder]);
+
+  // Paginated products
+  const paginatedProducts = useMemo(() => {
+    const startIndex = (currentPage - 1) * PRODUCTS_PER_PAGE;
+    const endIndex = startIndex + PRODUCTS_PER_PAGE;
+    return filteredProducts.slice(startIndex, endIndex);
+  }, [filteredProducts, currentPage]);
+
+  // Update pagination when filtered products change
+  useEffect(() => {
+    const newTotalPages = Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE);
+    setTotalPages(newTotalPages);
+    
+    // Reset to first page if current page is out of bounds
+    if (currentPage > newTotalPages && newTotalPages > 0) {
+      setCurrentPage(1);
+    }
+  }, [filteredProducts.length, currentPage]);
+
+  // Optimized data loading with caching
+  const loadDataWithCache = useCallback(async () => {
+    const now = Date.now();
+    
+    // Check if data is still fresh (within cache duration)
+    if (dataLoaded && (now - lastLoadTime) < CACHE_DURATION_MS) {
+      console.log('📊 LATS POS: Using cached data');
+      return;
+    }
+
+    try {
+      console.log('🔧 LATS POS: Loading fresh data from database...');
+      const startTime = performance.now();
+      
+      await Promise.all([
+        loadProducts(),
+        loadCategories(),
+        loadBrands(),
+        loadSuppliers(),
+        loadSales()
+      ]);
+      
+      const endTime = performance.now();
+      console.log(`📊 LATS POS: Data loaded successfully in ${(endTime - startTime).toFixed(2)}ms`);
+      console.log('📦 Products available for POS:', products.length);
+      console.log('📂 Categories loaded:', categories.length);
+      console.log('🏷️ Brands loaded:', brands.length);
+      console.log('🏢 Suppliers loaded:', suppliers.length);
+      
+      setDataLoaded(true);
+      setLastLoadTime(now);
+    } catch (error) {
+      console.error('Error loading data for POS:', error);
+    }
+  }, [dataLoaded, lastLoadTime, loadProducts, loadCategories, loadBrands, loadSuppliers, products.length, categories.length, brands.length, suppliers.length]);
+
+  // Initialize real-time stock monitoring
+  useEffect(() => {
+    const initializeRealTimeStock = async () => {
+      await realTimeStockService.initialize();
+      
+      // Subscribe to stock alerts
+      const unsubscribeAlerts = realTimeStockService.subscribeToStockAlerts((alert) => {
+        console.log('⚠️ Stock alert received:', alert);
+        // Show notification to user
+        if (alert.type === 'critical' || alert.type === 'out') {
+          // You can implement a toast notification here
+          console.warn(`Critical stock alert: ${alert.productName} - ${alert.currentStock} remaining`);
+        }
+      });
+      
+      return unsubscribeAlerts;
+    };
+    
+    initializeRealTimeStock();
+    
+    // Cleanup on unmount
+    return () => {
+      realTimeStockService.disconnect();
+    };
+  }, []);
+
+  // Load data from database on component mount
+  React.useEffect(() => {
+    loadDataWithCache();
+  }, [loadDataWithCache]);
+
   // Local state
-  const [searchQuery, setSearchQuery] = useState('');
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -293,9 +567,11 @@ const POSPage: React.FC = () => {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
+  const [showCustomerSearchModal, setShowCustomerSearchModal] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [currentReceipt, setCurrentReceipt] = useState<Receipt | null>(null);
   const [cashierName] = useState('John Cashier'); // In real app, get from auth
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
   // Add state for recent scans
   const [recentScans, setRecentScans] = useState<string[]>([]);
@@ -303,9 +579,129 @@ const POSPage: React.FC = () => {
 
   // POS-specific modal states only
   const [showAddExternalProductModal, setShowAddExternalProductModal] = useState(false);
-  const [showQuickCashKeypad, setShowQuickCashKeypad] = useState(false);
+  // QuickCash state removed - not using this functionality
   const [showDeliverySection, setShowDeliverySection] = useState(false);
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
+
+  // Add state for manual discount functionality
+  const [manualDiscount, setManualDiscount] = useState(0);
+  const [showDiscountModal, setShowDiscountModal] = useState(false);
+  const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>('percentage');
+  const [discountValue, setDiscountValue] = useState('');
+
+  // Add state for real-time statistics and notifications
+  const [dailyStats, setDailyStats] = useState({
+    totalSales: 0,
+    totalTransactions: 0,
+    averageTransaction: 0,
+    topProducts: [] as Array<{name: string, sales: number}>,
+    lowStockItems: [] as any[]
+  });
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [currentShift, setCurrentShift] = useState({
+    startTime: new Date(),
+    totalSales: 0,
+    totalItems: 0
+  });
+
+
+
+  // Add state for barcode scanner functionality
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
+  const [scannerError, setScannerError] = useState<string>('');
+  const [isScanning, setIsScanning] = useState(false);
+  const [scannedBarcodes, setScannedBarcodes] = useState<string[]>([]);
+
+  // Add state for receipt management
+  const [receiptTemplate, setReceiptTemplate] = useState({
+    showLogo: true,
+    showTax: true,
+    showDiscount: true,
+    showCustomerInfo: true,
+    footerText: 'Thank you for your purchase!'
+  });
+  const [receiptHistory, setReceiptHistory] = useState<Receipt[]>([]);
+  const [showReceiptHistory, setShowReceiptHistory] = useState(false);
+  const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
+  const [receiptPrintMode, setReceiptPrintMode] = useState<'thermal' | 'a4' | 'email'>('thermal');
+
+  // Add state for inventory management
+  const [showInventoryAlerts, setShowInventoryAlerts] = useState(false);
+  const [lowStockThreshold, setLowStockThreshold] = useState(10);
+  const [inventoryAlerts, setInventoryAlerts] = useState<Array<{
+    productId: string;
+    productName: string;
+    currentStock: number;
+    threshold: number;
+    type: 'low' | 'out' | 'critical';
+  }>>([]);
+  const [showStockAdjustment, setShowStockAdjustment] = useState(false);
+  const [selectedProductForAdjustment, setSelectedProductForAdjustment] = useState<any>(null);
+
+  // Add state for enhanced customer management
+  const [customerLoyaltyPoints, setCustomerLoyaltyPoints] = useState<{[key: string]: number}>({});
+  const [customerPurchaseHistory, setCustomerPurchaseHistory] = useState<{[key: string]: any[]}>({});
+  const [customerNotes, setCustomerNotes] = useState<{[key: string]: string}>({});
+  const [showCustomerDetails, setShowCustomerDetails] = useState(false);
+  const [selectedCustomerForDetails, setSelectedCustomerForDetails] = useState<Customer | null>(null);
+  const [showLoyaltyPoints, setShowLoyaltyPoints] = useState(false);
+  const [pointsToAdd, setPointsToAdd] = useState('');
+  const [pointsReason, setPointsReason] = useState('');
+
+  // Add state for sales analytics modal
+  const [showSalesAnalytics, setShowSalesAnalytics] = useState(false);
+  
+  // Add state for ZenoPay payment modal
+  const [showZenoPayPayment, setShowZenoPayPayment] = useState(false);
+  
+  // Add state for Payment Tracking modal
+  const [showPaymentTracking, setShowPaymentTracking] = useState(false);
+
+  // Add state for Customer Loyalty modal
+  const [showCustomerLoyalty, setShowCustomerLoyalty] = useState(false);
+
+  // Add state for Smart Pricing Settings popup
+
+
+  // Add state for settings and configuration
+  const [showSettings, setShowSettings] = useState(false);
+  const [activeSettingsTab, setActiveSettingsTab] = useState('general');
+  const [posSettings, setPosSettings] = useState({
+    taxRate: 16,
+    currency: 'TZS',
+    receiptFooter: 'Thank you for your purchase!',
+    autoPrint: false,
+    soundEnabled: true,
+    lowStockThreshold: 10,
+    loyaltyPointsRate: 100, // points per currency unit
+    defaultPaymentMethod: 'cash'
+  });
+  const [showNotificationSettings, setShowNotificationSettings] = useState(false);
+  const [notificationSettings, setNotificationSettings] = useState({
+    lowStockAlerts: true,
+    salesNotifications: true,
+    customerAlerts: true,
+    soundEnabled: true,
+    emailNotifications: false
+  });
+
+  // Add final features: security, delivery, and mobile responsiveness
+  const [userPermissions, setUserPermissions] = useState({
+    canManageInventory: true,
+    canProcessRefunds: true,
+    canViewAnalytics: true,
+    canManageCustomers: true,
+    canAdjustSettings: true
+  });
+  
+
+  const [deliverySettings, setDeliverySettings] = useState({
+    enabled: false,
+    deliveryFee: 2000,
+    freeDeliveryThreshold: 50000,
+    deliveryAreas: ['Dar es Salaam', 'Arusha', 'Mwanza', 'Dodoma']
+  });
 
   // Load data from database on component mount
   React.useEffect(() => {
@@ -331,21 +727,7 @@ const POSPage: React.FC = () => {
     loadData();
   }, [loadProducts, loadCategories, loadBrands, loadSuppliers]);
 
-  // Filtered products based on search
-  const filteredProducts = useMemo(() => {
-    if (!searchQuery.trim()) return [];
-    
-    return products.filter(product => {
-      const mainVariant = product.variants?.[0];
-      const category = categories.find(c => c.id === product.categoryId)?.name || '';
-      const brand = brands.find(b => b.id === product.brandId)?.name || '';
-      
-      return (product.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
-             (mainVariant?.sku?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
-             (brand.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
-             (category.toLowerCase() || '').includes(searchQuery.toLowerCase());
-    });
-  }, [products, categories, brands, searchQuery]);
+
 
   // Filtered customers based on search
   const filteredCustomers = useMemo(() => {
@@ -362,28 +744,91 @@ const POSPage: React.FC = () => {
   const subtotal = cartItems.reduce((sum, item) => sum + item.totalPrice, 0);
   const tax = subtotal * 0.16; // 16% tax
   
-  // Enhanced discount calculation based on customer loyalty level
-  const discount = useMemo(() => {
-    if (!selectedCustomer) return 0;
-    
-    // Check for VIP status based on loyalty level or color tag
-    const isVIP = selectedCustomer.loyaltyLevel === 'platinum' || 
-                  selectedCustomer.loyaltyLevel === 'gold' ||
-                  selectedCustomer.colorTag === 'vip';
-    
-    if (isVIP) {
-      return subtotal * 0.05; // 5% VIP discount
+  // Dynamic pricing calculation with smart discounts
+  const { finalPrice, appliedDiscounts } = useMemo(() => {
+    if (cartItems.length === 0) {
+      return { finalPrice: subtotal, appliedDiscounts: [] };
     }
-    
-    // Bronze and Silver customers get 2% discount
-    if (selectedCustomer.loyaltyLevel === 'bronze' || selectedCustomer.loyaltyLevel === 'silver') {
-      return subtotal * 0.02; // 2% discount
+
+    // Calculate dynamic pricing for each item
+    let totalFinalPrice = 0;
+    const allAppliedDiscounts: any[] = [];
+
+    cartItems.forEach(item => {
+      const basePrice = item.price;
+      const context = {
+        customer: selectedCustomer,
+        quantity: item.quantity,
+        totalAmount: subtotal,
+        category: item.metadata?.category,
+        brand: item.metadata?.brand,
+        timeOfDay: new Date().getHours(),
+        dayOfWeek: new Date().getDay()
+      };
+
+      const { finalPrice: itemFinalPrice, appliedDiscounts: itemDiscounts } = 
+        dynamicPricingService.calculatePrice(basePrice, context);
+
+      totalFinalPrice += itemFinalPrice * item.quantity;
+      allAppliedDiscounts.push(...itemDiscounts);
+    });
+
+    // Apply manual discount on top
+    let finalTotal = totalFinalPrice;
+    if (manualDiscount > 0) {
+      if (discountType === 'percentage') {
+        finalTotal -= totalFinalPrice * (manualDiscount / 100);
+      } else {
+        finalTotal -= manualDiscount;
+      }
     }
-    
-    return 0;
-  }, [selectedCustomer, subtotal]);
+
+    return {
+      finalPrice: Math.max(0, finalTotal),
+      appliedDiscounts: allAppliedDiscounts
+    };
+  }, [cartItems, selectedCustomer, subtotal, manualDiscount, discountType]);
+
+  const discount = subtotal - finalPrice;
   
   const total = subtotal + tax - discount;
+
+  // Calculate real-time statistics
+  const calculateDailyStats = useCallback(() => {
+    const today = new Date().toDateString();
+    const todaySales = sales.filter(sale => 
+      new Date(sale.date).toDateString() === today
+    );
+    
+    const totalSales = todaySales.reduce((sum, sale) => sum + sale.total, 0);
+    const totalTransactions = todaySales.length;
+    const averageTransaction = totalTransactions > 0 ? totalSales / totalTransactions : 0;
+    
+    // Get top products (simplified - in real app, this would come from database)
+    const topProducts = products.slice(0, 5).map(product => ({
+      name: product.name,
+      sales: Math.floor(Math.random() * 50) + 10 // Mock data
+    }));
+    
+    // Get low stock items
+    const lowStockItems = products.filter(product => {
+      const mainVariant = product.variants?.[0];
+      return mainVariant && (mainVariant.quantity || 0) < 10;
+    }).slice(0, 5);
+    
+    setDailyStats({
+      totalSales,
+      totalTransactions,
+      averageTransaction,
+      topProducts,
+      lowStockItems
+    });
+  }, [sales, products]);
+
+  // Update statistics when data changes
+  useEffect(() => {
+    calculateDailyStats();
+  }, [calculateDailyStats]);
 
   // Handle adding product to cart with variant support
   const handleAddToCart = useCallback((product: any, variant?: any, quantity: number = 1) => {
@@ -453,6 +898,38 @@ const POSPage: React.FC = () => {
     setShowSearchResults(false);
   }, []);
 
+  // Barcode scanner functions
+  const handleBarcodeScan = useCallback((barcode: string) => {
+    setScannedBarcodes(prev => [...prev, barcode]);
+    
+    // Find product by barcode
+    const product = products.find(p => {
+      const mainVariant = p.variants?.[0];
+      return mainVariant?.barcode === barcode || mainVariant?.sku === barcode;
+    });
+    
+    if (product) {
+      handleAddToCart(product);
+      setScannerError('');
+    } else {
+      setScannerError(`Product not found for barcode: ${barcode}`);
+    }
+  }, [products, handleAddToCart]);
+
+  const startBarcodeScanner = useCallback(() => {
+    setShowBarcodeScanner(true);
+    setIsScanning(true);
+    setScannerError('');
+    
+    // Simulate barcode scanning (in real app, this would use camera API)
+    setTimeout(() => {
+      const mockBarcodes = ['1234567890123', '1234567890124', '1234567890125'];
+      const randomBarcode = mockBarcodes[Math.floor(Math.random() * mockBarcodes.length)];
+      handleBarcodeScan(randomBarcode);
+      setIsScanning(false);
+    }, 2000);
+  }, [handleBarcodeScan]);
+
   // Handle navigation state from variant selection
   useEffect(() => {
     if (location.state?.action === 'addToCart' && location.state?.selectedVariant) {
@@ -466,53 +943,66 @@ const POSPage: React.FC = () => {
     }
   }, [location.state, handleAddToCart, navigate]);
 
-  // Consolidated unified search handler for both text search and barcode scanning
-  const handleUnifiedSearch = useCallback((query: string) => {
+  // Smart search with AI-powered suggestions
+  const [searchSuggestions, setSearchSuggestions] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+
+  // Consolidated unified search handler with smart search
+  const handleUnifiedSearch = useCallback(async (query: string) => {
     const trimmedQuery = query.trim();
     
     if (!trimmedQuery) {
       setSearchQuery('');
       setShowSearchResults(false);
+      setSearchSuggestions([]);
       return;
     }
 
     setSearchQuery(trimmedQuery);
     setShowSearchResults(true);
+    setIsSearching(true);
 
+    try {
     // Check if input looks like a barcode (long numeric/alphanumeric string)
     const isBarcodeLike = trimmedQuery.length >= 8 && /^[A-Za-z0-9]+$/.test(trimmedQuery);
     
-    // Try to find exact match first (for barcodes, SKUs, or IDs)
-    const exactMatch = products.find(p => {
-      const mainVariant = p.variants?.[0];
-      return mainVariant?.sku === trimmedQuery || 
-             mainVariant?.barcode === trimmedQuery ||
-             p.id === trimmedQuery;
-    });
-    
-    if (exactMatch) {
-      // Add to scan history if it's barcode-like
-      if (isBarcodeLike) {
-        setScanHistory(prev => [
-          { barcode: trimmedQuery, product: exactMatch, timestamp: new Date() },
-          ...prev.slice(0, 9) // Keep last 10 scans
-        ]);
-      }
+      // Use smart search service for better results
+      const searchResults = await smartSearchService.searchProducts(trimmedQuery, 20);
       
-      // Auto-add to cart for exact matches
-      handleAddToCart(exactMatch);
+      if (searchResults.length > 0) {
+        // Get suggestions for better UX
+        const suggestions = await smartSearchService.getSearchSuggestions(trimmedQuery, 5);
+        setSearchSuggestions(suggestions);
+        
+        // Check for exact matches first
+        const exactMatches = searchResults.filter(result => result.relevance === 1.0);
+        
+        if (exactMatches.length === 1 && isBarcodeLike) {
+          // Auto-add to cart for single exact barcode match
+          handleAddToCart(exactMatches[0].product);
       setSearchQuery('');
       setShowSearchResults(false);
+          setSearchSuggestions([]);
       return;
     }
 
-    // For text search, show filtered results
+        // Add to scan history if it's barcode-like and found
+        if (isBarcodeLike && exactMatches.length > 0) {
+          setScanHistory(prev => [
+            { barcode: trimmedQuery, product: exactMatches[0].product, timestamp: new Date() },
+            ...prev.slice(0, 9) // Keep last 10 scans
+          ]);
+        }
+      } else {
+        setSearchSuggestions([]);
+      }
+    } catch (error) {
+      console.error('Error in smart search:', error);
+      // Fallback to basic search
     const filtered = products.filter(product => {
       const mainVariant = product.variants?.[0];
-      
-      // Get category and brand names from the store
       const category = categories.find(c => c.id === product.categoryId)?.name || '';
-      const brand = brands.find(b => b.id === product.brandId)?.name || '';
+              const brand = product.brand?.name || '';
       
       return (product.name?.toLowerCase() || '').includes(trimmedQuery.toLowerCase()) ||
              (mainVariant?.sku?.toLowerCase() || '').includes(trimmedQuery.toLowerCase()) ||
@@ -520,14 +1010,10 @@ const POSPage: React.FC = () => {
              (category.toLowerCase() || '').includes(trimmedQuery.toLowerCase()) ||
              (mainVariant?.barcode && mainVariant.barcode.includes(trimmedQuery));
     });
-
-    // If only one result and it's a barcode-like input, auto-add to cart
-    if (filtered.length === 1 && isBarcodeLike) {
-      handleAddToCart(filtered[0]);
-      setSearchQuery('');
-      setShowSearchResults(false);
+    } finally {
+      setIsSearching(false);
     }
-  }, [products, handleAddToCart]);
+  }, [products, handleAddToCart, categories, brands]);
 
   // Handle search input changes
   const handleSearchInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -556,10 +1042,15 @@ const POSPage: React.FC = () => {
   }, []);
 
   // Handle customer selection
-  const handleCustomerSelect = useCallback((customer: Customer) => {
-    setSelectedCustomer(customer);
+  const handleCustomerSelect = useCallback((customer: any) => {
+    const customerWithStatus = {
+      ...customer,
+      status: customer.status || 'active' as const
+    };
+    setSelectedCustomer(customerWithStatus);
     setCustomerSearchQuery('');
     setShowCustomerSearch(false);
+    setManualDiscount(0); // Reset manual discount when customer changes
   }, []);
 
   // Handle removing customer
@@ -569,7 +1060,11 @@ const POSPage: React.FC = () => {
 
   // Handle new customer created
   const handleCustomerCreated = useCallback((newCustomer: any) => {
-    setSelectedCustomer(newCustomer);
+    const customerWithStatus = {
+      ...newCustomer,
+      status: 'active' as const
+    };
+    setSelectedCustomer(customerWithStatus);
     setShowAddCustomerModal(false);
     setCustomerSearchQuery('');
     setShowCustomerSearch(false);
@@ -635,7 +1130,31 @@ const POSPage: React.FC = () => {
   // Handle payment method selection
   const handlePaymentMethodSelect = useCallback((method: PaymentMethod) => {
     setSelectedPaymentMethod(method);
-  }, []);
+    
+    // If ZenoPay is selected, open the ZenoPay payment modal with USSD popup
+    if (method.id === 'zenopay') {
+      if (!selectedCustomer) {
+        alert('ZenoPay USSD popup requires customer phone number to process mobile money payments. Please select a customer first.');
+        setSelectedPaymentMethod(null);
+        return;
+      }
+      
+      if (!selectedCustomer.phone) {
+        alert('ZenoPay USSD popup requires customer phone number for mobile money payments. Please update customer information or select a different customer.');
+        setSelectedPaymentMethod(null);
+        return;
+      }
+      
+      console.log('[ZenoPay USSD] Opening ZenoPay payment modal for customer:', {
+        name: selectedCustomer.name,
+        phone: selectedCustomer.phone,
+        total: total
+      });
+      
+      setShowZenoPayPayment(true);
+      setShowPaymentModal(false);
+    }
+  }, [selectedCustomer, total]);
 
   // Handle payment completion
   const handlePaymentComplete = useCallback(async () => {
@@ -654,10 +1173,16 @@ const POSPage: React.FC = () => {
       // Simulate payment processing
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // Deduct stock for all items in cart
+      // Deduct stock for all items in cart (skip external products)
       console.log('🔧 LATS POS: Deducting stock for sale...');
       const stockDeductionPromises = cartItems.map(async (item) => {
         try {
+          // Skip stock deduction for external products
+          if (item.variantId === 'external') {
+            console.log(`⏭️ Skipping stock deduction for external product: ${item.name}`);
+            return { success: true, product: item.name, quantity: item.quantity, isExternal: true };
+          }
+
           // Find the product in the database
           const product = products.find(p => p.id === item.productId);
           if (!product) {
@@ -721,6 +1246,23 @@ const POSPage: React.FC = () => {
       console.log('💾 Saving sale to database...');
       const saleNumber = `SALE-${Date.now().toString().slice(-6)}`;
       
+              // Validate that all cart items have valid variants before saving (skip external products)
+        const invalidItems = cartItems.filter(item => {
+          // Skip validation for external products
+          if (item.variantId === 'external') return false;
+          
+          const product = products.find(p => p.id === item.productId);
+          if (!product) return true;
+          
+          const variant = product.variants?.find(v => v.id === item.variantId);
+          return !variant;
+        });
+        
+        if (invalidItems.length > 0) {
+          const invalidItemNames = invalidItems.map(item => item.name).join(', ');
+          throw new Error(`Cannot save sale: Some items have invalid variants: ${invalidItemNames}`);
+        }
+      
       try {
         // Create sale record
         const { data: sale, error: saleError } = await supabase
@@ -740,29 +1282,195 @@ const POSPage: React.FC = () => {
           console.error('❌ Failed to create sale:', saleError);
           throw new Error(`Failed to create sale: ${saleError.message}`);
         }
+        
+        // Additional validation: Check if all referenced records exist in database
+        console.log('🔍 Validating foreign key references...');
+        console.log('🔍 Sale ID to validate:', sale.id);
+        console.log('🔍 Products in cart:', cartItems.map(item => ({ id: item.productId, name: item.name })));
+        
+        // Validate that the sale record exists
+        const { data: saleCheck, error: saleCheckError } = await supabase
+          .from('lats_sales')
+          .select('id')
+          .eq('id', sale.id)
+          .single();
+          
+        if (saleCheckError || !saleCheck) {
+          throw new Error(`Sale record not found in database: ${sale.id}`);
+        }
+        
+        // Validate that all products exist (skip external products)
+        const regularProductIds = [...new Set(cartItems
+          .filter(item => item.variantId !== 'external')
+          .map(item => item.productId)
+        )];
+        
+        if (regularProductIds.length > 0) {
+          const { data: productsCheck, error: productsCheckError } = await supabase
+            .from('lats_products')
+            .select('id, name')
+            .in('id', regularProductIds);
+            
+          if (productsCheckError) {
+            throw new Error(`Failed to validate products: ${productsCheckError.message}`);
+          }
+          
+          if (productsCheck.length !== regularProductIds.length) {
+            const foundIds = productsCheck.map(p => p.id);
+            const missingIds = regularProductIds.filter(id => !foundIds.includes(id));
+            throw new Error(`Some products not found in database: ${missingIds.join(', ')}`);
+          }
+        }
+        
+        // Validate that all variants exist (skip external products)
+        const regularVariantIds = [...new Set(cartItems
+          .filter(item => item.variantId !== 'external')
+          .map(item => item.variantId)
+        )];
+        
+        if (regularVariantIds.length > 0) {
+          const { data: variantsCheck, error: variantsCheckError } = await supabase
+            .from('lats_product_variants')
+            .select('id, name, product_id')
+            .in('id', regularVariantIds);
+            
+          if (variantsCheckError) {
+            throw new Error(`Failed to validate variants: ${variantsCheckError.message}`);
+          }
+          
+          if (variantsCheck.length !== regularVariantIds.length) {
+            const foundIds = variantsCheck.map(v => v.id);
+            const missingIds = regularVariantIds.filter(id => !foundIds.includes(id));
+            throw new Error(`Some variants not found in database: ${missingIds.join(', ')}`);
+          }
+        }
+        
+        console.log('✅ All foreign key references validated successfully');
 
         // Create sale items
-        const saleItemsData = cartItems.map(item => {
-          const product = products.find(p => p.id === item.productId);
-          const variant = product?.variants?.find(v => v.id === item.variantId) || product?.variants?.[0];
+        const saleItemsData = await Promise.all(cartItems.map(async (item) => {
+          const isExternalProduct = item.variantId === 'external';
           
-          return {
-            sale_id: sale.id,
-            product_id: item.productId,
-            variant_id: variant?.id || null,
-            quantity: item.quantity,
-            price: item.price,
-            total_price: item.totalPrice
-          };
-        });
+          if (isExternalProduct) {
+            // Handle external products - they don't exist in inventory
+            // First, get the external product from database
+            let externalProductId = null;
+            try {
+              const externalProduct = await getExternalProductBySku(item.sku);
+              if (externalProduct) {
+                // Mark the external product as sold
+                await markExternalProductAsSold(externalProduct.id);
+                externalProductId = externalProduct.id;
+                console.log(`✅ External product marked as sold: ${externalProduct.name} (${externalProduct.sku})`);
+              }
+            } catch (error) {
+              console.warn(`⚠️ Could not find or update external product with SKU: ${item.sku}`, error);
+            }
+            
+            const saleItem = {
+              sale_id: sale.id,
+              product_id: null, // External products don't have a product_id in inventory
+              variant_id: null, // External products don't have a variant_id in inventory
+              external_product_id: externalProductId, // Link to external product record
+              quantity: item.quantity,
+              unit_price: item.price,
+              total_price: item.totalPrice,
+              product_name: item.name, // Store product name for external products
+              variant_name: item.variantName || 'External Product',
+              sku: item.sku,
+              // Enhanced metadata for supplier tracking and returns
+              supplier_name: item.metadata?.supplierName || '',
+              supplier_phone: item.metadata?.supplierPhone || '',
+              purchase_date: item.metadata?.purchaseDate || '',
+              purchase_price: item.metadata?.purchasePrice || 0,
+              purchase_quantity: item.metadata?.purchaseQuantity || 0,
+              warranty_info: item.metadata?.warrantyInfo || '',
+              return_policy: item.metadata?.returnPolicy || '',
+              product_condition: item.metadata?.productCondition || 'new',
 
+              category: item.metadata?.category || '',
+              brand: item.metadata?.brand || '',
+              barcode: item.metadata?.barcode || '',
+              notes: item.metadata?.notes || ''
+            };
+            
+            console.log('📦 Creating external sale item with supplier info:', {
+              product: item.name,
+              variant: item.variantName || 'External Product',
+              quantity: item.quantity,
+              unit_price: item.price,
+              total_price: item.totalPrice,
+              supplier: item.metadata?.supplierName,
+              purchase_date: item.metadata?.purchaseDate,
+              purchase_price: item.metadata?.purchasePrice,
+              external_product_id: externalProductId
+            });
+            
+            return saleItem;
+          } else {
+            // Handle regular inventory products
+            const product = products.find(p => p.id === item.productId);
+            if (!product) {
+              throw new Error(`Product not found for cart item: ${item.name}`);
+            }
+            
+            const variant = product.variants?.find(v => v.id === item.variantId) || product.variants?.[0];
+            if (!variant) {
+              throw new Error(`No variant found for product: ${product.name}. All products must have at least one variant.`);
+            }
+            
+            const saleItem = {
+              sale_id: sale.id,
+              product_id: item.productId,
+              variant_id: variant.id,
+              quantity: item.quantity,
+              unit_price: item.price,
+              total_price: item.totalPrice
+            };
+            
+            console.log('📦 Creating inventory sale item:', {
+              product: product.name,
+              variant: variant.name,
+              variant_id: variant.id,
+              quantity: item.quantity,
+              unit_price: item.price,
+              total_price: item.totalPrice
+            });
+            
+            return saleItem;
+          }
+        }));
+
+        console.log('💾 Inserting sale items into database...');
+        console.log('🔍 Sale ID:', sale.id);
+        console.log('🔍 Sale items data to insert:', JSON.stringify(saleItemsData, null, 2));
+        
+        // Validate data types before insertion
+        const validatedSaleItems = saleItemsData.map(item => ({
+          sale_id: item.sale_id,
+          product_id: item.product_id,
+          variant_id: item.variant_id,
+          quantity: parseInt(item.quantity.toString()),
+          unit_price: parseFloat(item.unit_price.toString()),
+          total_price: parseFloat(item.total_price.toString())
+        }));
+        
+        console.log('🔍 Validated sale items data:', JSON.stringify(validatedSaleItems, null, 2));
+        
         const { error: itemsError } = await supabase
           .from('lats_sale_items')
-          .insert(saleItemsData);
+          .insert(validatedSaleItems);
 
         if (itemsError) {
           console.error('❌ Failed to create sale items:', itemsError);
-          throw new Error(`Failed to create sale items: ${itemsError.message}`);
+          console.error('❌ Error details:', {
+            message: itemsError.message,
+            details: itemsError.details,
+            hint: itemsError.hint,
+            code: itemsError.code
+          });
+          console.error('❌ Sale items data that failed:', JSON.stringify(validatedSaleItems, null, 2));
+          throw new Error(`Failed to create sale items: ${itemsError.message}. Details: ${itemsError.details || 'No additional details'}`);
         }
 
         console.log('✅ Sale saved successfully:', sale.id);
@@ -832,6 +1540,34 @@ const POSPage: React.FC = () => {
   const handleClearCart = useCallback(() => {
     if (cartItems.length > 0 && confirm('Are you sure you want to clear the cart?')) {
       setCartItems([]);
+      setExpandedItems(new Set());
+      setManualDiscount(0); // Clear manual discount when cart is cleared
+    }
+  }, [cartItems.length]);
+
+  // Handle clear manual discount
+  const handleClearManualDiscount = useCallback(() => {
+    setManualDiscount(0);
+  }, []);
+
+  // Handle expand/collapse cart item
+  const handleToggleExpand = useCallback((itemId: string) => {
+    setExpandedItems(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(itemId)) {
+        newSet.delete(itemId);
+      } else {
+        newSet.add(itemId);
+      }
+      return newSet;
+    });
+  }, []);
+
+  // Auto-expand the latest item and minimize previous items when cart changes
+  useEffect(() => {
+    if (cartItems.length > 0) {
+      const latestItemId = cartItems[cartItems.length - 1].id;
+      setExpandedItems(new Set([latestItemId]));
     }
   }, [cartItems.length]);
 
@@ -886,11 +1622,202 @@ const POSPage: React.FC = () => {
 
   // Format money
   const formatMoney = (amount: number) => {
-    return new Intl.NumberFormat('en-TZ', {
+    const formatted = new Intl.NumberFormat('en-TZ', {
       style: 'currency',
-      currency: 'TZS'
+      currency: 'TZS',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2
     }).format(amount);
+    
+    // Remove trailing .00 and .0
+    return formatted.replace(/\.00$/, '').replace(/\.0$/, '');
   };
+
+  // Receipt management functions
+  const printReceipt = useCallback((receipt: Receipt, mode: 'thermal' | 'a4' | 'email' = 'thermal') => {
+    const receiptContent = `
+      ========================================
+      LATS POS SYSTEM
+      Receipt #${receipt.receiptNumber}
+      Date: ${receipt.date} Time: ${receipt.time}
+      ========================================
+      
+      Items:
+      ${receipt.items.map(item => 
+        `${item.name}${item.variantName ? ` (${item.variantName})` : ''}
+         ${item.quantity} x ${formatMoney(item.price)} = ${formatMoney(item.totalPrice)}`
+      ).join('\n')}
+      
+      ========================================
+      Subtotal: ${formatMoney(receipt.subtotal)}
+      ${receiptTemplate.showTax ? `Tax (16%): ${formatMoney(receipt.tax)}` : ''}
+      ${receiptTemplate.showDiscount && receipt.discount > 0 ? `Discount: -${formatMoney(receipt.discount)}` : ''}
+      ========================================
+      TOTAL: ${formatMoney(receipt.total)}
+      ========================================
+      
+      ${receiptTemplate.showCustomerInfo && receipt.customer ? `
+      Customer: ${receipt.customer.name}
+      Phone: ${receipt.customer.phone}
+      ` : ''}
+      
+      Payment Method: ${receipt.paymentMethod.name}
+      Cashier: ${receipt.cashier}
+      
+      ========================================
+      ${receiptTemplate.footerText}
+      ========================================
+    `;
+
+    if (mode === 'thermal') {
+      // Simulate thermal printer
+      console.log('Printing to thermal printer:', receiptContent);
+      alert('Receipt sent to thermal printer');
+    } else if (mode === 'a4') {
+      // Simulate A4 printing
+      const printWindow = window.open('', '_blank');
+      if (printWindow) {
+        printWindow.document.write(`
+          <html>
+            <head><title>Receipt ${receipt.receiptNumber}</title></head>
+            <body style="font-family: monospace; font-size: 12px; line-height: 1.4;">
+              <pre>${receiptContent}</pre>
+            </body>
+          </html>
+        `);
+        printWindow.document.close();
+        printWindow.print();
+      }
+    } else if (mode === 'email') {
+      // Simulate email sending
+      console.log('Sending receipt via email:', receiptContent);
+      alert('Receipt sent via email');
+    }
+  }, [receiptTemplate, formatMoney]);
+
+  const sendReceiptViaWhatsApp = useCallback((receipt: Receipt) => {
+    const message = `Receipt #${receipt.receiptNumber}\nTotal: ${formatMoney(receipt.total)}\nDate: ${receipt.date}`;
+    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank');
+  }, [formatMoney]);
+
+  const sendReceiptViaSMS = useCallback((receipt: Receipt) => {
+    const message = `Receipt #${receipt.receiptNumber}\nTotal: ${formatMoney(receipt.total)}\nDate: ${receipt.date}`;
+    const smsUrl = `sms:?body=${encodeURIComponent(message)}`;
+    window.open(smsUrl, '_blank');
+  }, [formatMoney]);
+
+  // Inventory management functions
+  const checkInventoryAlerts = useCallback(() => {
+    const alerts = [];
+    
+    for (const product of products) {
+      const mainVariant = product.variants?.[0];
+      if (mainVariant) {
+        const currentStock = mainVariant.quantity || 0;
+        
+        if (currentStock === 0) {
+          alerts.push({
+            productId: product.id,
+            productName: product.name,
+            currentStock,
+            threshold: 0,
+            type: 'out' as const
+          });
+        } else if (currentStock <= 5) {
+          alerts.push({
+            productId: product.id,
+            productName: product.name,
+            currentStock,
+            threshold: 5,
+            type: 'critical' as const
+          });
+        } else if (currentStock <= lowStockThreshold) {
+          alerts.push({
+            productId: product.id,
+            productName: product.name,
+            currentStock,
+            threshold: lowStockThreshold,
+            type: 'low' as const
+          });
+        }
+      }
+    }
+    
+    setInventoryAlerts(alerts);
+  }, [products, lowStockThreshold]);
+
+  // Update inventory alerts when products change
+  useEffect(() => {
+    checkInventoryAlerts();
+  }, [checkInventoryAlerts]);
+
+  const handleStockAdjustment = useCallback(async (productId: string, variantId: string, adjustment: number, reason: string) => {
+    try {
+      const response = await adjustStock(productId, variantId, adjustment, reason);
+      if (response.ok) {
+        alert('Stock adjusted successfully');
+        await loadProducts(); // Reload products to get updated stock
+        checkInventoryAlerts(); // Update alerts
+      } else {
+        alert(`Failed to adjust stock: ${response.message}`);
+      }
+    } catch (error) {
+      console.error('Error adjusting stock:', error);
+      alert('Error adjusting stock');
+    }
+  }, [adjustStock, loadProducts, checkInventoryAlerts]);
+
+  // Customer management functions
+  const calculateLoyaltyPoints = useCallback((customerId: string, amount: number) => {
+    // Calculate points earned (1 point per 100 TZS)
+    const pointsEarned = Math.floor(amount / 100);
+    setCustomerLoyaltyPoints(prev => ({
+      ...prev,
+      [customerId]: (prev[customerId] || 0) + pointsEarned
+    }));
+    return pointsEarned;
+  }, []);
+
+  const addCustomerNote = useCallback((customerId: string, note: string) => {
+    setCustomerNotes(prev => ({
+      ...prev,
+      [customerId]: (prev[customerId] || '') + '\n' + new Date().toLocaleString() + ': ' + note
+    }));
+  }, []);
+
+  const getCustomerPurchaseHistory = useCallback((customerId: string) => {
+    // Get purchase history from sales data
+    const customerSales = sales.filter(sale => sale.customerId === customerId);
+    setCustomerPurchaseHistory(prev => ({
+      ...prev,
+      [customerId]: customerSales
+    }));
+    return customerSales;
+  }, [sales]);
+
+  const sendCustomerWhatsApp = useCallback((customer: Customer) => {
+    const message = `Hello ${customer.name}! Thank you for your recent purchase. Your loyalty points: ${customerLoyaltyPoints[customer.id] || customer.points}`;
+    const whatsappUrl = `https://wa.me/${customer.phone.replace('+', '')}?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank');
+  }, [customerLoyaltyPoints]);
+
+  const sendCustomerSMS = useCallback((customer: Customer) => {
+    const message = `Hello ${customer.name}! Thank you for your recent purchase. Your loyalty points: ${customerLoyaltyPoints[customer.id] || customer.points}`;
+    const smsUrl = `sms:${customer.phone}?body=${encodeURIComponent(message)}`;
+    window.open(smsUrl, '_blank');
+  }, [customerLoyaltyPoints]);
+
+
+
+  // Delivery management functions
+  const calculateDeliveryFee = useCallback((subtotal: number) => {
+    if (!deliverySettings.enabled) return 0;
+    if (subtotal >= deliverySettings.freeDeliveryThreshold) return 0;
+    return deliverySettings.deliveryFee;
+  }, [deliverySettings]);
+
+
 
   // Format date
   const formatDate = (date: string) => {
@@ -915,10 +1842,7 @@ const POSPage: React.FC = () => {
             setShowSearchResults(false);
           }
         }}
-        onScanBarcode={() => {
-          // TODO: Implement barcode scanning
-          alert('Barcode scanning feature coming soon!');
-        }}
+        onScanBarcode={startBarcodeScanner}
         onAddCustomer={() => {
           // TODO: Navigate to add customer page or open modal
           navigate('/customers');
@@ -932,170 +1856,244 @@ const POSPage: React.FC = () => {
           alert('Receipts view coming soon!');
         }}
         onViewSales={() => {
-          // TODO: Navigate to sales page
-          alert('Sales view coming soon!');
+          setShowSalesAnalytics(true);
+        }}
+        onOpenPaymentTracking={() => {
+          console.log('🔍 POS: Opening Payment Tracking modal from POSTopBar');
+          setShowPaymentTracking(true);
         }}
         isProcessingPayment={isProcessingPayment}
         hasSelectedCustomer={!!selectedCustomer}
       />
 
-      <div className="p-4 sm:p-6 max-w-full mx-auto space-y-6">
-        {/* Statistics Dashboard */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-        <GlassCard className="bg-gradient-to-br from-blue-50 to-blue-100">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-blue-600">Cart Items</p>
-              <p className="text-2xl font-bold text-blue-900">{cartItems.length}</p>
-            </div>
-            <div className="p-3 bg-blue-50/20 rounded-full">
-              <ShoppingCart className="w-6 h-6 text-blue-600" />
-            </div>
-          </div>
-        </GlassCard>
+      <div className="p-4 sm:p-6 pb-20 max-w-full mx-auto space-y-6">
 
-        <GlassCard className="bg-gradient-to-br from-green-50 to-green-100">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-green-600">Total Amount</p>
-              <p className="text-2xl font-bold text-green-900">{formatMoney(cartItems.reduce((sum, item) => sum + item.totalPrice, 0))}</p>
-            </div>
-            <div className="p-3 bg-green-50/20 rounded-full">
-              <DollarSign className="w-6 h-6 text-green-600" />
-            </div>
-          </div>
-        </GlassCard>
 
-        <GlassCard className="bg-gradient-to-br from-purple-50 to-purple-100">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-purple-600">Available Products</p>
-              <p className="text-2xl font-bold text-purple-900">{products.length}</p>
-            </div>
-            <div className="p-3 bg-purple-50/20 rounded-full">
-              <Package className="w-6 h-6 text-purple-600" />
-            </div>
-          </div>
-        </GlassCard>
-
-        <GlassCard className="bg-gradient-to-br from-amber-50 to-amber-100">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-amber-600">Today's Sales</p>
-              <p className="text-2xl font-bold text-amber-900">{sales.length}</p>
-            </div>
-            <div className="p-3 bg-amber-50/20 rounded-full">
-              <TrendingUp className="w-6 h-6 text-amber-600" />
-            </div>
-          </div>
-        </GlassCard>
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
+        <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-200px)]">
         {/* Product Search Section */}
-        <div className="xl:col-span-3">
-          <GlassCard className="p-6">
-            {/* POS Quick Actions Section */}
-            <div className="mb-6 p-4 bg-gradient-to-br from-blue-50 to-indigo-100 rounded-xl border border-blue-200">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <ShoppingCart className="w-4 h-4 text-blue-600" />
-                </div>
-                <div>
-                  <h3 className="font-medium text-blue-900">POS Quick Actions</h3>
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                <button
-                  onClick={() => setShowAddExternalProductModal(true)}
-                  className="p-4 bg-white rounded-lg border border-blue-200 hover:shadow-md transition-all duration-200 hover:scale-[1.02] active:scale-95 text-left"
-                  style={{ minHeight: '80px' }}
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <Package className="w-5 h-5 text-blue-600" />
-                    <span className="text-sm font-medium text-blue-700">Add External Product</span>
-                  </div>
-                  <p className="text-xs text-gray-600">Quick product entry for sales</p>
-                </button>
-
-                <button
-                  onClick={() => setShowQuickCashKeypad(true)}
-                  className="p-4 bg-white rounded-lg border border-blue-200 hover:shadow-md transition-all duration-200 hover:scale-[1.02] active:scale-95 text-left"
-                  style={{ minHeight: '80px' }}
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <Calculator className="w-5 h-5 text-blue-600" />
-                    <span className="text-sm font-medium text-blue-700">Quick Cash</span>
-                  </div>
-                  <p className="text-xs text-gray-600">Fast cash transactions</p>
-                </button>
-
-                <button
-                  onClick={() => setShowDeliverySection(true)}
-                  className="p-3 bg-white rounded-lg border border-blue-200 hover:shadow-md transition-all duration-200 hover:scale-[1.02] text-left"
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <ArrowRight className="w-4 h-4 text-blue-600" />
-                    <span className="text-xs font-medium text-blue-700">Delivery</span>
-                  </div>
-                  <p className="text-xs text-gray-600">Set up delivery options</p>
-                </button>
-
-                <button
-                  onClick={() => setShowQuickCashKeypad(true)}
-                  className="p-3 bg-white rounded-lg border border-green-200 hover:shadow-md transition-all duration-200 hover:scale-[1.02] text-left"
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <Calculator className="w-4 h-4 text-green-600" />
-                    <span className="text-xs font-medium text-green-700">Quick Cash Modal</span>
-                  </div>
-                  <p className="text-xs text-gray-600">Open Quick Cash modal</p>
-                </button>
-
-                <button
-                  onClick={() => setShowQuickCashKeypad(true)}
-                  className="p-3 bg-white rounded-lg border border-emerald-200 hover:shadow-md transition-all duration-200 hover:scale-[1.02] text-left"
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <DollarSign className="w-4 h-4 text-emerald-600" />
-                    <span className="text-xs font-medium text-emerald-700">Quick Cash (TZS {total.toLocaleString()})</span>
-                  </div>
-                  <p className="text-xs text-gray-600">Process cash payment for current total</p>
-                </button>
-              </div>
-            </div>
-
-            {/* Unified Search Interface */}
-            <div className="mb-6">
-              {/* Universal Search header hidden */}
-              
+        <div className="flex-1 overflow-hidden flex flex-col">
+          <GlassCard className="p-6 h-full flex flex-col">
+            {/* Fixed Search Section */}
+            <div className="flex-shrink-0 mb-6 space-y-4">
+              {/* Smart Search Bar */}
               <div className="relative">
                 <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-6 h-6 text-blue-500" />
                 <input
                   type="text"
-                  placeholder="🔍 Search products by name, SKU, brand, category, or scan barcode..."
+                  placeholder="Search products by name, SKU, brand, category, or scan barcode..."
                   value={searchQuery}
                   onChange={handleSearchInputChange}
                   onKeyPress={handleSearchInputKeyPress}
-                  className="w-full pl-14 pr-16 py-5 text-lg border-2 border-blue-200 rounded-xl bg-white text-gray-900 placeholder-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-500/30 focus:border-blue-500 shadow-lg hover:shadow-xl transition-all duration-200"
+                  className="w-full pl-14 pr-24 py-5 text-lg border-2 border-blue-200 rounded-xl bg-white text-gray-900 placeholder-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-500/30 focus:border-blue-500 shadow-lg hover:shadow-xl transition-all duration-200"
                   style={{ minHeight: '60px' }}
                 />
-                <button
-                  onClick={() => {
-                    if (searchQuery.trim()) {
-                      handleUnifiedSearch(searchQuery.trim());
-                    }
-                  }}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 p-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors duration-200 shadow-md hover:shadow-lg active:scale-95"
-                  title="Search or scan"
-                  style={{ minWidth: '44px', minHeight: '44px' }}
-                >
-                  <Barcode className="w-5 h-5" />
-                </button>
+                
+                {/* Loading indicator */}
+                {isSearching && (
+                  <div className="absolute left-14 top-1/2 transform -translate-y-1/2">
+                    <RefreshCw className="w-4 h-4 text-blue-500 animate-spin" />
+                  </div>
+                )}
+                
+                <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center gap-2">
+                  <button
+                    onClick={() => setShowAddExternalProductModal(true)}
+                    className="p-3 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors duration-200 shadow-md hover:shadow-lg active:scale-95"
+                    title="Add External Product"
+                    style={{ minWidth: '44px', minHeight: '44px' }}
+                  >
+                    <Package className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                    className="p-3 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg transition-colors duration-200"
+                    title="Advanced filters"
+                  >
+                    <Command className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (searchQuery.trim()) {
+                        handleUnifiedSearch(searchQuery.trim());
+                      }
+                    }}
+                    className="p-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors duration-200 shadow-md hover:shadow-lg active:scale-95"
+                    title="Search or scan"
+                    style={{ minWidth: '44px', minHeight: '44px' }}
+                  >
+                    <Barcode className="w-5 h-5" />
+                  </button>
+                </div>
+                
+                {/* Smart Search Suggestions */}
+                {searchSuggestions.length > 0 && searchQuery.trim() && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto">
+                    <div className="p-3 border-b border-gray-100">
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <Zap className="w-4 h-4 text-yellow-500" />
+                        <span>Smart Suggestions</span>
+                      </div>
+                    </div>
+                    {searchSuggestions.map((suggestion, index) => (
+                      <button
+                        key={index}
+                        onClick={() => {
+                          setSearchQuery(suggestion.text);
+                          handleUnifiedSearch(suggestion.text);
+                        }}
+                        className="w-full p-3 text-left hover:bg-gray-50 transition-colors duration-200 flex items-center gap-3"
+                      >
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                          suggestion.type === 'product' ? 'bg-blue-100 text-blue-600' :
+                          suggestion.type === 'category' ? 'bg-green-100 text-green-600' :
+                          suggestion.type === 'brand' ? 'bg-purple-100 text-purple-600' :
+                          'bg-orange-100 text-orange-600'
+                        }`}>
+                          {suggestion.type === 'product' ? <Package className="w-4 h-4" /> :
+                           suggestion.type === 'category' ? <FileText className="w-4 h-4" /> :
+                           suggestion.type === 'brand' ? <Star className="w-4 h-4" /> :
+                           <HashIcon className="w-4 h-4" />}
+                        </div>
+                        <div className="flex-1">
+                          <div className="font-medium text-gray-900">{suggestion.text}</div>
+                          <div className="text-xs text-gray-500 capitalize">{suggestion.type}</div>
+                        </div>
+                        <div className="text-xs text-gray-400">
+                          {Math.round(suggestion.relevance * 100)}% match
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
+
+              {/* Advanced Filters */}
+              {showAdvancedFilters && (
+                <div className="p-4 bg-gradient-to-br from-gray-50 to-blue-50 rounded-xl border border-gray-200">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* Category Filter */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
+                      <select
+                        value={selectedCategory}
+                        onChange={(e) => setSelectedCategory(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">All Categories</option>
+                        {categories.map(category => (
+                          <option key={category.id} value={category.id}>
+                            {category.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Brand Filter */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Brand</label>
+                      <select
+                        value={selectedBrand}
+                        onChange={(e) => setSelectedBrand(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">All Brands</option>
+                        {brands.map(brand => (
+                          <option key={brand.id} value={brand.id}>
+                            {brand.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Stock Filter */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Stock Status</label>
+                      <select
+                        value={stockFilter}
+                        onChange={(e) => setStockFilter(e.target.value as any)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="all">All Items</option>
+                        <option value="in-stock">In Stock</option>
+                        <option value="low-stock">Low Stock</option>
+                        <option value="out-of-stock">Out of Stock</option>
+                      </select>
+                    </div>
+
+                    {/* Sort By */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Sort By</label>
+                      <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value as any)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="name">Name</option>
+                        <option value="price">Price</option>
+                        <option value="stock">Stock</option>
+                        <option value="recent">Recent</option>
+                        <option value="sales">Most Selling</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Price Range and Sort Order */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Min Price (TZS)</label>
+                      <input
+                        type="number"
+                        value={priceRange.min}
+                        onChange={(e) => setPriceRange(prev => ({ ...prev, min: e.target.value }))}
+                        placeholder="0"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Max Price (TZS)</label>
+                      <input
+                        type="number"
+                        value={priceRange.max}
+                        onChange={(e) => setPriceRange(prev => ({ ...prev, max: e.target.value }))}
+                        placeholder="∞"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Sort Order</label>
+                      <select
+                        value={sortOrder}
+                        onChange={(e) => setSortOrder(e.target.value as any)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="asc">Ascending</option>
+                        <option value="desc">Descending</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Clear Filters Button */}
+                  <div className="mt-4 flex justify-end">
+                    <button
+                      onClick={() => {
+                        setSelectedCategory('');
+                        setSelectedBrand('');
+                        setPriceRange({ min: '', max: '' });
+                        setStockFilter('all');
+                        setSortBy('sales');
+                        setSortOrder('desc');
+                      }}
+                      className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors duration-200"
+                    >
+                      Clear All Filters
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
+            {/* Scrollable Products Section */}
+            <div className="flex-1 overflow-y-auto">
             {/* Recent Scans History */}
             {scanHistory.length > 0 && (
               <div className="mb-6 p-4 bg-gradient-to-br from-purple-50 to-indigo-100 rounded-xl border border-purple-200">
@@ -1271,13 +2269,14 @@ const POSPage: React.FC = () => {
                 )}
               </div>
             )}
+            </div>
           </GlassCard>
         </div>
 
         {/* Cart Section */}
-        <div className="xl:col-span-2">
-          <GlassCard className="p-6">
-            <div className="flex items-center gap-3 mb-6">
+        <div className="lg:w-[450px] flex-shrink-0">
+          <GlassCard className="p-6 h-full flex flex-col">
+            <div className="flex items-center gap-3 mb-6 flex-shrink-0">
               <div className="p-2 bg-green-50 rounded-lg">
                 <ShoppingCart className="w-6 h-6 text-green-600" />
               </div>
@@ -1328,202 +2327,373 @@ const POSPage: React.FC = () => {
                         </div>
                       </div>
                     </div>
-                    <button
-                      onClick={handleRemoveCustomer}
-                      className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-all duration-200"
-                    >
-                      <XCircle className="w-5 h-5" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          setSelectedCustomerForDetails(selectedCustomer);
+                          setShowCustomerDetails(true);
+                        }}
+                        className="p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-all duration-200"
+                        title="View customer details"
+                      >
+                        <User className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={handleRemoveCustomer}
+                        className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-all duration-200"
+                      >
+                        <XCircle className="w-5 h-5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <div className="relative">
-                    <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-blue-500" />
-                    <input
-                      type="text"
-                      placeholder="👤 Search customers by name, phone, or email..."
-                      value={customerSearchQuery}
-                      onChange={(e) => handleCustomerSearch(e.target.value)}
-                      className="w-full pl-12 pr-14 py-3 text-base border-2 border-blue-200 rounded-xl bg-white text-gray-900 placeholder-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-500/30 focus:border-blue-500 shadow-md hover:shadow-lg transition-all duration-200"
-                    />
-                    <button
-                      onClick={() => setShowAddCustomerModal(true)}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 p-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors duration-200 shadow-sm hover:shadow-md"
-                      title="Add new customer"
-                    >
-                      <Plus className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                                      {/* Customer Search Results */}
-                    {showCustomerSearch && filteredCustomers.length > 0 && (
-                      <div className="max-h-48 overflow-y-auto space-y-2">
-                        {filteredCustomers.slice(0, 4).map((customer) => (
-                        <div
-                          key={customer.id}
-                          onClick={() => handleCustomerSelect(customer)}
-                          className="p-3 bg-white rounded-lg border border-gray-200 cursor-pointer hover:shadow-md transition-all duration-200 hover:scale-[1.02]"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-semibold">
-                              {customer.name.charAt(0)}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="font-medium text-gray-900 truncate">{customer.name}</div>
-                              <div className="text-sm text-gray-600">{customer.phone}</div>
-                              <div className="flex items-center gap-2 text-xs">
-                                <span className={`px-1 py-0.5 rounded ${
-                                  customer.colorTag === 'vip' || customer.loyaltyLevel === 'platinum' || customer.loyaltyLevel === 'gold'
-                                    ? 'bg-purple-100 text-purple-700' 
-                                    : 'bg-green-100 text-green-700'
-                                }`}>
-                                  {customer.colorTag === 'vip' || customer.loyaltyLevel === 'platinum' || customer.loyaltyLevel === 'gold' ? 'VIP' : 'Active'}
-                                </span>
-                                <span className="text-gray-500">{customer.points} pts</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                      {filteredCustomers.length > 4 && (
-                        <div className="text-center text-xs text-gray-500 py-2">
-                          +{filteredCustomers.length - 4} more customers
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {showCustomerSearch && filteredCustomers.length === 0 && customerSearchQuery.trim() && (
-                    <div className="text-center py-4">
-                      <User className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                      <p className="text-sm text-gray-500 mb-3">No customers found for "{customerSearchQuery}"</p>
-                      <button
-                        onClick={() => setShowAddCustomerModal(true)}
-                        className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm transition-colors duration-200 flex items-center gap-2 mx-auto"
-                      >
-                        <Plus className="w-4 h-4" />
-                        Create New Customer
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Customer Required warning hidden */}
+                  <button
+                    onClick={() => setShowCustomerSearchModal(true)}
+                    className="w-full flex items-center justify-center gap-3 p-4 text-base border-2 border-blue-200 rounded-xl bg-white text-gray-900 hover:border-blue-300 hover:shadow-lg transition-all duration-200"
+                  >
+                    <Search className="w-5 h-5 text-blue-500" />
+                    <span className="text-gray-600">Search Customer</span>
+                    <Plus className="w-4 h-4 text-blue-500" />
+                  </button>
                 </div>
               )}
             </div>
 
-            {cartItems.length === 0 ? (
-              <div className="text-center py-12">
-                <ShoppingCart className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">Cart is empty</h3>
-                <p className="text-gray-600 mb-4">Add products to start a transaction</p>
-              </div>
-            ) : (
-              <>
-                {/* Cart Items */}
-                <div className="space-y-4 mb-6">
-                  {cartItems.map((item) => {
-                    const product = products.find(p => p.id === item.productId);
-                    const availableVariants = product?.variants?.map(variant => ({
-                      id: variant.id,
-                      name: variant.name,
-                      sku: variant.sku,
-                      price: variant.sellingPrice,
-                      quantity: variant.quantity,
-                      attributes: variant.attributes || {}
-                    })) || [];
 
-                    return (
-                      <VariantCartItem
-                        key={item.id}
-                        item={{
-                          ...item,
-                          unitPrice: item.price,
-                          availableQuantity: item.availableQuantity || 0
-                        }}
-                        onQuantityChange={(quantity) => handleUpdateQuantity(item.id, quantity)}
-                        onRemove={() => handleRemoveFromCart(item.id)}
-                        availableVariants={availableVariants}
-                        showStockInfo={true}
-                      />
-                    );
-                  })}
-                </div>
 
-                {/* Cart Summary */}
-                <div className="border-t border-gray-200 pt-4 space-y-3">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Subtotal:</span>
-                    <span className="font-semibold">{formatMoney(subtotal)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Tax (16%):</span>
-                    <span className="font-semibold">{formatMoney(tax)}</span>
-                  </div>
-                  
-                  {/* Conditional Discount Display */}
-                  {discount > 0 && selectedCustomer && (
-                    <div className="flex justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-600">Discount:</span>
-                        <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">
-                          {selectedCustomer.loyaltyLevel === 'platinum' || selectedCustomer.loyaltyLevel === 'gold' || selectedCustomer.colorTag === 'vip' 
-                            ? 'VIP 5%' 
-                            : 'Loyalty 2%'}
-                        </span>
-                      </div>
-                      <span className="font-semibold text-green-600">-{formatMoney(discount)}</span>
-                    </div>
-                  )}
-                  
-                  <div className="border-t border-gray-200 pt-3">
-                    <div className="flex justify-between text-lg font-bold">
-                      <span>Total:</span>
-                      <span className="text-green-600">{formatMoney(total)}</span>
-                    </div>
-                  </div>
-                  
-                  {/* Customer Loyalty Info */}
-                  {selectedCustomer && (
-                    <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Crown className="w-4 h-4 text-blue-600" />
-                        <span className="text-sm font-medium text-blue-900">Customer Benefits</span>
-                      </div>
-                      <div className="text-xs text-blue-700 space-y-1">
-                        <div>• {selectedCustomer.name} - {selectedCustomer.loyaltyLevel || 'Standard'} Member</div>
-                        <div>• Current Points: {selectedCustomer.points}</div>
-                        <div>• Total Spent: {formatMoney(selectedCustomer.totalSpent)}</div>
-                        {discount > 0 && (
-                          <div>• Applied Discount: {selectedCustomer.loyaltyLevel === 'platinum' || selectedCustomer.loyaltyLevel === 'gold' || selectedCustomer.colorTag === 'vip' ? '5%' : '2%'}</div>
-                        )}
-                      </div>
-                    </div>
-                  )}
+            <div className="flex-1 overflow-y-auto">
+              {cartItems.length === 0 ? (
+                <div className="text-center py-12">
+                  <ShoppingCart className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Cart is empty</h3>
+                  <p className="text-gray-600 mb-4">Add products to start a transaction</p>
                 </div>
+              ) : (
+                <>
+                  {/* Dynamic Pricing Display */}
+                  <DynamicPricingDisplay
+                    appliedDiscounts={appliedDiscounts}
+                    totalDiscount={discount}
+                    discountPercentage={subtotal > 0 ? (discount / subtotal) * 100 : 0}
+                    basePrice={subtotal}
+                    finalPrice={finalPrice}
+                    loyaltyPoints={selectedCustomer ? dynamicPricingService.calculateLoyaltyPoints(finalPrice, selectedCustomer) : 0}
+                    manualDiscount={manualDiscount}
+                    discountType={discountType}
+                    selectedCustomer={selectedCustomer}
+                    onClearManualDiscount={handleClearManualDiscount}
+                    onApplyManualDiscount={(amount, type) => {
+                      setManualDiscount(amount);
+                      setDiscountType(type);
+                    }}
+                    onOpenSettings={() => {
+           setShowSettings(true);
+           setActiveSettingsTab('pricing');
+         }}
+                  />
+                  
+                                    {/* Cart Items */}
+                  <div className="space-y-4 mb-6">
+                    {[...cartItems].reverse().map((item, index) => {
+                      const product = products.find(p => p.id === item.productId);
+                      const availableVariants = product?.variants?.map(variant => ({
+                        id: variant.id,
+                        name: variant.name,
+                        sku: variant.sku,
+                        price: variant.sellingPrice,
+                        quantity: variant.quantity,
+                        attributes: variant.attributes || {}
+                      })) || [];
 
-                {/* Action Buttons */}
-                <div className="mt-6 space-y-3">
-                  <GlassButton
-                    onClick={() => setShowPaymentModal(true)}
-                    icon={<CreditCard size={18} />}
-                    className="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white"
-                    disabled={!selectedCustomer}
-                  >
-                    Process Payment
-                  </GlassButton>
-                  <GlassButton
-                    onClick={() => setCartItems([])}
-                    icon={<Trash2 size={18} />}
-                    variant="secondary"
-                    className="w-full"
-                  >
-                    Clear Cart
-                  </GlassButton>
-                </div>
+                      const isExpanded = expandedItems.has(item.id);
+                      const isLatest = index === 0; // Latest item is now at index 0 since we reversed the array
+                      const isExternalProduct = item.variantId === 'external';
+                      
+                      return (
+                        <div key={item.id} className={`bg-white border-2 rounded-xl transition-all duration-300 ${
+                          isExternalProduct 
+                            ? 'border-orange-300 bg-orange-50' 
+                            : isExpanded 
+                              ? 'border-green-300 shadow-lg' 
+                              : 'border-gray-200 hover:border-gray-300 hover:shadow-md'
+                        }`}>
+                          {/* Minimized Header - Always visible */}
+                          <div 
+                            className="p-6 cursor-pointer"
+                            onClick={() => handleToggleExpand(item.id)}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-4 flex-1 min-w-0">
+                                <div className={`relative w-14 h-14 rounded-xl flex items-center justify-center text-lg font-bold ${
+                                  isExternalProduct
+                                    ? 'bg-gradient-to-br from-orange-500 to-red-600 text-white'
+                                    : isExpanded 
+                                      ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white' 
+                                      : 'bg-gradient-to-br from-blue-100 to-indigo-100 text-blue-600'
+                                }`}>
+                                  {item.name.charAt(0).toUpperCase()}
+                                  {isExternalProduct && (
+                                    <div className="absolute -top-2 -right-2 w-5 h-5 bg-gradient-to-r from-orange-400 to-red-500 rounded-full border-2 border-white shadow-lg flex items-center justify-center">
+                                      <Package className="w-3 h-3 text-white" />
+                                    </div>
+                                  )}
+                                  {isLatest && !isExternalProduct && (
+                                    <div className="absolute -top-2 -right-2 w-5 h-5 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full border-2 border-white shadow-lg flex items-center justify-center">
+                                      <div className="w-2 h-2 bg-white rounded-full"></div>
+                                    </div>
+                                  )}
+                                </div>
+                                                                 <div className="flex-1 min-w-0">
+                                   <div className="font-medium text-gray-800 truncate text-xl leading-tight flex items-center gap-2">
+                                     {item.name}
+                                     {isExternalProduct && (
+                                       <span className="px-2 py-1 bg-orange-100 text-orange-700 text-xs font-medium rounded-full border border-orange-200">
+                                         External
+                                       </span>
+                                     )}
+                                   </div>
+                                   <div className="text-2xl text-gray-700 mt-1 font-bold">
+                                     TZS {item.totalPrice.toLocaleString()}
+                                   </div>
+                                 </div>
+                              </div>
+                              <div className="flex items-center gap-4">
+                                                                 <button
+                                   onClick={(e) => {
+                                     e.stopPropagation();
+                                     handleRemoveFromCart(item.id);
+                                   }}
+                                   className="p-3 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-all duration-200"
+                                   title="Remove item"
+                                 >
+                                   <XCircle className="w-5 h-5" />
+                                 </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Expanded Content - Show when clicked */}
+                          {isExpanded && (
+                            <div className="px-6 pb-6 border-t border-gray-100 bg-white rounded-b-xl">
+                              <div className="space-y-4">
+                                {/* Product Info */}
+                                <div className="flex items-center gap-3">
+                                  <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center">
+                                    <span className="text-sm font-medium text-gray-600">SKU</span>
+                                  </div>
+                                  <div className="text-sm text-gray-600">
+                                    {item.sku || 'N/A'}
+                                  </div>
+                                </div>
+                                
+                                {/* External Product Indicator */}
+                                {isExternalProduct && (
+                                  <div className="space-y-3">
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
+                                        <Package className="w-4 h-4 text-orange-600" />
+                                      </div>
+                                      <div className="text-sm text-orange-700 font-medium">
+                                        External Product - Not in Inventory
+                                      </div>
+                                    </div>
+                                    
+                                    {/* Supplier Information */}
+                                    {item.metadata?.supplierName && (
+                                      <div className="bg-orange-50 rounded-lg p-3 space-y-2">
+                                        <div className="text-xs font-medium text-orange-800">Supplier Information</div>
+                                        <div className="grid grid-cols-2 gap-2 text-xs">
+                                          <div>
+                                            <span className="text-orange-600">Supplier:</span>
+                                            <div className="font-medium">{item.metadata.supplierName}</div>
+                                          </div>
+                                          {item.metadata.supplierPhone && (
+                                            <div>
+                                              <span className="text-orange-600">Phone:</span>
+                                              <div className="font-medium">{item.metadata.supplierPhone}</div>
+                                            </div>
+                                          )}
+                                          {item.metadata.purchaseDate && (
+                                            <div>
+                                              <span className="text-orange-600">Purchase Date:</span>
+                                              <div className="font-medium">{item.metadata.purchaseDate}</div>
+                                            </div>
+                                          )}
+                                          {item.metadata.purchasePrice && (
+                                            <div>
+                                              <span className="text-orange-600">Purchase Price:</span>
+                                              <div className="font-medium">TZS {item.metadata.purchasePrice.toLocaleString()}</div>
+                                            </div>
+                                          )}
+                                          {item.metadata.productCondition && (
+                                            <div>
+                                              <span className="text-orange-600">Condition:</span>
+                                              <div className="font-medium capitalize">{item.metadata.productCondition}</div>
+                                            </div>
+                                          )}
+                                          {item.metadata.warrantyInfo && (
+                                            <div>
+                                              <span className="text-orange-600">Warranty:</span>
+                                              <div className="font-medium">{item.metadata.warrantyInfo}</div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Quantity Controls */}
+                                <div className="flex items-center gap-4">
+                                  <span className="text-base font-semibold text-gray-700">Quantity:</span>
+                                  <div className="flex items-center gap-3">
+                                    <button
+                                      onClick={() => handleUpdateQuantity(item.id, Math.max(1, item.quantity - 1))}
+                                      disabled={item.quantity <= 1}
+                                      className="w-12 h-12 flex items-center justify-center border-2 border-gray-300 rounded-xl hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                    >
+                                      <span className="text-xl font-bold text-gray-600">−</span>
+                                    </button>
+                                    <span className="w-16 text-center font-bold text-xl text-gray-900">
+                                      {item.quantity}
+                                    </span>
+                                    <button
+                                      onClick={() => handleUpdateQuantity(item.id, item.quantity + 1)}
+                                      className="w-12 h-12 flex items-center justify-center border-2 border-gray-300 rounded-xl hover:bg-gray-50 transition-colors"
+                                    >
+                                      <span className="text-xl font-bold text-gray-600">+</span>
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
               </>
             )}
+            </div>
+
+            {/* Delivery Setup Section - Minimal Design */}
+            {selectedCustomer && cartItems.length > 0 && (
+              <div className="mb-3">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-medium text-gray-900">Delivery</h3>
+                  {deliverySettings.enabled && (
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                      <span className="text-sm text-green-600">Active</span>
+                    </div>
+                  )}
+                </div>
+                
+                                 <button
+                   onClick={() => setShowDeliverySection(true)}
+                   className="w-full p-4 bg-gradient-to-br from-blue-200 via-blue-300 to-blue-400 rounded-xl hover:from-blue-300 hover:via-blue-400 hover:to-blue-500 transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02]"
+                 >
+                   <div className="flex items-center justify-between">
+                     <div className="flex items-center gap-3">
+                       <div className="w-12 h-12 bg-white/80 rounded-full flex items-center justify-center shadow-sm">
+                         <Truck className="w-6 h-6 text-blue-700" />
+                       </div>
+                       <div className="text-left">
+                         <div className="font-medium text-white">
+                           {deliverySettings.enabled ? 'Delivery configured' : 'Set up delivery'}
+                         </div>
+                         <div className="text-sm text-white/90">
+                           {deliverySettings.enabled 
+                             ? `${formatMoney(deliverySettings.deliveryFee)} fee` 
+                             : 'Add address and instructions'
+                           }
+                         </div>
+                       </div>
+                     </div>
+                     <ArrowRight className="w-4 h-4 text-white/80" />
+                   </div>
+                 </button>
+              </div>
+            )}
+
+            {/* Cart Summary - Fixed above buttons */}
+            <div className="mt-6 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-4 border border-gray-200 shadow-sm flex-shrink-0">
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600 font-medium">Subtotal</span>
+                  <span className="font-semibold text-gray-900">{formatMoney(subtotal)}</span>
+                </div>
+                
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600 font-medium">Tax (16%)</span>
+                  <span className="font-semibold text-gray-900">{formatMoney(tax)}</span>
+                </div>
+                
+                {/* Delivery Fee Display */}
+                {deliverySettings.enabled && (
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-600 font-medium">Delivery Fee</span>
+                      <span className="px-2 py-1 rounded-full bg-gradient-to-r from-orange-100 to-red-100 text-orange-700 text-xs font-semibold border border-orange-200">
+                        {subtotal >= deliverySettings.freeDeliveryThreshold ? 'FREE' : 'Standard'}
+                      </span>
+                    </div>
+                    <span className="font-semibold text-orange-600">
+                      {subtotal >= deliverySettings.freeDeliveryThreshold ? 'FREE' : formatMoney(deliverySettings.deliveryFee)}
+                    </span>
+                  </div>
+                )}
+                
+
+                
+                <div className="border-t-2 border-gray-300 pt-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-lg font-bold text-gray-900">Total Amount</span>
+                    <span className="text-xl font-bold text-green-600">
+                      {formatMoney(deliverySettings.enabled ? total + calculateDeliveryFee(subtotal) : total)}
+                    </span>
+                  </div>
+                  {deliverySettings.enabled && (
+                    <div className="text-xs text-gray-500 mt-1 text-center">
+                      {subtotal >= deliverySettings.freeDeliveryThreshold 
+                        ? 'Free delivery applied' 
+                        : `+ ${formatMoney(deliverySettings.deliveryFee)} delivery fee`
+                      }
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons - Fixed at bottom */}
+            <div className="mt-4 space-y-3 flex-shrink-0">
+
+              
+              {/* Main Action Buttons */}
+              <div className="grid grid-cols-2 gap-3">
+                {/* Clear Cart Button */}
+                <GlassButton
+                  onClick={() => setCartItems([])}
+                  icon={<Trash2 size={20} />}
+                  variant="secondary"
+                  className="w-full h-16"
+                >
+                  Clear
+                </GlassButton>
+                
+                {/* Payment Button */}
+                <GlassButton
+                  onClick={() => setShowPaymentModal(true)}
+                  icon={<CheckCircle size={20} />}
+                  className="w-full h-16 bg-gradient-to-r from-green-500 to-emerald-600 text-white text-lg font-bold"
+                  disabled={!selectedCustomer}
+                >
+                  Proceed
+                </GlassButton>
+              </div>
+            </div>
           </GlassCard>
         </div>
       </div>
@@ -1531,97 +2701,241 @@ const POSPage: React.FC = () => {
       {/* Payment Modal */}
       {showPaymentModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <GlassCard className="max-w-md w-full p-6">
+          <GlassCard className={`transition-all duration-300 ${selectedPaymentMethod ? 'max-w-2xl' : 'max-w-md'} w-full p-6`}>
             <div className="flex items-center gap-3 mb-6">
-              <div className="p-2 bg-green-50 rounded-lg">
-                <CreditCard className="w-6 h-6 text-green-600" />
+              <div className="p-2 bg-gradient-to-br from-blue-100 to-blue-200 rounded-xl">
+                <CreditCard className="w-6 h-6 text-blue-600" />
               </div>
               <div>
-                <h2 className="text-xl font-semibold text-gray-800">Select Payment Method</h2>
-                <p className="text-sm text-gray-600">Choose how to process the payment</p>
+                <h2 className="text-xl font-semibold text-gray-800">
+                  {selectedPaymentMethod ? `${selectedPaymentMethod.name} Payment` : 'Select Payment Method'}
+                </h2>
+                <p className="text-sm text-gray-600">
+                  {selectedPaymentMethod ? `Complete your ${selectedPaymentMethod.name.toLowerCase()} payment` : 'Choose how to process the payment'}
+                </p>
               </div>
             </div>
             
-            <div className="space-y-3 mb-6">
-              {PAYMENT_METHODS.map((method) => (
-                <div
-                  key={method.id}
-                  onClick={() => setSelectedPaymentMethod(method)}
-                  className={`p-4 border rounded-xl cursor-pointer transition-all duration-200 ${
-                    selectedPaymentMethod?.id === method.id
-                      ? 'border-green-500 bg-green-50'
-                      : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-md'
-                  }`}
-                >
-                  <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg flex items-center justify-center">
-                      <span className="text-xl">{method.icon}</span>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Left Column - Payment Method Selection */}
+              <div>
+                <h3 className="font-semibold text-gray-800 mb-4">Payment Methods</h3>
+                <div className="space-y-3 mb-6">
+                  {PAYMENT_METHODS.map((method) => (
+                    <div
+                      key={method.id}
+                      onClick={() => setSelectedPaymentMethod(method)}
+                      className={`p-4 border rounded-xl cursor-pointer transition-all duration-200 ${
+                        selectedPaymentMethod?.id === method.id
+                          ? 'border-blue-500 bg-gradient-to-br from-blue-50 to-blue-100 shadow-lg'
+                          : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-md'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg flex items-center justify-center">
+                          <span className="text-xl">{method.icon}</span>
+                        </div>
+                        <div className="flex-1">
+                          <div className="font-semibold text-gray-900">{method.name}</div>
+                          <div className="text-sm text-gray-600">{method.description}</div>
+                        </div>
+                        {selectedPaymentMethod?.id === method.id && (
+                          <CheckCircle className="w-5 h-5 text-blue-600" />
+                        )}
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <div className="font-semibold text-gray-900">{method.name}</div>
-                      <div className="text-sm text-gray-600">{method.description}</div>
+                  ))}
+                </div>
+
+                {/* Customer Information */}
+                {selectedCustomer ? (
+                  <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <div className="flex items-center gap-2 mb-3">
+                      <User className="w-4 h-4 text-blue-600" />
+                      <span className="text-sm font-medium text-blue-900">Customer Information</span>
                     </div>
-                    {selectedPaymentMethod?.id === method.id && (
-                      <CheckCircle className="w-5 h-5 text-green-600" />
-                    )}
+                    <div className="text-sm text-blue-700 space-y-1">
+                      <div className="font-medium">{selectedCustomer.name}</div>
+                      <div className="text-xs">{selectedCustomer.phone}</div>
+                      {selectedCustomer.email && (
+                        <div className="text-xs">{selectedCustomer.email}</div>
+                      )}
+                      {selectedCustomer.loyaltyLevel && (
+                        <div className="text-xs mt-2">
+                          <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full">
+                            {selectedCustomer.loyaltyLevel} Member
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Customer Information */}
-            {selectedCustomer ? (
-              <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                <div className="flex items-center gap-2 mb-2">
-                  <User className="w-4 h-4 text-blue-600" />
-                  <span className="text-sm font-medium text-blue-900">Customer</span>
-                </div>
-                <div className="text-sm text-blue-700">
-                  <div className="font-medium">{selectedCustomer.name}</div>
-                  <div className="text-xs">{selectedCustomer.phone}</div>
-                  {selectedCustomer.loyaltyLevel && (
-                    <div className="text-xs mt-1">
-                      <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full">
-                        {selectedCustomer.loyaltyLevel} Member
-                      </span>
+                ) : (
+                  <div className="p-4 bg-red-50 rounded-lg border border-red-200">
+                    <div className="flex items-center gap-2 mb-2">
+                      <AlertCircle className="w-4 h-4 text-red-600" />
+                      <span className="text-sm font-medium text-red-900">Customer Required</span>
                     </div>
-                  )}
-                </div>
+                    <div className="text-sm text-red-700">
+                      Please select a customer before processing payment
+                    </div>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="mb-4 p-3 bg-red-50 rounded-lg border border-red-200">
-                <div className="flex items-center gap-2 mb-2">
-                  <AlertCircle className="w-4 h-4 text-red-600" />
-                  <span className="text-sm font-medium text-red-900">Customer Required</span>
-                </div>
-                <div className="text-sm text-red-700">
-                  Please select a customer before processing payment
-                </div>
-              </div>
-            )}
 
-            <div className="border-t border-gray-200 pt-4 mb-6">
-              <div className="flex justify-between text-lg font-bold">
-                <span>Total Amount:</span>
-                <span className="text-green-600">{formatMoney(cartItems.reduce((sum, item) => sum + item.totalPrice, 0) * 1.16)}</span>
+              {/* Right Column - Payment Details & Processing */}
+              <div>
+                {selectedPaymentMethod ? (
+                  <div className="space-y-6">
+                    {/* Payment Method Specific Content */}
+                    <div className="p-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg border border-blue-200">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
+                          <span className="text-white text-lg">{selectedPaymentMethod.icon}</span>
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-blue-900">{selectedPaymentMethod.name} Payment</h3>
+                          <p className="text-sm text-blue-700">{selectedPaymentMethod.description}</p>
+                        </div>
+                      </div>
+                      
+                      {/* Payment Method Specific Instructions */}
+                      {selectedPaymentMethod.id === 'cash' && (
+                        <div className="text-sm text-blue-800">
+                          <p className="mb-2">💰 Cash Payment Instructions:</p>
+                          <ul className="space-y-1 text-xs">
+                            <li>• Collect cash from customer</li>
+                            <li>• Verify amount received</li>
+                            <li>• Provide change if needed</li>
+                            <li>• Issue receipt</li>
+                          </ul>
+                        </div>
+                      )}
+                      
+                      {selectedPaymentMethod.id === 'mpesa' && (
+                        <div className="text-sm text-blue-800">
+                          <p className="mb-2">📱 M-Pesa Payment Instructions:</p>
+                          <ul className="space-y-1 text-xs">
+                            <li>• Customer initiates payment via M-Pesa</li>
+                            <li>• Verify payment notification</li>
+                            <li>• Confirm transaction details</li>
+                            <li>• Issue receipt</li>
+                          </ul>
+                        </div>
+                      )}
+                      
+                      {selectedPaymentMethod.id === 'zenopay' && (
+                        <div className="text-sm text-blue-800">
+                          <p className="mb-2">📱 ZenoPay Mobile Money:</p>
+                          <ul className="space-y-1 text-xs">
+                            <li>• Customer receives payment link</li>
+                            <li>• Payment processed via ZenoPay</li>
+                            <li>• Real-time payment confirmation</li>
+                            <li>• Digital receipt sent</li>
+                          </ul>
+                                                     {!selectedCustomer?.phone && (
+                             <div className="mt-3 p-2 bg-orange-50 border border-orange-200 rounded">
+                               <div className="flex items-center gap-2 text-xs text-orange-700">
+                                 <AlertCircle className="w-3 h-3" />
+                                 <span className="font-medium">Requires customer phone number</span>
+                               </div>
+                             </div>
+                           )}
+                        </div>
+                      )}
+                      
+                      {selectedPaymentMethod.id === 'card' && (
+                        <div className="text-sm text-blue-800">
+                          <p className="mb-2">💳 Card Payment Instructions:</p>
+                          <ul className="space-y-1 text-xs">
+                            <li>• Swipe or insert card</li>
+                            <li>• Enter PIN if required</li>
+                            <li>• Wait for approval</li>
+                            <li>• Issue receipt</li>
+                          </ul>
+                        </div>
+                      )}
+                      
+                      {selectedPaymentMethod.id === 'bank' && (
+                        <div className="text-sm text-blue-800">
+                          <p className="mb-2">🏦 Bank Transfer Instructions:</p>
+                          <ul className="space-y-1 text-xs">
+                            <li>• Provide bank details to customer</li>
+                            <li>• Customer initiates transfer</li>
+                            <li>• Verify payment confirmation</li>
+                            <li>• Issue receipt</li>
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Payment Summary */}
+                    <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                      <h3 className="font-semibold text-gray-800 mb-3">Payment Summary</h3>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Subtotal:</span>
+                          <span className="font-medium">{formatMoney(subtotal)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Tax (16%):</span>
+                          <span className="font-medium">{formatMoney(tax)}</span>
+                        </div>
+                        {discount > 0 && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Discount:</span>
+                            <span className="font-medium text-blue-600">-{formatMoney(discount)}</span>
+                          </div>
+                        )}
+                        <div className="border-t border-gray-200 pt-2 mt-2">
+                          <div className="flex justify-between text-lg font-bold">
+                            <span>Total:</span>
+                            <span className="text-blue-600">{formatMoney(total)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-3">
+                      <GlassButton
+                        onClick={() => setSelectedPaymentMethod(null)}
+                        variant="secondary"
+                        className="flex-1"
+                      >
+                        Back
+                      </GlassButton>
+                      <GlassButton
+                        onClick={handlePaymentComplete}
+                                                 disabled={
+                           !selectedCustomer || 
+                           isProcessingPayment ||
+                           (selectedPaymentMethod?.id === 'zenopay' && !selectedCustomer.phone)
+                         }
+                        icon={isProcessingPayment ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle size={18} />}
+                        className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 text-white"
+                      >
+                        {isProcessingPayment ? 'Processing...' : `Pay with ${selectedPaymentMethod.name}`}
+                      </GlassButton>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-gray-500">
+                    <CreditCard className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                    <p className="text-lg font-medium">Select a payment method</p>
+                    <p className="text-sm">Choose from the available payment options to proceed</p>
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="flex gap-3">
+            {/* Close Button */}
+            <div className="mt-6 pt-4 border-t border-gray-200">
               <GlassButton
                 onClick={() => setShowPaymentModal(false)}
                 variant="secondary"
-                className="flex-1"
+                className="w-full"
               >
-                Cancel
-              </GlassButton>
-              <GlassButton
-                onClick={handlePaymentComplete}
-                disabled={!selectedPaymentMethod || !selectedCustomer || isProcessingPayment}
-                icon={isProcessingPayment ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle size={18} />}
-                className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white"
-              >
-                {isProcessingPayment ? 'Processing...' : 'Complete Payment'}
+                Cancel Payment
               </GlassButton>
             </div>
           </GlassCard>
@@ -1694,12 +3008,37 @@ const POSPage: React.FC = () => {
                 Close
               </GlassButton>
               <GlassButton
-                onClick={() => window.print()}
+                onClick={() => printReceipt(currentReceipt, receiptPrintMode)}
                 icon={<Receipt size={18} />}
                 className="flex-1 bg-gradient-to-r from-blue-500 to-indigo-600 text-white"
               >
                 Print Receipt
               </GlassButton>
+            </div>
+
+            {/* Receipt Actions */}
+            <div className="mt-4 grid grid-cols-3 gap-3">
+              <button
+                onClick={() => sendReceiptViaWhatsApp(currentReceipt)}
+                className="p-3 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors duration-200 flex items-center justify-center gap-2"
+              >
+                <Smartphone className="w-4 h-4" />
+                WhatsApp
+              </button>
+              <button
+                onClick={() => sendReceiptViaSMS(currentReceipt)}
+                className="p-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors duration-200 flex items-center justify-center gap-2"
+              >
+                <Phone className="w-4 h-4" />
+                SMS
+              </button>
+              <button
+                onClick={() => setShowReceiptHistory(true)}
+                className="p-3 bg-purple-500 hover:bg-purple-600 text-white rounded-lg transition-colors duration-200 flex items-center justify-center gap-2"
+              >
+                <FileText className="w-4 h-4" />
+                History
+              </button>
             </div>
           </GlassCard>
         </div>
@@ -1714,35 +3053,51 @@ const POSPage: React.FC = () => {
           onClose={() => setShowAddExternalProductModal(false)}
           onProductAdded={(product) => {
             console.log('External product added:', product);
-            // Add the external product to cart
-            const cartItem = {
-              id: `${product.sku}-${Date.now()}`,
-              productId: product.sku,
+            // Add the external product to cart with enhanced structure
+            const cartItem: CartItem = {
+              id: `external-${product.sku}-${Date.now()}`,
+              productId: `external-${product.sku}`,
+              variantId: 'external',
               name: product.name,
+              variantName: 'External Product',
               sku: product.sku,
               price: product.price,
               quantity: product.quantity,
-              totalPrice: product.price * product.quantity
+              totalPrice: product.price * product.quantity,
+              availableQuantity: 999, // External products have unlimited stock
+              // Enhanced metadata for supplier tracking and returns
+              metadata: {
+                supplierName: product.supplierName,
+                supplierPhone: product.supplierPhone,
+                purchaseDate: product.purchaseDate,
+                purchasePrice: product.purchasePrice,
+                purchaseQuantity: product.purchaseQuantity,
+                warrantyInfo: product.warrantyInfo,
+                returnPolicy: product.returnPolicy,
+                productCondition: product.productCondition,
+
+                category: product.category,
+                brand: product.brand,
+                barcode: product.barcode,
+                notes: product.notes
+              }
             };
             setCartItems(prev => [...prev, cartItem]);
             setShowAddExternalProductModal(false);
+            
+            // Show success message with supplier info
+            console.log('✅ External product added to cart:', cartItem);
+            console.log('📋 Supplier Info:', {
+              name: product.supplierName,
+              phone: product.supplierPhone,
+              purchaseDate: product.purchaseDate,
+              purchasePrice: product.purchasePrice
+            });
           }}
         />
       )}
 
-      {/* Quick Cash Modal */}
-      <QuickCashPage
-        isOpen={showQuickCashKeypad}
-        onClose={() => setShowQuickCashKeypad(false)}
-        suggestedAmount={total}
-        onAmountEntered={(amount: number) => {
-          console.log('Quick cash amount:', amount);
-          // Handle cash payment
-          const change = amount - total;
-          alert(`Cash received: TZS ${amount.toLocaleString()}\nChange due: TZS ${change.toFixed(2)}`);
-          setShowQuickCashKeypad(false);
-        }}
-      />
+      {/* QuickCash modal removed - not using this functionality */}
 
       {/* Delivery Section */}
       {showDeliverySection && (
@@ -1755,6 +3110,7 @@ const POSPage: React.FC = () => {
             alert(`Delivery configured for ${delivery.customerName}\nAddress: ${delivery.deliveryAddress}\nFee: TZS ${delivery.deliveryFee}`);
             setShowDeliverySection(false);
           }}
+          selectedCustomer={selectedCustomer}
         />
       )}
 
@@ -1763,6 +3119,1293 @@ const POSPage: React.FC = () => {
         isOpen={showAddCustomerModal}
         onClose={() => setShowAddCustomerModal(false)}
         onCustomerCreated={handleCustomerCreated}
+      />
+
+      {/* Customer Search Modal */}
+      {showCustomerSearchModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <GlassCard className="w-full max-w-4xl p-8">
+            <div className="flex items-center gap-4 mb-8">
+              <div className="p-3 bg-blue-50 rounded-xl">
+                <Search className="w-8 h-8 text-blue-600" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-semibold text-gray-800">Search Customer</h2>
+                <p className="text-base text-gray-600">Find customer by name, phone, or email</p>
+              </div>
+            </div>
+            
+            <div className="relative w-full mb-8">
+              <div className="relative">
+                <Search className="absolute left-6 top-1/2 transform -translate-y-1/2 w-6 h-6 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search customers by name, phone, or email..."
+                  value={customerSearchQuery}
+                  onChange={(e) => handleCustomerSearch(e.target.value)}
+                  className="w-full pl-16 pr-16 py-6 rounded-xl bg-white border-2 border-gray-200 focus:outline-none focus:ring-4 focus:ring-blue-500/30 focus:border-blue-500 font-medium text-lg text-gray-800 placeholder-gray-500 shadow-sm"
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            {/* Customer Search Results */}
+            {showCustomerSearch && filteredCustomers.length > 0 && (
+              <div className="mt-4 max-h-[500px] overflow-y-auto bg-white/95 backdrop-blur-xl rounded-xl shadow-xl border border-white/30">
+                <div className="p-3 border-b border-gray-100">
+                  <h3 className="text-sm font-medium text-gray-700">Search Results ({filteredCustomers.length})</h3>
+                </div>
+                <div className="space-y-2 p-4">
+                  {filteredCustomers.map((customer) => (
+                    <div
+                      key={customer.id}
+                      onClick={() => {
+                        handleCustomerSelect(customer);
+                        setShowCustomerSearchModal(false);
+                      }}
+                      className="p-4 bg-white rounded-xl border border-gray-200 cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-[1.02]"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-lg font-semibold">
+                          {customer.name.charAt(0)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-lg text-gray-900 truncate">{customer.name}</div>
+                          <div className="text-base text-gray-600">{customer.phone}</div>
+                          <div className="flex items-center gap-3 mt-2">
+                            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                              customer.colorTag === 'vip' || customer.loyaltyLevel === 'platinum' || customer.loyaltyLevel === 'gold'
+                                ? 'bg-purple-100 text-purple-700' 
+                                : 'bg-green-100 text-green-700'
+                            }`}>
+                              {customer.colorTag === 'vip' || customer.loyaltyLevel === 'platinum' || customer.loyaltyLevel === 'gold' ? 'VIP' : 'Active'}
+                            </span>
+                            <span className="text-sm text-gray-500 font-medium">{customer.points} points</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* No Results */}
+            {showCustomerSearch && filteredCustomers.length === 0 && customerSearchQuery.trim() && (
+              <div className="mt-6 text-center py-12 bg-white/95 backdrop-blur-xl rounded-xl shadow-xl border border-white/30">
+                <User className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                <p className="text-lg text-gray-500 mb-6">No customers found for "{customerSearchQuery}"</p>
+                <button
+                  onClick={() => {
+                    setShowAddCustomerModal(true);
+                    setShowCustomerSearchModal(false);
+                  }}
+                  className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-base font-medium transition-colors duration-200 flex items-center gap-3 mx-auto"
+                >
+                  <Plus className="w-5 h-5" />
+                  Create New Customer
+                </button>
+              </div>
+            )}
+
+            <div className="flex gap-4 mt-8">
+              <GlassButton
+              onClick={() => setShowCustomerSearchModal(false)}
+                variant="secondary"
+                className="flex-1 py-4 text-lg font-semibold"
+              >
+                Cancel
+              </GlassButton>
+              <GlassButton
+                onClick={() => {
+                  setShowAddCustomerModal(true);
+                  setShowCustomerSearchModal(false);
+                }}
+                className="flex-1 py-4 text-lg font-semibold bg-gradient-to-r from-blue-500 to-indigo-600 text-white"
+              >
+                <Plus className="w-5 h-5 mr-2" />
+                Add New Customer
+              </GlassButton>
+          </div>
+          </GlassCard>
+        </div>
+      )}
+
+      {/* Barcode Scanner Modal */}
+      {showBarcodeScanner && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <GlassCard className="max-w-2xl w-full p-8">
+            <div className="flex items-center gap-4 mb-8">
+              <div className="p-3 bg-blue-50 rounded-xl">
+                <Scan className="w-8 h-8 text-blue-600" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-800">Barcode Scanner</h2>
+                <p className="text-base text-gray-600">Scan product barcodes to add to cart</p>
+              </div>
+            </div>
+            
+            <div className="space-y-6 mb-8">
+              {/* Scanner Interface */}
+              <div className="bg-gray-900 rounded-xl p-8 text-center">
+                {isScanning ? (
+                  <div className="space-y-4">
+                    <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                    <p className="text-white text-lg">Scanning for barcode...</p>
+                    <p className="text-gray-400 text-sm">Point camera at product barcode</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="w-16 h-16 bg-blue-500 rounded-xl mx-auto flex items-center justify-center">
+                      <Scan className="w-8 h-8 text-white" />
+                    </div>
+                    <p className="text-white text-lg">Scanner Ready</p>
+                    <p className="text-gray-400 text-sm">Click scan to start</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Error Display */}
+              {scannerError && (
+                <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
+                  <div className="flex items-center gap-2 text-red-700">
+                    <AlertCircle className="w-5 h-5" />
+                    <span className="font-medium">{scannerError}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Scan History */}
+              {scannedBarcodes.length > 0 && (
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                  <h3 className="font-semibold text-blue-900 mb-3">Recent Scans</h3>
+                  <div className="space-y-2">
+                    {scannedBarcodes.slice(-5).map((barcode, index) => (
+                      <div key={index} className="flex items-center justify-between text-sm">
+                        <span className="text-blue-700">{barcode}</span>
+                        <span className="text-blue-500">✓ Scanned</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-4">
+              <GlassButton
+                onClick={() => setShowBarcodeScanner(false)}
+                variant="secondary"
+                className="flex-1 py-4 text-lg font-semibold"
+              >
+                Close
+              </GlassButton>
+              <GlassButton
+                onClick={startBarcodeScanner}
+                disabled={isScanning}
+                className="flex-1 py-4 text-lg font-semibold bg-gradient-to-r from-blue-500 to-indigo-600 text-white"
+              >
+                {isScanning ? 'Scanning...' : 'Start Scan'}
+              </GlassButton>
+            </div>
+          </GlassCard>
+        </div>
+      )}
+
+      {/* Receipt History Modal */}
+      {showReceiptHistory && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <GlassCard className="max-w-4xl w-full p-8">
+            <div className="flex items-center gap-4 mb-8">
+              <div className="p-3 bg-purple-50 rounded-xl">
+                <FileText className="w-8 h-8 text-purple-600" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-800">Receipt History</h2>
+                <p className="text-base text-gray-600">View and manage past receipts</p>
+              </div>
+            </div>
+            
+            <div className="space-y-6 mb-8">
+              {/* Receipt List */}
+              <div className="max-h-96 overflow-y-auto">
+                {receiptHistory.length > 0 ? (
+                  <div className="space-y-3">
+                    {receiptHistory.map((receipt) => (
+                      <div key={receipt.id} className="p-4 bg-white rounded-xl border border-gray-200 hover:shadow-lg transition-all duration-200">
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center text-white font-bold">
+                                #{receipt.receiptNumber.slice(-4)}
+                              </div>
+                              <div>
+                                <div className="font-semibold text-gray-900">Receipt #{receipt.receiptNumber}</div>
+                                <div className="text-sm text-gray-600">{receipt.date} at {receipt.time}</div>
+                                <div className="text-sm text-gray-500">
+                                  {receipt.items.length} items • {receipt.customer?.name || 'Walk-in Customer'}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-lg font-bold text-green-600">{formatMoney(receipt.total)}</div>
+                            <div className="text-sm text-gray-500">{receipt.paymentMethod.name}</div>
+                          </div>
+                        </div>
+                        
+                        {/* Receipt Actions */}
+                        <div className="mt-4 flex items-center gap-2">
+                          <button
+                            onClick={() => printReceipt(receipt, 'thermal')}
+                            className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-sm hover:bg-blue-200 transition-colors"
+                          >
+                            Print
+                          </button>
+                          <button
+                            onClick={() => sendReceiptViaWhatsApp(receipt)}
+                            className="px-3 py-1 bg-green-100 text-green-700 rounded-lg text-sm hover:bg-green-200 transition-colors"
+                          >
+                            WhatsApp
+                          </button>
+                          <button
+                            onClick={() => sendReceiptViaSMS(receipt)}
+                            className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-sm hover:bg-blue-200 transition-colors"
+                          >
+                            SMS
+                          </button>
+                          <button
+                            onClick={() => setSelectedReceipt(receipt)}
+                            className="px-3 py-1 bg-purple-100 text-purple-700 rounded-lg text-sm hover:bg-purple-200 transition-colors"
+                          >
+                            View Details
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold text-gray-800 mb-2">No receipts found</h3>
+                    <p className="text-gray-600">Receipt history will appear here after transactions</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-4">
+              <GlassButton
+                onClick={() => setShowReceiptHistory(false)}
+                variant="secondary"
+                className="flex-1 py-4 text-lg font-semibold"
+              >
+                Close
+              </GlassButton>
+              <GlassButton
+                onClick={() => {
+                  // Export receipt history
+                  const csvContent = receiptHistory.map(receipt => 
+                    `${receipt.receiptNumber},${receipt.date},${receipt.time},${receipt.total},${receipt.customer?.name || 'Walk-in'},${receipt.paymentMethod.name}`
+                  ).join('\n');
+                  const blob = new Blob([csvContent], { type: 'text/csv' });
+                  const url = window.URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = 'receipt-history.csv';
+                  a.click();
+                }}
+                className="flex-1 py-4 text-lg font-semibold bg-gradient-to-r from-purple-500 to-indigo-600 text-white"
+              >
+                Export CSV
+              </GlassButton>
+            </div>
+          </GlassCard>
+        </div>
+      )}
+
+      {/* Inventory Alerts Modal */}
+      {showInventoryAlerts && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <GlassCard className="max-w-4xl w-full p-8">
+            <div className="flex items-center gap-4 mb-8">
+              <div className="p-3 bg-red-50 rounded-xl">
+                <AlertCircle className="w-8 h-8 text-red-600" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-800">Inventory Alerts</h2>
+                <p className="text-base text-gray-600">Manage low stock and out-of-stock items</p>
+              </div>
+            </div>
+            
+            <div className="space-y-6 mb-8">
+              {/* Alerts List */}
+              <div className="max-h-96 overflow-y-auto">
+                {inventoryAlerts.length > 0 ? (
+                  <div className="space-y-3">
+                    {inventoryAlerts.map((inventoryAlert, index) => {
+                                              const product = products.find(p => p.id === inventoryAlert.productId);
+                      const mainVariant = product?.variants?.[0];
+                      
+                      return (
+                        <div key={index} className="p-4 bg-white rounded-xl border border-gray-200 hover:shadow-lg transition-all duration-200">
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3">
+                                <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold ${
+                                  inventoryAlert.type === 'out' ? 'bg-red-500' :
+                                  inventoryAlert.type === 'critical' ? 'bg-orange-500' :
+                                  'bg-yellow-500'
+                                }`}>
+                                  {inventoryAlert.currentStock}
+                                </div>
+                                <div>
+                                  <div className="font-semibold text-gray-900">{inventoryAlert.productName}</div>
+                                  <div className="text-sm text-gray-600">Current Stock: {inventoryAlert.currentStock}</div>
+                                  <div className="text-sm text-gray-500">SKU: {mainVariant?.sku || 'N/A'}</div>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                                inventoryAlert.type === 'out' ? 'bg-red-100 text-red-700' :
+                                inventoryAlert.type === 'critical' ? 'bg-orange-100 text-orange-700' :
+                                'bg-yellow-100 text-yellow-700'
+                              }`}>
+                                {inventoryAlert.type === 'out' ? 'Out of Stock' :
+                                 inventoryAlert.type === 'critical' ? 'Critical' : 'Low Stock'}
+                              </div>
+                              <div className="text-sm text-gray-500 mt-1">Threshold: {inventoryAlert.threshold}</div>
+                            </div>
+                          </div>
+                          
+                          {/* Action Buttons */}
+                          <div className="mt-4 flex items-center gap-2">
+                            <button
+                              onClick={() => {
+                                setSelectedProductForAdjustment(product);
+                                setShowStockAdjustment(true);
+                                setShowInventoryAlerts(false);
+                              }}
+                              className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-sm hover:bg-blue-200 transition-colors"
+                            >
+                              Adjust Stock
+                            </button>
+                            <button
+                              onClick={() => {
+                                // Quick restock - add 20 units
+                                if (product && mainVariant) {
+                                  handleStockAdjustment(product.id, mainVariant.id, 20, 'Quick restock from alerts');
+                                }
+                              }}
+                              className="px-3 py-1 bg-green-100 text-green-700 rounded-lg text-sm hover:bg-green-200 transition-colors"
+                            >
+                              Quick Restock (+20)
+                            </button>
+                            <button
+                              onClick={() => {
+                                // Mark as ordered
+                                window.alert(`${inventoryAlert.productName} marked as ordered`);
+                              }}
+                              className="px-3 py-1 bg-purple-100 text-purple-700 rounded-lg text-sm hover:bg-purple-200 transition-colors"
+                            >
+                              Mark Ordered
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <AlertCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold text-gray-800 mb-2">No inventory alerts</h3>
+                    <p className="text-gray-600">All products have sufficient stock</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Settings */}
+              <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                <h3 className="font-semibold text-gray-900 mb-3">Alert Settings</h3>
+                <div className="flex items-center gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Low Stock Threshold</label>
+                    <input
+                      type="number"
+                      value={lowStockThreshold}
+                      onChange={(e) => setLowStockThreshold(parseInt(e.target.value) || 10)}
+                      className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      min="1"
+                    />
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    Items with stock ≤ {lowStockThreshold} will trigger alerts
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-4">
+              <GlassButton
+                onClick={() => setShowInventoryAlerts(false)}
+                variant="secondary"
+                className="flex-1 py-4 text-lg font-semibold"
+              >
+                Close
+              </GlassButton>
+              <GlassButton
+                onClick={() => {
+                  // Export inventory alerts
+                  const csvContent = inventoryAlerts.map((inventoryAlert: any) => 
+                    `${inventoryAlert.productName},${inventoryAlert.currentStock},${inventoryAlert.threshold},${inventoryAlert.type}`
+                  ).join('\n');
+                  const blob = new Blob([csvContent], { type: 'text/csv' });
+                  const url = window.URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = 'inventory-alerts.csv';
+                  a.click();
+                }}
+                className="flex-1 py-4 text-lg font-semibold bg-gradient-to-r from-red-500 to-orange-600 text-white"
+              >
+                Export Alerts
+              </GlassButton>
+            </div>
+          </GlassCard>
+        </div>
+      )}
+
+      {/* Stock Adjustment Modal */}
+      {showStockAdjustment && selectedProductForAdjustment && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <GlassCard className="max-w-md w-full p-8">
+            <div className="flex items-center gap-4 mb-8">
+              <div className="p-3 bg-blue-50 rounded-xl">
+                <Warehouse className="w-8 h-8 text-blue-600" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-800">Adjust Stock</h2>
+                <p className="text-base text-gray-600">Update product inventory levels</p>
+              </div>
+            </div>
+            
+            <div className="space-y-6 mb-8">
+              {/* Product Info */}
+              <div className="p-4 bg-gray-50 rounded-xl">
+                <h3 className="font-semibold text-gray-900 mb-2">{selectedProductForAdjustment.name}</h3>
+                <div className="text-sm text-gray-600">
+                  <div>SKU: {selectedProductForAdjustment.variants?.[0]?.sku || 'N/A'}</div>
+                  <div>Current Stock: {selectedProductForAdjustment.variants?.[0]?.quantity || 0}</div>
+                </div>
+              </div>
+
+              {/* Adjustment Form */}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Adjustment Amount</label>
+                  <input
+                    type="number"
+                    id="adjustmentAmount"
+                    placeholder="Enter amount (use negative for reduction)"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Reason</label>
+                  <select
+                    id="adjustmentReason"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Select a reason</option>
+                    <option value="Restock">Restock</option>
+                    <option value="Damage">Damage</option>
+                    <option value="Theft">Theft</option>
+                    <option value="Return">Return</option>
+                    <option value="Correction">Correction</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Notes (Optional)</label>
+                  <textarea
+                    id="adjustmentNotes"
+                    placeholder="Additional notes..."
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    rows={3}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-4">
+              <GlassButton
+                onClick={() => {
+                  setShowStockAdjustment(false);
+                  setSelectedProductForAdjustment(null);
+                }}
+                variant="secondary"
+                className="flex-1 py-4 text-lg font-semibold"
+              >
+                Cancel
+              </GlassButton>
+              <GlassButton
+                onClick={() => {
+                  const amount = parseInt((document.getElementById('adjustmentAmount') as HTMLInputElement)?.value || '0');
+                  const reason = (document.getElementById('adjustmentReason') as HTMLSelectElement)?.value || 'Other';
+                  const notes = (document.getElementById('adjustmentNotes') as HTMLTextAreaElement)?.value || '';
+                  
+                  if (amount === 0) {
+                    alert('Please enter a valid adjustment amount');
+                    return;
+                  }
+                  
+                  if (!reason) {
+                    alert('Please select a reason');
+                    return;
+                  }
+                  
+                  const fullReason = notes ? `${reason}: ${notes}` : reason;
+                  const mainVariant = selectedProductForAdjustment.variants?.[0];
+                  
+                  if (mainVariant) {
+                    handleStockAdjustment(selectedProductForAdjustment.id, mainVariant.id, amount, fullReason);
+                    setShowStockAdjustment(false);
+                    setSelectedProductForAdjustment(null);
+                  }
+                }}
+                className="flex-1 py-4 text-lg font-semibold bg-gradient-to-r from-blue-500 to-indigo-600 text-white"
+              >
+                Apply Adjustment
+              </GlassButton>
+            </div>
+          </GlassCard>
+        </div>
+      )}
+
+      {/* Customer Details Modal */}
+      {showCustomerDetails && selectedCustomerForDetails && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <GlassCard className="max-w-4xl w-full p-8">
+            <div className="flex items-center gap-4 mb-8">
+              <div className="p-3 bg-blue-50 rounded-xl">
+                <User className="w-8 h-8 text-blue-600" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-800">Customer Details</h2>
+                <p className="text-base text-gray-600">View and manage customer information</p>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+              {/* Customer Info */}
+              <div className="space-y-6">
+                <div className="p-6 bg-gradient-to-br from-blue-50 to-indigo-100 rounded-xl border border-blue-200">
+                  <h3 className="font-semibold text-blue-900 mb-4">Customer Information</h3>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center text-white font-bold text-lg">
+                        {selectedCustomerForDetails.name.charAt(0)}
+                      </div>
+                      <div>
+                        <div className="font-bold text-gray-900 text-lg">{selectedCustomerForDetails.name}</div>
+                        <div className="text-sm text-gray-600">{selectedCustomerForDetails.phone}</div>
+                        <div className="text-sm text-gray-500">{selectedCustomerForDetails.email}</div>
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4 pt-4">
+                      <div className="text-center p-3 bg-white rounded-lg">
+                        <div className="text-2xl font-bold text-blue-600">
+                          {customerLoyaltyPoints[selectedCustomerForDetails.id] || selectedCustomerForDetails.points}
+                        </div>
+                        <div className="text-sm text-gray-600">Loyalty Points</div>
+                      </div>
+                      <div className="text-center p-3 bg-white rounded-lg">
+                        <div className="text-2xl font-bold text-green-600">
+                          {formatMoney(selectedCustomerForDetails.totalSpent)}
+                        </div>
+                        <div className="text-sm text-gray-600">Total Spent</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Communication */}
+                <div className="p-6 bg-gradient-to-br from-green-50 to-emerald-100 rounded-xl border border-green-200">
+                  <h3 className="font-semibold text-green-900 mb-4">Communication</h3>
+                  <div className="space-y-3">
+                    <button
+                      onClick={() => sendCustomerWhatsApp(selectedCustomerForDetails)}
+                      className="w-full p-3 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors duration-200 flex items-center justify-center gap-2"
+                    >
+                      <Smartphone className="w-4 h-4" />
+                      Send WhatsApp Message
+                    </button>
+                    <button
+                      onClick={() => sendCustomerSMS(selectedCustomerForDetails)}
+                      className="w-full p-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors duration-200 flex items-center justify-center gap-2"
+                    >
+                      <Phone className="w-4 h-4" />
+                      Send SMS
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Purchase History & Notes */}
+              <div className="space-y-6">
+                {/* Purchase History */}
+                <div className="p-6 bg-gradient-to-br from-purple-50 to-violet-100 rounded-xl border border-purple-200">
+                  <h3 className="font-semibold text-purple-900 mb-4">Purchase History</h3>
+                  <div className="max-h-48 overflow-y-auto space-y-2">
+                    {getCustomerPurchaseHistory(selectedCustomerForDetails.id).length > 0 ? (
+                      getCustomerPurchaseHistory(selectedCustomerForDetails.id).map((sale, index) => (
+                        <div key={index} className="p-3 bg-white rounded-lg border border-purple-200">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="font-medium text-gray-900">Sale #{sale.id}</div>
+                              <div className="text-sm text-gray-600">{sale.date}</div>
+                            </div>
+                            <div className="text-right">
+                              <div className="font-semibold text-green-600">{formatMoney(sale.total)}</div>
+                              <div className="text-sm text-gray-500">{sale.paymentMethod}</div>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-8 text-gray-500">
+                        <Clock className="w-8 h-8 mx-auto mb-2" />
+                        <p>No purchase history</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Customer Notes */}
+                <div className="p-6 bg-gradient-to-br from-orange-50 to-amber-100 rounded-xl border border-orange-200">
+                  <h3 className="font-semibold text-orange-900 mb-4">Customer Notes</h3>
+                  <div className="space-y-3">
+                    <textarea
+                      value={customerNotes[selectedCustomerForDetails.id] || ''}
+                      onChange={(e) => setCustomerNotes(prev => ({
+                        ...prev,
+                        [selectedCustomerForDetails.id]: e.target.value
+                      }))}
+                      placeholder="Add notes about this customer..."
+                      className="w-full p-3 border border-orange-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
+                      rows={4}
+                    />
+                    <button
+                      onClick={() => {
+                        const note = prompt('Add a new note:');
+                        if (note) {
+                          addCustomerNote(selectedCustomerForDetails.id, note);
+                        }
+                      }}
+                      className="w-full p-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-colors duration-200"
+                    >
+                      Add Note
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-4">
+              <GlassButton
+                onClick={() => setShowCustomerDetails(false)}
+                variant="secondary"
+                className="flex-1 py-4 text-lg font-semibold"
+              >
+                Close
+              </GlassButton>
+              <GlassButton
+                onClick={() => {
+                  setShowLoyaltyPoints(true);
+                  setShowCustomerDetails(false);
+                }}
+                className="flex-1 py-4 text-lg font-semibold bg-gradient-to-r from-blue-500 to-purple-600 text-white"
+              >
+                Manage Loyalty Points
+              </GlassButton>
+            </div>
+          </GlassCard>
+        </div>
+      )}
+
+      {/* Loyalty Points Modal */}
+      {showLoyaltyPoints && selectedCustomerForDetails && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <GlassCard className="max-w-md w-full p-8">
+            <div className="flex items-center gap-4 mb-8">
+              <div className="p-3 bg-purple-50 rounded-xl">
+                <Crown className="w-8 h-8 text-purple-600" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-800">Loyalty Points</h2>
+                <p className="text-base text-gray-600">Manage customer loyalty points</p>
+              </div>
+            </div>
+            
+            <div className="space-y-6 mb-8">
+              {/* Current Points */}
+              <div className="p-6 bg-gradient-to-br from-purple-50 to-indigo-100 rounded-xl border border-purple-200 text-center">
+                <div className="text-4xl font-bold text-purple-600 mb-2">
+                  {customerLoyaltyPoints[selectedCustomerForDetails.id] || selectedCustomerForDetails.points}
+                </div>
+                <div className="text-sm text-purple-700">Current Points</div>
+              </div>
+
+              {/* Add Points */}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Points to Add/Remove</label>
+                  <input
+                    type="number"
+                    value={pointsToAdd}
+                    onChange={(e) => setPointsToAdd(e.target.value)}
+                    placeholder="Enter points (negative to remove)"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Reason</label>
+                  <input
+                    type="text"
+                    value={pointsReason}
+                    onChange={(e) => setPointsReason(e.target.value)}
+                    placeholder="Reason for points adjustment"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-4">
+              <GlassButton
+                onClick={() => {
+                  setShowLoyaltyPoints(false);
+                  setPointsToAdd('');
+                  setPointsReason('');
+                }}
+                variant="secondary"
+                className="flex-1 py-4 text-lg font-semibold"
+              >
+                Cancel
+              </GlassButton>
+              <GlassButton
+                onClick={() => {
+                  const points = parseInt(pointsToAdd);
+                  if (!isNaN(points) && pointsReason) {
+                    setCustomerLoyaltyPoints(prev => ({
+                      ...prev,
+                      [selectedCustomerForDetails.id]: (prev[selectedCustomerForDetails.id] || selectedCustomerForDetails.points) + points
+                    }));
+                    addCustomerNote(selectedCustomerForDetails.id, `Loyalty points ${points > 0 ? 'added' : 'removed'}: ${points} (${pointsReason})`);
+                    setShowLoyaltyPoints(false);
+                    setPointsToAdd('');
+                    setPointsReason('');
+                  } else {
+                    alert('Please enter valid points and reason');
+                  }
+                }}
+                className="flex-1 py-4 text-lg font-semibold bg-gradient-to-r from-purple-500 to-indigo-600 text-white"
+              >
+                Apply Points
+              </GlassButton>
+            </div>
+          </GlassCard>
+        </div>
+      )}
+
+      {/* Sales Analytics Modal */}
+      <SalesAnalyticsModal 
+        isOpen={showSalesAnalytics}
+        onClose={() => setShowSalesAnalytics(false)}
+      />
+
+      {/* ZenoPay Payment Modal */}
+      <ZenoPayPaymentModal
+        isOpen={showZenoPayPayment}
+        onClose={() => setShowZenoPayPayment(false)}
+        onPaymentComplete={(sale) => {
+          console.log('ZenoPay payment completed:', sale);
+          // Handle successful payment
+          setShowZenoPayPayment(false);
+          setShowReceipt(true);
+          setCurrentReceipt({
+            id: sale.id,
+            date: new Date().toLocaleDateString(),
+            time: new Date().toLocaleTimeString(),
+            items: cartItems,
+            customer: selectedCustomer,
+            subtotal: subtotal,
+            tax: tax,
+            discount: discount,
+            total: total,
+            paymentMethod: { id: 'zenopay', name: 'ZenoPay', icon: '📱', description: 'Mobile money via ZenoPay' },
+            cashier: cashierName,
+            receiptNumber: sale.saleNumber
+          });
+          // Clear cart after successful payment
+          setCartItems([]);
+          setSelectedCustomer(null);
+          setSelectedPaymentMethod(null);
+        }}
+        cartItems={cartItems.map(item => ({
+          id: item.id,
+          productId: item.productId,
+          variantId: item.variantId,
+          productName: item.name,
+          variantName: item.variantName || '',
+          sku: item.sku,
+          quantity: item.quantity,
+          unitPrice: item.price,
+          totalPrice: item.totalPrice,
+          availableQuantity: item.availableQuantity || 0
+        }))}
+        total={total}
+        customer={selectedCustomer ? {
+          id: selectedCustomer.id,
+          name: selectedCustomer.name,
+          email: selectedCustomer.email || `${selectedCustomer.phone}@mobile.money`,
+          phone: selectedCustomer.phone
+        } : undefined}
+      />
+
+      {/* Settings Modal */}
+      {showSettings && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <GlassCard className="max-w-6xl w-full p-8 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center gap-4 mb-8">
+              <div className="p-3 bg-gray-50 rounded-xl">
+                <Settings className="w-8 h-8 text-gray-600" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-800">POS Settings</h2>
+                <p className="text-base text-gray-600">Configure system preferences and behavior</p>
+              </div>
+            </div>
+            
+            {/* Settings Tabs */}
+            <div className="flex space-x-1 mb-6 bg-gray-100 rounded-lg p-1 overflow-x-auto">
+              <button
+                onClick={() => setActiveSettingsTab('general')}
+                className={`flex-shrink-0 py-3 px-4 rounded-md font-medium transition-all ${
+                  activeSettingsTab === 'general'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                General
+              </button>
+              <button
+                onClick={() => setActiveSettingsTab('pricing')}
+                className={`flex-shrink-0 py-3 px-4 rounded-md font-medium transition-all ${
+                  activeSettingsTab === 'pricing'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Dynamic Pricing
+              </button>
+              <button
+                onClick={() => setActiveSettingsTab('receipt')}
+                className={`flex-shrink-0 py-3 px-4 rounded-md font-medium transition-all ${
+                  activeSettingsTab === 'receipt'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Receipt
+              </button>
+              <button
+                onClick={() => setActiveSettingsTab('scanner')}
+                className={`flex-shrink-0 py-3 px-4 rounded-md font-medium transition-all ${
+                  activeSettingsTab === 'scanner'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Barcode Scanner
+              </button>
+              <button
+                onClick={() => setActiveSettingsTab('delivery')}
+                className={`flex-shrink-0 py-3 px-4 rounded-md font-medium transition-all ${
+                  activeSettingsTab === 'delivery'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Delivery
+              </button>
+              <button
+                onClick={() => setActiveSettingsTab('search')}
+                className={`flex-shrink-0 py-3 px-4 rounded-md font-medium transition-all ${
+                  activeSettingsTab === 'search'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Search & Filter
+              </button>
+              <button
+                onClick={() => setActiveSettingsTab('permissions')}
+                className={`flex-shrink-0 py-3 px-4 rounded-md font-medium transition-all ${
+                  activeSettingsTab === 'permissions'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Permissions
+              </button>
+              <button
+                onClick={() => setActiveSettingsTab('loyalty')}
+                className={`flex-shrink-0 py-3 px-4 rounded-md font-medium transition-all ${
+                  activeSettingsTab === 'loyalty'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Loyalty & Customer
+              </button>
+              <button
+                onClick={() => setActiveSettingsTab('analytics')}
+                className={`flex-shrink-0 py-3 px-4 rounded-md font-medium transition-all ${
+                  activeSettingsTab === 'analytics'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Analytics & Reporting
+              </button>
+              <button
+                onClick={() => setActiveSettingsTab('notifications')}
+                className={`flex-shrink-0 py-3 px-4 rounded-md font-medium transition-all ${
+                  activeSettingsTab === 'notifications'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Notifications
+              </button>
+              <button
+                onClick={() => setActiveSettingsTab('advanced')}
+                className={`flex-shrink-0 py-3 px-4 rounded-md font-medium transition-all ${
+                  activeSettingsTab === 'advanced'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                                      Advanced
+                    </button>
+                </div>
+
+            {/* Tab Content */}
+            <div className="mb-8">
+              {/* General Settings Tab */}
+              {activeSettingsTab === 'general' && (
+                <GeneralSettingsTab />
+              )}
+
+              {/* Dynamic Pricing Settings Tab */}
+              {activeSettingsTab === 'pricing' && (
+                <DynamicPricingSettingsTab />
+              )}
+
+              {/* Receipt Settings Tab */}
+              {activeSettingsTab === 'receipt' && (
+                <ReceiptSettingsTab />
+              )}
+
+              {/* Barcode Scanner Settings Tab */}
+              {activeSettingsTab === 'scanner' && (
+                <BarcodeScannerSettingsTab />
+              )}
+
+              {/* Delivery Settings Tab */}
+              {activeSettingsTab === 'delivery' && (
+                <DeliverySettingsTab />
+              )}
+
+              {/* Search & Filter Settings Tab */}
+              {activeSettingsTab === 'search' && (
+                <SearchFilterSettingsTab />
+              )}
+
+              {/* User Permissions Settings Tab */}
+              {activeSettingsTab === 'permissions' && (
+                <UserPermissionsSettingsTab />
+              )}
+
+              {/* Loyalty & Customer Settings Tab */}
+              {activeSettingsTab === 'loyalty' && (
+                <LoyaltyCustomerSettingsTab />
+              )}
+
+              {/* Analytics & Reporting Settings Tab */}
+              {activeSettingsTab === 'analytics' && (
+                <AnalyticsReportingSettingsTab />
+              )}
+
+              {/* Advanced Notification Settings Tab */}
+              {activeSettingsTab === 'notifications' && (
+                <AdvancedNotificationSettingsTab />
+              )}
+
+              {/* Advanced Settings Tab */}
+                                    {activeSettingsTab === 'advanced' && (
+                        <AdvancedSettingsTab />
+                      )}
+            </div>
+
+            <div className="flex gap-4">
+              <GlassButton
+                onClick={() => setShowSettings(false)}
+                variant="secondary"
+                className="flex-1 py-4 text-lg font-semibold"
+              >
+                Cancel
+              </GlassButton>
+              <GlassButton
+                onClick={() => {
+                  // Save settings
+                  alert('Settings saved successfully!');
+                  setShowSettings(false);
+                }}
+                className="flex-1 py-4 text-lg font-semibold bg-gradient-to-r from-blue-500 to-indigo-600 text-white"
+              >
+                Save Settings
+              </GlassButton>
+            </div>
+          </GlassCard>
+        </div>
+      )}
+
+
+
+      {/* Discount Modal */}
+      {showDiscountModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <GlassCard className="max-w-2xl w-full p-8">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 bg-purple-50 rounded-lg">
+                <DollarSign className="w-6 h-6 text-purple-600" />
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold text-gray-800">Apply Discount</h2>
+                <p className="text-sm text-gray-600">Add a manual discount to the transaction</p>
+              </div>
+            </div>
+
+            <div className="space-y-8">
+              {/* Discount Type Selection */}
+              <div>
+                <label className="block text-lg font-semibold text-gray-700 mb-4">Discount Type</label>
+                <div className="grid grid-cols-2 gap-4">
+                  <button
+                    onClick={() => setDiscountType('percentage')}
+                    className={`p-6 border-2 rounded-xl transition-all duration-200 ${
+                      discountType === 'percentage'
+                        ? 'border-purple-500 bg-purple-50 text-purple-700'
+                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="text-center">
+                      <div className="text-xl font-semibold">Percentage</div>
+                      <div className="text-base">% off total</div>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => setDiscountType('fixed')}
+                    className={`p-6 border-2 rounded-xl transition-all duration-200 ${
+                      discountType === 'fixed'
+                        ? 'border-purple-500 bg-purple-50 text-purple-700'
+                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="text-center">
+                      <div className="text-xl font-semibold">Fixed Amount</div>
+                      <div className="text-base">TZS off total</div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Discount Value Input */}
+              <div>
+                <label className="block text-lg font-semibold text-gray-700 mb-4">
+                  {discountType === 'percentage' ? 'Discount Percentage' : 'Discount Amount (TZS)'}
+                </label>
+                <input
+                  type="number"
+                  value={discountValue}
+                  onChange={(e) => setDiscountValue(e.target.value)}
+                  placeholder={discountType === 'percentage' ? 'Enter percentage (e.g., 10)' : 'Enter amount (e.g., 5000)'}
+                  className="w-full px-6 py-4 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-500/30 focus:border-purple-500 text-xl font-medium"
+                  min="0"
+                  max={discountType === 'percentage' ? '100' : undefined}
+                  step={discountType === 'percentage' ? '0.1' : '100'}
+                />
+              </div>
+
+              {/* Quick Discount Buttons */}
+              {discountType === 'percentage' && (
+                <div>
+                  <label className="block text-lg font-semibold text-gray-700 mb-4">Quick Discount</label>
+                  <div className="grid grid-cols-4 gap-3">
+                    {[5, 10, 15, 20].map((percentage) => (
+                      <button
+                        key={percentage}
+                        onClick={() => setDiscountValue(percentage.toString())}
+                        className="p-4 border-2 border-gray-200 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 text-lg font-semibold"
+                      >
+                        {percentage}%
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Preview */}
+              {discountValue && (
+                <div className="p-6 bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl border-2 border-purple-200">
+                  <div className="text-lg font-semibold text-purple-800 mb-4">Discount Preview:</div>
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center py-2">
+                      <span className="text-lg font-medium text-gray-700">Subtotal:</span>
+                      <span className="text-xl font-bold text-gray-900">{formatMoney(subtotal)}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-2">
+                      <span className="text-lg font-medium text-purple-700">Discount:</span>
+                      <span className="text-xl font-bold text-purple-600">-{formatMoney(
+                        discountType === 'percentage' 
+                          ? subtotal * (parseFloat(discountValue) / 100)
+                          : parseFloat(discountValue) || 0
+                      )}</span>
+                    </div>
+                    <div className="border-t-2 border-purple-300 pt-4 flex justify-between items-center">
+                      <span className="text-xl font-bold text-gray-800">After Discount:</span>
+                      <span className="text-2xl font-bold text-green-600">{formatMoney(
+                        subtotal - (discountType === 'percentage' 
+                          ? subtotal * (parseFloat(discountValue) / 100)
+                          : parseFloat(discountValue) || 0)
+                      )}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Current Loyalty Discount Info */}
+              {selectedCustomer && (
+                <div className="p-5 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200">
+                  <div className="text-base text-blue-700">
+                    <div className="font-semibold mb-3 text-lg">Customer Loyalty Discount:</div>
+                    {selectedCustomer.loyaltyLevel === 'platinum' || selectedCustomer.loyaltyLevel === 'gold' || selectedCustomer.colorTag === 'vip' ? (
+                      <div className="text-lg font-medium">VIP Member: 5% automatic discount</div>
+                    ) : selectedCustomer.loyaltyLevel === 'bronze' || selectedCustomer.loyaltyLevel === 'silver' ? (
+                      <div className="text-lg font-medium">Loyalty Member: 2% automatic discount</div>
+                    ) : (
+                      <div className="text-lg font-medium">No automatic discount</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-4 mt-8">
+              <GlassButton
+                onClick={() => {
+                  setShowDiscountModal(false);
+                  setDiscountValue('');
+                }}
+                variant="secondary"
+                className="flex-1 py-6 text-xl font-semibold"
+              >
+                Cancel
+              </GlassButton>
+              <GlassButton
+                onClick={() => {
+                  if (discountValue && parseFloat(discountValue) > 0) {
+                    setManualDiscount(parseFloat(discountValue));
+                    setShowDiscountModal(false);
+                    setDiscountValue('');
+                  } else {
+                    alert('Please enter a valid discount value');
+                  }
+                }}
+                className="flex-1 py-6 text-xl font-semibold bg-gradient-to-r from-purple-500 to-indigo-600 text-white"
+              >
+                Apply Discount
+              </GlassButton>
+            </div>
+          </GlassCard>
+        </div>
+      )}
+
+      {/* Mobile Responsiveness Improvements */}
+      <style>{`
+        @media (max-width: 768px) {
+          .mobile-optimized {
+            padding: 1rem;
+            font-size: 0.875rem;
+          }
+          
+          .mobile-grid {
+            grid-template-columns: 1fr;
+            gap: 0.75rem;
+          }
+          
+          .mobile-modal {
+            margin: 0.5rem;
+            padding: 1rem;
+          }
+          
+          .mobile-button {
+            padding: 0.75rem;
+            font-size: 0.875rem;
+          }
+        }
+        
+        @media (max-width: 480px) {
+          .mobile-optimized {
+            padding: 0.75rem;
+            font-size: 0.8rem;
+          }
+          
+          .mobile-modal {
+            margin: 0.25rem;
+            padding: 0.75rem;
+          }
+        }
+      `}</style>
+
+      {/* Payment Tracking Modal */}
+      <PaymentTrackingModal
+        isOpen={showPaymentTracking}
+        onClose={() => setShowPaymentTracking(false)}
+      />
+
+      {/* Customer Loyalty Modal */}
+      <CustomerLoyaltyModal
+        isOpen={showCustomerLoyalty}
+        onClose={() => setShowCustomerLoyalty(false)}
+      />
+
+      {/* POS Bottom Bar */}
+      <POSBottomBar
+        onViewAnalytics={() => setShowSalesAnalytics(true)}
+        onQuickActions={() => {
+          // Navigate to quick actions or show quick actions modal
+          navigate('/lats');
+        }}
+        onPaymentTracking={() => setShowPaymentTracking(true)}
+        onSettings={() => setShowSettings(true)}
+        onCustomers={() => navigate('/lats/customers')}
+        onInventory={() => navigate('/lats/unified-inventory')}
+        onReports={() => navigate('/lats/sales-reports')}
+        onLoyalty={() => setShowCustomerLoyalty(true)}
       />
       </div>
     </div>

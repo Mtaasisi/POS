@@ -424,7 +424,7 @@ const StatusUpdateForm: React.FC<StatusUpdateFormProps> = ({
                                 <input
                                   type="number"
                                   min="0"
-                                  step="0.01"
+                                  step="1"
                                   value={paymentAmount}
                                   onChange={e => setPaymentAmount(e.target.value)}
                                   className="w-full rounded-lg border border-white/30 bg-white/30 p-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400/30 transition-all duration-300"
@@ -571,7 +571,7 @@ const StatusUpdateForm: React.FC<StatusUpdateFormProps> = ({
             <input
               type="number"
               min="0"
-              step="0.01"
+                              step="1"
               value={paymentAmount}
               onChange={e => setPaymentAmount(e.target.value)}
               className="w-full rounded-lg border border-white/30 bg-white/30 p-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400/30 transition-all duration-300"

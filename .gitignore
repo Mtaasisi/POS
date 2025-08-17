@@ -4,11 +4,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Production builds
+# Build outputs
 dist/
 build/
-.next/
-out/
+*.tsbuildinfo
 
 # Environment variables
 .env
@@ -45,6 +44,7 @@ pids
 
 # Coverage directory used by tools like istanbul
 coverage/
+*.lcov
 
 # nyc test coverage
 .nyc_output
@@ -55,6 +55,15 @@ jspm_packages/
 # Optional npm cache directory
 .npm
 
+# Optional eslint cache
+.eslintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
 # Optional REPL history
 .node_repl_history
 
@@ -64,150 +73,76 @@ jspm_packages/
 # Yarn Integrity file
 .yarn-integrity
 
-# dotenv environment variables file
-.env
+# parcel-bundler cache (https://parceljs.org/)
+.cache
+.parcel-cache
 
-# History files (VS Code extension)
+# Next.js build output
+.next
+
+# Nuxt.js build / generate output
+.nuxt
+
+# Gatsby files
+.cache/
+public
+
+# Storybook build outputs
+.out
+.storybook-out
+
+# Temporary folders
+tmp/
+temp/
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Supabase
+.supabase/
+
+# History files
 .history/
 
+# Bolt files
+.bolt/
+
+# Deployment files
+Deploy clean/
+
+# Backup files
+*.tar.gz
+*.zip
+
+# Test files
+test-*.php
+test-*.js
+test-*.tsx
+test-*.ts
+
 # Temporary files
+temp_fix.tsx
 *.tmp
 *.temp
 
-# Database files
-*.db
-*.sqlite
-*.sqlite3
+# Database dumps
+*.sql
+!supabase/migrations/*.sql
 
-# Backup files
-*.backup
-*.bak
+# Scripts that should not be in production
+scripts/ussd_sessions.json
+scripts/index.php
+debug-zenopay.php
+server-*.php
 
-# Test files
-test-*.js
-test-*.html
-test-*.sql
-
-# Debug files
-debug-*.js
-debug-*.sql
-
-# Fix files
-fix-*.js
-fix-*.sql
-
-# Check files
-check-*.js
-check-*.sql
-
-# Verify files
-verify-*.js
-verify-*.sql
-
-# Setup files
-setup-*.js
-setup-*.sql
-setup-*.sh
-
-# Sample data files
-add-sample-*.js
-add-sample-*.sql
-
-# Backup data files
-backup-*.sql
-
-# Cleanup files
-cleanup-*.js
-cleanup-*.sql
-
-# Apply files
-apply-*.js
-apply-*.sql
-
-# Quick fix files
-quick-fix-*.sql
-
-# Final files
-final-*.sql
-
-# Chunk files
-chunk-*.sql
-
-# Diagnose files
-diagnose-*.js
-diagnose-*.sql
-
-# Recreate files
-recreate-*.sql
-
-# Remove files
-remove-*.sql
-
-# Sample products files
-sample-*.sql
-
-# Delete files
-delete-*.sql
-
-# Clean files
-clean-*.sql
-
-# Create files
-create-*.sql
-
-# Database optimization files
-database_optimization_*.sql
-
-# Debug upload files
-debug-upload-*.md
-
-# Get credentials files
-get-*.md
-
-# Lats cleanup files
-lats_cleanup_*.sql
-
-# Use existing bucket files
-use-existing-*.sql
-
-# Simple check files
-simple-check*.sql
-
-# Update navigation files
-update-navigation-*.md
-
-# Vercel files
-vercel_*.json
-
-# WhatsApp database files
-whatsapp-database-*.sql
-whatsapp-tables-*.sql
-
-# ZenoPay files
-zenopay-*.php
-
-# Firebase files
-firebase.json
-
-# Capacitor files
-capacitor.config.ts
-
-# Vercel files
-vercel.json
-
-# Template files
-*.template
-
-# Manifest files
-public/manifest.json
-
-# Offline files
-public/offline.html
-
-# Brand logos backup
-public/brand-logos/backup/
-
-# Upload directories (keep structure but not content)
-public/uploads/brands/
-public/uploads/products/
-public/uploads/thumbnails/
+# Documentation files that are temporary
+*.md
+!README.md
+!docs/**/*.md

@@ -131,14 +131,33 @@ const QUICK_ACTIONS: QuickAction[] = [
     color: 'from-red-500 to-red-600',
     category: 'analytics'
   },
+
   {
-    id: 'zenopay-test',
-    name: 'ZenoPay Test',
-    description: 'Test mobile money payment integration',
-    icon: Smartphone,
-    path: '/lats/zenopay-test',
-    color: 'from-green-500 to-green-600',
+    id: 'payment-settings',
+    name: 'Payment Settings',
+    description: 'Select provider and credentials',
+    icon: Settings,
+    path: '/lats/payment-settings',
+    color: 'from-slate-500 to-slate-700',
     category: 'sales'
+  },
+  {
+    id: 'payment-history',
+    name: 'Payment History',
+    description: 'View all payment transactions',
+    icon: FileText,
+    path: '/lats/payment-history',
+    color: 'from-indigo-500 to-indigo-600',
+    category: 'analytics'
+  },
+  {
+    id: 'payment-analytics',
+    name: 'Payment Analytics',
+    description: 'Payment performance insights',
+    icon: BarChart3,
+    path: '/lats/payment-analytics',
+    color: 'from-purple-500 to-purple-600',
+    category: 'analytics'
   }
 ];
 

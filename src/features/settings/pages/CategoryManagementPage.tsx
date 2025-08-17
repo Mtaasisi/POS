@@ -3,8 +3,7 @@ import GlassCard from '../../../features/shared/components/ui/GlassCard';
 import GlassButton from '../../../features/shared/components/ui/GlassButton';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
-import { ArrowLeft, Plus, Edit, Trash2, X, Search, Filter, Tag, RotateCcw, Save } from 'lucide-react';
-import { BrandCategory } from '../../../lib/brandApi';
+import { ArrowLeft, Plus, Edit, Trash2, Search, Filter, X, Save, RotateCcw, Tag, Smartphone, Laptop, Monitor, Headphones, Camera, Gamepad2, Printer, Watch, Speaker, Keyboard, Mouse, Router, Server, HardDrive, Package, Eye, MessageCircle, Users, Star, UserPlus } from 'lucide-react';
 import { 
   getCategories, 
   getActiveCategories, 
@@ -16,8 +15,7 @@ import {
   CreateCategoryData,
   UpdateCategoryData
 } from '../../../lib/categoryApi';
-
-
+import { useAuth } from '../../../context/AuthContext';
 
 interface CategoryFormData {
   name: string;
@@ -26,25 +24,16 @@ interface CategoryFormData {
 }
 
 const CategoryManagementPage: React.FC = () => {
+  const { currentUser } = useAuth();
+  const navigate = useNavigate();
   const [categories, setCategories] = useState<Category[]>([]);
   const [filteredCategories, setFilteredCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
+  const [showCategoryForm, setShowCategoryForm] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [showDeletedCategories, setShowDeletedCategories] = useState(false);
-
-  const [formData, setFormData] = useState<CategoryFormData>({
-    name: '',
-    description: '',
-    color: '#3B82F6' // Default blue color
-  });
-
-
+  // Note: Categories don't have is_active column, so we don't need showDeletedCategories
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Color options for category selection
   const colorOptions = [
@@ -72,25 +61,15 @@ const CategoryManagementPage: React.FC = () => {
   ];
 
   useEffect(() => {
+    console.log('🔍 CategoryManagementPage: Component loaded');
+    console.log('🔍 CategoryManagementPage: Environment check:', {
+      isDev: import.meta.env.DEV,
+      hostname: window.location.hostname,
+      url: window.location.href
+    });
+    
     fetchCategories();
-  }, [showDeletedCategories]);
-
-  // Handle escape key to close edit modal
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && showEditModal) {
-        cancelEdit();
-      }
-    };
-
-    if (showEditModal) {
-      document.addEventListener('keydown', handleEscape);
-    }
-
-    return () => {
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, [showEditModal]);
+  }, []);
 
   useEffect(() => {
     filterCategories();
@@ -99,17 +78,11 @@ const CategoryManagementPage: React.FC = () => {
   const fetchCategories = async () => {
     try {
       setLoading(true);
-      setError('');
-      
-      const fetchedCategories = showDeletedCategories 
-        ? await getCategories()
-        : await getActiveCategories();
-      
-      setCategories(fetchedCategories);
-      setFilteredCategories(fetchedCategories);
-    } catch (error) {
-      setError('Failed to fetch categories');
+      const data = await getActiveCategories();
+      setCategories(data);
+    } catch (error: any) {
       console.error('Error fetching categories:', error);
+      toast.error('Failed to fetch categories: ' + (error.message || 'Unknown error'));
     } finally {
       setLoading(false);
     }
@@ -119,7 +92,7 @@ const CategoryManagementPage: React.FC = () => {
     let filtered = categories;
 
     // Filter by search query
-    if (searchQuery) {
+    if (searchQuery.trim()) {
       filtered = filtered.filter(category =>
         category.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         category.description?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -129,140 +102,53 @@ const CategoryManagementPage: React.FC = () => {
     setFilteredCategories(filtered);
   };
 
-  const handleSearch = (query: string) => {
+  const handleSearch = async (query: string) => {
     setSearchQuery(query);
   };
 
-  const handleAddCategory = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmitCategory = async (categoryData: any) => {
+    setIsSubmitting(true);
     try {
-      setError('');
-      
-      const categoryData: CreateCategoryData = {
-        name: formData.name.trim(),
-        description: formData.description.trim(),
-        color: formData.color
-      };
-
-      const newCategory = await createCategory(categoryData);
-      
-      setCategories(prev => [newCategory, ...prev]);
-      setFilteredCategories(prev => [newCategory, ...prev]);
-      
-      setSuccess('Category created successfully');
-      setShowAddForm(false);
-      resetForm();
+      if (editingCategory) {
+        await updateCategory(editingCategory.id, categoryData);
+        toast.success('Category updated successfully!');
+      } else {
+        await createCategory(categoryData);
+        toast.success('Category created successfully!');
+      }
+      await fetchCategories();
     } catch (error: any) {
-      setError(error.message || 'Failed to create category');
-    }
-  };
-
-  const handleUpdateCategory = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingCategory) return;
-
-    try {
-      setIsUpdating(true);
-      setError('');
-      
-      const categoryData: UpdateCategoryData = {
-        name: formData.name.trim(),
-        description: formData.description.trim(),
-        color: formData.color
-      };
-      
-      const updatedCategory = await updateCategory(editingCategory.id, categoryData);
-      
-      setCategories(prev => prev.map(cat => 
-        cat.id === editingCategory.id ? updatedCategory : cat
-      ));
-      setFilteredCategories(prev => prev.map(cat => 
-        cat.id === editingCategory.id ? updatedCategory : cat
-      ));
-      
-      setSuccess('Category updated successfully');
-      setEditingCategory(null);
-      setShowEditModal(false);
-      resetForm();
-    } catch (error: any) {
-      setError(error.message || 'Failed to update category');
+      toast.error(error.message || 'Failed to save category');
+      throw error;
     } finally {
-      setIsUpdating(false);
+      setIsSubmitting(false);
     }
   };
 
   const handleDeleteCategory = async (category: Category) => {
-    if (!confirm(`Are you sure you want to delete "${category.name}"?`)) return;
-
-    try {
-      setError('');
-      
-      await deleteCategory(category.id);
-      
-      // Update local state
-      setCategories(prev => prev.map(cat => 
-        cat.id === category.id 
-          ? { ...cat, is_active: false, updated_at: new Date().toISOString() }
-          : cat
-      ));
-      setFilteredCategories(prev => prev.map(cat => 
-        cat.id === category.id 
-          ? { ...cat, is_active: false, updated_at: new Date().toISOString() }
-          : cat
-      ));
-      
-      setSuccess('Category deleted successfully');
-    } catch (error: any) {
-      setError(error.message || 'Failed to delete category');
+    if (window.confirm(`Are you sure you want to delete ${category.name}?`)) {
+      try {
+        await deleteCategory(category.id);
+        toast.success('Category deleted successfully!');
+        await fetchCategories();
+      } catch (error: any) {
+        toast.error('Failed to delete category');
+      }
     }
   };
 
   const handleRestoreCategory = async (category: Category) => {
-    try {
-      setError('');
-      
-      await restoreCategory(category.id);
-      
-      // Update local state
-      setCategories(prev => prev.map(cat => 
-        cat.id === category.id 
-          ? { ...cat, is_active: true, updated_at: new Date().toISOString() }
-          : cat
-      ));
-      setFilteredCategories(prev => prev.map(cat => 
-        cat.id === category.id 
-          ? { ...cat, is_active: true, updated_at: new Date().toISOString() }
-          : cat
-      ));
-      
-      setSuccess('Category restored successfully');
-    } catch (error: any) {
-      setError(error.message || 'Failed to restore category');
-    }
+    toast.error('Restore functionality not available - categories are permanently deleted');
   };
 
   const startEdit = (category: Category) => {
     setEditingCategory(category);
-    setFormData({
-      name: category.name,
-      description: category.description || '',
-      color: category.color
-    });
-    setShowEditModal(true);
+    setShowCategoryForm(true);
   };
 
-  const cancelEdit = () => {
+  const handleCloseForm = () => {
+    setShowCategoryForm(false);
     setEditingCategory(null);
-    setShowEditModal(false);
-    resetForm();
-  };
-
-  const resetForm = () => {
-    setFormData({
-      name: '',
-      description: '',
-      color: '#3B82F6'
-    });
   };
 
   const getCategoryColorClasses = (color: string) => {
@@ -292,105 +178,200 @@ const CategoryManagementPage: React.FC = () => {
     return colorMap[color] || colorMap['#6B7280'];
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex items-center justify-center h-64">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-          </div>
+  return (
+    <div className="p-4 sm:p-6 max-w-6xl mx-auto">
+      {/* Header */}
+      <div className="flex items-center gap-4 mb-6">
+        <GlassButton
+          onClick={() => navigate('/dashboard')}
+          className="flex items-center gap-2"
+        >
+          <ArrowLeft size={20} />
+          Back to Dashboard
+        </GlassButton>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Category Management</h1>
+          <p className="text-gray-600">Manage device categories and their colors</p>
         </div>
       </div>
-    );
-  }
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <GlassCard className="p-4 text-center">
+          <div className="text-2xl font-bold text-blue-600">{categories.length}</div>
+          <div className="text-sm text-gray-600">Total Categories</div>
+        </GlassCard>
+        <GlassCard className="p-4 text-center">
+          <div className="text-2xl font-bold text-green-600">{categories.filter(c => c.description).length}</div>
+          <div className="text-sm text-gray-600">With Description</div>
+        </GlassCard>
+        <GlassCard className="p-4 text-center">
+          <div className="text-2xl font-bold text-purple-600">{new Set(categories.map(c => c.color)).size}</div>
+          <div className="text-sm text-gray-600">Color Variants</div>
+        </GlassCard>
+      </div>
+
+      {/* Controls */}
+      <GlassCard className="mb-6">
+        <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
           <div className="flex items-center gap-4">
-            <button
-              onClick={() => window.history.back()}
-              className="p-2 rounded-lg bg-white/50 backdrop-blur-sm hover:bg-white/70 transition-colors"
-            >
-              <ArrowLeft size={20} />
-            </button>
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Category Management</h1>
-              <p className="text-gray-600">Manage device categories used in the system</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 cursor-pointer">
+            <div className="relative flex-1 md:w-80">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
               <input
-                type="checkbox"
-                checked={showDeletedCategories}
-                onChange={(e) => setShowDeletedCategories(e.target.checked)}
-                className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                type="text"
+                placeholder="Search categories..."
+                value={searchQuery}
+                onChange={(e) => handleSearch(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
-              <span className="text-sm text-gray-700">Show deleted categories</span>
-            </label>
-            <button
-              onClick={() => setShowAddForm(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <Plus size={20} />
-              Add Category
-            </button>
-          </div>
-        </div>
-
-        {/* Alerts */}
-        {error && (
-          <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
-            {error}
-          </div>
-        )}
-        {success && (
-          <div className="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg">
-            {success}
-          </div>
-        )}
-
-        {/* Filters */}
-        <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 mb-6">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-                <input
-                  type="text"
-                  placeholder="Search categories..."
-                  value={searchQuery}
-                  onChange={(e) => handleSearch(e.target.value)}
-                  className="w-full pl-12 pr-4 py-3 text-lg border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
-                />
-              </div>
             </div>
           </div>
-        </div>
 
-        {/* Add Form */}
-        {showAddForm && (
-          <div className="bg-white/90 backdrop-blur-sm rounded-lg p-6 mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold">Add New Category</h2>
+          <div className="flex items-center gap-2">
+            <GlassButton
+              onClick={() => setShowCategoryForm(true)}
+              className="flex items-center gap-2"
+            >
+              <Plus size={16} />
+              Add Category
+            </GlassButton>
+          </div>
+        </div>
+      </GlassCard>
+
+      {/* Categories Grid */}
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      ) : filteredCategories.length === 0 ? (
+        <GlassCard className="text-center py-12">
+          <Tag className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">No categories found</h3>
+          <p className="text-gray-600 mb-4">
+            {searchQuery 
+              ? 'Try adjusting your search' 
+              : 'Get started by creating your first category'
+            }
+          </p>
+          {!searchQuery && (
+            <GlassButton
+              onClick={() => setShowCategoryForm(true)}
+              className="flex items-center gap-2"
+            >
+              <Plus size={16} />
+              Create First Category
+            </GlassButton>
+          )}
+        </GlassCard>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {filteredCategories.map(category => (
+            <GlassCard key={category.id} className="relative group">
+              {/* Category Color Display */}
+              <div className="flex items-center justify-center h-32 mb-4 rounded-lg" style={{ backgroundColor: category.color + '20' }}>
+                <div 
+                  className="text-4xl font-bold rounded-full w-16 h-16 flex items-center justify-center"
+                  style={{ backgroundColor: category.color, color: 'white' }}
+                >
+                  {category.name.charAt(0)}
+                </div>
+              </div>
+
+              {/* Category Info */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-gray-900 text-lg">{category.name}</h3>
+                  <div className="flex items-center gap-1">
+                    <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                  </div>
+                </div>
+
+                {category.description && (
+                  <p className="text-sm text-gray-600 line-clamp-2">{category.description}</p>
+                )}
+
+                {/* Color Badge */}
+                <div className="flex flex-wrap gap-1">
+                  <span 
+                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${getCategoryColorClasses(category.color)}`}
+                    style={{ backgroundColor: category.color + '20', color: category.color }}
+                  >
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: category.color }}></div>
+                    {category.color}
+                  </span>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+                  <div className="flex items-center gap-1 text-xs text-gray-500">
+                    <span>Created: {new Date(category.created_at).toLocaleDateString()}</span>
+                  </div>
+                  
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => startEdit(category)}
+                      className="p-1 text-gray-500 hover:text-blue-600 transition-colors"
+                      title="Edit Category"
+                    >
+                      <Edit size={14} />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteCategory(category)}
+                      className="p-1 text-gray-500 hover:text-red-600 transition-colors"
+                      title="Delete Category"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </GlassCard>
+          ))}
+        </div>
+      )}
+
+      {/* Category Form Modal */}
+      {showCategoryForm && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              handleCloseForm();
+            }
+          }}
+        >
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b">
+              <h2 className="text-xl font-semibold">
+                {editingCategory ? `Edit Category: ${editingCategory.name}` : 'Add New Category'}
+              </h2>
               <button
-                onClick={() => setShowAddForm(false)}
+                onClick={handleCloseForm}
                 className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
               >
                 <X size={20} />
               </button>
             </div>
-            <form onSubmit={handleAddCategory} className="space-y-4">
+            
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              const formData = new FormData(e.currentTarget);
+              const categoryData = {
+                name: formData.get('name') as string,
+                description: formData.get('description') as string,
+                color: formData.get('color') as string
+              };
+              handleSubmitCategory(categoryData);
+              handleCloseForm();
+            }} className="p-6 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Category Name *</label>
                   <input
+                    name="name"
                     type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    defaultValue={editingCategory?.name || ''}
                     className="w-full px-4 py-3 text-lg border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
                     placeholder="Enter category name"
                     required
@@ -399,8 +380,8 @@ const CategoryManagementPage: React.FC = () => {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Color</label>
                   <select
-                    value={formData.color}
-                    onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                    name="color"
+                    defaultValue={editingCategory?.color || '#3B82F6'}
                     className="w-full px-4 py-3 text-lg border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
                   >
                     {colorOptions.map(color => (
@@ -414,8 +395,8 @@ const CategoryManagementPage: React.FC = () => {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
                 <textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  name="description"
+                  defaultValue={editingCategory?.description || ''}
                   className="w-full px-4 py-3 text-lg border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
                   placeholder="Enter category description"
                   rows={3}
@@ -424,192 +405,31 @@ const CategoryManagementPage: React.FC = () => {
               <div className="flex gap-4">
                 <button
                   type="submit"
-                  className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  disabled={isSubmitting}
+                  className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
                 >
-                  Add Category
+                  {isSubmitting ? (
+                    <div className="flex items-center justify-center">
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                      {editingCategory ? 'Updating...' : 'Adding...'}
+                    </div>
+                  ) : (
+                    editingCategory ? 'Update Category' : 'Add Category'
+                  )}
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowAddForm(false)}
-                  className="px-6 py-3 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
+                  onClick={handleCloseForm}
+                  disabled={isSubmitting}
+                  className="px-6 py-3 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors disabled:opacity-50"
                 >
                   Cancel
                 </button>
               </div>
             </form>
           </div>
-        )}
-
-        {/* Categories Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredCategories.map((category) => (
-            <GlassCard
-              key={category.id}
-              className={`p-4 hover:shadow-lg transition-all duration-200 ${
-                !category.is_active ? 'opacity-60 border-2 border-red-200' : ''
-              }`}
-            >
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex-1">
-                  <h3 className="font-semibold text-gray-900 mb-2">{category.name}</h3>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span 
-                      className={`inline-block px-3 py-1 text-sm rounded-full ${getCategoryColorClasses(category.color)}`}
-                      style={{ backgroundColor: category.color + '20', color: category.color }}
-                    >
-                      {category.name}
-                    </span>
-                    {!category.is_active && (
-                      <span className="inline-block px-2 py-1 text-xs rounded-full bg-red-100 text-red-800">
-                        Deleted
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="flex gap-1">
-                  {category.is_active ? (
-                    <>
-                      <button
-                        onClick={() => startEdit(category)}
-                        className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                        title="Edit category"
-                      >
-                        <Edit size={16} />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteCategory(category)}
-                        className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
-                        title="Delete category"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      onClick={() => handleRestoreCategory(category)}
-                      className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors"
-                      title="Restore category"
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
-                        <path d="M21 3v5h-5"/>
-                        <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
-                        <path d="M3 21v-5h5"/>
-                      </svg>
-                    </button>
-                  )}
-                </div>
-              </div>
-              {category.description && (
-                <p className="text-sm text-gray-600 mb-3">{category.description}</p>
-              )}
-              <div className="text-xs text-gray-500">
-                Created: {new Date(category.created_at).toLocaleDateString()}
-              </div>
-            </GlassCard>
-          ))}
         </div>
-
-        {filteredCategories.length === 0 && !loading && (
-          <div className="text-center py-12">
-            <div className="text-gray-500 text-lg">No categories found</div>
-            <p className="text-gray-400 mt-2">
-              {searchQuery 
-                ? 'Try adjusting your search'
-                : 'Add your first category to get started'
-              }
-            </p>
-          </div>
-        )}
-
-        {/* Edit Category Modal */}
-        {showEditModal && editingCategory && (
-          <div 
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) {
-                cancelEdit();
-              }
-            }}
-          >
-            <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between p-6 border-b">
-                <h2 className="text-xl font-semibold">Edit Category: {editingCategory.name}</h2>
-                <button
-                  onClick={cancelEdit}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-              
-              <form onSubmit={handleUpdateCategory} className="p-6 space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Category Name *</label>
-                    <input
-                      type="text"
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      className="w-full px-4 py-3 text-lg border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
-                      placeholder="Enter category name"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Color</label>
-                    <select
-                      value={formData.color}
-                      onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                      className="w-full px-4 py-3 text-lg border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
-                    >
-                      {colorOptions.map(color => (
-                        <option key={color.value} value={color.value}>
-                          {color.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                  <textarea
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    className="w-full px-4 py-3 text-lg border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
-                    placeholder="Enter category description"
-                    rows={3}
-                  />
-                </div>
-                <div className="flex gap-4">
-                  <button
-                    type="submit"
-                    disabled={isUpdating}
-                    className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-                  >
-                    {isUpdating ? (
-                      <div className="flex items-center justify-center">
-                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                        Updating...
-                      </div>
-                    ) : (
-                      'Update Category'
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={cancelEdit}
-                    disabled={isUpdating}
-                    className="px-6 py-3 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 };

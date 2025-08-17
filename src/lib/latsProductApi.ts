@@ -2,18 +2,8 @@ import { createClient } from '@supabase/supabase-js';
 import { supabase } from './supabaseClient';
 import { ImageUploadService } from './imageUpload';
 
-// Create a separate Supabase client for public access (no authentication)
-const supabasePublic = createClient(
-  import.meta.env.VITE_SUPABASE_URL || 'https://jxhzveborezjhsmzsgbc.supabase.co',
-  import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHp2ZWJvcmV6amhzbXpzZ2JjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzU5NzE5NzQsImV4cCI6MjA1MTU0Nzk3NH0.Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8',
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-      detectSessionInUrl: false
-    }
-  }
-);
+// Use the main supabase client instead of creating a separate one
+// This ensures consistent configuration and avoids conflicts
 
 export interface LatsProduct {
   id: string;
@@ -230,7 +220,7 @@ export async function createProduct(
 
 // Get a product by ID with images
 export async function getProduct(productId: string): Promise<LatsProduct & { images: any[] }> {
-  const { data: product, error: productError } = await supabasePublic
+  const { data: product, error: productError } = await supabase
     .from('lats_products')
     .select(`
       *,
@@ -271,7 +261,7 @@ export async function getProduct(productId: string): Promise<LatsProduct & { ima
 
 // Get all products
 export async function getProducts(): Promise<LatsProduct[]> {
-  const { data, error } = await supabasePublic
+  const { data, error } = await supabase
     .from('lats_products')
     .select(`
       *,
@@ -282,9 +272,12 @@ export async function getProducts(): Promise<LatsProduct[]> {
     `)
     .order('created_at', { ascending: false });
 
-  if (error) throw error;
+  if (error) {
+    console.error('❌ Error fetching products:', error);
+    throw error;
+  }
 
-  return data.map(product => ({
+  return (data || []).map(product => ({
     id: product.id,
     name: product.name,
     description: product.description,
@@ -354,7 +347,7 @@ export async function updateProduct(
     // Handle variants if provided
     if (variants) {
       // Get existing variants
-      const { data: existingVariants, error: fetchError } = await supabasePublic
+      const { data: existingVariants, error: fetchError } = await supabase
         .from('lats_product_variants')
         .select('id, sku')
         .eq('product_id', productId);

@@ -21,6 +21,7 @@ import { ImageUpload } from '../../../../components/ImageUpload';
 import { ImageGallery } from '../../../../components/ImageGallery';
 import { ImageUploadService } from '../../../../lib/imageUpload';
 import { supabase } from '../../../../lib/supabaseClient';
+import { useAuth } from '../../../../context/AuthContext';
 
 // ProductImage interface for form validation
 const ProductImageSchema = z.object({
@@ -54,6 +55,8 @@ const productFormSchema = z.object({
   categoryId: z.string().min(1, 'Category is required'),
   brandId: z.string().optional(),
   supplierId: z.string().optional(),
+  condition: z.string().min(1, 'Product condition is required'),
+  storeShelf: z.string().optional(),
   price: z.number().min(0, 'Price must be 0 or greater'),
   costPrice: z.number().min(0, 'Cost price must be 0 or greater'),
   stockQuantity: z.number().min(0, 'Stock quantity must be 0 or greater'),
@@ -61,10 +64,6 @@ const productFormSchema = z.object({
   maxStockLevel: z.number().min(0, 'Maximum stock level must be 0 or greater').optional(),
   weight: z.number().min(0, 'Weight must be 0 or greater').optional(),
   isActive: z.boolean().default(true),
-  isFeatured: z.boolean().default(false),
-  isDigital: z.boolean().default(false),
-  requiresShipping: z.boolean().default(true),
-  taxRate: z.number().min(0, 'Tax rate must be 0 or greater').default(0),
   tags: z.array(z.string()).default([]),
   images: z.array(ProductImageSchema).default([]),
   metadata: z.record(z.string(), z.string()).optional(),
@@ -106,7 +105,7 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
   const [showVariants, setShowVariants] = useState(false);
   const [isCheckingName, setIsCheckingName] = useState(false);
   const [nameExists, setNameExists] = useState(false);
-  const [user, setUser] = useState<any>(null);
+  const { currentUser } = useAuth();
   const [originalProduct, setOriginalProduct] = useState<any>(null);
   const [productImages, setProductImages] = useState<string[]>([]);
 
@@ -129,6 +128,8 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
       categoryId: '',
       brandId: '',
       supplierId: '',
+      condition: 'new',
+      storeShelf: '',
       price: 0,
       costPrice: 0,
       stockQuantity: 0,
@@ -136,10 +137,6 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
       maxStockLevel: 100,
       weight: 0,
       isActive: true,
-      isFeatured: false,
-      isDigital: false,
-      requiresShipping: true,
-      taxRate: 0,
       tags: [],
       images: [],
       metadata: {},
@@ -184,12 +181,7 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
       loadBrands();
       loadSuppliers();
       
-      // Load current user
-      const loadUser = async () => {
-        const { data: { user } } = await supabase.auth.getUser();
-        setUser(user);
-      };
-      loadUser();
+
     }
   }, [isOpen, loadCategories, loadBrands, loadSuppliers]);
 
@@ -278,10 +270,8 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
           maxStockLevel: product.maxStockLevel || 100,
           weight: product.weight || 0,
           isActive: product.isActive ?? true,
-          isFeatured: product.isFeatured ?? false,
-          isDigital: product.isDigital ?? false,
-          requiresShipping: product.requiresShipping ?? true,
-          taxRate: product.taxRate || 0,
+          condition: product.condition || 'new',
+          storeShelf: product.storeShelf || '',
           tags: product.tags || [],
           images: [], // Images will be loaded separately by ImageUpload component
           metadata: product.metadata || {},
@@ -385,11 +375,8 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
         images: data.images || [], // Include existing images from form
         tags: data.tags || [],
         isActive: data.isActive,
-        isFeatured: data.isFeatured,
-        isDigital: data.isDigital,
-        requiresShipping: data.requiresShipping,
-        taxRate: data.taxRate,
-        // Use normalized variants with proper ID handling
+        condition: data.condition,
+        storeShelf: data.storeShelf || '',
         variants: normalizedVariants.map(variant => ({
           id: variant.id, // Preserve existing variant IDs
           sku: variant.sku || `${data.sku}-${variant.name}`,
@@ -561,54 +548,100 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Edit Product"
-      maxWidth="2xl"
-      maxHeight="90vh"
+      title=""
+      maxWidth="4xl"
+      maxHeight="95vh"
     >
       <form 
         onSubmit={handleSubmit(handleFormSubmit)} 
-        className="space-y-6"
+        className="space-y-8"
       >
-        {/* Basic Information */}
-        <div className="space-y-6">
-          <h3 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2">Basic Information</h3>
+        {/* Modern Header */}
+        <div className="flex items-center justify-between pb-6 border-b border-gray-200">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl">
+              <Package className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">Edit Product</h2>
+              <p className="text-gray-600">Update product information and settings</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="text-right">
+              <div className="text-sm font-medium text-gray-900">Completion</div>
+              <div className="text-lg font-bold text-blue-600">{completionPercentage}%</div>
+            </div>
+            <div className="w-16 h-16 relative">
+              <svg className="w-16 h-16 transform -rotate-90" viewBox="0 0 36 36">
+                <path
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                  fill="none"
+                  stroke="#e5e7eb"
+                  strokeWidth="3"
+                />
+                <path
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                  fill="none"
+                  stroke="#3b82f6"
+                  strokeWidth="3"
+                  strokeDasharray={`${completionPercentage}, 100`}
+                  strokeLinecap="round"
+                />
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        {/* Basic Information - Redesigned */}
+        <div className="bg-gradient-to-br from-gray-50 to-blue-50 rounded-2xl p-8 border border-gray-200">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <Package className="w-5 h-5 text-blue-600" />
+            </div>
+            <h3 className="text-xl font-bold text-gray-900">Basic Information</h3>
+          </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* Product Name - Full Width */}
-            <div className="md:col-span-2">
+            <div className="lg:col-span-2">
               <Controller
                 name="name"
                 control={control}
                 render={({ field }) => (
                   <div>
-                    <label className={`block mb-2 font-medium ${errors.name ? 'text-red-600' : 'text-gray-700'}`}>
+                    <label className={`block mb-3 font-semibold text-lg ${errors.name ? 'text-red-600' : 'text-gray-800'}`}>
                       Product Name *
                     </label>
                     <div className="relative">
                       <input
                         type="text"
-                        className={`w-full py-3 pl-10 pr-4 bg-white/30 backdrop-blur-md border-2 rounded-lg focus:outline-none ${
-                          errors.name ? 'border-red-500 focus:border-red-600' : 
-                          nameExists ? 'border-orange-500 focus:border-orange-600' :
-                          'border-gray-300 focus:border-blue-500'
+                        className={`w-full py-4 pl-12 pr-4 bg-white/80 backdrop-blur-md border-2 rounded-xl focus:outline-none text-lg font-medium transition-all duration-200 ${
+                          errors.name ? 'border-red-500 focus:border-red-600 shadow-red-100' : 
+                          nameExists ? 'border-orange-500 focus:border-orange-600 shadow-orange-100' :
+                          'border-gray-300 focus:border-blue-500 shadow-blue-100 focus:shadow-lg'
                         }`}
                         placeholder="Enter product name"
                         value={field.value}
                         onChange={field.onChange}
                       />
-                      <Package className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+                      <Package className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
                       {isCheckingName && (
-                        <RefreshCw className="absolute right-3 top-1/2 -translate-y-1/2 text-blue-500 animate-spin" size={16} />
+                        <RefreshCw className="absolute right-4 top-1/2 -translate-y-1/2 text-blue-500 animate-spin" size={20} />
                       )}
                       {nameExists && !isCheckingName && (
-                        <AlertIcon className="absolute right-3 top-1/2 -translate-y-1/2 text-orange-500" size={16} />
+                        <AlertIcon className="absolute right-4 top-1/2 -translate-y-1/2 text-orange-500" size={20} />
                       )}
                     </div>
                     {errors.name && (
-                      <div className="text-red-500 text-xs mt-1">{errors.name.message}</div>
+                      <div className="text-red-500 text-sm mt-2 flex items-center gap-2">
+                        <AlertIcon size={16} />
+                        {errors.name.message}
+                      </div>
                     )}
                     {nameExists && !isCheckingName && (
-                      <div className="text-orange-600 text-xs mt-1">
+                      <div className="text-orange-600 text-sm mt-2 flex items-center gap-2">
+                        <AlertIcon size={16} />
                         A product with this name already exists
                       </div>
                     )}
@@ -623,12 +656,12 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
               control={control}
               render={({ field }) => (
                 <div>
-                  <label className={`block mb-2 font-medium ${errors.categoryId ? 'text-red-600' : 'text-gray-700'}`}>
+                  <label className={`block mb-3 font-semibold text-lg ${errors.categoryId ? 'text-red-600' : 'text-gray-800'}`}>
                     Category *
                   </label>
                   <select
-                    className={`w-full py-3 px-4 bg-white/30 backdrop-blur-md border-2 rounded-lg focus:outline-none ${
-                      errors.categoryId ? 'border-red-500 focus:border-red-600' : 'border-gray-300 focus:border-blue-500'
+                    className={`w-full py-4 px-4 bg-white/80 backdrop-blur-md border-2 rounded-xl focus:outline-none text-lg font-medium transition-all duration-200 ${
+                      errors.categoryId ? 'border-red-500 focus:border-red-600 shadow-red-100' : 'border-gray-300 focus:border-blue-500 shadow-blue-100 focus:shadow-lg'
                     }`}
                     value={field.value}
                     onChange={field.onChange}
@@ -641,7 +674,10 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
                     ))}
                   </select>
                   {errors.categoryId && (
-                    <div className="text-red-500 text-xs mt-1">{errors.categoryId.message}</div>
+                    <div className="text-red-500 text-sm mt-2 flex items-center gap-2">
+                      <AlertIcon size={16} />
+                      {errors.categoryId.message}
+                    </div>
                   )}
                 </div>
               )}
@@ -653,9 +689,9 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
               control={control}
               render={({ field }) => (
                 <div>
-                  <label className="block mb-2 font-medium text-gray-700">Brand</label>
+                  <label className="block mb-3 font-semibold text-lg text-gray-800">Brand</label>
                   <select
-                    className="w-full py-3 px-4 bg-white/30 backdrop-blur-md border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                    className="w-full py-4 px-4 bg-white/80 backdrop-blur-md border-2 rounded-xl focus:outline-none text-lg font-medium transition-all duration-200 border-gray-300 focus:border-blue-500 shadow-blue-100 focus:shadow-lg"
                     value={field.value}
                     onChange={field.onChange}
                   >
@@ -676,9 +712,9 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
               control={control}
               render={({ field }) => (
                 <div>
-                  <label className="block mb-2 font-medium text-gray-700">Supplier</label>
+                  <label className="block mb-3 font-semibold text-lg text-gray-800">Supplier</label>
                   <select
-                    className="w-full py-3 px-4 bg-white/30 backdrop-blur-md border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                    className="w-full py-4 px-4 bg-white/80 backdrop-blur-md border-2 rounded-xl focus:outline-none text-lg font-medium transition-all duration-200 border-gray-300 focus:border-blue-500 shadow-blue-100 focus:shadow-lg"
                     value={field.value}
                     onChange={field.onChange}
                   >
@@ -699,14 +735,14 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
               control={control}
               render={({ field }) => (
                 <div>
-                  <label className={`block mb-2 font-medium ${errors.sku ? 'text-red-600' : 'text-gray-700'}`}>
+                  <label className={`block mb-3 font-semibold text-lg ${errors.sku ? 'text-red-600' : 'text-gray-800'}`}>
                     SKU *
                   </label>
                   <div className="relative">
                     <input
                       type="text"
-                      className={`w-full py-3 pl-10 pr-4 bg-white/30 backdrop-blur-md border-2 rounded-lg focus:outline-none ${
-                        errors.sku ? 'border-red-500 focus:border-red-600' : 'border-gray-300 focus:border-blue-500'
+                      className={`w-full py-4 pl-12 pr-4 bg-white/80 backdrop-blur-md border-2 rounded-xl focus:outline-none text-lg font-medium transition-all duration-200 ${
+                        errors.sku ? 'border-red-500 focus:border-red-600 shadow-red-100' : 'border-gray-300 focus:border-blue-500 shadow-blue-100 focus:shadow-lg'
                       }`}
                       placeholder="Enter SKU"
                       value={field.value}
@@ -715,10 +751,13 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
                         setValue('barcode', e.target.value);
                       }}
                     />
-                    <QrCode className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+                    <QrCode className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
                   </div>
                   {errors.sku && (
-                    <div className="text-red-500 text-xs mt-1">{errors.sku.message}</div>
+                    <div className="text-red-500 text-sm mt-2 flex items-center gap-2">
+                      <AlertIcon size={16} />
+                      {errors.sku.message}
+                    </div>
                   )}
                 </div>
               )}
@@ -740,13 +779,13 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
 
           {/* Description */}
           <div>
-            <label className="block mb-2 font-medium text-gray-700">Description</label>
+            <label className="block mb-3 font-semibold text-lg text-gray-800">Description</label>
             <Controller
               name="description"
               control={control}
               render={({ field }) => (
                 <textarea
-                  className="w-full py-3 px-4 bg-white/30 backdrop-blur-md border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none resize-none"
+                  className="w-full py-4 px-4 bg-white/80 backdrop-blur-md border-2 rounded-xl focus:outline-none text-lg font-medium transition-all duration-200 border-gray-300 focus:border-blue-500 shadow-blue-100 focus:shadow-lg resize-none"
                   placeholder="Enter product description..."
                   rows={3}
                   value={field.value}
@@ -755,20 +794,78 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
               )}
             />
           </div>
+
+          {/* Product Condition */}
+          <Controller
+            name="condition"
+            control={control}
+            render={({ field }) => (
+              <div>
+                <label className={`block mb-3 font-semibold text-lg ${errors.condition ? 'text-red-600' : 'text-gray-800'}`}>
+                  Product Condition *
+                </label>
+                <select
+                  className={`w-full py-4 px-4 bg-white/80 backdrop-blur-md border-2 rounded-xl focus:outline-none text-lg font-medium transition-all duration-200 ${
+                    errors.condition ? 'border-red-500 focus:border-red-600 shadow-red-100' : 'border-gray-300 focus:border-blue-500 shadow-blue-100 focus:shadow-lg'
+                  }`}
+                  value={field.value}
+                  onChange={field.onChange}
+                >
+                  <option value="new">New</option>
+                  <option value="like_new">Like New</option>
+                  <option value="excellent">Excellent</option>
+                  <option value="good">Good</option>
+                  <option value="fair">Fair</option>
+                  <option value="poor">Poor</option>
+                  <option value="refurbished">Refurbished</option>
+                  <option value="used">Used</option>
+                </select>
+                {errors.condition && (
+                  <div className="text-red-500 text-sm mt-2 flex items-center gap-2">
+                    <AlertIcon size={16} />
+                    {errors.condition.message}
+                  </div>
+                )}
+              </div>
+            )}
+          />
+
+          {/* Store Shelf */}
+          <Controller
+            name="storeShelf"
+            control={control}
+            render={({ field }) => (
+              <div>
+                <label className="block mb-3 font-semibold text-lg text-gray-800">Store Shelf</label>
+                <input
+                  type="text"
+                  className="w-full py-4 px-4 bg-white/80 backdrop-blur-md border-2 rounded-xl focus:outline-none text-lg font-medium transition-all duration-200 border-gray-300 focus:border-blue-500 shadow-blue-100 focus:shadow-lg"
+                  placeholder="e.g., A1, B2, Shelf 3, etc."
+                  value={field.value}
+                  onChange={field.onChange}
+                />
+              </div>
+            )}
+          />
         </div>
 
         {/* Pricing & Stock */}
-        <div className="space-y-6">
-          <h3 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2">Pricing & Stock</h3>
+        <div className="bg-gradient-to-br from-gray-50 to-blue-50 rounded-2xl p-8 border border-gray-200">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <DollarSign className="w-5 h-5 text-blue-600" />
+            </div>
+            <h3 className="text-xl font-bold text-gray-900">Pricing & Stock</h3>
+          </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {/* Price */}
             <Controller
               name="price"
               control={control}
               render={({ field }) => (
                 <div>
-                  <label className={`block mb-2 font-medium ${errors.price ? 'text-red-600' : 'text-gray-700'}`}>
+                  <label className={`block mb-3 font-semibold text-lg ${errors.price ? 'text-red-600' : 'text-gray-800'}`}>
                     Selling Price *
                   </label>
                   <div className="relative">
@@ -776,12 +873,15 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
                       value={field.value}
                       onChange={field.onChange}
                       placeholder="0"
-                      className="w-full py-3 pl-8 pr-4 bg-white/30 backdrop-blur-md border-2 rounded-lg focus:outline-none"
+                      className="w-full py-4 pl-12 pr-4 bg-white/80 backdrop-blur-md border-2 rounded-xl focus:outline-none text-lg font-medium transition-all duration-200"
                     />
-                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+                    <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
                   </div>
                   {errors.price && (
-                    <div className="text-red-500 text-xs mt-1">{errors.price.message}</div>
+                    <div className="text-red-500 text-sm mt-2 flex items-center gap-2">
+                      <AlertIcon size={16} />
+                      {errors.price.message}
+                    </div>
                   )}
                 </div>
               )}
@@ -793,7 +893,7 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
               control={control}
               render={({ field }) => (
                 <div>
-                  <label className={`block mb-2 font-medium ${errors.costPrice ? 'text-red-600' : 'text-gray-700'}`}>
+                  <label className={`block mb-3 font-semibold text-lg ${errors.costPrice ? 'text-red-600' : 'text-gray-800'}`}>
                     Cost Price *
                   </label>
                   <div className="relative">
@@ -801,12 +901,15 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
                       value={field.value}
                       onChange={field.onChange}
                       placeholder="0"
-                      className="w-full py-3 pl-8 pr-4 bg-white/30 backdrop-blur-md border-2 rounded-lg focus:outline-none"
+                      className="w-full py-4 pl-12 pr-4 bg-white/80 backdrop-blur-md border-2 rounded-xl focus:outline-none text-lg font-medium transition-all duration-200"
                     />
-                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+                    <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
                   </div>
                   {errors.costPrice && (
-                    <div className="text-red-500 text-xs mt-1">{errors.costPrice.message}</div>
+                    <div className="text-red-500 text-sm mt-2 flex items-center gap-2">
+                      <AlertIcon size={16} />
+                      {errors.costPrice.message}
+                    </div>
                   )}
                 </div>
               )}
@@ -818,49 +921,51 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
               control={control}
               render={({ field }) => (
                 <div>
-                  <label className={`block mb-2 font-medium ${errors.stockQuantity ? 'text-red-600' : 'text-gray-700'}`}>
+                  <label className={`block mb-3 font-semibold text-lg ${errors.stockQuantity ? 'text-red-600' : 'text-gray-800'}`}>
                     Stock Quantity *
                   </label>
                   <input
                     type="number"
                     min="0"
-                    className={`w-full py-3 px-4 bg-white/30 backdrop-blur-md border-2 rounded-lg focus:outline-none ${
-                      errors.stockQuantity ? 'border-red-500 focus:border-red-600' : 'border-gray-300 focus:border-blue-500'
-                    }`}
+                    className="w-full py-4 px-4 bg-white/80 backdrop-blur-md border-2 rounded-xl focus:outline-none text-lg font-medium transition-all duration-200"
                     placeholder="0"
                     value={field.value}
                     onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
                   />
                   {errors.stockQuantity && (
-                    <div className="text-red-500 text-xs mt-1">{errors.stockQuantity.message}</div>
+                    <div className="text-red-500 text-sm mt-2 flex items-center gap-2">
+                      <AlertIcon size={16} />
+                      {errors.stockQuantity.message}
+                    </div>
                   )}
                 </div>
               )}
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 gap-4">
             {/* Min Stock Level */}
             <Controller
               name="minStockLevel"
               control={control}
               render={({ field }) => (
                 <div>
-                  <label className={`block mb-2 font-medium ${errors.minStockLevel ? 'text-red-600' : 'text-gray-700'}`}>
+                  <label className={`block mb-3 font-semibold text-lg ${errors.minStockLevel ? 'text-red-600' : 'text-gray-800'}`}>
                     Min Stock Level *
                   </label>
                   <input
                     type="number"
                     min="0"
-                    className={`w-full py-3 px-4 bg-white/30 backdrop-blur-md border-2 rounded-lg focus:outline-none ${
-                      errors.minStockLevel ? 'border-red-500 focus:border-red-600' : 'border-gray-300 focus:border-blue-500'
-                    }`}
+                    className="w-full py-4 px-4 bg-white/80 backdrop-blur-md border-2 rounded-xl focus:outline-none text-lg font-medium transition-all duration-200"
                     placeholder="5"
                     value={field.value}
                     onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
                   />
                   {errors.minStockLevel && (
-                    <div className="text-red-500 text-xs mt-1">{errors.minStockLevel.message}</div>
+                    <div className="text-red-500 text-sm mt-2 flex items-center gap-2">
+                      <AlertIcon size={16} />
+                      {errors.minStockLevel.message}
+                    </div>
                   )}
                 </div>
               )}
@@ -872,11 +977,11 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
               control={control}
               render={({ field }) => (
                 <div>
-                  <label className="block mb-2 font-medium text-gray-700">Max Stock Level</label>
+                  <label className="block mb-3 font-semibold text-lg text-gray-800">Max Stock Level</label>
                   <input
                     type="number"
                     min="0"
-                    className="w-full py-3 px-4 bg-white/30 backdrop-blur-md border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                    className="w-full py-4 px-4 bg-white/80 backdrop-blur-md border-2 rounded-xl focus:outline-none text-lg font-medium transition-all duration-200 border-gray-300 focus:border-blue-500 shadow-blue-100 focus:shadow-lg"
                     placeholder="100"
                     value={field.value}
                     onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
@@ -888,15 +993,20 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
         </div>
 
         {/* Product Images */}
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2">Product Images</h3>
+        <div className="bg-gradient-to-br from-gray-50 to-blue-50 rounded-2xl p-8 border border-gray-200">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <ImageIcon className="w-5 h-5 text-blue-600" />
+            </div>
+            <h3 className="text-xl font-bold text-gray-900">Product Images</h3>
+          </div>
           
           <div className="space-y-4">
             <label className="block text-sm font-medium text-gray-700">Product Images</label>
-            <ImageUpload
-              productId={productId}
-              userId={user?.id || ''}
-              onUploadComplete={(images) => {
+                               <ImageUpload
+                     productId={productId}
+                     userId={currentUser?.id || ''}
+                     onUploadComplete={(images) => {
                 const formImages = images.map(img => ({
                   id: img.id,
                   image_url: img.url,
@@ -935,122 +1045,138 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
         </div>
 
         {/* Product Variants */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between border-b border-gray-200 pb-2">
-            <h3 className="text-lg font-semibold text-gray-900">Product Variants</h3>
-            <button
-              type="button"
-              onClick={() => {
-                if (!showVariants) {
-                  if (variants.length === 0) {
-                    addVariant();
-                  }
-                }
-                setShowVariants(!showVariants);
-              }}
-              className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium"
-            >
-              <Layers size={16} />
-              {showVariants ? 'Hide' : 'Show'} Variants
-            </button>
+        <div className="bg-gradient-to-br from-gray-50 to-blue-50 rounded-2xl p-8 border border-gray-200">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <Layers className="w-5 h-5 text-blue-600" />
+            </div>
+            <h3 className="text-xl font-bold text-gray-900">Product Variants</h3>
           </div>
           
-          {showVariants && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-gray-600">
-                  Manage product variants (colors, sizes, etc.)
-                </p>
-                <button
-                  type="button"
-                  onClick={addVariant}
-                  className="flex items-center gap-2 px-3 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm"
-                >
-                  <Plus size={16} />
-                  Add Variant
-                </button>
-              </div>
-              
-              {variants.map((variant, index) => (
-                <div key={index} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="font-medium text-gray-900">Variant {index + 1}</h4>
-                    {variants.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeVariant(index)}
-                        className="text-red-500 hover:text-red-700"
-                      >
-                        <X size={16} />
-                      </button>
-                    )}
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Variant Name</label>
-                      <input
-                        type="text"
-                        value={variant.name}
-                        onChange={(e) => updateVariant(index, 'name', e.target.value)}
-                        className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                        placeholder="e.g., Red, Large, etc."
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Variant SKU</label>
-                      <input
-                        type="text"
-                        value={variant.sku}
-                        onChange={(e) => updateVariant(index, 'sku', e.target.value)}
-                        className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                        placeholder="e.g., PROD-RED-L"
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Price</label>
-                      <input
-                        type="number"
-                        value={variant.price}
-                        onChange={(e) => updateVariant(index, 'price', parseFloat(e.target.value) || 0)}
-                        className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                        min="0"
-                        step="0.01"
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Stock Quantity</label>
-                      <input
-                        type="number"
-                        value={variant.stockQuantity}
-                        onChange={(e) => updateVariant(index, 'stockQuantity', parseInt(e.target.value) || 0)}
-                        className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                        min="0"
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-gray-600">
+                Manage product variants (colors, sizes, etc.)
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!showVariants) {
+                    if (variants.length === 0) {
+                      addVariant();
+                    }
+                  }
+                  setShowVariants(!showVariants);
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm font-medium transition-colors duration-200"
+              >
+                <Plus size={16} />
+                {showVariants ? 'Hide' : 'Show'} Variants
+              </button>
             </div>
-          )}
+            
+            {showVariants && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-gray-600">
+                    Manage product variants (colors, sizes, etc.)
+                  </p>
+                  <button
+                    type="button"
+                    onClick={addVariant}
+                    className="flex items-center gap-2 px-3 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm font-medium transition-colors duration-200"
+                  >
+                    <Plus size={16} />
+                    Add Variant
+                  </button>
+                </div>
+                
+                {variants.map((variant, index) => (
+                  <div key={index} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="font-medium text-gray-900">Variant {index + 1}</h4>
+                      {variants.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeVariant(index)}
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <X size={16} />
+                        </button>
+                      )}
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Variant Name</label>
+                        <input
+                          type="text"
+                          value={variant.name}
+                          onChange={(e) => updateVariant(index, 'name', e.target.value)}
+                          className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-base font-medium transition-all duration-200"
+                          placeholder="e.g., Red, Large, etc."
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Variant SKU</label>
+                        <input
+                          type="text"
+                          value={variant.sku}
+                          onChange={(e) => updateVariant(index, 'sku', e.target.value)}
+                          className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-base font-medium transition-all duration-200"
+                          placeholder="e.g., PROD-RED-L"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Price</label>
+                        <input
+                          type="number"
+                          value={variant.price}
+                          onChange={(e) => updateVariant(index, 'price', parseFloat(e.target.value) || 0)}
+                          className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-base font-medium transition-all duration-200"
+                          min="0"
+                          step="0.01"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Stock Quantity</label>
+                        <input
+                          type="number"
+                          value={variant.stockQuantity}
+                          onChange={(e) => updateVariant(index, 'stockQuantity', parseInt(e.target.value) || 0)}
+                          className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-base font-medium transition-all duration-200"
+                          min="0"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Product Status */}
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2">Product Status</h3>
+        <div className="bg-gradient-to-br from-gray-50 to-blue-50 rounded-2xl p-8 border border-gray-200">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <CheckCircle className="w-5 h-5 text-blue-600" />
+            </div>
+            <h3 className="text-xl font-bold text-gray-900">Product Status</h3>
+          </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             <Controller
               name="isActive"
               control={control}
               render={({ field }) => (
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center justify-between p-4 bg-white/80 backdrop-blur-md border-2 rounded-xl shadow-md">
                   <div>
-                    <label className="text-sm font-medium text-gray-700">Active</label>
-                    <p className="text-xs text-gray-500">Product will be visible to customers</p>
+                    <label className="text-base font-medium text-gray-800">Active</label>
+                    <p className="text-sm text-gray-600">Product will be visible to customers</p>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input
@@ -1059,39 +1185,11 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
                       checked={field.value}
                       onChange={field.onChange}
                     />
-                    <div className={`w-11 h-6 rounded-full transition-colors ${
+                    <div className={`w-14 h-7 rounded-full transition-colors ${
                       field.value ? 'bg-blue-600' : 'bg-gray-300'
                     }`}>
                       <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
-                        field.value ? 'translate-x-5' : 'translate-x-0'
-                      }`} />
-                    </div>
-                  </label>
-                </div>
-              )}
-            />
-
-            <Controller
-              name="isFeatured"
-              control={control}
-              render={({ field }) => (
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div>
-                    <label className="text-sm font-medium text-gray-700">Featured</label>
-                    <p className="text-xs text-gray-500">Highlight this product</p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="sr-only"
-                      checked={field.value}
-                      onChange={field.onChange}
-                    />
-                    <div className={`w-11 h-6 rounded-full transition-colors ${
-                      field.value ? 'bg-blue-600' : 'bg-gray-300'
-                    }`}>
-                      <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
-                        field.value ? 'translate-x-5' : 'translate-x-0'
+                        field.value ? 'translate-x-7' : 'translate-x-1'
                       }`} />
                     </div>
                   </label>
@@ -1101,27 +1199,70 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
           </div>
         </div>
 
-        {/* Form Actions */}
-        <div className="flex flex-col sm:flex-row gap-3 pt-6 border-t border-gray-200">
-          <GlassButton
-            type="submit"
-            variant="primary"
-            loading={isSubmitting}
-            disabled={!isDirty || nameExists}
-            className="flex-1 sm:flex-none"
-          >
-            {isSubmitting ? 'Updating...' : 'Update Product'}
-          </GlassButton>
+        {/* Form Actions - Redesigned */}
+        <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl p-8 border border-blue-200">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <Save className="w-5 h-5 text-blue-600" />
+            </div>
+            <h3 className="text-xl font-bold text-gray-900">Save Changes</h3>
+          </div>
           
-          <GlassButton
-            type="button"
-            variant="secondary"
-            onClick={handleCancel}
-            disabled={isSubmitting}
-            className="flex-1 sm:flex-none"
-          >
-            Cancel
-          </GlassButton>
+          <div className="flex flex-col sm:flex-row gap-4">
+            <GlassButton
+              type="submit"
+              variant="primary"
+              loading={isSubmitting}
+              disabled={!isDirty || nameExists}
+              className="flex-1 sm:flex-none px-8 py-4 text-lg font-semibold bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+            >
+              {isSubmitting ? (
+                <div className="flex items-center gap-3">
+                  <RefreshCw className="w-5 h-5 animate-spin" />
+                  <span>Updating Product...</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <Save className="w-5 h-5" />
+                  <span>Update Product</span>
+                </div>
+              )}
+            </GlassButton>
+            
+            <GlassButton
+              type="button"
+              variant="secondary"
+              onClick={handleCancel}
+              disabled={isSubmitting}
+              className="flex-1 sm:flex-none px-8 py-4 text-lg font-semibold bg-white/80 backdrop-blur-md border-2 border-gray-300 hover:border-gray-400 text-gray-700 rounded-xl shadow-md hover:shadow-lg transition-all duration-200"
+            >
+              <div className="flex items-center gap-3">
+                <X className="w-5 h-5" />
+                <span>Cancel</span>
+              </div>
+            </GlassButton>
+          </div>
+          
+          {/* Form Status */}
+          <div className="mt-6 p-4 bg-white/60 backdrop-blur-md rounded-xl border border-gray-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className={`w-3 h-3 rounded-full ${isDirty ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                <span className="text-sm font-medium text-gray-700">
+                  {isDirty ? 'Changes detected' : 'No changes made'}
+                </span>
+              </div>
+              <div className="text-sm text-gray-500">
+                {Object.keys(errors).length > 0 ? (
+                  <span className="text-red-600 font-medium">
+                    {Object.keys(errors).length} error{Object.keys(errors).length !== 1 ? 's' : ''} found
+                  </span>
+                ) : (
+                  <span className="text-green-600 font-medium">Form is valid</span>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       </form>
     </Modal>

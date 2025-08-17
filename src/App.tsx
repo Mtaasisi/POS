@@ -7,6 +7,7 @@ import { UserGoalsProvider } from './context/UserGoalsContext';
 import { PaymentsProvider } from './context/PaymentsContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { LoadingProvider, useLoading } from './context/LoadingContext';
+import { GeneralSettingsProvider } from './context/GeneralSettingsContext';
 import { Toaster } from 'react-hot-toast';
 
 import BackgroundSelector from './features/settings/components/BackgroundSelector';
@@ -19,6 +20,7 @@ import DevicesPage from './features/devices/pages/DevicesPage';
 import DeviceDetailPage from './features/devices/pages/DeviceDetailPage';
 import CustomersPage from './features/customers/pages/CustomersPage';
 import CustomerDetailPage from './features/customers/pages/CustomerDetailPage';
+import CustomerDataUpdatePage from './features/customers/pages/CustomerDataUpdatePage';
 import AppLayout from './layout/AppLayout';
 import { ErrorBoundary } from './features/shared/components/ErrorBoundary';
 import SettingsPage from './features/settings/pages/SettingsPage';
@@ -29,68 +31,62 @@ import PaymentsReportPage from './features/finance/pages/PaymentsReportPage';
 import AuditLogsPage from './features/admin/pages/AuditLogsPage';
 import FinanceManagementPage from './features/finance/pages/FinanceManagementPage';
 import PaymentsAccountsPage from './features/finance/pages/PaymentsAccountsPage';
-import { getPendingActions, clearPendingActions } from './lib/offlineSync';
-import { supabase } from './lib/supabaseClient';
-import { reminderService } from './lib/reminderService';
-import { initializeCache } from './lib/offlineCache';
-import WhatsAppWebPage from './features/whatsapp/pages/WhatsAppWebPage';
-import NewDiagnosticRequestPage from './features/diagnostics/pages/NewDiagnosticRequestPage';
-import AssignedDiagnosticsPage from './features/diagnostics/pages/AssignedDiagnosticsPage';
-import DiagnosticRequestDetailPage from './features/diagnostics/pages/DiagnosticRequestDetailPage';
-import DiagnosticDevicePage from './features/diagnostics/pages/DiagnosticDevicePage';
-import DiagnosticReportsPage from './features/diagnostics/pages/DiagnosticReportsPage';
-import DiagnosticTemplatesPage from './features/diagnostics/pages/DiagnosticTemplatesPage';
+import EmployeeManagementPage from './features/employees/pages/EmployeeManagementPage';
+import EmployeeAttendancePage from './features/employees/pages/EmployeeAttendancePage';
 import CustomerCareDiagnosticsPage from './features/customers/pages/CustomerCareDiagnosticsPage';
-import DiagnosticGroupedDevicesPage from './features/diagnostics/pages/DiagnosticGroupedDevicesPage';
-
-
+import CustomerAnalyticsPage from './features/customers/pages/CustomerAnalyticsPage';
+import BirthdayManagementPage from './features/customers/pages/BirthdayManagementPage';
+import WhatsAppWebPage from './features/whatsapp/pages/WhatsAppWebPage';
+import WhatsAppTemplatesPage from './features/whatsapp/pages/WhatsAppTemplatesPage';
+import NotificationSettingsPage from './features/notifications/pages/NotificationSettingsPage';
+import NotificationsPage from './features/notifications/pages/NotificationsPage';
+import ServiceManagementPage from './features/services/pages/ServiceManagementPage';
+import CalendarViewPage from './features/calendar/pages/CalendarViewPage';
+import AppointmentPage from './features/appointments/pages/AppointmentPage';
+import BusinessManagementPage from './features/business/pages/BusinessManagementPage';
+import MobileOptimizationPage from './features/mobile/pages/MobileOptimizationPage';
+import AdvancedAnalyticsPage from './features/analytics/pages/AdvancedAnalyticsPage';
+import GlobalSearchPage from './features/shared/pages/GlobalSearchPage';
+import LoadingDemoPage from './features/shared/pages/LoadingDemoPage';
 import BrandManagementPage from './features/settings/pages/BrandManagementPage';
 import CategoryManagementPage from './features/settings/pages/CategoryManagementPage';
 import DatabaseSetupPage from './features/admin/pages/DatabaseSetupPage';
-import ExcelImportPage from './features/reports/pages/ExcelImportPage';
 import BackupManagementPage from './features/backup/pages/BackupManagementPage';
+import ExcelImportPage from './features/reports/pages/ExcelImportPage';
+import ExcelTemplateDownloadPage from './features/lats/pages/ExcelTemplateDownloadPage';
+import ProductExportPage from './features/lats/pages/ProductExportPage';
 
-import CustomerDataUpdatePage from './features/customers/pages/CustomerDataUpdatePage';
-import CustomerAnalyticsPage from './features/customers/pages/CustomerAnalyticsPage';
-import NetworkDiagnostic from './components/NetworkDiagnostic';
-import LoadingDemoPage from './features/shared/pages/LoadingDemoPage';
-import POSPage from './features/lats/pages/POSPage';
+import NewDiagnosticRequestPage from './features/diagnostics/pages/NewDiagnosticRequestPage';
+import AssignedDiagnosticsPage from './features/diagnostics/pages/AssignedDiagnosticsPage';
+import DiagnosticDevicePage from './features/diagnostics/pages/DiagnosticDevicePage';
+import DiagnosticReportsPage from './features/diagnostics/pages/DiagnosticReportsPage';
+import DiagnosticTemplatesPage from './features/diagnostics/pages/DiagnosticTemplatesPage';
+import DiagnosticGroupedDevicesPage from './features/diagnostics/pages/DiagnosticGroupedDevicesPage';
 
-// New feature imports
-import UserManagementPage from './features/users/pages/UserManagementPage';
-import AppointmentPage from './features/appointments/pages/AppointmentPage';
-import ServiceManagementPage from './features/services/pages/ServiceManagementPage';
-import EmployeeManagementPage from './features/employees/pages/EmployeeManagementPage';
-import EmployeeAttendancePage from './features/employees/pages/EmployeeAttendancePage';
-import LocationTestPage from './features/employees/pages/LocationTestPage';
-import AdvancedAnalyticsPage from './features/analytics/pages/AdvancedAnalyticsPage';
-import CalendarViewPage from './features/calendar/pages/CalendarViewPage';
-import MobileOptimizationPage from './features/mobile/pages/MobileOptimizationPage';
-import AdminManagementPage from './features/admin/pages/AdminManagementPage';
-import BusinessManagementPage from './features/business/pages/BusinessManagementPage';
-import SalesAnalyticsPage from './features/lats/pages/SalesAnalyticsPage';
-import InventoryPage from './features/lats/pages/InventoryPage';
-import ProductCatalogPage from './features/lats/pages/ProductCatalogPage';
-import UnifiedInventoryPage from './features/lats/pages/UnifiedInventoryPage';
-
-import ProductDetailPage from './features/lats/pages/ProductDetailPage';
-
-import SalesReportsPage from './features/lats/pages/SalesReportsPage';
-import CustomerLoyaltyPage from './features/lats/pages/CustomerLoyaltyPage';
-import PaymentTrackingPage from './features/lats/pages/PaymentTrackingPage';
-import BusinessAnalyticsPage from './features/lats/pages/BusinessAnalyticsPage';
 import LATSDashboardPage from './features/lats/pages/LATSDashboardPage';
 import PurchaseOrdersPage from './features/lats/pages/PurchaseOrdersPage';
 import NewPurchaseOrderPage from './features/lats/pages/NewPurchaseOrderPage';
 import PurchaseOrderDetailPage from './features/lats/pages/PurchaseOrderDetailPage';
 import SparePartsPage from './features/lats/pages/SparePartsPage';
-import QuickCashPage from './features/lats/pages/QuickCashPage';
-import QuickCashDemoPage from './features/lats/pages/QuickCashDemoPage';
-import VariantSelectionPage from './features/lats/pages/VariantSelectionPage';
-import ZenoPayTestPage from './features/lats/pages/ZenoPayTestPage';
-import GlobalSearchPage from './features/shared/pages/GlobalSearchPage';
-import { initializeDatabaseCheck } from './lib/databaseUtils';
+import PaymentHistoryPage from './features/lats/pages/PaymentHistoryPage';
+import PaymentAnalyticsPage from './features/lats/pages/PaymentAnalyticsPage';
+import SalesReportsPage from './features/lats/pages/SalesReportsPage';
+import CustomerLoyaltyPage from './features/lats/pages/CustomerLoyaltyPage';
+import PaymentTrackingPage from './features/lats/pages/PaymentTrackingPage';
+import BusinessAnalyticsPage from './features/lats/pages/BusinessAnalyticsPage';
+import InventoryPage from './features/lats/pages/InventoryPage';
+import ProductCatalogPage from './features/lats/pages/ProductCatalogPage';
+import UnifiedInventoryPage from './features/lats/pages/UnifiedInventoryPage';
 
+import ProductDetailPage from './features/lats/pages/ProductDetailPage';
+import POSPage from './features/lats/pages/POSPage';
+import GeneralSettingsTestPage from './features/lats/pages/GeneralSettingsTestPage';
+
+import { initializeDatabaseCheck } from './lib/databaseUtils';
+import { supabase } from './lib/supabaseClient';
+import { reminderService } from './lib/reminderService';
+import { initializeCache } from './lib/offlineCache';
+import { getPendingActions, clearPendingActions } from './lib/offlineSync';
 
 
 // LoadingProgressWrapper component that can access the loading context
@@ -209,11 +205,13 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
         <Route path="/backup-management" element={<RoleProtectedRoute allowedRoles={['admin']}><BackupManagementPage /></RoleProtectedRoute>} />
         <Route path="/customers/import" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><ExcelImportPage /></RoleProtectedRoute>} />
         <Route path="/excel-import" element={<RoleProtectedRoute allowedRoles={['admin']}><ExcelImportPage /></RoleProtectedRoute>} />
+        <Route path="/excel-templates" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><ExcelTemplateDownloadPage /></RoleProtectedRoute>} />
+        <Route path="/product-export" element={<RoleProtectedRoute allowedRoles={['admin']}><ProductExportPage /></RoleProtectedRoute>} />
 
           <Route path="/customers" element={<CustomersPage />} />
           <Route path="/customers/analytics" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><CustomerAnalyticsPage /></RoleProtectedRoute>} />
           <Route path="/customers/:id" element={<CustomerDetailPage />} />
-          <Route path="/customers/update-data" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><CustomerDataUpdatePage /></RoleProtectedRoute>} />
+          <Route path="/customers/update" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><CustomerDataUpdatePage /></RoleProtectedRoute>} />
 
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/sms" element={<RoleProtectedRoute allowedRoles={['admin']}><SMSControlCenterPage /></RoleProtectedRoute>} />
@@ -224,9 +222,6 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
           <Route path="/finance" element={<RoleProtectedRoute allowedRoles={['admin']}><FinanceManagementPage /></RoleProtectedRoute>} />
           <Route path="/payments-accounts" element={<RoleProtectedRoute allowedRoles={['admin']}><PaymentsAccountsPage /></RoleProtectedRoute>} />
           
-          {/* User Management Routes */}
-          <Route path="/users" element={<RoleProtectedRoute allowedRoles={['admin']}><UserManagementPage /></RoleProtectedRoute>} />
-          
           {/* Appointment Management Routes */}
           <Route path="/appointments" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><AppointmentPage /></RoleProtectedRoute>} />
           
@@ -236,7 +231,7 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
           {/* Employee Management Routes */}
           <Route path="/employees" element={<RoleProtectedRoute allowedRoles={['admin', 'manager']}><EmployeeManagementPage /></RoleProtectedRoute>} />
           <Route path="/attendance" element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'technician', 'customer-care']}><EmployeeAttendancePage /></RoleProtectedRoute>} />
-          <Route path="/location-test" element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'technician', 'customer-care']}><LocationTestPage /></RoleProtectedRoute>} />
+
           
           {/* Advanced Analytics Routes */}
           <Route path="/analytics" element={<RoleProtectedRoute allowedRoles={['admin', 'manager']}><AdvancedAnalyticsPage /></RoleProtectedRoute>} />
@@ -248,7 +243,6 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
           <Route path="/mobile" element={<RoleProtectedRoute allowedRoles={['admin', 'manager']}><MobileOptimizationPage /></RoleProtectedRoute>} />
           
           {/* Consolidated Management Routes */}
-          <Route path="/admin" element={<RoleProtectedRoute allowedRoles={['admin']}><AdminManagementPage /></RoleProtectedRoute>} />
           <Route path="/business" element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'customer-care']}><BusinessManagementPage /></RoleProtectedRoute>} />
 
           <Route path="/whatsapp" element={<RoleProtectedRoute allowedRoles={['admin']}><WhatsAppWebPage /></RoleProtectedRoute>} />
@@ -260,19 +254,17 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
           <Route path="/diagnostics/new-request" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><NewDiagnosticRequestPage /></RoleProtectedRoute>} />
           <Route path="/diagnostics/my-requests" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><CustomerCareDiagnosticsPage /></RoleProtectedRoute>} />
           <Route path="/diagnostics/assigned" element={<RoleProtectedRoute allowedRoles={['technician']}><AssignedDiagnosticsPage /></RoleProtectedRoute>} />
-          <Route path="/diagnostics/request/:requestId" element={<RoleProtectedRoute allowedRoles={['admin', 'technician']}><DiagnosticRequestDetailPage /></RoleProtectedRoute>} />
           <Route path="/diagnostics/device/:requestId/:deviceId" element={<RoleProtectedRoute allowedRoles={['admin', 'technician']}><DiagnosticDevicePage /></RoleProtectedRoute>} />
           <Route path="/diagnostics/grouped/:requestId/:deviceName/:model" element={<RoleProtectedRoute allowedRoles={['admin', 'technician']}><DiagnosticGroupedDevicesPage /></RoleProtectedRoute>} />
           <Route path="/diagnostics/reports" element={<RoleProtectedRoute allowedRoles={['admin', 'technician']}><DiagnosticReportsPage /></RoleProtectedRoute>} />
           <Route path="/diagnostics/templates" element={<RoleProtectedRoute allowedRoles={['admin']}><DiagnosticTemplatesPage /></RoleProtectedRoute>} />
           
-          {/* LATS POS Route */}
-          <Route path="/pos" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><POSPage /></RoleProtectedRoute>} />
-          <Route path="/lats/pos" element={<Navigate to="/pos" replace />} />
-          
           {/* LATS Module Routes */}
           <Route path="/lats" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><LATSDashboardPage /></RoleProtectedRoute>} />
-          <Route path="/lats/sales-analytics" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><SalesAnalyticsPage /></RoleProtectedRoute>} />
+          
+          {/* POS Route */}
+          <Route path="/pos" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><POSPage /></RoleProtectedRoute>} />
+          <Route path="/general-settings-test" element={<GeneralSettingsTestPage />} />
           
           {/* Primary Unified Inventory Route */}
           <Route path="/lats/unified-inventory" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><UnifiedInventoryPage /></RoleProtectedRoute>} />
@@ -290,21 +282,18 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
           <Route path="/lats/analytics" element={<RoleProtectedRoute allowedRoles={['admin']}><BusinessAnalyticsPage /></RoleProtectedRoute>} />
           <Route path="/lats/purchase-orders" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><PurchaseOrdersPage /></RoleProtectedRoute>} />
           <Route path="/lats/purchase-orders/new" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><NewPurchaseOrderPage /></RoleProtectedRoute>} />
-          <Route path="/lats/quick-cash" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><QuickCashPage /></RoleProtectedRoute>} />
-          <Route path="/lats/quick-cash-demo" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><QuickCashDemoPage /></RoleProtectedRoute>} />
-          <Route path="/lats/variant-selection" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><VariantSelectionPage /></RoleProtectedRoute>} />
           <Route path="/lats/purchase-orders/:id" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><PurchaseOrderDetailPage /></RoleProtectedRoute>} />
           <Route path="/lats/spare-parts" element={<RoleProtectedRoute allowedRoles={['admin', 'technician']}><SparePartsPage /></RoleProtectedRoute>} />
           
-          {/* ZenoPay Test Route */}
-          <Route path="/lats/zenopay-test" element={<RoleProtectedRoute allowedRoles={['admin']}><ZenoPayTestPage /></RoleProtectedRoute>} />
+          {/* Payment routes */}
+          <Route path="/lats/payment-history" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><PaymentHistoryPage /></RoleProtectedRoute>} />
+          <Route path="/lats/payment-analytics" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><PaymentAnalyticsPage /></RoleProtectedRoute>} />
           
           {/* Global Search Route */}
           <Route path="/search" element={<GlobalSearchPage />} />
         </Route>
 
         {/* Full-page routes (outside AppLayout) */}
-        <Route path="/network-diagnostic" element={<NetworkDiagnostic />} />
         <Route path="/loading-demo" element={<LoadingDemoPage />} />
         
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
@@ -445,11 +434,13 @@ function App() {
                 <UserGoalsProvider>
                   <PaymentsProvider>
                     <LoadingProvider>
-                      <AppContent 
-                        isOnline={isOnline} 
-                        isSyncing={isSyncing} 
-                      />
-                      <LoadingProgressWrapper />
+                      <GeneralSettingsProvider>
+                        <AppContent 
+                          isOnline={isOnline} 
+                          isSyncing={isSyncing} 
+                        />
+                        <LoadingProgressWrapper />
+                      </GeneralSettingsProvider>
                     </LoadingProvider>
                   </PaymentsProvider>
                 </UserGoalsProvider>

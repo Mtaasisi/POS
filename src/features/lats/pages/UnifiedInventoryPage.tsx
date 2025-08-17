@@ -38,6 +38,7 @@ import SettingsTab from '../components/inventory/SettingsTab';
 import { useInventoryStore } from '../stores/useInventoryStore';
 import { format } from '../lib/format';
 import { latsEventBus } from '../lib/data/eventBus';
+import { runDatabaseDiagnostics, logDiagnosticResult } from '../lib/databaseDiagnostics';
 
 // Tab types
 type TabType = 'inventory' | 'purchase-orders' | 'analytics' | 'settings';
@@ -84,6 +85,14 @@ const UnifiedInventoryPage: React.FC = () => {
   // Database connection status
   const [dbStatus, setDbStatus] = useState<'connected' | 'connecting' | 'error'>('connecting');
   
+  // Prevent multiple simultaneous data loads
+  const [isDataLoading, setIsDataLoading] = useState(false);
+  const [lastDataLoadTime, setLastDataLoadTime] = useState(0);
+  const DATA_LOAD_COOLDOWN = 5000; // 5 seconds cooldown between loads
+  
+  // Loading state for better UX
+  const [showLoadingSkeleton, setShowLoadingSkeleton] = useState(true);
+  
   // State management
   const [activeTab, setActiveTab] = useState<TabType>('inventory');
   const [searchQuery, setSearchQuery] = useState('');
@@ -107,33 +116,84 @@ const UnifiedInventoryPage: React.FC = () => {
   // Load data from database on component mount
   useEffect(() => {
     const loadData = async () => {
+      // Prevent multiple simultaneous loads
+      if (isDataLoading) {
+        console.log('⏳ LATS Unified Inventory: Data loading already in progress, skipping...');
+        return;
+      }
+
+      // Check if we recently loaded data
+      const timeSinceLastLoad = Date.now() - lastDataLoadTime;
+      if (timeSinceLastLoad < DATA_LOAD_COOLDOWN) {
+        console.log(`⏳ LATS Unified Inventory: Data loaded recently (${Math.round(timeSinceLastLoad / 1000)}s ago), skipping...`);
+        return;
+      }
+
       await withErrorHandling(async () => {
         console.log('🔧 LATS Unified Inventory: Loading data...');
+        setIsDataLoading(true);
         setDbStatus('connecting');
+        setShowLoadingSkeleton(true);
         
         try {
-          await Promise.all([
-            loadProducts(),
-            loadCategories(),
-            loadBrands(),
-            loadSuppliers(),
-            loadStockMovements(),
-            loadSales()
-          ]);
+          // Run database diagnostics first
+          console.log('🔍 Running database diagnostics...');
+          const diagnosticResult = await runDatabaseDiagnostics();
+          logDiagnosticResult(diagnosticResult);
+          
+          if (diagnosticResult.errors.length > 0) {
+            console.warn('⚠️ Database issues detected:', diagnosticResult.errors);
+            if (diagnosticResult.recommendations.length > 0) {
+              console.log('💡 Recommendations:', diagnosticResult.recommendations);
+            }
+          }
+          
+          // Show loading skeleton for at least 500ms for better UX
+          const loadingStartTime = Date.now();
+          
+          // Load data sequentially to avoid conflicts
+          console.log('📊 Loading categories...');
+          await loadCategories();
+          
+          console.log('📊 Loading brands...');
+          await loadBrands();
+          
+          console.log('📊 Loading suppliers...');
+          await loadSuppliers();
+          
+          console.log('📊 Loading products...');
+          await loadProducts();
+          
+          console.log('📊 Loading stock movements...');
+          await loadStockMovements();
+          
+          console.log('📊 Loading sales...');
+          await loadSales();
+          
+          // Ensure minimum loading time for better UX
+          const loadingTime = Date.now() - loadingStartTime;
+          if (loadingTime < 500) {
+            await new Promise(resolve => setTimeout(resolve, 500 - loadingTime));
+          }
           
           console.log('📊 LATS Unified Inventory: Data loaded successfully');
           setDbStatus('connected');
+          setLastDataLoadTime(Date.now());
+          setShowLoadingSkeleton(false);
           
         } catch (error) {
           console.error('❌ Error loading data:', error);
           toast.error('Failed to load data from database');
           setDbStatus('error');
+          setShowLoadingSkeleton(false);
+        } finally {
+          setIsDataLoading(false);
         }
       }, 'Loading unified inventory data');
     };
     
     loadData();
-  }, [withErrorHandling, loadProducts, loadCategories, loadBrands, loadSuppliers, loadStockMovements, loadSales]);
+  }, [withErrorHandling, loadProducts, loadCategories, loadBrands, loadSuppliers, loadStockMovements, loadSales, isDataLoading, lastDataLoadTime]);
 
   // Calculate metrics
   const metrics = useMemo(() => {
@@ -198,7 +258,7 @@ const UnifiedInventoryPage: React.FC = () => {
     // Apply brand filter
     if (selectedBrand !== 'all') {
       filtered = filtered.filter(product => 
-        brands.find(b => b.id === product.brandId)?.name === selectedBrand
+        product.brand?.name === selectedBrand
       );
     }
 
@@ -307,7 +367,7 @@ const UnifiedInventoryPage: React.FC = () => {
               const product = products.find(p => p.id === productId);
               if (!product) return '';
               const category = categories.find(c => c.id === product.categoryId);
-              const brand = brands.find(b => b.id === product.brandId);
+              const brand = product.brand;
               const mainVariant = product.variants?.[0];
               return `${product.name},${mainVariant?.sku || 'N/A'},${category?.name || 'Uncategorized'},${brand?.name || 'No Brand'},${mainVariant?.sellingPrice || 0},${product.totalQuantity || 0},${product.isActive ? 'Active' : 'Inactive'}`;
             }).filter(row => row !== '').join("\n");
@@ -472,7 +532,7 @@ const UnifiedInventoryPage: React.FC = () => {
         "Name,SKU,Category,Brand,Price,Stock,Status,Description,Tags\n" +
         products.map(product => {
           const category = categories.find(c => c.id === product.categoryId);
-          const brand = brands.find(b => b.id === product.brandId);
+                        const brand = product.brand;
           const mainVariant = product.variants?.[0];
           return `"${product.name}","${mainVariant?.sku || 'N/A'}","${category?.name || 'Uncategorized'}","${brand?.name || 'No Brand'}","${mainVariant?.sellingPrice || 0}","${product.totalQuantity || 0}","${product.isActive ? 'Active' : 'Inactive'}","${product.description || ''}","${product.tags.join(', ')}"`;
         }).join("\n");
@@ -541,6 +601,12 @@ const UnifiedInventoryPage: React.FC = () => {
                   {dbStatus === 'connected' ? 'Database Connected' : 
                    dbStatus === 'connecting' ? 'Connecting...' : 'Connection Error'}
                 </span>
+                {isDataLoading && (
+                  <div className="flex items-center gap-1">
+                    <RefreshCw className="w-3 h-3 animate-spin text-blue-500" />
+                    <span className="text-xs text-blue-600">Loading...</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -552,6 +618,13 @@ const UnifiedInventoryPage: React.FC = () => {
               className="bg-gradient-to-r from-blue-500 to-purple-600 text-white"
             >
               Add Product
+            </GlassButton>
+            <GlassButton
+              onClick={() => navigate('/excel-templates')}
+              icon={<Download size={18} />}
+              className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white"
+            >
+              Download Template
             </GlassButton>
             <GlassButton
               onClick={handleImport}
@@ -584,6 +657,23 @@ const UnifiedInventoryPage: React.FC = () => {
             )}
           </div>
         </div>
+
+        {/* Loading Skeleton */}
+        {showLoadingSkeleton && (
+          <div className="space-y-6">
+            <div className="animate-pulse">
+              <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {[...Array(8)].map((_, i) => (
+                  <div key={i} className="bg-white rounded-lg p-4 shadow-sm">
+                    <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                    <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Tab Navigation */}
         <div className="bg-white/80 backdrop-blur-sm rounded-xl border border-gray-200/50 p-1">

@@ -57,23 +57,26 @@ const ProductDetailPage: React.FC = () => {
 			setError(null);
 			try {
 				const provider = getLatsProvider();
-				const { ok, data, message } = await provider.getProduct(id);
-				if (!ok || !data) {
-					throw new Error(message || 'Failed to load product');
+				
+				// Load product and images in parallel for better performance
+				const [productResult, imagesResult] = await Promise.all([
+					provider.getProduct(id),
+					ImageUploadService.getProductImages(id)
+				]);
+				
+				if (!productResult.ok || !productResult.data) {
+					throw new Error(productResult.message || 'Failed to load product');
 				}
-				console.log('🔍 ProductDetailPage: Fetching images for product:', id);
-				const imgs = await ImageUploadService.getProductImages(id);
-				console.log('🔍 ProductDetailPage: Raw images response:', imgs);
 				
 				if (!isMounted) return;
-				setProduct(data as Product);
-				setImages(imgs || []);
+				setProduct(productResult.data as Product);
+				setImages(imagesResult || []);
 				
 				// Enhanced debug logging for images
 				console.log('🔍 ProductDetailPage: Images loaded:', {
 					productId: id,
-					imageCount: imgs?.length || 0,
-					images: imgs?.map(img => ({
+					imageCount: imagesResult?.length || 0,
+					images: imagesResult?.map(img => ({
 						id: img.id,
 						url: img.url,
 						thumbnailUrl: img.thumbnailUrl,
@@ -640,7 +643,10 @@ const ProductDetailPage: React.FC = () => {
 								<div className="text-2xl font-bold text-purple-900">{variantsCount}</div>
 								<div className="text-sm text-purple-600">Variants</div>
 								<div className="text-xs text-purple-500 mt-1">
-									{profitMargin.toFixed(1)}% margin
+									                {(() => {
+                  const formatted = profitMargin.toFixed(1);
+                  return formatted.replace(/\.0$/, '');
+                })()}% margin
 								</div>
 							</div>
 							<div className="text-center p-3 bg-amber-50 rounded-lg">
@@ -861,7 +867,10 @@ const ProductDetailPage: React.FC = () => {
 															<div className="flex justify-between text-sm">
 																<span className="text-gray-600">Margin:</span>
 																<span className="font-semibold text-blue-700">
-																	{((((variant as any).sellingPrice - variant.costPrice) / (variant as any).sellingPrice) * 100).toFixed(1)}%
+																	                {(() => {
+                  const percentage = ((((variant as any).sellingPrice - variant.costPrice) / (variant as any).sellingPrice) * 100).toFixed(1);
+                  return percentage.replace(/\.0$/, '');
+                })()}%
 																</span>
 															</div>
 														)}

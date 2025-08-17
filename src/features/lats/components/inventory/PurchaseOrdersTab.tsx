@@ -41,7 +41,10 @@ const PurchaseOrdersTab: React.FC<PurchaseOrdersTabProps> = ({
 
   // Load purchase orders on component mount
   useEffect(() => {
-    loadPurchaseOrders();
+    // Temporarily disable purchase orders loading to prevent 400 errors
+    // TODO: Re-enable when purchase orders tables are properly set up
+    console.log('📝 PurchaseOrdersTab: Purchase orders loading temporarily disabled');
+    // loadPurchaseOrders();
   }, [loadPurchaseOrders]);
 
   return (

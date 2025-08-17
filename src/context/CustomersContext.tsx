@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Customer, CustomerNote, PromoMessage, LoyaltyLevel, CustomerTag } from '../types';
-import { useAuth } from './AuthContext';
+import { AuthContext } from './AuthContext';
 import { fetchAllCustomers, addCustomerToDb, updateCustomerInDb } from '../lib/customerApi';
 import { addCustomerNote, addPromoMessage } from '../lib/customerExtrasApi';
 import { supabase } from '../lib/supabaseClient';
@@ -46,7 +46,8 @@ function hasComplaint(notes: CustomerNote[]) {
 
 export const CustomersProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const { currentUser } = useAuth();
+  const authContext = useContext(AuthContext);
+  const currentUser = authContext?.currentUser || null;
 
   useEffect(() => {
     // Only initialize if we have a current user and customers array is empty

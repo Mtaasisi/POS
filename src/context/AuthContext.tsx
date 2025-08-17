@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { retryWithBackoff } from '../lib/supabaseClient';
 
 interface AuthContextType {
   currentUser: any;
@@ -9,9 +10,12 @@ interface AuthContextType {
   error: string | null;
   clearError: () => void;
   loading: boolean;
+  refreshSession: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export { AuthContext };
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -148,6 +152,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
       setCurrentUser(fallbackUser);
       setLoading(false);
+    }
+  };
+
+  // Add a session refresh function
+  const refreshSession = async () => {
+    try {
+      console.log('🔄 Attempting to refresh session...');
+      
+      const result = await retryWithBackoff(async () => {
+        return await supabase.auth.refreshSession();
+      });
+      
+      const { data, error } = result;
+      
+      if (error) {
+        console.error('❌ Session refresh failed:', error);
+        return false;
+      }
+      
+      if (data.session) {
+        console.log('✅ Session refreshed successfully');
+        await fetchAndSetUserProfile(data.session.user);
+        return true;
+      } else {
+        console.log('❌ No session after refresh');
+        return false;
+      }
+    } catch (err) {
+      console.error('❌ Error refreshing session:', err);
+      return false;
     }
   };
 
@@ -291,7 +325,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isAuthenticated: !!currentUser,
       error,
       clearError,
-      loading
+      loading,
+      refreshSession
     }}>
       {children}
     </AuthContext.Provider>

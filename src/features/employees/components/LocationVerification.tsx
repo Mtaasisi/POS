@@ -357,7 +357,13 @@ const LocationVerification: React.FC<LocationVerificationProps> = ({
               </div>
             </div>
             <p className="text-sm text-gray-600">
-              Lat: {currentLocation.lat.toFixed(6)}, Lng: {currentLocation.lng.toFixed(6)}
+                              Lat: {(() => {
+                  const formatted = currentLocation.lat.toFixed(6);
+                  return formatted.replace(/\.000000$/, '').replace(/\.00000$/, '').replace(/\.0000$/, '').replace(/\.000$/, '').replace(/\.00$/, '').replace(/\.0$/, '');
+                })()}, Lng: {(() => {
+                  const formatted = currentLocation.lng.toFixed(6);
+                  return formatted.replace(/\.000000$/, '').replace(/\.00000$/, '').replace(/\.0000$/, '').replace(/\.000$/, '').replace(/\.00$/, '').replace(/\.0$/, '');
+                })()}
             </p>
             <p className="text-xs text-gray-500 mt-1">
               Accuracy: ±{Math.round(currentLocation.accuracy)}m

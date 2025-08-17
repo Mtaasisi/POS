@@ -7,4 +7,4 @@ export { default as PhotoVerification } from './PhotoVerification';
 export { default as SecureAttendanceVerification } from './SecureAttendanceVerification';
 export { default as LocationDebugger } from './LocationDebugger';
 export { default as OfficeLocationManager } from './OfficeLocationManager';
-export { default as CameraTest } from './CameraTest';
+

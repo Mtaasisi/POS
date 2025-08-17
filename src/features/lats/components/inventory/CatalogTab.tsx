@@ -300,7 +300,7 @@ const CatalogTab: React.FC<CatalogTabProps> = ({
               <tbody>
                 {products.map((product) => {
                   const category = categories.find(c => c.id === product.categoryId);
-                  const brand = brands.find(b => b.id === product.brandId);
+                  const brand = product.brand;
                   const mainVariant = product.variants?.[0];
                   
                   return (
@@ -384,7 +384,7 @@ const CatalogTab: React.FC<CatalogTabProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {products.map((product) => {
             const category = categories.find(c => c.id === product.categoryId);
-            const brand = brands.find(b => b.id === product.brandId);
+            const brand = product.brand;
             
             return (
               <VariantProductCard

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { useAuth } from './AuthContext';
+import { AuthContext } from './AuthContext';
 import { 
   UserDailyGoal, 
   getUserDailyGoals, 
@@ -36,7 +36,8 @@ export const UserGoalsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [userGoals, setUserGoals] = useState<UserDailyGoal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { currentUser } = useAuth();
+  const authContext = useContext(AuthContext);
+  const currentUser = authContext?.currentUser || null;
 
   const refreshGoals = useCallback(async () => {
     if (!currentUser?.id) {

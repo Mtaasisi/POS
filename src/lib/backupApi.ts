@@ -290,7 +290,10 @@ export const getBackupStatus = async (): Promise<BackupStatus> => {
     return {
       lastBackup: latestBackup.timestamp,
       totalBackups: backupFiles.length,
-      totalSize: `${totalSizeMB.toFixed(2)} MB`,
+              totalSize: `${(() => {
+          const formatted = totalSizeMB.toFixed(2);
+          return formatted.replace(/\.00$/, '').replace(/\.0$/, '');
+        })()} MB`,
       dropboxConfigured: dropboxBackups > 0,
       localBackups,
       dropboxBackups,

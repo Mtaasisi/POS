@@ -59,6 +59,15 @@ const AdminManagementPage: React.FC = () => {
       category: 'inventory'
     },
     {
+      id: 'supplier-management',
+      title: 'Supplier Management',
+      description: 'Manage suppliers and vendor relationships',
+      icon: <Users size={24} />,
+      path: '/lats/supplier-management',
+      color: 'from-teal-500 to-teal-600',
+      category: 'inventory'
+    },
+    {
       id: 'purchase-orders',
       title: 'Purchase Orders',
       description: 'Manage supplier orders and procurement',
@@ -145,6 +154,15 @@ const AdminManagementPage: React.FC = () => {
     },
 
     // Data Management
+    {
+      id: 'excel-templates',
+      title: 'Excel Templates',
+      description: 'Download Excel templates for data import',
+      icon: <Download size={24} />,
+      path: '/excel-templates',
+      color: 'from-blue-500 to-blue-600',
+      category: 'data'
+    },
     {
       id: 'excel-import',
       title: 'Excel Import',

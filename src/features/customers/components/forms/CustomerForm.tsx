@@ -682,9 +682,9 @@ const CustomerForm: React.FC<CustomerFormProps> = ({
       </div>
       {/* Referral Source */}
       <div className="md:col-span-2">
-        <label className="block text-gray-700 mb-2 font-medium">Referral Source</label>
+        <label className="block text-gray-700 mb-4 font-semibold text-lg">How did you hear about us?</label>
         <div className="w-full">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
             {sortedReferralSources.map((source) => {
               const selected = formData.referralSource === source.label;
               const colorClass = colorMap[source.color][selected ? 'selected' : 'unselected'];
@@ -693,11 +693,38 @@ const CustomerForm: React.FC<CustomerFormProps> = ({
                   key={source.label}
                   type="button"
                   onClick={() => handleReferralClick(source.label)}
-                  className={`w-full flex items-center justify-start gap-2 px-4 py-3 rounded-lg text-sm transition-all duration-200 ease-in-out ${colorClass} focus:outline-none`}
+                  className={`group relative w-full flex flex-col items-center justify-center gap-2 px-4 py-6 rounded-xl text-sm transition-all duration-300 ease-in-out focus:outline-none focus:ring-4 focus:ring-blue-500/30 ${
+                    selected 
+                      ? 'bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-400 shadow-lg scale-105' 
+                      : 'bg-gradient-to-br from-gray-50 to-slate-50 border-2 border-gray-200 hover:border-gray-400 hover:shadow-lg hover:scale-105'
+                  }`}
                   style={{ userSelect: 'none' }}
                 >
-                  <span className="text-2xl whitespace-nowrap">{source.icon}</span>
-                  <span className="whitespace-nowrap">{source.label}</span>
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white text-2xl shadow-lg group-hover:scale-110 transition-transform duration-300 ${
+                    selected 
+                      ? 'bg-gradient-to-br from-blue-500 to-indigo-600' 
+                      : colorClass.includes('green') ? 'bg-gradient-to-br from-green-500 to-emerald-600' :
+                        colorClass.includes('orange') ? 'bg-gradient-to-br from-orange-500 to-amber-600' :
+                        colorClass.includes('blue') ? 'bg-gradient-to-br from-blue-500 to-indigo-600' :
+                        colorClass.includes('pink') ? 'bg-gradient-to-br from-pink-500 to-rose-600' :
+                        colorClass.includes('gray') ? 'bg-gradient-to-br from-gray-500 to-slate-600' :
+                        colorClass.includes('teal') ? 'bg-gradient-to-br from-teal-500 to-cyan-600' :
+                        colorClass.includes('yellow') ? 'bg-gradient-to-br from-yellow-500 to-amber-600' :
+                        colorClass.includes('red') ? 'bg-gradient-to-br from-red-500 to-orange-600' :
+                        colorClass.includes('indigo') ? 'bg-gradient-to-br from-indigo-500 to-purple-600' :
+                        colorClass.includes('violet') ? 'bg-gradient-to-br from-violet-500 to-purple-600' :
+                        'bg-gradient-to-br from-slate-500 to-gray-600'
+                  }`}>
+                    {source.icon}
+                  </div>
+                  <span className={`font-medium whitespace-nowrap ${
+                    selected ? 'text-blue-800' : 'text-gray-700'
+                  }`}>
+                    {source.label}
+                  </span>
+                  {selected && (
+                    <div className="absolute top-2 right-2 w-3 h-3 bg-blue-500 rounded-full shadow-sm"></div>
+                  )}
                 </button>
               );
             })}

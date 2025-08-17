@@ -14,9 +14,10 @@ import { t } from '../../lib/i18n/t';
 // Validation schema
 const brandFormSchema = z.object({
   name: z.string().min(1, 'Brand name is required').max(100, 'Brand name must be less than 100 characters'),
+  companyName: z.string().max(100, 'Company name must be less than 100 characters').optional(),
   description: z.string().max(500, 'Description must be less than 500 characters').optional(),
-  website: z.string().url('Invalid website URL').optional().or(z.literal('')),
-  email: z.string().email('Invalid email address').optional().or(z.literal('')),
+  website: z.string().url('Invalid website URL').optional(),
+  email: z.string().email('Invalid email address').optional(),
   phone: z.string().max(20, 'Phone number must be less than 20 characters').optional(),
   address: z.string().max(200, 'Address must be less than 200 characters').optional(),
   country: z.string().max(50, 'Country must be less than 50 characters').optional(),
@@ -32,6 +33,7 @@ type BrandFormData = z.infer<typeof brandFormSchema>;
 interface Brand {
   id: string;
   name: string;
+  companyName?: string;
   description?: string;
   website?: string;
   email?: string;
@@ -77,6 +79,7 @@ const BrandForm: React.FC<BrandFormProps> = ({
     resolver: zodResolver(brandFormSchema),
     defaultValues: {
       name: brand?.name || '',
+      companyName: brand?.companyName || '',
       description: brand?.description || '',
       website: brand?.website || '',
       email: brand?.email || '',
@@ -137,13 +140,15 @@ const BrandForm: React.FC<BrandFormProps> = ({
 
   // Country options
   const countryOptions = [
+    { value: 'TZ', label: 'Tanzania' },
+    { value: 'AE', label: 'Dubai (UAE)' },
+    { value: 'CN', label: 'China' },
     { value: 'US', label: 'United States' },
     { value: 'CA', label: 'Canada' },
     { value: 'UK', label: 'United Kingdom' },
     { value: 'DE', label: 'Germany' },
     { value: 'FR', label: 'France' },
     { value: 'JP', label: 'Japan' },
-    { value: 'CN', label: 'China' },
     { value: 'IN', label: 'India' },
     { value: 'BR', label: 'Brazil' },
     { value: 'AU', label: 'Australia' }
@@ -191,6 +196,23 @@ const BrandForm: React.FC<BrandFormProps> = ({
                 error={errors.name?.message}
                 required
                 maxLength={100}
+              />
+            )}
+          />
+
+          {/* Company Name */}
+          <Controller
+            name="companyName"
+            control={control}
+            render={({ field }) => (
+              <GlassInput
+                label="Company Name"
+                placeholder="Enter company name (optional)"
+                value={field.value}
+                onChange={field.onChange}
+                error={errors.companyName?.message}
+                maxLength={100}
+                helperText="The company that owns this brand"
               />
             )}
           />

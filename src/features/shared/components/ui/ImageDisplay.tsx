@@ -1,5 +1,6 @@
 import React from 'react';
 import { Image as ImageIcon } from 'lucide-react';
+import { isUnreliableUrl, getFallbackImageUrl } from './placeholderUtils';
 
 interface ImageDisplayProps {
   imageUrl: string;
@@ -34,19 +35,24 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     // Don't set imageError here, just try the original image
   };
 
-  const handleImageLoad = () => {
-    console.log('Image loaded successfully:', displayUrl);
-    setIsLoading(false);
-  };
-
   // Determine which URL to display
   let displayUrl = imageUrl;
   let onErrorHandler = handleImageError;
 
-  if (thumbnailUrl && !thumbnailError) {
+  // Check if the URL is unreliable and replace with fallback
+  if (isUnreliableUrl(imageUrl)) {
+    console.warn('Unreliable image URL detected, using fallback:', imageUrl);
+    displayUrl = getFallbackImageUrl('product', alt);
+    onErrorHandler = handleImageError;
+  } else if (thumbnailUrl && !thumbnailError && !isUnreliableUrl(thumbnailUrl)) {
     displayUrl = thumbnailUrl;
     onErrorHandler = handleThumbnailError;
   }
+
+  const handleImageLoad = () => {
+    console.log('Image loaded successfully:', displayUrl);
+    setIsLoading(false);
+  };
 
   // If both thumbnail and original image failed, show fallback
   if (imageError && fallbackIcon) {

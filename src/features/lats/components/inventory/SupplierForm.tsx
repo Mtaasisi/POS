@@ -9,29 +9,25 @@ import GlassInput from '../../../shared/components/ui/GlassInput';
 import GlassSelect from '../../../shared/components/ui/GlassSelect';
 import GlassButton from '../../../shared/components/ui/GlassButton';
 import GlassBadge from '../../../shared/components/ui/GlassBadge';
-import PriceInput from '../../../../shared/components/ui/PriceInput';
 import { t } from '../../lib/i18n/t';
+import { AlertTriangle } from 'lucide-react';
 
-// Validation schema
+// Validation schema - simplified
 const supplierFormSchema = z.object({
   name: z.string().min(1, 'Supplier name is required').max(100, 'Supplier name must be less than 100 characters'),
-  code: z.string().min(1, 'Supplier code is required').max(20, 'Supplier code must be less than 20 characters'),
+  company_name: z.string().max(100, 'Company name must be less than 100 characters').optional(),
   description: z.string().max(500, 'Description must be less than 500 characters').optional(),
-  contactPerson: z.string().max(100, 'Contact person must be less than 100 characters').optional(),
-  email: z.string().email('Invalid email address').optional().or(z.literal('')),
   phone: z.string().max(20, 'Phone number must be less than 20 characters').optional(),
-  website: z.string().url('Invalid website URL').optional().or(z.literal('')),
-  address: z.string().max(200, 'Address must be less than 200 characters').optional(),
+  phone2: z.string().max(20, 'Phone number must be less than 20 characters').optional(),
+  whatsapp: z.string().max(20, 'WhatsApp number must be less than 20 characters').optional(),
+  instagram: z.string().max(50, 'Instagram handle must be less than 50 characters').optional(),
+  wechat_id: z.string().max(50, 'WeChat ID must be less than 50 characters').optional(),
   city: z.string().max(50, 'City must be less than 50 characters').optional(),
-  state: z.string().max(50, 'State must be less than 50 characters').optional(),
   country: z.string().max(50, 'Country must be less than 50 characters').optional(),
-  postalCode: z.string().max(20, 'Postal code must be less than 20 characters').optional(),
-  taxId: z.string().max(50, 'Tax ID must be less than 50 characters').optional(),
-  paymentTerms: z.string().max(100, 'Payment terms must be less than 100 characters').optional(),
-  creditLimit: z.number().min(0, 'Credit limit must be 0 or greater').optional(),
-  isActive: z.boolean().default(true),
-  sortOrder: z.number().min(0, 'Sort order must be 0 or greater').default(0),
-  metadata: z.record(z.string()).optional()
+  payment_account_type: z.enum(['mobile_money', 'bank_account', 'other']).optional(),
+  mobile_money_account: z.string().max(50, 'Mobile money account must be less than 50 characters').optional(),
+  bank_account_number: z.string().max(50, 'Bank account number must be less than 50 characters').optional(),
+  bank_name: z.string().max(100, 'Bank name must be less than 100 characters').optional()
 });
 
 type SupplierFormData = z.infer<typeof supplierFormSchema>;
@@ -39,25 +35,21 @@ type SupplierFormData = z.infer<typeof supplierFormSchema>;
 interface Supplier {
   id: string;
   name: string;
-  code: string;
+  company_name?: string;
   description?: string;
-  contactPerson?: string;
-  email?: string;
   phone?: string;
-  website?: string;
-  address?: string;
+  phone2?: string;
+  whatsapp?: string;
+  instagram?: string;
+  wechat_id?: string;
   city?: string;
-  state?: string;
   country?: string;
-  postalCode?: string;
-  taxId?: string;
-  paymentTerms?: string;
-  creditLimit?: number;
-  isActive: boolean;
-  sortOrder: number;
-  metadata?: Record<string, string>;
-  createdAt: string;
-  updatedAt: string;
+  payment_account_type?: 'mobile_money' | 'bank_account' | 'other';
+  mobile_money_account?: string;
+  bank_account_number?: string;
+  bank_name?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 interface SupplierFormProps {
@@ -77,42 +69,40 @@ const SupplierForm: React.FC<SupplierFormProps> = ({
   loading = false,
   className = ''
 }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
-
+  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
+  
   // Form setup
   const {
     control,
     handleSubmit,
     formState: { errors, isDirty },
     watch,
-    reset
+    reset,
+    setValue
   } = useForm<SupplierFormData>({
     resolver: zodResolver(supplierFormSchema),
     defaultValues: {
       name: supplier?.name || '',
-      code: supplier?.code || '',
+      company_name: supplier?.company_name || '',
       description: supplier?.description || '',
-      contactPerson: supplier?.contactPerson || '',
-      email: supplier?.email || '',
       phone: supplier?.phone || '',
-      website: supplier?.website || '',
-      address: supplier?.address || '',
+      phone2: supplier?.phone2 || '',
+      whatsapp: supplier?.whatsapp || '',
+      instagram: supplier?.instagram || '',
+      wechat_id: supplier?.wechat_id || '',
       city: supplier?.city || '',
-      state: supplier?.state || '',
       country: supplier?.country || '',
-      postalCode: supplier?.postalCode || '',
-      taxId: supplier?.taxId || '',
-      paymentTerms: supplier?.paymentTerms || '',
-      creditLimit: supplier?.creditLimit || 0,
-      isActive: supplier?.isActive ?? true,
-      sortOrder: supplier?.sortOrder || 0,
-      metadata: supplier?.metadata || {}
+      payment_account_type: supplier?.payment_account_type || '',
+      mobile_money_account: supplier?.mobile_money_account || '',
+      bank_account_number: supplier?.bank_account_number || '',
+      bank_name: supplier?.bank_name || '',
     }
   });
 
   // Watch form values
   const watchedValues = watch();
-  const isActive = watchedValues.isActive;
+  const selectedCountry = watchedValues.country;
+  const showWeChatField = selectedCountry === 'CN';
 
   // Handle form submission
   const handleFormSubmit = async (data: SupplierFormData) => {
@@ -142,32 +132,31 @@ const SupplierForm: React.FC<SupplierFormProps> = ({
     }
   };
 
-  // Payment terms options
-  const paymentTermsOptions = [
-    { value: 'Net 30', label: 'Net 30 days' },
-    { value: 'Net 60', label: 'Net 60 days' },
-    { value: 'Net 90', label: 'Net 90 days' },
-    { value: 'Due on receipt', label: 'Due on receipt' },
-    { value: 'Cash on delivery', label: 'Cash on delivery' },
-    { value: 'Advance payment', label: 'Advance payment' }
-  ];
-
   // Country options
   const countryOptions = [
+    { value: 'TZ', label: 'Tanzania' },
+    { value: 'AE', label: 'Dubai (UAE)' },
+    { value: 'CN', label: 'China' },
     { value: 'US', label: 'United States' },
     { value: 'CA', label: 'Canada' },
     { value: 'UK', label: 'United Kingdom' },
     { value: 'DE', label: 'Germany' },
     { value: 'FR', label: 'France' },
     { value: 'JP', label: 'Japan' },
-    { value: 'CN', label: 'China' },
     { value: 'IN', label: 'India' },
     { value: 'BR', label: 'Brazil' },
     { value: 'AU', label: 'Australia' }
   ];
 
+  // Payment account type options
+  const paymentAccountTypeOptions = [
+    { value: 'mobile_money', label: 'Mobile Money' },
+    { value: 'bank_account', label: 'Bank Account' },
+    { value: 'other', label: 'Other' }
+  ];
+
   return (
-    <GlassCard className={`max-w-3xl mx-auto ${className}`}>
+    <GlassCard className={`max-w-2xl mx-auto ${className}`}>
       <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -179,16 +168,6 @@ const SupplierForm: React.FC<SupplierFormProps> = ({
               {supplier ? 'Update supplier information' : 'Create a new supplier'}
             </p>
           </div>
-          <GlassBadge
-            variant={isActive ? 'success' : 'error'}
-            icon={
-              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d={isActive ? "M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" : "M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"} />
-              </svg>
-            }
-          >
-            {isActive ? t('common.active') : t('common.inactive')}
-          </GlassBadge>
         </div>
 
         {/* Basic Information */}
@@ -213,43 +192,73 @@ const SupplierForm: React.FC<SupplierFormProps> = ({
               )}
             />
 
-            {/* Code */}
+            {/* Company Name */}
             <Controller
-              name="code"
+              name="company_name"
               control={control}
               render={({ field }) => (
                 <GlassInput
-                  label="Supplier Code"
-                  placeholder="SUP001"
+                  label="Company Name"
+                  placeholder="Enter company name (optional)"
                   value={field.value}
                   onChange={field.onChange}
-                  error={errors.code?.message}
-                  required
-                  maxLength={20}
-                  helperText="Unique identifier for the supplier"
+                  error={errors.company_name?.message}
+                  maxLength={100}
+                  helperText="The company that this supplier represents"
                 />
               )}
             />
           </div>
 
           {/* Description */}
-          <Controller
-            name="description"
-            control={control}
-            render={({ field }) => (
-              <GlassInput
-                label={t('common.description')}
-                placeholder="Enter supplier description (optional)"
-                value={field.value}
-                onChange={field.onChange}
-                error={errors.description?.message}
-                multiline
-                rows={3}
-                maxLength={500}
-                helperText={`${field.value?.length || 0}/500 characters`}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-sm font-medium text-gray-700">Description</label>
+              <button
+                type="button"
+                onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
+                className="text-blue-600 hover:text-blue-700 text-xs font-medium flex items-center gap-1"
+              >
+                {isDescriptionExpanded ? 'Minimize' : 'Add Description'}
+                <svg 
+                  className={`w-3 h-3 transition-transform ${isDescriptionExpanded ? 'rotate-180' : ''}`} 
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+            </div>
+            
+            {isDescriptionExpanded && (
+              <Controller
+                name="description"
+                control={control}
+                render={({ field }) => (
+                  <GlassInput
+                    placeholder="Enter supplier description (optional)"
+                    value={field.value}
+                    onChange={field.onChange}
+                    error={errors.description?.message}
+                    multiline
+                    rows={3}
+                    maxLength={500}
+                    helperText={`${field.value?.length || 0}/500 characters`}
+                  />
+                )}
               />
             )}
-          />
+            
+            {!isDescriptionExpanded && watch('description') && (
+              <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded border">
+                {watch('description').length > 100 
+                  ? `${watch('description').substring(0, 100)}...` 
+                  : watch('description')
+                }
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Contact Information */}
@@ -257,38 +266,6 @@ const SupplierForm: React.FC<SupplierFormProps> = ({
           <h3 className="text-lg font-medium text-lats-text">Contact Information</h3>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Contact Person */}
-            <Controller
-              name="contactPerson"
-              control={control}
-              render={({ field }) => (
-                <GlassInput
-                  label="Contact Person"
-                  placeholder="John Doe"
-                  value={field.value}
-                  onChange={field.onChange}
-                  error={errors.contactPerson?.message}
-                  maxLength={100}
-                />
-              )}
-            />
-
-            {/* Email */}
-            <Controller
-              name="email"
-              control={control}
-              render={({ field }) => (
-                <GlassInput
-                  label="Email"
-                  placeholder="contact@supplier.com"
-                  value={field.value}
-                  onChange={field.onChange}
-                  error={errors.email?.message}
-                  type="email"
-                />
-              )}
-            />
-
             {/* Phone */}
             <Controller
               name="phone"
@@ -301,51 +278,105 @@ const SupplierForm: React.FC<SupplierFormProps> = ({
                   onChange={field.onChange}
                   error={errors.phone?.message}
                   maxLength={20}
+                  helperText="Primary phone number"
                 />
               )}
             />
 
-            {/* Website */}
+            {/* Phone 2 */}
             <Controller
-              name="website"
+              name="phone2"
               control={control}
               render={({ field }) => (
                 <GlassInput
-                  label="Website"
-                  placeholder="https://supplier.com"
+                  label="Phone 2"
+                  placeholder="+1 (555) 123-4568"
                   value={field.value}
                   onChange={field.onChange}
-                  error={errors.website?.message}
-                  type="url"
+                  error={errors.phone2?.message}
+                  maxLength={20}
+                  helperText="Secondary phone number (optional)"
                 />
               )}
             />
+
+            {/* WhatsApp */}
+            <Controller
+              name="whatsapp"
+              control={control}
+              render={({ field }) => (
+                <GlassInput
+                  label="WhatsApp"
+                  placeholder="+1 (555) 123-4569"
+                  value={field.value}
+                  onChange={field.onChange}
+                  error={errors.whatsapp?.message}
+                  maxLength={20}
+                  helperText="WhatsApp business number"
+                />
+              )}
+            />
+
+            {/* Instagram */}
+            <Controller
+              name="instagram"
+              control={control}
+              render={({ field }) => (
+                <GlassInput
+                  label="Instagram"
+                  placeholder="@example"
+                  value={field.value}
+                  onChange={field.onChange}
+                  error={errors.instagram?.message}
+                  maxLength={50}
+                  helperText="Instagram handle (optional)"
+                />
+              )}
+            />
+
+            {/* WeChat ID - Only show when China is selected */}
+            {showWeChatField && (
+              <Controller
+                name="wechat_id"
+                control={control}
+                render={({ field }) => (
+                  <GlassInput
+                    label="WeChat ID"
+                    placeholder="Enter WeChat ID"
+                    value={field.value}
+                    onChange={field.onChange}
+                    error={errors.wechat_id?.message}
+                    maxLength={50}
+                    helperText="WeChat business account"
+                  />
+                )}
+              />
+            )}
           </div>
         </div>
 
-        {/* Address Information */}
+        {/* Location Information */}
         <div className="space-y-4">
-          <h3 className="text-lg font-medium text-lats-text">Address Information</h3>
+          <h3 className="text-lg font-medium text-lats-text">Location Information</h3>
           
-          {/* Address */}
-          <Controller
-            name="address"
-            control={control}
-            render={({ field }) => (
-              <GlassInput
-                label="Address"
-                placeholder="Enter supplier address"
-                value={field.value}
-                onChange={field.onChange}
-                error={errors.address?.message}
-                multiline
-                rows={2}
-                maxLength={200}
-              />
-            )}
-          />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Country */}
+            <Controller
+              name="country"
+              control={control}
+              render={({ field }) => (
+                <GlassSelect
+                  label="Country"
+                  placeholder="Select country"
+                  value={field.value}
+                  onChange={field.onChange}
+                  error={errors.country?.message}
+                  options={countryOptions}
+                  clearable
+                />
+              )}
+            />
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* City */}
             <Controller
               name="city"
@@ -361,182 +392,91 @@ const SupplierForm: React.FC<SupplierFormProps> = ({
                 />
               )}
             />
-
-            {/* State */}
-            <Controller
-              name="state"
-              control={control}
-              render={({ field }) => (
-                <GlassInput
-                  label="State/Province"
-                  placeholder="Enter state"
-                  value={field.value}
-                  onChange={field.onChange}
-                  error={errors.state?.message}
-                  maxLength={50}
-                />
-              )}
-            />
-
-            {/* Postal Code */}
-            <Controller
-              name="postalCode"
-              control={control}
-              render={({ field }) => (
-                <GlassInput
-                  label="Postal Code"
-                  placeholder="Enter postal code"
-                  value={field.value}
-                  onChange={field.onChange}
-                  error={errors.postalCode?.message}
-                  maxLength={20}
-                />
-              )}
-            />
           </div>
-
-          {/* Country */}
-          <Controller
-            name="country"
-            control={control}
-            render={({ field }) => (
-              <GlassSelect
-                label="Country"
-                placeholder="Select country"
-                value={field.value}
-                onChange={field.onChange}
-                error={errors.country?.message}
-                options={countryOptions}
-                clearable
-              />
-            )}
-          />
         </div>
 
         {/* Business Information */}
         <div className="space-y-4">
           <h3 className="text-lg font-medium text-lats-text">Business Information</h3>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Tax ID */}
+          {/* Payment Account Type */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">Payment Account Type</label>
+            <div className="flex flex-wrap gap-3">
+              {paymentAccountTypeOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setValue('payment_account_type', option.value)}
+                  className={`px-4 py-2 rounded-lg border-2 transition-all duration-200 font-medium text-sm ${
+                    watchedValues.payment_account_type === option.value
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400 hover:bg-gray-50'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            {errors.payment_account_type && (
+              <div className="text-red-500 text-xs mt-1 flex items-center gap-1">
+                <AlertTriangle size={12} />
+                {errors.payment_account_type.message}
+              </div>
+            )}
+          </div>
+
+          {/* Mobile Money Account - Only show when mobile_money is selected */}
+          {watchedValues.payment_account_type === 'mobile_money' && (
             <Controller
-              name="taxId"
+              name="mobile_money_account"
               control={control}
               render={({ field }) => (
                 <GlassInput
-                  label="Tax ID"
-                  placeholder="Enter tax identification number"
+                  label="Mobile Money Account"
+                  placeholder="Enter mobile money number (e.g., 0712345678)"
                   value={field.value}
                   onChange={field.onChange}
-                  error={errors.taxId?.message}
+                  error={errors.mobile_money_account?.message}
                   maxLength={50}
+                  helperText="Enter the mobile money phone number"
                 />
               )}
             />
+          )}
 
-            {/* Payment Terms */}
-            <Controller
-              name="paymentTerms"
-              control={control}
-              render={({ field }) => (
-                <GlassSelect
-                  label="Payment Terms"
-                  placeholder="Select payment terms"
-                  value={field.value}
-                  onChange={field.onChange}
-                  error={errors.paymentTerms?.message}
-                  options={paymentTermsOptions}
-                  clearable
-                />
-              )}
-            />
-          </div>
-
-          {/* Credit Limit */}
-          <Controller
-            name="creditLimit"
-            control={control}
-            render={({ field }) => (
-                              <PriceInput
-                  label="Credit Limit"
-                  placeholder="0"
-                  value={field.value}
-                  onChange={field.onChange}
-                  error={errors.creditLimit?.message}
-                  helperText="Maximum credit amount allowed"
-                />
-            )}
-          />
-        </div>
-
-        {/* Advanced Settings */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-medium text-lats-text">Advanced Settings</h3>
-            <GlassButton
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsExpanded(!isExpanded)}
-              icon={
-                <svg className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              }
-            >
-              {isExpanded ? 'Hide' : 'Show'} Advanced
-            </GlassButton>
-          </div>
-
-          {isExpanded && (
-            <div className="space-y-4 p-4 bg-lats-surface/30 rounded-lats-radius-md border border-lats-glass-border">
-              {/* Sort Order */}
+          {/* Bank Account Details - Only show when bank_account is selected */}
+          {watchedValues.payment_account_type === 'bank_account' && (
+            <div className="space-y-4">
               <Controller
-                name="sortOrder"
+                name="bank_name"
                 control={control}
                 render={({ field }) => (
                   <GlassInput
-                    label="Sort Order"
-                    placeholder="0"
-                    type="number"
+                    label="Bank Name"
+                    placeholder="Enter bank name"
                     value={field.value}
-                    onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
-                    error={errors.sortOrder?.message}
-                    min={0}
-                    helperText="Lower numbers appear first"
+                    onChange={field.onChange}
+                    error={errors.bank_name?.message}
+                    maxLength={100}
+                    helperText="Enter the name of the bank"
                   />
                 )}
               />
 
-              {/* Active Status */}
               <Controller
-                name="isActive"
+                name="bank_account_number"
                 control={control}
                 render={({ field }) => (
-                  <div className="flex items-center justify-between p-3 bg-lats-surface/50 rounded-lats-radius-md">
-                    <div>
-                      <label className="text-sm font-medium text-lats-text">
-                        Active Status
-                      </label>
-                      <p className="text-xs text-lats-text-secondary">
-                        Inactive suppliers won't appear in selection lists
-                      </p>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        className="sr-only"
-                        checked={field.value}
-                        onChange={field.onChange}
-                      />
-                      <div className={`w-11 h-6 rounded-full transition-colors ${
-                        field.value ? 'bg-lats-primary' : 'bg-lats-surface/50'
-                      }`}>
-                        <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
-                          field.value ? 'translate-x-5' : 'translate-x-0'
-                        }`} />
-                      </div>
-                    </label>
-                  </div>
+                  <GlassInput
+                    label="Bank Account Number"
+                    placeholder="Enter bank account number"
+                    value={field.value}
+                    onChange={field.onChange}
+                    error={errors.bank_account_number?.message}
+                    maxLength={50}
+                    helperText="Enter the bank account number"
+                  />
                 )}
               />
             </div>

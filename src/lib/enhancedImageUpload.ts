@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { ImageCompressionService, CompressedImage } from './imageCompressionService';
 
 export interface UploadedImage {
   id: string;
@@ -38,6 +39,40 @@ export class EnhancedImageUploadService {
     'image/gif',
     'image/svg+xml'
   ];
+
+  // Development mode storage for temporary products
+  private static devImageStorage = new Map<string, UploadedImage[]>();
+  
+  // Cache for product images to reduce API calls
+  private static imageCache = new Map<string, { images: UploadedImage[]; timestamp: number }>();
+  private static readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+  /**
+   * Get development mode images for a product
+   */
+  static getDevImages(productId: string): UploadedImage[] {
+    return this.devImageStorage.get(productId) || [];
+  }
+
+  /**
+   * Clear image cache for a specific product
+   */
+  static clearImageCache(productId?: string): void {
+    if (productId) {
+      this.imageCache.delete(productId);
+      console.log('🗑️ EnhancedImageUploadService: Cleared image cache for product:', productId);
+    } else {
+      this.imageCache.clear();
+      console.log('🗑️ EnhancedImageUploadService: Cleared all image cache');
+    }
+  }
+
+  /**
+   * Clear development mode images for a product
+   */
+  static clearDevImages(productId: string): void {
+    this.devImageStorage.delete(productId);
+  }
 
   /**
    * Upload a single image with enhanced features
@@ -122,13 +157,87 @@ export class EnhancedImageUploadService {
       // Get image dimensions if possible
       const dimensions = await this.getImageDimensions(file);
 
-      // Generate thumbnail if requested
+      // Generate compressed thumbnail if requested
       let thumbnailUrl: string | undefined;
       if (generateThumbnail && file.type !== 'image/svg+xml') {
-        thumbnailUrl = await this.generateThumbnail(file, thumbnailSize);
+        try {
+          console.log('🔄 Generating compressed thumbnail...');
+          
+          // Determine optimal format for compression
+          const optimalFormat = ImageCompressionService.getOptimalFormat(file.type);
+          
+          // Compress the image
+          const compressedImage = await ImageCompressionService.compressImage(file, {
+            maxWidth: thumbnailSize.width,
+            maxHeight: thumbnailSize.height,
+            quality: 0.8,
+            format: optimalFormat as 'jpeg' | 'webp' | 'png'
+          });
+
+          // Log compression statistics
+          const stats = ImageCompressionService.getCompressionStats(file.size, compressedImage.size);
+          console.log('📊 Compression stats:', {
+            original: stats.originalSize,
+            compressed: stats.compressedSize,
+            savings: `${stats.savings} (${stats.savingsPercent}%)`,
+            ratio: stats.compressionRatio
+          });
+
+          // Upload compressed thumbnail to storage
+          thumbnailUrl = await ImageCompressionService.uploadCompressedThumbnail(
+            compressedImage,
+            productId,
+            file.name,
+            bucket
+          );
+
+          if (thumbnailUrl) {
+            console.log('✅ Compressed thumbnail uploaded successfully');
+          } else {
+            console.warn('⚠️ Failed to upload compressed thumbnail, continuing without thumbnail');
+          }
+        } catch (error) {
+          console.error('❌ Thumbnail compression failed:', error);
+          // Continue without thumbnail if compression fails
+        }
       }
 
-      // Create database record
+      // Handle temporary product IDs (don't create database records yet)
+      if (productId.startsWith('temp-product-') || productId.startsWith('test-product-')) {
+        console.log('📝 Skipping database record for temporary product:', productId);
+        
+        const uploadedImage: UploadedImage = {
+          id: `temp-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`,
+          url: urlData.publicUrl,
+          thumbnailUrl: thumbnailUrl,
+          fileName: file.name,
+          fileSize: file.size,
+          mimeType: file.type,
+          width: dimensions?.width,
+          height: dimensions?.height,
+          isPrimary: isPrimary,
+          uploadedAt: new Date().toISOString()
+        };
+
+        // Store in development mode storage for later retrieval
+        if (!this.devImageStorage.has(productId)) {
+          this.devImageStorage.set(productId, []);
+        }
+        this.devImageStorage.get(productId)!.push(uploadedImage);
+
+        console.log('✅ Image uploaded successfully (temporary product):', uploadedImage);
+        console.log('📦 Stored in dev storage for product:', productId);
+        console.log('📦 Total dev images for this product:', this.devImageStorage.get(productId)!.length);
+        console.log('📦 All dev storage keys:', Array.from(this.devImageStorage.keys()));
+        console.log('📦 Dev storage size:', this.devImageStorage.size);
+        
+        return {
+          success: true,
+          image: uploadedImage
+        };
+      }
+
+      // For real products, create database record
       const { data: dbData, error: dbError } = await supabase
         .from('product_images')
         .insert({
@@ -137,9 +246,6 @@ export class EnhancedImageUploadService {
           thumbnail_url: thumbnailUrl,
           file_name: file.name,
           file_size: file.size,
-          mime_type: file.type,
-          width: dimensions?.width,
-          height: dimensions?.height,
           is_primary: isPrimary,
           uploaded_by: userId
         })
@@ -389,61 +495,7 @@ export class EnhancedImageUploadService {
     });
   }
 
-  /**
-   * Generate thumbnail
-   */
-  private static async generateThumbnail(
-    file: File, 
-    size: { width: number; height: number }
-  ): Promise<string | undefined> {
-    try {
-      // Create canvas for thumbnail generation
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return undefined;
 
-      const img = new Image();
-      
-      return new Promise((resolve) => {
-        img.onload = () => {
-          // Calculate aspect ratio
-          const aspectRatio = img.width / img.height;
-          let { width, height } = size;
-          
-          if (aspectRatio > 1) {
-            // Landscape
-            height = width / aspectRatio;
-          } else {
-            // Portrait
-            width = height * aspectRatio;
-          }
-
-          canvas.width = width;
-          canvas.height = height;
-
-          // Draw and resize image
-          ctx.drawImage(img, 0, 0, width, height);
-
-          // Convert to blob
-          canvas.toBlob((blob) => {
-            if (blob) {
-              // For now, return the original URL
-              // In a real implementation, you'd upload the thumbnail to storage
-              resolve(undefined);
-            } else {
-              resolve(undefined);
-            }
-          }, 'image/jpeg', 0.8);
-        };
-        
-        img.onerror = () => resolve(undefined);
-        img.src = URL.createObjectURL(file);
-      });
-    } catch (error) {
-      console.error('❌ Thumbnail generation failed:', error);
-      return undefined;
-    }
-  }
 
   /**
    * Get error message from Supabase error
@@ -453,6 +505,80 @@ export class EnhancedImageUploadService {
     if (error?.message) return error.message;
     if (error?.error_description) return error.error_description;
     return 'Unknown error occurred';
+  }
+
+  /**
+   * Update product images from temporary product ID to real product ID
+   * This method handles the transition from temporary to real product IDs
+   */
+  static async updateProductImages(tempProductId: string, realProductId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      console.log('🔄 EnhancedImageUploadService: Updating product images from temp ID to real ID:', { tempProductId, realProductId });
+      
+      // Get the current user
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        console.error('❌ Failed to get authenticated user:', userError);
+        return { success: false, error: 'Authentication required' };
+      }
+
+      // Check if we have development mode images stored
+      const devImages = this.getDevImages(tempProductId);
+      console.log('🔍 EnhancedImageUploadService: Checking dev storage for:', tempProductId);
+      console.log('🔍 EnhancedImageUploadService: All dev storage keys:', Array.from(this.devImageStorage.keys()));
+      console.log('🔍 EnhancedImageUploadService: Dev storage size:', this.devImageStorage.size);
+      console.log('🔍 EnhancedImageUploadService: Found dev images:', devImages?.length || 0);
+      
+      if (devImages && devImages.length > 0) {
+        console.log('🛠️ EnhancedImageUploadService: Found development mode images:', devImages.length);
+        
+        // Create database records for development mode images
+        const imageRecords = devImages.map((img, index) => ({
+          product_id: realProductId,
+          image_url: img.url,
+          thumbnail_url: img.thumbnailUrl,
+          file_name: img.fileName,
+          file_size: img.fileSize,
+          is_primary: index === 0, // First image is primary
+          uploaded_by: user.id
+        }));
+
+        // Insert all image records
+        const { data: insertedImages, error: insertError } = await supabase
+          .from('product_images')
+          .insert(imageRecords)
+          .select();
+
+        if (insertError) {
+          console.error('❌ Failed to insert development mode image records:', insertError);
+          return { success: false, error: insertError.message };
+        }
+
+        console.log('✅ EnhancedImageUploadService: Successfully created development mode image records:', { 
+          tempProductId, 
+          realProductId, 
+          createdCount: insertedImages?.length || 0 
+        });
+
+        // Clean up development storage
+        this.clearDevImages(tempProductId);
+
+        // Clear cache for the real product ID since images were updated
+        this.clearImageCache(realProductId);
+
+        return { success: true };
+      }
+
+      console.log('📝 EnhancedImageUploadService: No development mode images found for:', tempProductId);
+      return { success: true }; // No images to process
+      
+    } catch (error) {
+      console.error('❌ EnhancedImageUploadService: Error updating product images:', error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Unknown error occurred' 
+      };
+    }
   }
 
   /**

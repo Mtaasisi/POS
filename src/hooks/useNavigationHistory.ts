@@ -1,5 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+
+// Debug flag - set to false to disable all logging
+const DEBUG_NAVIGATION = false;
 
 export const useNavigationHistory = () => {
   const location = useLocation();
@@ -9,7 +12,10 @@ export const useNavigationHistory = () => {
   // Track navigation history
   useEffect(() => {
     const currentPath = location.pathname;
-    console.log('📍 NavigationHistory: Current path:', currentPath);
+    
+    if (DEBUG_NAVIGATION) {
+      console.log('📍 NavigationHistory: Current path:', currentPath);
+    }
     
     const savedHistory = localStorage.getItem('navigationHistory');
     let history: string[] = [];
@@ -17,7 +23,9 @@ export const useNavigationHistory = () => {
     if (savedHistory) {
       try {
         history = JSON.parse(savedHistory);
-        console.log('📚 NavigationHistory: Loaded history:', history);
+        if (DEBUG_NAVIGATION) {
+          console.log('📚 NavigationHistory: Loaded history:', history);
+        }
       } catch (error) {
         console.error('❌ NavigationHistory: Error parsing navigation history:', error);
       }
@@ -31,28 +39,39 @@ export const useNavigationHistory = () => {
         history = history.slice(-10);
       }
       localStorage.setItem('navigationHistory', JSON.stringify(history));
-      console.log('💾 NavigationHistory: Updated history:', history);
-    } else {
+      if (DEBUG_NAVIGATION) {
+        console.log('💾 NavigationHistory: Updated history:', history);
+      }
+    } else if (DEBUG_NAVIGATION) {
       console.log('🔄 NavigationHistory: Same page, not adding to history');
     }
     
     // Set previous page (second to last in history)
     if (history.length > 1) {
-      setPreviousPage(history[history.length - 2]);
-      console.log('⬅️ NavigationHistory: Previous page set to:', history[history.length - 2]);
+      const newPreviousPage = history[history.length - 2];
+      if (newPreviousPage !== previousPage) {
+        setPreviousPage(newPreviousPage);
+        if (DEBUG_NAVIGATION) {
+          console.log('⬅️ NavigationHistory: Previous page set to:', newPreviousPage);
+        }
+      }
     }
-  }, [location.pathname]);
+  }, [location.pathname, previousPage]);
 
-  const handleBackClick = () => {
+  const handleBackClick = useCallback(() => {
     if (previousPage) {
-      console.log('⬅️ NavigationHistory: Navigating back to:', previousPage);
+      if (DEBUG_NAVIGATION) {
+        console.log('⬅️ NavigationHistory: Navigating back to:', previousPage);
+      }
       navigate(previousPage);
     } else {
       // Fallback to dashboard if no previous page
-      console.log('🔄 NavigationHistory: No previous page, falling back to dashboard');
+      if (DEBUG_NAVIGATION) {
+        console.log('🔄 NavigationHistory: No previous page, falling back to dashboard');
+      }
       navigate('/dashboard');
     }
-  };
+  }, [previousPage, navigate]);
 
   return {
     previousPage,

@@ -1,5 +1,7 @@
 import { useState, useCallback } from 'react';
 import { CartItem, Sale } from '../types/pos';
+import { PaymentService } from '../payments';
+import { usePaymentSettings } from '../payments/SettingsStore';
 
 interface ZenoPayOrder {
   order_id: string;
@@ -46,38 +48,39 @@ export const useZenoPay = (): UseZenoPayReturn => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentOrder, setCurrentOrder] = useState<ZenoPayOrder | null>(null);
+  const settings = usePaymentSettings();
 
-  // Create a new payment order
+  // Create a new payment order (provider-agnostic via PaymentService)
   const createOrder = useCallback(async (data: CreateOrderData): Promise<ZenoPayOrder | null> => {
     setIsLoading(true);
     setError(null);
 
     try {
-      const response = await fetch('/zenopay-create-order.php', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data)
-      });
+      // Get credentials from settings
+      const credentials = settings?.getEffectiveCredentials?.() || {};
+      
+      const result = await PaymentService.createOrder({
+        amount: data.amount,
+        buyerEmail: data.buyer_email,
+        buyerName: data.buyer_name,
+        buyerPhone: data.buyer_phone,
+        metadata: data.metadata,
+      }, credentials);
 
-      const result = await response.json();
-
-      if (result.success) {
+      if (result.success && result.orderId) {
         const order: ZenoPayOrder = {
-          order_id: result.order_id,
+          order_id: result.orderId,
           buyer_email: data.buyer_email,
           buyer_name: data.buyer_name,
           buyer_phone: data.buyer_phone,
           amount: data.amount,
-          payment_status: 'PENDING'
+          payment_status: 'PENDING',
         };
-        
+
         setCurrentOrder(order);
         return order;
-      } else {
-        throw new Error(result.error || 'Failed to create payment order');
       }
+      throw new Error(result.message || 'Failed to create payment order');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to create payment order';
       setError(errorMessage);
@@ -87,22 +90,34 @@ export const useZenoPay = (): UseZenoPayReturn => {
     }
   }, []);
 
-  // Check order status
+  // Check order status (provider-agnostic via PaymentService)
   const checkOrderStatus = useCallback(async (orderId: string): Promise<ZenoPayOrder | null> => {
     setIsLoading(true);
     setError(null);
 
     try {
-      const response = await fetch(`/zenopay-check-status.php?order_id=${orderId}`);
-      const result = await response.json();
+      // Get credentials from settings
+      const credentials = settings?.getEffectiveCredentials?.() || {};
+      
+      const result = await PaymentService.checkStatus(orderId, credentials);
 
-      if (result.success && result.orders.length > 0) {
-        const order = result.orders[0];
+      if (result.success && Array.isArray(result.orders) && result.orders.length > 0) {
+        const first = result.orders[0];
+        const order: ZenoPayOrder = {
+          order_id: first.order_id,
+          buyer_email: (first as any).buyer_email ?? currentOrder?.buyer_email ?? '',
+          buyer_name: (first as any).buyer_name ?? currentOrder?.buyer_name ?? '',
+          buyer_phone: (first as any).buyer_phone ?? currentOrder?.buyer_phone ?? '',
+          amount: typeof first.amount === 'string' ? Number(first.amount) : (first.amount ?? currentOrder?.amount ?? 0),
+          payment_status: (first.payment_status as any) ?? 'PENDING',
+          reference: first.reference ?? undefined,
+          created_at: (first as any).created_at ?? undefined,
+          updated_at: (first as any).updated_at ?? undefined,
+        };
         setCurrentOrder(order);
         return order;
-      } else {
-        throw new Error(result.error || 'Failed to check payment status');
       }
+      throw new Error(result.message || 'Failed to check payment status');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to check payment status';
       setError(errorMessage);
@@ -110,7 +125,7 @@ export const useZenoPay = (): UseZenoPayReturn => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [currentOrder]);
 
   // Process complete payment flow
   const processPayment = useCallback(async (

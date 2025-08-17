@@ -26,6 +26,10 @@ interface InventoryState {
   isCreating: boolean;
   isUpdating: boolean;
   isDeleting: boolean;
+  
+  // Prevent multiple simultaneous loads
+  isDataLoading: boolean;
+  lastDataLoadTime: number;
 
   // Data
   categories: Category[];
@@ -152,6 +156,8 @@ export const useInventoryStore = create<InventoryState>()(
       isCreating: false,
       isUpdating: false,
       isDeleting: false,
+      isDataLoading: false,
+      lastDataLoadTime: 0,
 
       categories: [],
       brands: [],
@@ -237,7 +243,22 @@ export const useInventoryStore = create<InventoryState>()(
 
       // Categories
       loadCategories: async () => {
-        set({ isLoading: true, error: null });
+        const state = get();
+        
+        // Prevent multiple simultaneous loads
+        if (state.isDataLoading) {
+          console.log('⏳ [DEBUG] Categories loading already in progress, skipping...');
+          return;
+        }
+
+        // Check if we recently loaded data (5 second cooldown)
+        const timeSinceLastLoad = Date.now() - state.lastDataLoadTime;
+        if (timeSinceLastLoad < 5000) {
+          console.log(`⏳ [DEBUG] Categories loaded recently (${Math.round(timeSinceLastLoad / 1000)}s ago), skipping...`);
+          return;
+        }
+
+        set({ isLoading: true, isDataLoading: true, error: null });
         try {
           console.log('🔧 [DEBUG] Loading categories from LATS provider...');
           const provider = getLatsProvider();
@@ -245,7 +266,7 @@ export const useInventoryStore = create<InventoryState>()(
           console.log('📊 [DEBUG] Categories response:', response);
           
           if (response.ok) {
-            set({ categories: response.data || [] });
+            set({ categories: response.data || [], lastDataLoadTime: Date.now() });
             latsAnalytics.track('categories_loaded', { count: response.data?.length || 0 });
             console.log('✅ [DEBUG] Categories loaded:', response.data?.length || 0);
           } else {
@@ -256,7 +277,7 @@ export const useInventoryStore = create<InventoryState>()(
           console.error('💥 [DEBUG] Categories exception:', error);
           set({ error: 'Failed to load categories' });
         } finally {
-          set({ isLoading: false });
+          set({ isLoading: false, isDataLoading: false });
         }
       },
 
@@ -325,7 +346,22 @@ export const useInventoryStore = create<InventoryState>()(
 
       // Brands
       loadBrands: async () => {
-        set({ isLoading: true, error: null });
+        const state = get();
+        
+        // Prevent multiple simultaneous loads
+        if (state.isDataLoading) {
+          console.log('⏳ [DEBUG] Brands loading already in progress, skipping...');
+          return;
+        }
+
+        // Check if we recently loaded data (5 second cooldown)
+        const timeSinceLastLoad = Date.now() - state.lastDataLoadTime;
+        if (timeSinceLastLoad < 5000) {
+          console.log(`⏳ [DEBUG] Brands loaded recently (${Math.round(timeSinceLastLoad / 1000)}s ago), skipping...`);
+          return;
+        }
+
+        set({ isLoading: true, isDataLoading: true, error: null });
         try {
           console.log('🔧 [DEBUG] Loading brands from LATS provider...');
           const provider = getLatsProvider();
@@ -333,7 +369,7 @@ export const useInventoryStore = create<InventoryState>()(
           console.log('📊 [DEBUG] Brands response:', response);
           
           if (response.ok) {
-            set({ brands: response.data || [] });
+            set({ brands: response.data || [], lastDataLoadTime: Date.now() });
             latsAnalytics.track('brands_loaded', { count: response.data?.length || 0 });
             console.log('✅ [DEBUG] Brands loaded:', response.data?.length || 0);
           } else {
@@ -344,7 +380,7 @@ export const useInventoryStore = create<InventoryState>()(
           console.error('💥 [DEBUG] Brands exception:', error);
           set({ error: 'Failed to load brands' });
         } finally {
-          set({ isLoading: false });
+          set({ isLoading: false, isDataLoading: false });
         }
       },
 
@@ -1140,7 +1176,10 @@ latsEventBus.subscribeToAll((event) => {
     case 'lats:purchase-order.updated':
     case 'lats:purchase-order.received':
     case 'lats:purchase-order.deleted':
-      store.loadPurchaseOrders();
+      // Temporarily disable purchase orders loading to prevent 400 errors
+      // TODO: Re-enable when purchase orders tables are properly set up
+      console.log('📝 Purchase orders event handling temporarily disabled');
+      // store.loadPurchaseOrders();
       break;
       
     case 'lats:spare-part.created':

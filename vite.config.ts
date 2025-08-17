@@ -59,7 +59,11 @@ export default defineConfig({
     // Add timeout for dependency optimization
     force: false,
     // Include TypeScript files in dependency optimization
-    include: ['react', 'react-dom'],
+    include: ['react', 'react-dom', 'react-router-dom'],
+    // Add esbuild options for better dependency handling
+    esbuildOptions: {
+      target: 'es2020',
+    },
   },
   build: {
     outDir: 'dist',
@@ -91,21 +95,20 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    host: '0.0.0.0',
+    host: 'localhost',
     hmr: {
       port: 5173,
       host: 'localhost',
+      protocol: 'ws',
       timeout: 30000, // 30 second timeout for HMR
     },
     // Add better error handling for development
-    strictPort: true,
+    strictPort: false,
     // Allow access to source files for development
     fs: {
       strict: false,
       allow: ['..']
     },
-    // Add middleware to handle TypeScript files and prevent direct access
-    middlewareMode: false,
     // Add timeout settings
     watch: {
       usePolling: false,
@@ -115,6 +118,8 @@ export default defineConfig({
     cors: true,
     // Add request timeout
     proxy: {},
+    // Add better error handling for development
+    middlewareMode: false,
   },
   // Ensure config.js is copied to build output
   publicDir: 'public',

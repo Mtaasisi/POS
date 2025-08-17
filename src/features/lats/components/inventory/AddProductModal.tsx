@@ -7,6 +7,7 @@ import GlassButton from '../../../shared/components/ui/GlassButton';
 import { ImageUpload } from '../../../../components/ImageUpload';
 import { ImageGallery } from '../../../../components/ImageGallery';
 import { ImageUploadService } from '../../../../lib/imageUpload';
+import { EnhancedImageUploadService } from '../../../../lib/enhancedImageUpload';
 import PriceInput from '../../../../shared/components/ui/PriceInput';
 import { toast } from 'react-hot-toast';
 import { 
@@ -20,6 +21,9 @@ import { useInventoryStore } from '../../stores/useInventoryStore';
 import BrandSuggestionInput from '../../../shared/components/ui/BrandSuggestionInput';
 import ModelSuggestionInput from '../../../shared/components/ui/ModelSuggestionInput';
 import { supabase } from '../../../../lib/supabaseClient';
+import { useAuth } from '../../../../context/AuthContext';
+import { retryWithBackoff } from '../../../../lib/supabaseClient';
+import { getActiveBrands, Brand } from '../../../../lib/brandApi';
 
 // ProductImage interface for form validation
 const ProductImageSchema = z.object({
@@ -53,6 +57,8 @@ const productFormSchema = z.object({
   categoryId: z.string().min(1, 'Category is required'),
   brandId: z.string().optional(),
   supplierId: z.string().optional(),
+  condition: z.string().min(1, 'Product condition is required'),
+  storeShelf: z.string().optional(),
   price: z.number().min(0, 'Price must be 0 or greater'),
   costPrice: z.number().min(0, 'Cost price must be 0 or greater'),
   stockQuantity: z.number().min(0, 'Stock quantity must be 0 or greater'),
@@ -60,10 +66,6 @@ const productFormSchema = z.object({
   maxStockLevel: z.number().min(0, 'Maximum stock level must be 0 or greater').optional(),
   weight: z.number().min(0, 'Weight must be 0 or greater').optional(),
   isActive: z.boolean().default(true),
-  isFeatured: z.boolean().default(false),
-  isDigital: z.boolean().default(false),
-  requiresShipping: z.boolean().default(true),
-  taxRate: z.number().min(0, 'Tax rate must be 0 or greater').default(0),
   tags: z.array(z.string()).default([]),
   images: z.array(ProductImageSchema).default([]),
   metadata: z.record(z.string()).optional(),
@@ -86,7 +88,7 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
 }) => {
   const { 
     categories, 
-    brands, 
+    brands: storeBrands, 
     suppliers,
     createProduct,
     loadCategories,
@@ -95,6 +97,10 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
     isLoading: storeLoading
   } = useInventoryStore();
 
+  // Local state for brands to ensure they load properly
+  const [localBrands, setLocalBrands] = useState<Brand[]>([]);
+  const [brandsLoading, setBrandsLoading] = useState(false);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [completionPercentage, setCompletionPercentage] = useState(0);
@@ -102,7 +108,7 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
   const [showVariants, setShowVariants] = useState(false);
   const [isCheckingName, setIsCheckingName] = useState(false);
   const [nameExists, setNameExists] = useState(false);
-  const [user, setUser] = useState<any>(null);
+  const { currentUser, refreshSession } = useAuth();
   const [tempProductId] = useState('temp-product-' + Date.now());
 
   // Form setup
@@ -124,6 +130,8 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
       categoryId: '',
       brandId: '',
       supplierId: '',
+      condition: 'new',
+      storeShelf: '',
       price: 0,
       costPrice: 0,
       stockQuantity: 0,
@@ -131,10 +139,6 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
       maxStockLevel: 100,
       weight: 0,
       isActive: true,
-      isFeatured: false,
-      isDigital: false,
-      requiresShipping: true,
-      taxRate: 0,
       tags: [],
       images: [],
       metadata: {}
@@ -142,7 +146,7 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
   });
 
   // Watch specific form values for completion calculation
-  const [name, sku, categoryId, price, costPrice, stockQuantity, minStockLevel] = watch(['name', 'sku', 'categoryId', 'price', 'costPrice', 'stockQuantity', 'minStockLevel']);
+  const [name, sku, categoryId, condition, price, costPrice, stockQuantity, minStockLevel] = watch(['name', 'sku', 'categoryId', 'condition', 'price', 'costPrice', 'stockQuantity', 'minStockLevel']);
   
   // Debug form state (reduced logging)
   if (Object.keys(errors).length > 0) {
@@ -155,6 +159,7 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
       name ? 1 : 0,
       sku ? 1 : 0,
       categoryId ? 1 : 0,
+      condition ? 1 : 0,
       price >= 0 ? 1 : 0,
       costPrice >= 0 ? 1 : 0,
       stockQuantity >= 0 ? 1 : 0,
@@ -162,7 +167,7 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
     ];
     const percentage = Math.round((requiredFields.reduce((a, b) => a + b, 0) / requiredFields.length) * 100);
     setCompletionPercentage(percentage);
-  }, [name, sku, categoryId, price, costPrice, stockQuantity, minStockLevel]);
+  }, [name, sku, categoryId, condition, price, costPrice, stockQuantity, minStockLevel]);
 
   // Load data on mount
   useEffect(() => {
@@ -170,15 +175,24 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
       loadCategories();
       loadBrands();
       loadSuppliers();
-      
-      // Load current user
-      const loadUser = async () => {
-        const { data: { user } } = await supabase.auth.getUser();
-        setUser(user);
-      };
-      loadUser();
+      loadLocalBrands();
     }
   }, [isOpen, loadCategories, loadBrands, loadSuppliers]);
+
+  // Load brands directly using brandApi
+  const loadLocalBrands = async () => {
+    setBrandsLoading(true);
+    try {
+      const brandsData = await getActiveBrands();
+      setLocalBrands(brandsData);
+      console.log('✅ Local brands loaded:', brandsData.length);
+    } catch (error) {
+      console.error('❌ Error loading local brands:', error);
+      toast.error('Failed to load brands');
+    } finally {
+      setBrandsLoading(false);
+    }
+  };
 
   // Check for duplicate names
   const checkDuplicateName = async (productName: string) => {
@@ -189,8 +203,7 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
 
     setIsCheckingName(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!currentUser) return;
 
       const { data: existingProduct } = await supabase
         .from('lats_products')
@@ -238,12 +251,60 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
     setIsSubmitting(true);
     
     try {
-      // Get current user for image uploads
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      if (authError || !user) {
+      // Check network connectivity first
+      if (!navigator.onLine) {
+        console.log('📴 Network is offline');
+        toast.error('No internet connection. Please check your network and try again.');
+        return;
+      }
+      
+      // Enhanced authentication check with session refresh
+      console.log('🔐 Checking authentication status...');
+      console.log('🔍 Current user from context:', currentUser);
+      
+      // Try to refresh the session first with retry mechanism
+      let session, sessionError;
+      try {
+        const result = await retryWithBackoff(async () => {
+          return await supabase.auth.getSession();
+        });
+        session = result.data.session;
+        sessionError = result.error;
+      } catch (error) {
+        console.error('❌ Session check failed after retries:', error);
+        sessionError = error;
+      }
+      
+      console.log('🔍 Session check result:', { session: !!session, error: sessionError });
+      
+      if (sessionError) {
+        console.error('❌ Session error:', sessionError);
+        toast.error('Session error. Please try logging in again.');
+        return;
+      }
+      
+      // If no session, try to refresh
+      if (!session) {
+        console.log('🔄 No active session, attempting to refresh...');
+        const refreshSuccess = await refreshSession();
+        
+        if (!refreshSuccess) {
+          console.log('❌ Session refresh failed');
+          toast.error('Authentication required. Please log in to create products.');
+          return;
+        }
+        
+        console.log('✅ Session refreshed successfully');
+      }
+      
+      // Final authentication check
+      if (!currentUser) {
+        console.log('❌ No current user in context');
         toast.error('Authentication required. Please log in to create products.');
         return;
       }
+      
+      console.log('✅ Authentication verified for user:', currentUser.email);
       
       // Store images for upload after product creation
       const imagesToUpload = data.images || [];
@@ -253,6 +314,8 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
       console.log('🔍 Debug: imagesToUpload length:', imagesToUpload.length);
       console.log('🔍 Debug: Form data keys:', Object.keys(data));
       console.log('🔍 Debug: Form data values:', Object.values(data));
+      
+
       
       // Transform form data to match LATS ProductFormData structure
       // Handle variants - if no variants are provided, create a basic one from the main form data
@@ -293,13 +356,11 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
         categoryId: data.categoryId,
         brandId: data.brandId || '',
         supplierId: data.supplierId || '',
+        condition: data.condition,
+        storeShelf: data.storeShelf || '',
         images: [], // Images will be uploaded after product creation
         tags: data.tags || [],
         isActive: data.isActive,
-        isFeatured: data.isFeatured,
-        isDigital: data.isDigital,
-        requiresShipping: data.requiresShipping,
-        taxRate: data.taxRate,
         // Use normalized variants
         variants: normalizedVariants.map(variant => ({
           sku: variant.sku || `${data.sku}-${variant.name}`,
@@ -336,12 +397,18 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
             console.log('🔄 Updating images from temp ID to real ID:', { tempProductId, actualProductId });
             
             // Update the product images to use the real product ID
+            // Try both services to ensure we catch all development mode images
             const updateResult = await ImageUploadService.updateProductImages(tempProductId, actualProductId);
+            const enhancedUpdateResult = await EnhancedImageUploadService.updateProductImages(tempProductId, actualProductId);
             
-            if (updateResult.success) {
+            // Consider it successful if either service succeeds
+            const success = updateResult.success || enhancedUpdateResult.success;
+            const error = updateResult.error || enhancedUpdateResult.error;
+            
+            if (success) {
               console.log('✅ Successfully updated product images');
             } else {
-              console.error('❌ Failed to update product images:', updateResult.error);
+              console.error('❌ Failed to update product images:', error);
               toast.error('Product created but image association failed. Images may not be visible.');
             }
             
@@ -481,29 +548,46 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="w-full max-w-6xl max-h-[90vh] overflow-y-auto">
-        <GlassCard className="p-6">
-          {/* Modal Header */}
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                <Package className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900">Add New Product</h2>
-                <p className="text-sm text-gray-600">Create a new product in your inventory</p>
-              </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose}></div>
+      <div className="relative w-full max-w-5xl max-h-[95vh] bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gray-50">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+              <Package className="w-4 h-4 text-blue-600" />
             </div>
-            <button
-              onClick={handleCancel}
-              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Add New Product</h2>
+              <p className="text-sm text-gray-500">Create a new product in your inventory</p>
+            </div>
           </div>
+          <button
+            onClick={handleCancel}
+            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all duration-200"
+            aria-label="Close modal"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
 
-          {/* Form */}
+        {/* Debug Authentication Status - Only in development */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="p-4 bg-yellow-50 border-b border-yellow-200">
+            <div className="flex items-center gap-2 mb-2">
+              <AlertIcon className="w-4 h-4 text-yellow-600" />
+              <span className="font-semibold text-yellow-800 text-sm">Debug: Authentication Status</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs text-yellow-700">
+              <div>User: {currentUser ? currentUser.email : 'None'}</div>
+              <div>Network: {navigator.onLine ? '🟢 Online' : '🔴 Offline'}</div>
+              <div>Session: {currentUser ? '🟢 Active' : '🔴 Inactive'}</div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Content */}
+        <div className="flex-1 overflow-y-auto">
           <form 
             onSubmit={async (e) => {
               console.log('📝 Form submit event triggered');
@@ -520,51 +604,60 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
                 console.error('❌ Form submission error:', error);
               }
             }} 
-            className="space-y-6"
+            className="p-6 space-y-8"
           >
-            {/* Basic Information */}
+            {/* Basic Information Section */}
             <div className="space-y-6">
-              <h3 className="text-xl font-bold text-lats-text border-b border-gray-200 pb-2">Basic Information</h3>
+              <div className="flex items-center gap-3 pb-3 border-b border-gray-200">
+                <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <Package className="w-3 h-3 text-blue-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">Basic Information</h3>
+              </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-6">
                 {/* Product Name - Full Width */}
-                <div className="md:col-span-2">
+                <div>
                   <Controller
                     name="name"
                     control={control}
                     render={({ field }) => (
                       <div>
-                        <label className={`block mb-3 font-semibold text-lg ${errors.name ? 'text-red-600' : 'text-gray-800'}`}>
+                        <label className={`block mb-2 font-medium text-sm ${errors.name ? 'text-red-600' : 'text-gray-700'}`}>
                           Product Name *
                         </label>
                         <div className="relative">
                           <input
                             type="text"
-                            className={`w-full py-4 pl-12 pr-4 bg-white/40 backdrop-blur-md border-2 rounded-lg focus:outline-none text-base font-medium ${
-                              errors.name ? 'border-red-500 focus:border-red-600' : 
-                              nameExists ? 'border-orange-500 focus:border-orange-600' :
-                              'border-gray-300 focus:border-blue-500'
+                            className={`w-full py-3 pl-10 pr-4 bg-white border rounded-lg focus:outline-none text-sm transition-all duration-200 ${
+                              errors.name ? 'border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-200' : 
+                              nameExists ? 'border-orange-300 focus:border-orange-500 focus:ring-2 focus:ring-orange-200' :
+                              'border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200'
                             }`}
                             placeholder="Enter product name"
                             value={field.value}
                             onChange={field.onChange}
+                            aria-describedby={errors.name ? 'name-error' : nameExists ? 'name-exists' : undefined}
                           />
-                          <Package className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+                          <Package className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                           {isCheckingName && (
-                            <RefreshCw className="absolute right-4 top-1/2 -translate-y-1/2 text-blue-500 animate-spin" size={18} />
+                            <RefreshCw className="absolute right-3 top-1/2 -translate-y-1/2 text-blue-500 animate-spin" size={16} />
                           )}
                           {nameExists && !isCheckingName && (
-                            <AlertIcon className="absolute right-4 top-1/2 -translate-y-1/2 text-orange-500" size={18} />
+                            <AlertIcon className="absolute right-3 top-1/2 -translate-y-1/2 text-orange-500" size={16} />
                           )}
                         </div>
                         {errors.name && (
-                          <div className="text-red-500 text-xs mt-1">{errors.name.message}</div>
+                          <div id="name-error" className="text-red-500 text-sm mt-2 flex items-center gap-2">
+                            <AlertIcon size={14} />
+                            {errors.name.message}
+                          </div>
                         )}
                         {nameExists && !isCheckingName && (
-                          <div className="text-orange-600 text-xs mt-1">
-                            <div className="flex items-center gap-1 mb-1">
+                          <div id="name-exists" className="text-orange-600 text-sm mt-2 p-3 bg-orange-50 rounded-lg border border-orange-200">
+                            <div className="flex items-center gap-2 mb-2">
                               <AlertIcon size={14} />
-                              A product with this name already exists
+                              <span className="font-medium">A product with this name already exists</span>
                             </div>
                             <button
                               type="button"
@@ -573,7 +666,7 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
                                 const suggestedName = `${currentName} (${Date.now().toString().slice(-4)})`;
                                 setValue('name', suggestedName);
                               }}
-                              className="text-blue-600 hover:text-blue-800 text-xs underline"
+                              className="text-blue-600 hover:text-blue-800 text-sm underline font-medium"
                             >
                               Suggest alternative name
                             </button>
@@ -584,73 +677,131 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
                   />
                 </div>
 
-                {/* Category */}
-                <Controller
-                  name="categoryId"
-                  control={control}
-                  render={({ field }) => (
-                    <div>
-                      <label className={`block mb-3 font-semibold text-lg ${errors.categoryId ? 'text-red-600' : 'text-gray-800'}`}>
-                        Category *
-                      </label>
-                      <select
-                        className={`w-full py-4 px-4 bg-white/40 backdrop-blur-md border-2 rounded-lg focus:outline-none text-base font-medium ${
-                          errors.categoryId ? 'border-red-500 focus:border-red-600' : 'border-gray-300 focus:border-blue-500'
-                        }`}
-                        value={field.value}
-                        onChange={field.onChange}
-                      >
-                        <option value="">Select a category</option>
-                        {categories.map((category) => (
-                          <option key={category.id} value={category.id}>
-                            {category.name}
-                          </option>
-                        ))}
-                      </select>
-                      {errors.categoryId && (
-                        <div className="text-red-500 text-xs mt-1">{errors.categoryId.message}</div>
-                      )}
-                    </div>
-                  )}
-                />
+                {/* Category, Brand, Condition Row */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <Controller
+                    name="categoryId"
+                    control={control}
+                    render={({ field }) => (
+                      <div>
+                        <label className={`block mb-2 font-medium text-sm ${errors.categoryId ? 'text-red-600' : 'text-gray-700'}`}>
+                          Category *
+                        </label>
+                        <select
+                          className={`w-full py-3 px-3 bg-white border rounded-lg focus:outline-none text-sm transition-all duration-200 ${
+                            errors.categoryId ? 'border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-200' : 'border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200'
+                          }`}
+                          value={field.value}
+                          onChange={field.onChange}
+                          aria-describedby={errors.categoryId ? 'category-error' : undefined}
+                        >
+                          <option value="">Select category</option>
+                          {categories.map((category) => (
+                            <option key={category.id} value={category.id}>
+                              {category.name}
+                            </option>
+                          ))}
+                        </select>
+                        {errors.categoryId && (
+                          <div id="category-error" className="text-red-500 text-sm mt-2 flex items-center gap-2">
+                            <AlertIcon size={14} />
+                            {errors.categoryId.message}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  />
 
-                {/* Brand */}
-                <Controller
-                  name="brandId"
-                  control={control}
-                  render={({ field }) => (
-                    <div>
-                      <label className="block mb-3 font-semibold text-lg text-gray-800">Brand</label>
-                      <select
-                        className="w-full py-4 px-4 bg-white/40 backdrop-blur-md border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-base font-medium"
-                        value={field.value}
-                        onChange={field.onChange}
-                      >
-                        <option value="">Select a brand</option>
-                        {brands.map((brand) => (
-                          <option key={brand.id} value={brand.id}>
-                            {brand.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                />
+                  <Controller
+                    name="brandId"
+                    control={control}
+                    render={({ field }) => (
+                      <div>
+                        <label className="block mb-2 font-medium text-sm text-gray-700">Brand</label>
+                        <select
+                          className="w-full py-3 px-3 bg-white border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none text-sm transition-all duration-200"
+                          value={field.value}
+                          onChange={field.onChange}
+                          disabled={brandsLoading}
+                        >
+                          <option value="">{brandsLoading ? 'Loading brands...' : 'Select brand'}</option>
+                          {localBrands.map((brand) => (
+                            <option key={brand.id} value={brand.id}>
+                              {brand.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  />
 
-                {/* Supplier - Full Width */}
-                <div className="md:col-span-2">
+                  <Controller
+                    name="condition"
+                    control={control}
+                    render={({ field }) => (
+                      <div>
+                        <label className={`block mb-2 font-medium text-sm ${errors.condition ? 'text-red-600' : 'text-gray-700'}`}>
+                          Condition *
+                        </label>
+                        <select
+                          className={`w-full py-3 px-3 bg-white border rounded-lg focus:outline-none text-sm transition-all duration-200 ${
+                            errors.condition ? 'border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-200' : 'border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200'
+                          }`}
+                          value={field.value}
+                          onChange={field.onChange}
+                          aria-describedby={errors.condition ? 'condition-error' : undefined}
+                        >
+                          <option value="new">New</option>
+                          <option value="like_new">Like New</option>
+                          <option value="excellent">Excellent</option>
+                          <option value="good">Good</option>
+                          <option value="fair">Fair</option>
+                          <option value="poor">Poor</option>
+                          <option value="refurbished">Refurbished</option>
+                          <option value="used">Used</option>
+                        </select>
+                        {errors.condition && (
+                          <div id="condition-error" className="text-red-500 text-sm mt-2 flex items-center gap-2">
+                            <AlertIcon size={14} />
+                            {errors.condition.message}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  />
+                </div>
+
+                {/* Store Shelf and Supplier Row */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Controller
+                    name="storeShelf"
+                    control={control}
+                    render={({ field }) => (
+                      <div>
+                        <label className="block mb-2 font-medium text-sm text-gray-700">Store Shelf</label>
+                        <input
+                          type="text"
+                          className="w-full py-3 px-3 bg-white border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none text-sm transition-all duration-200"
+                          placeholder="e.g., A1, B2, Shelf 3"
+                          value={field.value}
+                          onChange={field.onChange}
+                        />
+                      </div>
+                    )}
+                  />
+
                   <Controller
                     name="supplierId"
                     control={control}
                     render={({ field }) => (
                       <div>
-                        <label className="block mb-3 font-semibold text-lg text-gray-800">Supplier</label>
+                        <label className="block mb-2 font-medium text-sm text-gray-700">Supplier</label>
                         <select
-                          className="w-full py-4 px-4 bg-white/40 backdrop-blur-md border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-base font-medium"
+                          className="w-full py-3 px-3 bg-white border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none text-sm transition-all duration-200"
                           value={field.value}
                           onChange={field.onChange}
                         >
-                          <option value="">Select a supplier</option>
+                          <option value="">Select supplier</option>
                           {suppliers.map((supplier) => (
                             <option key={supplier.id} value={supplier.id}>
                               {supplier.name}
@@ -662,512 +813,524 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
                   />
                 </div>
 
-              </div>
-
-              {/* SKU & Barcode - Hidden when variants are enabled */}
-              {!showVariants && (
-                <div className="space-y-6">
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* SKU */}
-                    <Controller
-                      name="sku"
-                      control={control}
-                      render={({ field }) => (
-                        <div>
-                          <label className={`block mb-3 font-semibold text-lg ${errors.sku ? 'text-red-600' : 'text-gray-800'}`}>
-                            SKU/Barcode *
-                          </label>
-                          <div className="relative">
-                            <input
-                              type="text"
-                              className={`w-full py-4 pl-12 pr-4 bg-white/40 backdrop-blur-md border-2 rounded-lg focus:outline-none text-base font-medium ${
-                                errors.sku ? 'border-red-500 focus:border-red-600' : 'border-gray-300 focus:border-blue-500'
-                              }`}
-                              placeholder="Enter SKU, barcode, serial number, or IMEI"
-                              value={field.value}
-                              onChange={(e) => {
-                                field.onChange(e.target.value);
-                                // Also update barcode field to keep them in sync
-                                setValue('barcode', e.target.value);
-                              }}
-                              onClick={() => {
-                                // Clear field when clicked if it has auto-generated content
-                                if (field.value) {
-                                  clearSKUAndBarcode();
-                                }
-                              }}
-                            />
-                            <QrCode className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+                {/* SKU & Barcode - Hidden when variants are enabled */}
+                {!showVariants && (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3 pb-3 border-b border-gray-200">
+                      <div className="w-5 h-5 bg-green-100 rounded-lg flex items-center justify-center">
+                        <QrCode className="w-2.5 h-2.5 text-green-600" />
+                      </div>
+                      <h4 className="text-base font-semibold text-gray-900">SKU & Barcode</h4>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Controller
+                        name="sku"
+                        control={control}
+                        render={({ field }) => (
+                          <div>
+                            <label className={`block mb-2 font-medium text-sm ${errors.sku ? 'text-red-600' : 'text-gray-700'}`}>
+                              SKU/Barcode *
+                            </label>
+                            <div className="relative">
+                              <input
+                                type="text"
+                                className={`w-full py-3 pl-10 pr-3 bg-white border rounded-lg focus:outline-none text-sm transition-all duration-200 ${
+                                  errors.sku ? 'border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-200' : 'border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200'
+                                }`}
+                                placeholder="Enter SKU, barcode, serial number, or IMEI"
+                                value={field.value}
+                                onChange={(e) => {
+                                  field.onChange(e.target.value);
+                                  setValue('barcode', e.target.value);
+                                }}
+                                onClick={() => {
+                                  if (field.value) {
+                                    clearSKUAndBarcode();
+                                  }
+                                }}
+                                aria-describedby={errors.sku ? 'sku-error' : 'sku-help'}
+                              />
+                              <QrCode className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                            </div>
+                            <p id="sku-help" className="text-xs text-gray-500 mt-2">
+                              Auto-generated from product name and category. Click to clear and enter manually.
+                            </p>
+                            {errors.sku && (
+                              <div id="sku-error" className="text-red-500 text-sm mt-2 flex items-center gap-2">
+                                <AlertIcon size={14} />
+                                {errors.sku.message}
+                              </div>
+                            )}
                           </div>
-                          <p className="text-xs text-gray-500 mt-1">
-                            Auto-generated from product name and category. Click to clear and enter manually.
-                          </p>
-                          {errors.sku && (
-                            <div className="text-red-500 text-xs mt-1">{errors.sku.message}</div>
-                          )}
-                        </div>
-                      )}
-                    />
+                        )}
+                      />
 
-                    {/* Hidden barcode field that syncs with SKU */}
-                    <Controller
-                      name="barcode"
-                      control={control}
-                      render={({ field }) => (
-                        <input
-                          type="hidden"
+                      <Controller
+                        name="barcode"
+                        control={control}
+                        render={({ field }) => (
+                          <input
+                            type="hidden"
+                            value={field.value}
+                            onChange={field.onChange}
+                          />
+                        )}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Description */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3 pb-3 border-b border-gray-200">
+                    <div className="w-5 h-5 bg-purple-100 rounded-lg flex items-center justify-center">
+                      <FileText className="w-2.5 h-2.5 text-purple-600" />
+                    </div>
+                    <h4 className="text-base font-semibold text-gray-900">Description</h4>
+                  </div>
+                  <Controller
+                    name="description"
+                    control={control}
+                    render={({ field }) => (
+                      <div>
+                        <label className="block mb-2 font-medium text-sm text-gray-700">Product Description</label>
+                        <textarea
+                          className="w-full py-3 px-3 bg-white border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none resize-none text-sm transition-all duration-200"
+                          placeholder="Enter detailed product description..."
+                          rows={4}
                           value={field.value}
                           onChange={field.onChange}
                         />
-                      )}
-                    />
-                  </div>
+                      </div>
+                    )}
+                  />
                 </div>
-              )}
-
-              {/* Description */}
-              <div className="space-y-6">
-                <h3 className="text-xl font-bold text-lats-text border-b border-gray-200 pb-2">Description</h3>
-                <Controller
-                  name="description"
-                  control={control}
-                  render={({ field }) => (
-                    <div>
-                      <label className="block mb-3 font-semibold text-lg text-gray-800">Product Description</label>
-                      <textarea
-                        className="w-full py-4 px-4 bg-white/40 backdrop-blur-md border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none resize-none text-base font-medium"
-                        placeholder="Enter detailed product description..."
-                        rows={4}
-                        value={field.value}
-                        onChange={field.onChange}
-                      />
-                    </div>
-                  )}
-                />
               </div>
             </div>
 
-            {/* Pricing & Stock - Hidden when variants are enabled */}
+            {/* Pricing & Stock Section - Hidden when variants are enabled */}
             {!showVariants && (
               <div className="space-y-6">
-                <h3 className="text-xl font-bold text-lats-text border-b border-gray-200 pb-2">Pricing & Stock</h3>
+                <div className="flex items-center gap-3 pb-3 border-b border-gray-200">
+                  <div className="w-6 h-6 bg-yellow-100 rounded-lg flex items-center justify-center">
+                    <DollarSign className="w-3 h-3 text-yellow-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900">Pricing & Stock</h3>
+                </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                {/* Selling Price */}
-                <Controller
-                  name="price"
-                  control={control}
-                  render={({ field }) => (
-                    <div>
-                      <label className={`block mb-3 font-semibold text-lg ${errors.price ? 'text-red-600' : 'text-gray-800'}`}>
-                        Selling Price *
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="number"
-                          className={`w-full py-4 pl-12 pr-4 bg-white/40 backdrop-blur-md border-2 rounded-lg focus:outline-none text-base font-medium ${
-                            errors.price ? 'border-red-500 focus:border-red-600' : 'border-gray-300 focus:border-blue-500'
-                          }`}
-                          placeholder="0.00"
-                          value={field.value}
-                          onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                          min="0"
-                          step="0.01"
-                        />
-                        <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-                      </div>
-                      {errors.price && (
-                        <div className="text-red-500 text-xs mt-1">{errors.price.message}</div>
-                      )}
-                    </div>
-                  )}
-                />
-
-                {/* Cost Price */}
-                <Controller
-                  name="costPrice"
-                  control={control}
-                  render={({ field }) => (
-                    <div>
-                      <label className={`block mb-3 font-semibold text-lg ${errors.costPrice ? 'text-red-600' : 'text-gray-800'}`}>
-                        Cost Price *
-                      </label>
-                      <div className="relative">
-                        <PriceInput
-                          value={field.value}
-                          onChange={field.onChange}
-                          placeholder="0"
-                          className={`w-full py-4 pl-12 pr-4 bg-white/40 backdrop-blur-md border-2 rounded-lg focus:outline-none text-base font-medium ${
-                            errors.costPrice ? 'border-red-500 focus:border-red-600' : 'border-gray-300 focus:border-blue-500'
-                          }`}
-                        />
-                        <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-                      </div>
-                      {errors.costPrice && (
-                        <div className="text-red-500 text-xs mt-1">{errors.costPrice.message}</div>
-                      )}
-                    </div>
-                  )}
-                />
-
-                {/* Stock Quantity */}
-                <Controller
-                  name="stockQuantity"
-                  control={control}
-                  render={({ field }) => (
-                    <div>
-                      <label className={`block mb-3 font-semibold text-lg ${errors.stockQuantity ? 'text-red-600' : 'text-gray-800'}`}>
-                        Stock Quantity *
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="number"
-                          className={`w-full py-4 pl-12 pr-20 bg-white/40 backdrop-blur-md border-2 rounded-lg focus:outline-none text-base font-medium ${
-                            errors.stockQuantity ? 'border-red-500 focus:border-red-600' : 'border-gray-300 focus:border-blue-500'
-                          }`}
-                          placeholder="0"
-                          value={field.value}
-                          onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
-                          min="0"
-                        />
-                        <Package className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-                        
-                        {/* Plus and Minus buttons */}
-                        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
-                          <button
-                            type="button"
-                            onClick={() => field.onChange(Math.max(0, (field.value || 0) - 1))}
-                            className="w-8 h-8 bg-gray-500 hover:bg-gray-600 text-white rounded flex items-center justify-center text-sm font-bold transition-colors"
-                          >
-                            −
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => field.onChange((field.value || 0) + 1)}
-                            className="w-8 h-8 bg-blue-500 hover:bg-blue-600 text-white rounded flex items-center justify-center text-sm font-bold transition-colors"
-                          >
-                            +
-                          </button>
-                        </div>
-                      </div>
-                      {errors.stockQuantity && (
-                        <div className="text-red-500 text-xs mt-1">{errors.stockQuantity.message}</div>
-                      )}
-                    </div>
-                  )}
-                />
-
-                                 {/* Min Stock Level */}
-                 <Controller
-                   name="minStockLevel"
-                   control={control}
-                   render={({ field }) => (
-                     <div>
-                       <label className={`block mb-3 font-semibold text-lg ${errors.minStockLevel ? 'text-red-600' : 'text-gray-800'}`}>
-                         Min Stock Level *
-                       </label>
-                                               <div className="relative">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <Controller
+                    name="price"
+                    control={control}
+                    render={({ field }) => (
+                      <div>
+                        <label className={`block mb-2 font-medium text-sm ${errors.price ? 'text-red-600' : 'text-gray-700'}`}>
+                          Selling Price *
+                        </label>
+                        <div className="relative">
                           <input
                             type="number"
-                            className={`w-full py-4 px-4 pr-20 bg-white/40 backdrop-blur-md border-2 rounded-lg focus:outline-none text-base font-medium ${
-                              errors.minStockLevel ? 'border-red-500 focus:border-red-600' : 'border-gray-300 focus:border-blue-500'
+                            className={`w-full py-3 pl-10 pr-3 bg-white border rounded-lg focus:outline-none text-sm transition-all duration-200 ${
+                              errors.price ? 'border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-200' : 'border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200'
                             }`}
-                            placeholder="5"
+                            placeholder="0.00"
+                            value={field.value}
+                            onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                            min="0"
+                            step="0.01"
+                            aria-describedby={errors.price ? 'price-error' : undefined}
+                          />
+                          <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                        </div>
+                        {errors.price && (
+                          <div id="price-error" className="text-red-500 text-sm mt-2 flex items-center gap-2">
+                            <AlertIcon size={14} />
+                            {errors.price.message}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  />
+
+                  <Controller
+                    name="costPrice"
+                    control={control}
+                    render={({ field }) => (
+                      <div>
+                        <label className={`block mb-2 font-medium text-sm ${errors.costPrice ? 'text-red-600' : 'text-gray-700'}`}>
+                          Cost Price *
+                        </label>
+                        <div className="relative">
+                          <PriceInput
+                            value={field.value}
+                            onChange={field.onChange}
+                            placeholder="0"
+                            className={`w-full py-3 pl-10 pr-3 bg-white border rounded-lg focus:outline-none text-sm transition-all duration-200 ${
+                              errors.costPrice ? 'border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-200' : 'border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200'
+                            }`}
+                          />
+                          <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                        </div>
+                        {errors.costPrice && (
+                          <div className="text-red-500 text-sm mt-2 flex items-center gap-2">
+                            <AlertIcon size={14} />
+                            {errors.costPrice.message}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  />
+
+                  <Controller
+                    name="stockQuantity"
+                    control={control}
+                    render={({ field }) => (
+                      <div>
+                        <label className={`block mb-2 font-medium text-sm ${errors.stockQuantity ? 'text-red-600' : 'text-gray-700'}`}>
+                          Stock Quantity *
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            className={`w-full py-3 pl-10 pr-16 bg-white border rounded-lg focus:outline-none text-sm transition-all duration-200 ${
+                              errors.stockQuantity ? 'border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-200' : 'border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200'
+                            }`}
+                            placeholder="0"
                             value={field.value}
                             onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
                             min="0"
+                            aria-describedby={errors.stockQuantity ? 'stock-error' : undefined}
                           />
+                          <Package className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                           
-                          {/* Plus and Minus buttons */}
-                          <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
+                          <div className="absolute right-1 top-1/2 -translate-y-1/2 flex gap-1">
                             <button
                               type="button"
                               onClick={() => field.onChange(Math.max(0, (field.value || 0) - 1))}
-                              className="w-8 h-8 bg-gray-500 hover:bg-gray-600 text-white rounded flex items-center justify-center text-sm font-bold transition-colors"
+                              className="w-6 h-6 bg-gray-500 hover:bg-gray-600 text-white rounded flex items-center justify-center text-xs font-bold transition-colors"
+                              aria-label="Decrease stock quantity"
                             >
                               −
                             </button>
                             <button
                               type="button"
                               onClick={() => field.onChange((field.value || 0) + 1)}
-                              className="w-8 h-8 bg-blue-500 hover:bg-blue-600 text-white rounded flex items-center justify-center text-sm font-bold transition-colors"
+                              className="w-6 h-6 bg-blue-500 hover:bg-blue-600 text-white rounded flex items-center justify-center text-xs font-bold transition-colors"
+                              aria-label="Increase stock quantity"
                             >
                               +
                             </button>
                           </div>
                         </div>
-                       {errors.minStockLevel && (
-                         <div className="text-red-500 text-xs mt-1">{errors.minStockLevel.message}</div>
-                       )}
-                     </div>
-                   )}
-                 />
+                        {errors.stockQuantity && (
+                          <div id="stock-error" className="text-red-500 text-sm mt-2 flex items-center gap-2">
+                            <AlertIcon size={14} />
+                            {errors.stockQuantity.message}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  />
 
-
-               </div>
-             </div>
+                  <Controller
+                    name="minStockLevel"
+                    control={control}
+                    render={({ field }) => (
+                      <div>
+                        <label className={`block mb-2 font-medium text-sm ${errors.minStockLevel ? 'text-red-600' : 'text-gray-700'}`}>
+                          Min Stock Level *
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            className={`w-full py-3 px-3 pr-16 bg-white border rounded-lg focus:outline-none text-sm transition-all duration-200 ${
+                              errors.minStockLevel ? 'border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-200' : 'border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200'
+                            }`}
+                            placeholder="5"
+                            value={field.value}
+                            onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                            min="0"
+                            aria-describedby={errors.minStockLevel ? 'min-stock-error' : undefined}
+                          />
+                          
+                          <div className="absolute right-1 top-1/2 -translate-y-1/2 flex gap-1">
+                            <button
+                              type="button"
+                              onClick={() => field.onChange(Math.max(0, (field.value || 0) - 1))}
+                              className="w-6 h-6 bg-gray-500 hover:bg-gray-600 text-white rounded flex items-center justify-center text-xs font-bold transition-colors"
+                              aria-label="Decrease minimum stock level"
+                            >
+                              −
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => field.onChange((field.value || 0) + 1)}
+                              className="w-6 h-6 bg-blue-500 hover:bg-blue-600 text-white rounded flex items-center justify-center text-xs font-bold transition-colors"
+                              aria-label="Increase minimum stock level"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+                        {errors.minStockLevel && (
+                          <div id="min-stock-error" className="text-red-500 text-sm mt-2 flex items-center gap-2">
+                            <AlertIcon size={14} />
+                            {errors.minStockLevel.message}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  />
+                </div>
+              </div>
             )}
 
-             {/* Product Images */}
-             <div className="space-y-6">
-               <h3 className="text-xl font-bold text-lats-text border-b border-gray-200 pb-2">Product Images</h3>
-               
-               <div className="space-y-4">
-                 {/* Image Upload */}
-                 <div className="space-y-4">
-                   <label className="block text-sm font-medium text-gray-700">
-                     Product Images
-                   </label>
-                   <ImageUpload
-                     productId={tempProductId}
-                     userId={user?.id || ''}
-                     onUploadComplete={(images) => {
-                       // Convert to the format expected by the form
-                       const formImages = images.map(img => ({
-                         id: img.id,
-                         image_url: img.url,
-                         thumbnail_url: img.url, // Use same URL for thumbnail
-                         file_name: img.fileName,
-                         file_size: img.fileSize,
-                         is_primary: img.isPrimary,
-                         uploaded_by: img.uploadedAt, // Use uploadedAt as uploaded_by for now
-                         created_at: img.uploadedAt
-                       }));
-                       setValue('images', formImages);
-                     }}
-                     onUploadError={(error) => {
-                       toast.error(`Upload failed: ${error}`);
-                     }}
-                     maxFiles={5}
-                   />
-                   
-                   {/* Image Gallery */}
-                   <ImageGallery
-                     productId={tempProductId}
-                     onImagesChange={(images) => {
-                       // Convert to the format expected by the form
-                       const formImages = images.map(img => ({
-                         id: img.id,
-                         image_url: img.url,
-                         thumbnail_url: img.url,
-                         file_name: img.fileName,
-                         file_size: img.fileSize,
-                         is_primary: img.isPrimary,
-                         uploaded_by: img.uploadedAt,
-                         created_at: img.uploadedAt
-                       }));
-                       setValue('images', formImages);
-                     }}
-                   />
-                 </div>
-               </div>
-             </div>
-
-             {/* Product Variants */}
-             <div className="space-y-6">
-               <div className="flex items-center justify-between border-b border-gray-200 pb-2">
-                 <h3 className="text-xl font-bold text-lats-text">Product Variants</h3>
-                 <button
-                   type="button"
-                   onClick={() => {
-                     if (!showVariants) {
-                       // When showing variants, create the first variant if none exist
-                       if (variants.length === 0) {
-                         addVariant();
-                       }
-                     }
-                     setShowVariants(!showVariants);
-                   }}
-                   className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium"
-                 >
-                   <Layers size={16} />
-                   {showVariants ? 'Hide' : 'Show'} Variants
-                 </button>
-               </div>
-               
-               {showVariants && (
-                 <div className="space-y-4">
-                   <div className="flex items-center justify-between">
-                     <p className="text-sm text-gray-600">
-                       Manage product variants (colors, sizes, etc.)
-                     </p>
-                     <GlassButton
-                       type="button"
-                       onClick={addVariant}
-                       variant="secondary"
-                       size="sm"
-                     >
-                       <Plus size={16} />
-                       Add Variant
-                     </GlassButton>
-                   </div>
-                   
-                   {variants.map((variant, index) => (
-                     <div key={index} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-                       <div className="flex items-center justify-between mb-3">
-                         <h4 className="font-medium text-gray-900">Variant {index + 1}</h4>
-                         {variants.length > 1 && (
-                           <button
-                             type="button"
-                             onClick={() => removeVariant(index)}
-                             className="text-red-500 hover:text-red-700"
-                           >
-                             <X size={16} />
-                           </button>
-                         )}
-                       </div>
-                       
-                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                         <div>
-                           <label className="block text-sm font-medium text-gray-700 mb-1">Variant Name</label>
-                           <input
-                             type="text"
-                             value={variant.name}
-                             onChange={(e) => updateVariant(index, 'name', e.target.value)}
-                             className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                             placeholder="e.g., Red, Large, etc."
-                           />
-                         </div>
-                         
-                         <div>
-                           <label className="block text-sm font-medium text-gray-700 mb-1">Variant SKU</label>
-                           <input
-                             type="text"
-                             value={variant.sku}
-                             onChange={(e) => updateVariant(index, 'sku', e.target.value)}
-                             className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                             placeholder="e.g., PROD-RED-L"
-                           />
-                         </div>
-                         
-                         <div>
-                           <label className="block text-sm font-medium text-gray-700 mb-1">Price</label>
-                           <input
-                             type="number"
-                             value={variant.price}
-                             onChange={(e) => updateVariant(index, 'price', parseFloat(e.target.value) || 0)}
-                             className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                             min="0"
-                             step="0.01"
-                           />
-                         </div>
-                         
-                         <div>
-                           <label className="block text-sm font-medium text-gray-700 mb-1">Stock Quantity</label>
-                           <input
-                             type="number"
-                             value={variant.stockQuantity}
-                             onChange={(e) => updateVariant(index, 'stockQuantity', parseInt(e.target.value) || 0)}
-                             className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                             min="0"
-                           />
-                         </div>
-                       </div>
-                     </div>
-                   ))}
-                 </div>
-               )}
-             </div>
-
-             {/* Product Status */}
-             <div className="space-y-6">
-               <h3 className="text-xl font-bold text-lats-text border-b border-gray-200 pb-2">Product Status</h3>
-               
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                 <Controller
-                   name="isActive"
-                   control={control}
-                   render={({ field }) => (
-                     <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                       <div>
-                         <label className="text-sm font-medium text-gray-700">Active</label>
-                         <p className="text-xs text-gray-500">Product will be visible to customers</p>
-                       </div>
-                       <label className="relative inline-flex items-center cursor-pointer">
-                         <input
-                           type="checkbox"
-                           className="sr-only"
-                           checked={field.value}
-                           onChange={field.onChange}
-                         />
-                         <div className={`w-11 h-6 rounded-full transition-colors ${
-                           field.value ? 'bg-blue-600' : 'bg-gray-300'
-                         }`}>
-                           <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
-                             field.value ? 'translate-x-5' : 'translate-x-0'
-                           }`} />
-                         </div>
-                       </label>
-                     </div>
-                   )}
-                 />
-
-                 <Controller
-                   name="isFeatured"
-                   control={control}
-                   render={({ field }) => (
-                     <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                       <div>
-                         <label className="text-sm font-medium text-gray-700">Featured</label>
-                         <p className="text-xs text-gray-500">Highlight this product</p>
-                       </div>
-                       <label className="relative inline-flex items-center cursor-pointer">
-                         <input
-                           type="checkbox"
-                           className="sr-only"
-                           checked={field.value}
-                           onChange={field.onChange}
-                         />
-                         <div className={`w-11 h-6 rounded-full transition-colors ${
-                           field.value ? 'bg-blue-600' : 'bg-gray-300'
-                         }`}>
-                           <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
-                             field.value ? 'translate-x-5' : 'translate-x-0'
-                           }`} />
-                         </div>
-                       </label>
-                     </div>
-                   )}
-                 />
-
-
-               </div>
-             </div>
-
-            {/* Form Actions */}
-            <div className="flex flex-col sm:flex-row gap-3 pt-6 border-t border-lats-glass-border">
-              <GlassButton
-                type="submit"
-                variant="primary"
-                loading={isSubmitting}
-                disabled={!isDirty || nameExists}
-                className="flex-1 sm:flex-none"
-                onClick={() => {
-                  console.log('🔘 Submit button clicked');
-                  console.log('🔍 Button state:', {
-                    isDirty,
-                    nameExists,
-                    isSubmitting,
-                    disabled: !isDirty
-                  });
-                }}
-              >
-                {isSubmitting ? 'Creating...' : 'Create Product'}
-              </GlassButton>
+            {/* Product Images Section */}
+            <div className="space-y-6">
+              <div className="flex items-center gap-3 pb-3 border-b border-gray-200">
+                <div className="w-6 h-6 bg-pink-100 rounded-lg flex items-center justify-center">
+                  <ImageIcon className="w-3 h-3 text-pink-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">Product Images</h3>
+              </div>
               
-              <GlassButton
-                type="button"
-                variant="secondary"
-                onClick={handleCancel}
-                disabled={isSubmitting}
-                className="flex-1 sm:flex-none"
-              >
-                Cancel
-              </GlassButton>
+              <div className="space-y-4">
+                <div>
+                  <label className="block mb-2 font-medium text-sm text-gray-700">
+                    Product Images
+                  </label>
+                  
+                  <ImageUpload
+                    productId={tempProductId}
+                    userId={currentUser?.id || ''}
+                    onUploadComplete={(images) => {
+                      const formImages = images.map(img => ({
+                        id: img.id,
+                        image_url: img.url,
+                        thumbnail_url: img.url,
+                        file_name: img.fileName,
+                        file_size: img.fileSize,
+                        is_primary: img.isPrimary,
+                        uploaded_by: img.uploadedAt,
+                        created_at: img.uploadedAt
+                      }));
+                      setValue('images', formImages);
+                    }}
+                    onUploadError={(error) => {
+                      toast.error(`Upload failed: ${error}`);
+                    }}
+                    maxFiles={5}
+                  />
+                  
+                  <ImageGallery
+                    productId={tempProductId}
+                    onImagesChange={(images) => {
+                      const formImages = images.map(img => ({
+                        id: img.id,
+                        image_url: img.url,
+                        thumbnail_url: img.url,
+                        file_name: img.fileName,
+                        file_size: img.fileSize,
+                        is_primary: img.isPrimary,
+                        uploaded_by: img.uploadedAt,
+                        created_at: img.uploadedAt
+                      }));
+                      setValue('images', formImages);
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Product Variants Section */}
+            <div className="space-y-6">
+              <div className="flex items-center justify-between border-b border-gray-200 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-6 h-6 bg-indigo-100 rounded-lg flex items-center justify-center">
+                    <Layers className="w-3 h-3 text-indigo-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900">Product Variants</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!showVariants) {
+                      if (variants.length === 0) {
+                        addVariant();
+                      }
+                    }
+                    setShowVariants(!showVariants);
+                  }}
+                  className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium px-3 py-2 rounded-lg hover:bg-blue-50 transition-colors text-sm"
+                >
+                  <Layers size={16} />
+                  {showVariants ? 'Hide' : 'Show'} Variants
+                </button>
+              </div>
+              
+              {showVariants && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-gray-600">
+                      Manage product variants (colors, sizes, etc.)
+                    </p>
+                    <button
+                      type="button"
+                      onClick={addVariant}
+                      className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg transition-colors text-sm font-medium"
+                    >
+                      <Plus size={16} />
+                      Add Variant
+                    </button>
+                  </div>
+                  
+                  {variants.map((variant, index) => (
+                    <div key={index} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="font-medium text-gray-900 text-sm">Variant {index + 1}</h4>
+                        {variants.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeVariant(index)}
+                            className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50 transition-colors"
+                            aria-label="Remove variant"
+                          >
+                            <X size={16} />
+                          </button>
+                        )}
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Variant Name</label>
+                          <input
+                            type="text"
+                            value={variant.name}
+                            onChange={(e) => updateVariant(index, 'name', e.target.value)}
+                            className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none transition-all duration-200 text-sm"
+                            placeholder="e.g., Red, Large, etc."
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Variant SKU</label>
+                          <input
+                            type="text"
+                            value={variant.sku}
+                            onChange={(e) => updateVariant(index, 'sku', e.target.value)}
+                            className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none transition-all duration-200 text-sm"
+                            placeholder="e.g., PROD-RED-L"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Price</label>
+                          <input
+                            type="number"
+                            value={variant.price}
+                            onChange={(e) => updateVariant(index, 'price', parseFloat(e.target.value) || 0)}
+                            className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none transition-all duration-200 text-sm"
+                            min="0"
+                            step="0.01"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Stock Quantity</label>
+                          <input
+                            type="number"
+                            value={variant.stockQuantity}
+                            onChange={(e) => updateVariant(index, 'stockQuantity', parseInt(e.target.value) || 0)}
+                            className="w-full py-2 px-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none transition-all duration-200 text-sm"
+                            min="0"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Product Status Section */}
+            <div className="space-y-6">
+              <div className="flex items-center gap-3 pb-3 border-b border-gray-200">
+                <div className="w-6 h-6 bg-emerald-100 rounded-lg flex items-center justify-center">
+                  <CheckCircle className="w-3 h-3 text-emerald-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">Product Status</h3>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Controller
+                  name="isActive"
+                  control={control}
+                  render={({ field }) => (
+                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
+                      <div>
+                        <label className="text-sm font-medium text-gray-700">Active</label>
+                        <p className="text-sm text-gray-500 mt-1">Product will be visible to customers</p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="sr-only"
+                          checked={field.value}
+                          onChange={field.onChange}
+                        />
+                        <div className={`w-11 h-6 rounded-full transition-colors duration-200 ${
+                          field.value ? 'bg-blue-600' : 'bg-gray-300'
+                        }`}>
+                          <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform duration-200 ${
+                            field.value ? 'translate-x-5' : 'translate-x-0'
+                          }`} />
+                        </div>
+                      </label>
+                    </div>
+                  )}
+                />
+              </div>
             </div>
           </form>
-        </GlassCard>
+        </div>
+
+        {/* Form Actions */}
+        <div className="flex flex-col sm:flex-row gap-3 p-6 border-t border-gray-200 bg-gray-50">
+          <button
+            type="submit"
+            disabled={!isDirty || nameExists || isSubmitting}
+            onClick={() => {
+              console.log('🔘 Submit button clicked');
+              console.log('🔍 Button state:', {
+                isDirty,
+                nameExists,
+                isSubmitting,
+                disabled: !isDirty
+              });
+              handleSubmit(handleFormSubmit)();
+            }}
+            className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+          >
+            {isSubmitting ? (
+              <div className="flex items-center gap-2">
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                Creating...
+              </div>
+            ) : (
+              'Create Product'
+            )}
+          </button>
+          
+          <button
+            type="button"
+            onClick={handleCancel}
+            disabled={isSubmitting}
+            className="flex-1 sm:flex-none bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 text-gray-800 font-semibold py-3 px-6 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
     </div>
   );

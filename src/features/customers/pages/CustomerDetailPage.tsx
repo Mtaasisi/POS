@@ -955,7 +955,10 @@ const CustomerDetailPage: React.FC = () => {
                   {formatCurrency(customerAnalytics.averageOrderValue)}
                 </p>
                 <p className="text-xs text-emerald-700 mt-1">
-                  {customerAnalytics.purchaseFrequency.toFixed(1)} orders/month
+                  {(() => {
+                  const formatted = customerAnalytics.purchaseFrequency.toFixed(1);
+                  return formatted.replace(/\.0$/, '');
+                })()} orders/month
                 </p>
               </div>
               <div className="p-3 bg-emerald-50/20 rounded-full">
@@ -1040,7 +1043,10 @@ const CustomerDetailPage: React.FC = () => {
               <div>
                 <p className="text-sm font-medium text-rose-600">Customer Contribution</p>
                 <p className="text-2xl font-bold text-rose-900">
-                  {customerAnalytics?.customerContributionPercentage?.toFixed(2) || '0'}%
+                  {(() => {
+                  const formatted = customerAnalytics?.customerContributionPercentage?.toFixed(2) || '0';
+                  return formatted.replace(/\.00$/, '').replace(/\.0$/, '');
+                })()}%
                 </p>
                 <p className="text-xs text-rose-700 mt-1">
                   {formatCurrency(customerAnalytics?.totalSpent || 0)} of total revenue

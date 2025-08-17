@@ -42,6 +42,7 @@ interface POSTopBarProps {
   onAddProduct: () => void;
   onViewReceipts: () => void;
   onViewSales: () => void;
+  onOpenPaymentTracking: () => void;
   isProcessingPayment: boolean;
   hasSelectedCustomer: boolean;
 }
@@ -59,6 +60,7 @@ const POSTopBar: React.FC<POSTopBarProps> = ({
   onAddProduct,
   onViewReceipts,
   onViewSales,
+  onOpenPaymentTracking,
   isProcessingPayment,
   hasSelectedCustomer,
 }) => {
@@ -253,7 +255,10 @@ const POSTopBar: React.FC<POSTopBarProps> = ({
             
             <div className="relative group">
               <button 
-                onClick={() => navigate('/lats/payments')}
+                onClick={() => {
+                  console.log('🔍 POSTopBar: Payment Tracking button clicked');
+                  onOpenPaymentTracking();
+                }}
                 className="p-3 rounded-lg bg-white/30 hover:bg-white/50 transition-all duration-300 backdrop-blur-sm border border-white/30 shadow-sm hover:scale-110"
                 title="Payment Tracking"
               >

@@ -341,7 +341,10 @@ const EmployeeAttendancePage: React.FC = () => {
                 <div>
                   <p className="text-sm font-medium text-purple-600">Attendance Rate</p>
                   <p className="text-2xl font-bold text-purple-900">
-                    {stats.attendanceRate.toFixed(1)}%
+                    {(() => {
+                  const formatted = stats.attendanceRate.toFixed(1);
+                  return formatted.replace(/\.0$/, '');
+                })()}%
                   </p>
                 </div>
                 <TrendingUp className="w-8 h-8 text-purple-600" />
@@ -353,7 +356,10 @@ const EmployeeAttendancePage: React.FC = () => {
                 <div>
                   <p className="text-sm font-medium text-orange-600">Avg. Hours</p>
                   <p className="text-2xl font-bold text-orange-900">
-                    {stats.avgHours.toFixed(1)}h
+                    {(() => {
+                  const formatted = stats.avgHours.toFixed(1);
+                  return formatted.replace(/\.0$/, '');
+                })()}h
                   </p>
                 </div>
                 <Activity className="w-8 h-8 text-orange-600" />

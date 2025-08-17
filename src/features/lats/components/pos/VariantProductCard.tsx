@@ -65,9 +65,24 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
     }
   };
 
-  // Get price display using utility function
+  // Get price display - show only the cheapest price
   const getPriceDisplay = () => {
-    return getProductDisplayPrice(product);
+    if (!product.variants || product.variants.length === 0) {
+      return 'No price set';
+    }
+
+    // Get all valid prices
+    const prices = product.variants
+      .map(v => v.sellingPrice)
+      .filter(p => p > 0)
+      .sort((a, b) => a - b);
+
+    if (prices.length === 0) {
+      return 'No price set';
+    }
+
+    // Return only the cheapest price
+    return `$${prices[0].toFixed(2)}`;
   };
 
   // Get total stock using utility function
@@ -167,106 +182,106 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
     );
   }
 
-  // Default detailed variant with subtle colors
+  // Default detailed variant with cart-style UI
   return (
     <>
       <div 
-        className={`bg-white border border-gray-200 rounded-lg p-5 cursor-pointer transition-all duration-200 hover:border-blue-300 hover:shadow-md active:scale-95 ${className} ${
+        className={`relative bg-white border-2 border-gray-200 rounded-xl transition-all duration-300 hover:border-gray-300 hover:shadow-md active:scale-95 ${className} ${
           !primaryVariant || primaryVariant.quantity <= 0 ? 'opacity-50 cursor-not-allowed' : ''
         }`}
         onClick={handleCardClick}
-        style={{ minHeight: '80px' }}
       >
-        {/* Header */}
-        <div className="flex items-start gap-3 mb-3">
-          {/* Product Image */}
-          <div className="flex-shrink-0">
-            {thumbnail ? (
-              <div className="w-14 h-14 bg-blue-50 rounded-lg overflow-hidden border border-blue-100">
-                <img 
-                  src={thumbnail} 
-                  alt={product.name}
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none';
-                    e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                  }}
-                />
-                <div className="w-full h-full bg-blue-100 rounded-lg flex items-center justify-center hidden">
-                  <Package className="w-5 h-5 text-blue-600" />
-                </div>
-              </div>
-            ) : (
-              <div className="w-14 h-14 bg-blue-50 rounded-lg border border-blue-100 flex items-center justify-center">
-                <Package className="w-5 h-5 text-blue-600" />
-              </div>
-            )}
-          </div>
-
-          {/* Product Info */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between mb-1">
-              <h3 className="font-semibold text-gray-900 text-base">{product.name}</h3>
-              {getStockStatusBadge()}
-            </div>
-            <p className="text-xs text-gray-500 font-mono mb-2">{primaryVariant?.sku || 'N/A'}</p>
-            
-            {/* Category and Brand */}
-            <div className="flex items-center gap-2 text-xs">
-              {showCategory && product.categoryName && (
-                <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200">
-                  <span className="font-medium">{product.categoryName}</span>
-                </span>
-              )}
-              {showBrand && product.brandName && (
-                <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200">
-                  <span className="font-medium">{product.brandName}</span>
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Price and Stock */}
-        <div className="border-t border-gray-100 pt-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-lg font-bold text-blue-900">{getPriceDisplay()}</div>
-              {showStockInfo && (
-                <div className="text-xs text-gray-600 mt-1">
-                  Stock: <span className="font-semibold text-gray-800">{getTotalStock()}</span> units
-                </div>
-              )}
-            </div>
-            {hasMultipleVariants && (
-              <div className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-1 rounded-md border border-blue-200">
-                Choose variant
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Action hint */}
-        <div className="mt-3 pt-3 border-t border-gray-100">
-          <div className="text-center">
-            <div className="text-xs text-blue-600 font-medium">
-              {hasMultipleVariants ? 'Tap to choose variant' : 'Tap to add to cart'}
-            </div>
-          </div>
-        </div>
-
-        {/* Stock Warning */}
-        {primaryVariant && primaryVariant.quantity <= 5 && primaryVariant.quantity > 0 && (
-          <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded-lg">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="w-3 h-3 text-amber-600" />
-              <div className="text-xs">
-                <span className="font-medium text-amber-900">Low Stock:</span>
-                <span className="text-amber-700 ml-1">Only {primaryVariant.quantity} units remaining</span>
-              </div>
-            </div>
+        
+        {/* Stock Count Badge - Card Corner */}
+        {showStockInfo && getTotalStock() > 0 && (
+          <div className={`absolute -top-2 -right-2 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full border-2 border-white shadow-lg flex items-center justify-center z-10 ${
+            getTotalStock() >= 1000 ? 'w-12 h-8 px-3' : getTotalStock() >= 100 ? 'w-10 h-8 px-3' : 'w-8 h-8'
+          }`}>
+            <span className="text-base font-bold text-white">
+              {getTotalStock() >= 1000 ? `${(getTotalStock() / 1000).toFixed(1)}K` : getTotalStock()}
+            </span>
           </div>
         )}
+        {/* Product Card Header */}
+        <div className="p-6 cursor-pointer">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4 flex-1 min-w-0">
+              {/* Product Icon */}
+              <div className="relative w-20 h-20 rounded-xl flex items-center justify-center text-lg font-bold bg-gradient-to-br from-blue-100 to-indigo-100 text-blue-600">
+                {thumbnail ? (
+                  <img 
+                    src={thumbnail} 
+                    alt={product.name}
+                    className="w-full h-full object-cover rounded-xl"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                      e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                    }}
+                  />
+                ) : (
+                  <Package className="w-8 h-8" />
+                )}
+                
+                {/* Variant Count Badge */}
+                {product.variants && product.variants.length > 1 && (
+                  <div className="absolute -top-2 -right-2 w-6 h-6 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full border-2 border-white shadow-lg flex items-center justify-center">
+                    <span className="text-xs font-bold text-white">
+                      {product.variants.length}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Product Info */}
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-gray-800 truncate text-xl leading-tight">
+                  {product.name}
+                </div>
+                <div className="text-2xl text-gray-700 mt-1 font-bold">
+                  TSh {getPriceDisplay().replace('$', '').replace('.00', '').replace('.0', '')}
+                </div>
+              </div>
+            </div>
+
+
+          </div>
+
+          {/* Additional Info */}
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center gap-4">
+                {showStockInfo && (
+                  <span className="text-gray-600">Stock: {getTotalStock()} units</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {showCategory && product.categoryName && (
+                  <span className="inline-flex items-center px-2 py-1 rounded-md bg-purple-50 text-purple-700 border border-purple-200 text-xs">
+                    {product.categoryName}
+                  </span>
+                )}
+                {showBrand && product.brandName && (
+                  <span className="inline-flex items-center px-2 py-1 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs">
+                    {product.brandName}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Stock Warning */}
+          {primaryVariant && primaryVariant.quantity <= 5 && primaryVariant.quantity > 0 && (
+            <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600" />
+                <div className="text-sm">
+                  <span className="font-medium text-amber-900">Low Stock:</span>
+                  <span className="text-amber-700 ml-1">Only {primaryVariant.quantity} units remaining</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Variant Selection Modal - Rendered at root level */}

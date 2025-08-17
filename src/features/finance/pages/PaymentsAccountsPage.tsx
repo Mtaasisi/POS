@@ -516,7 +516,7 @@ const PaymentsAccountsPage: React.FC = () => {
                     value={accountForm.balance}
                     onChange={(e) => setAccountForm(prev => ({ ...prev, balance: parseFloat(e.target.value) || 0 }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="0.00"
+                    placeholder="0"
                   />
                 </div>
 

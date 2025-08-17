@@ -79,11 +79,7 @@ export interface ExternalProduct {
   notes?: string;
 }
 
-export interface QuickCashAmount {
-  amount: number;
-  label: string;
-  type: 'fixed' | 'percentage';
-}
+// QuickCash types removed - not using this functionality
 
 export interface POSSettings {
   taxRate: number;
@@ -91,8 +87,7 @@ export interface POSSettings {
   receiptHeader: string;
   receiptFooter: string;
   enableBarcode: boolean;
-  enableQuickCash: boolean;
-  quickCashAmounts: QuickCashAmount[];
+  enableQuickCash: boolean; // Disabled - not using this functionality
   defaultPaymentMethod: PaymentMethod['type'];
 }
 

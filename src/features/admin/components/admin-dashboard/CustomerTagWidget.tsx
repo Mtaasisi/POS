@@ -42,7 +42,10 @@ const CustomerTagWidget: React.FC = () => {
               <div key={tag} className="flex items-center justify-between">
                 <span className={`px-3 py-1 rounded-full text-xs font-medium ${TAG_COLORS[tag] || 'bg-gray-100 text-gray-700'}`}>{TAG_LABELS[tag] || tag}</span>
                 <span className="font-semibold text-gray-900">
-                  {count} <span className="text-xs text-gray-500">({total > 0 ? ((count / total) * 100).toFixed(1) : 0}%)</span>
+                  {count} <span className="text-xs text-gray-500">({(() => {
+                  const percentage = total > 0 ? ((count / total) * 100).toFixed(1) : '0';
+                  return percentage.replace(/\.0$/, '');
+                })()}%)</span>
                 </span>
               </div>
             ))

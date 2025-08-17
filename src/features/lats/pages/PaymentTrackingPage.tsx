@@ -147,6 +147,12 @@ const PaymentTrackingPage: React.FC = () => {
     }
   };
 
+  // Handle filter changes
+  const handleFilterChange = () => {
+    // Trigger data refresh when filters change
+    fetchPaymentData();
+  };
+
   // Handle payment action
   const handlePaymentAction = async (paymentId: string, action: string, source: 'device_payment' | 'pos_sale') => {
     try {

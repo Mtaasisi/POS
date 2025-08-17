@@ -62,9 +62,18 @@ const LATS_BREADCRUMB_MAP: Record<string, BreadcrumbItem[]> = {
     { path: '/lats/unified-inventory', name: 'Unified Inventory Management' },
     { path: '/lats/inventory/products/new', name: 'Add Product' }
   ],
-  '/lats/zenopay-test': [
+
+  '/lats/payment-settings': [
     { path: '/dashboard', name: 'Dashboard', icon: Home },
-    { path: '/lats/zenopay-test', name: 'ZenoPay Test' }
+    { path: '/lats/payment-settings', name: 'Payment Settings' }
+  ],
+  '/lats/payment-history': [
+    { path: '/dashboard', name: 'Dashboard', icon: Home },
+    { path: '/lats/payment-history', name: 'Payment History' }
+  ],
+  '/lats/payment-analytics': [
+    { path: '/dashboard', name: 'Dashboard', icon: Home },
+    { path: '/lats/payment-analytics', name: 'Payment Analytics' }
   ]
 };
 

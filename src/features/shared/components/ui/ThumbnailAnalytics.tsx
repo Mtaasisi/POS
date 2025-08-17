@@ -95,12 +95,14 @@ const ThumbnailAnalytics: React.FC<ThumbnailAnalyticsProps> = ({
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+            const formatted = (bytes / Math.pow(k, i)).toFixed(2);
+        return parseFloat(formatted.replace(/\.00$/, '').replace(/\.0$/, '')) + ' ' + sizes[i];
   };
 
   const formatDuration = (ms: number): string => {
-    if (ms < 1000) return `${ms.toFixed(0)}ms`;
-    return `${(ms / 1000).toFixed(2)}s`;
+            if (ms < 1000) return `${ms.toFixed(0)}ms`;
+        const formatted = (ms / 1000).toFixed(2);
+        return `${formatted.replace(/\.00$/, '').replace(/\.0$/, '')}s`;
   };
 
   if (isLoading) {
@@ -183,7 +185,10 @@ const ThumbnailAnalytics: React.FC<ThumbnailAnalyticsProps> = ({
             <span className="text-sm font-medium text-emerald-800">Success Rate</span>
           </div>
           <div className="text-2xl font-bold text-emerald-900">
-            {(100 - analytics.errorRate).toFixed(1)}%
+                            {(() => {
+                  const formatted = (100 - analytics.errorRate).toFixed(1);
+                  return formatted.replace(/\.0$/, '');
+                })()}%
           </div>
           <div className="text-xs text-emerald-700 mt-1">
             {(100 - analytics.errorRate) > 95 ? 'Excellent' : (100 - analytics.errorRate) > 90 ? 'Good' : 'Needs Attention'}

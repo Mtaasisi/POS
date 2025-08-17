@@ -8,7 +8,6 @@ import {
   SaleItem, 
   PaymentMethod, 
   ExternalProduct,
-  QuickCashAmount,
   POSSettings,
   ProductSearchResult,
   ReceiptData,
@@ -44,8 +43,7 @@ interface POSState {
   paymentMethods: PaymentMethod[];
   selectedPaymentMethod: string | null;
 
-  // Quick cash amounts
-  quickCashAmounts: QuickCashAmount[];
+  // QuickCash feature removed - not using this functionality
 
   // POS Settings
   settings: POSSettings;
@@ -101,9 +99,7 @@ interface POSState {
   addExternalProduct: (product: ExternalProduct) => Promise<ApiResponse<void>>;
   removeExternalProduct: (itemId: string) => Promise<ApiResponse<void>>;
 
-  // Quick cash
-  setQuickCashAmount: (amount: number) => void;
-  getQuickCashAmounts: () => QuickCashAmount[];
+  // QuickCash methods removed - not using this functionality
 
   // Computed values
   getCartTotal: () => number;
@@ -155,14 +151,7 @@ export const usePOSStore = create<POSState>()(
       paymentMethods: [],
       selectedPaymentMethod: null,
 
-      quickCashAmounts: [
-        { amount: 100, label: '100' },
-        { amount: 200, label: '200' },
-        { amount: 500, label: '500' },
-        { amount: 1000, label: '1K' },
-        { amount: 2000, label: '2K' },
-        { amount: 5000, label: '5K' }
-      ],
+      // QuickCash amounts removed - not using this functionality
 
       settings: {
         taxRate: 0.16,
@@ -170,7 +159,7 @@ export const usePOSStore = create<POSState>()(
         receiptHeader: 'LATS POS System',
         receiptFooter: 'Thank you for your business!',
         enableBarcodeScanning: true,
-        enableQuickCash: true,
+        enableQuickCash: false, // Disabled - not using this functionality
         enableDiscounts: true,
         enableTax: true,
         defaultPaymentMethod: 'cash',
@@ -651,26 +640,7 @@ export const usePOSStore = create<POSState>()(
         return get().removeFromCart(itemId);
       },
 
-      // Quick cash
-      setQuickCashAmount: (amount) => {
-        const { cart } = get();
-        const newTotal = amount;
-        const change = newTotal - cart.total;
-        
-        if (change >= 0) {
-          set(state => ({
-            cart: {
-              ...state.cart,
-              total: newTotal,
-              updatedAt: new Date().toISOString()
-            }
-          }));
-          
-          latsAnalytics.track('quick_cash_amount_set', { amount, change });
-        }
-      },
-
-      getQuickCashAmounts: () => get().quickCashAmounts,
+      // QuickCash methods removed - not using this functionality
 
       // Computed values
       getCartTotal: () => get().cart.total,

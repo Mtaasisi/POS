@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { Device, DeviceStatus, Remark, Transition, Rating } from '../types';
-import { useAuth } from './AuthContext';
+import { AuthContext } from './AuthContext';
 import { fetchAllDevices, addDeviceToDb, updateDeviceInDb, deleteDeviceFromDb } from '../lib/deviceApi';
 import { addDeviceRating } from '../lib/customerExtrasApi';
 import { updateCustomerInDb } from '../lib/customerApi';
@@ -57,7 +57,11 @@ async function getAllCustomerCareEmails(): Promise<string[]> {
 export const DevicesProvider: React.FC<{ children: React.ReactNode }> = React.memo(({ children }) => {
   const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(false);
-  const { currentUser } = useAuth();
+  
+  // Safely get auth context with fallback
+  const authContext = useContext(AuthContext);
+  const currentUser = authContext?.currentUser || null;
+  
   // Track seen remark IDs to avoid duplicate sounds
   const seenRemarkIds = useRef<Set<string>>(new Set());
 

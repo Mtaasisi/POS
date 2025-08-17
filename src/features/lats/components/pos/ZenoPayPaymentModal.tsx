@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, CreditCard, Smartphone, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
-import { GlassCard, GlassButton, GlassBadge } from '../../ui';
+import { X, CreditCard, Smartphone, CheckCircle, AlertCircle, Loader2, Phone } from 'lucide-react';
+import GlassCard from '../../../shared/components/ui/GlassCard';
+import GlassButton from '../../../shared/components/ui/GlassButton';
+import GlassBadge from '../../../shared/components/ui/GlassBadge';
 import { CartItem, Sale } from '../../types/pos';
+import { ZENOPAY_CONFIG, UssdPopupService, USSD_CONFIG } from '../../config/zenopay';
 
 interface ZenoPayPaymentModalProps {
   isOpen: boolean;
@@ -39,17 +42,20 @@ const ZenoPayPaymentModal: React.FC<ZenoPayPaymentModalProps> = ({
 }) => {
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+  const [isTriggeringUssd, setIsTriggeringUssd] = useState(false);
   const [currentOrder, setCurrentOrder] = useState<ZenoPayOrder | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string>('');
+  const [ussdStatus, setUssdStatus] = useState<string>('idle');
+  const [ussdPollingInterval, setUssdPollingInterval] = useState<NodeJS.Timeout | null>(null);
 
-  // Validate customer data
-  const isCustomerValid = customer && customer.email && customer.phone;
+  // Validate customer data - only phone is required for mobile money
+  const isCustomerValid = customer && customer.phone;
 
-  // Create ZenoPay order
+  // Create ZenoPay order with USSD popup
   const createZenoPayOrder = async () => {
     if (!isCustomerValid) {
-      setError('Customer information is required for mobile money payment');
+      setError('Customer phone number is required for mobile money payment');
       return;
     }
 
@@ -59,7 +65,7 @@ const ZenoPayPaymentModal: React.FC<ZenoPayPaymentModalProps> = ({
 
     try {
       const orderData = {
-        buyer_email: customer!.email,
+        buyer_email: customer!.email || `${customer!.phone}@mobile.money`,
         buyer_name: customer!.name,
         buyer_phone: customer!.phone,
         amount: total,
@@ -75,11 +81,12 @@ const ZenoPayPaymentModal: React.FC<ZenoPayPaymentModalProps> = ({
           })),
           customer_id: customer!.id,
           pos_session_id: `pos_${Date.now()}`,
-          order_type: 'pos_sale'
+          order_type: 'pos_sale',
+          payment_method: 'ussd_popup'
         }
       };
 
-      const response = await fetch('/zenopay-create-order.php', {
+      const response = await fetch(ZENOPAY_CONFIG.getCreateOrderUrl(), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -90,16 +97,20 @@ const ZenoPayPaymentModal: React.FC<ZenoPayPaymentModalProps> = ({
       const result = await response.json();
 
       if (result.success) {
-        setCurrentOrder({
+        const order = {
           order_id: result.order_id,
-          buyer_email: customer!.email,
+          buyer_email: customer!.email || `${customer!.phone}@mobile.money`,
           buyer_name: customer!.name,
           buyer_phone: customer!.phone,
           amount: total,
           payment_status: 'PENDING'
-        });
-        setStatusMessage('Payment order created successfully. Waiting for customer to complete payment...');
-        startStatusPolling(result.order_id);
+        };
+        
+        setCurrentOrder(order);
+        setStatusMessage('Payment order created successfully. Triggering USSD popup...');
+        
+        // Trigger USSD popup immediately after order creation
+        await triggerUssdPopup(order.order_id);
       } else {
         throw new Error(result.error || 'Failed to create payment order');
       }
@@ -112,11 +123,124 @@ const ZenoPayPaymentModal: React.FC<ZenoPayPaymentModalProps> = ({
     }
   };
 
-  // Check payment status
+  // Trigger USSD popup on customer mobile
+  const triggerUssdPopup = async (orderId: string) => {
+    if (!customer?.phone) {
+      setError('Customer phone number is required for USSD popup');
+      return;
+    }
+
+    setIsTriggeringUssd(true);
+    setUssdStatus('triggering');
+    setStatusMessage(USSD_CONFIG.MESSAGES.INITIATING);
+
+    try {
+      console.log('[ZenoPay USSD] Triggering USSD popup for customer:', {
+        phone: customer.phone,
+        amount: total,
+        orderId,
+        customerName: customer.name
+      });
+
+      const ussdResult = await UssdPopupService.triggerUssdPopup(
+        customer.phone,
+        total,
+        orderId,
+        customer.name
+      );
+
+      if (ussdResult.success) {
+        setUssdStatus('sent');
+        setStatusMessage(USSD_CONFIG.MESSAGES.PENDING);
+        
+        console.log('[ZenoPay USSD] USSD popup triggered successfully:', ussdResult.data);
+        
+        // Start polling for USSD status
+        startUssdStatusPolling(orderId);
+      } else {
+        setUssdStatus('error');
+        setError(ussdResult.message);
+        setStatusMessage('');
+        
+        console.error('[ZenoPay USSD] USSD popup trigger failed:', ussdResult);
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'USSD popup error';
+      setUssdStatus('error');
+      setError(errorMessage);
+      setStatusMessage('');
+      
+      console.error('[ZenoPay USSD] USSD popup error:', err);
+    } finally {
+      setIsTriggeringUssd(false);
+    }
+  };
+
+  // Start polling for USSD status updates
+  const startUssdStatusPolling = (orderId: string) => {
+    console.log('[ZenoPay USSD] Starting USSD status polling for order:', orderId);
+    
+    const interval = setInterval(async () => {
+      try {
+        const statusResult = await UssdPopupService.checkUssdStatus(orderId);
+        
+        console.log('[ZenoPay USSD] Status check result:', statusResult);
+        
+        if (statusResult.success) {
+          setUssdStatus(statusResult.status);
+          
+          if (statusResult.status === 'completed') {
+            setStatusMessage(USSD_CONFIG.MESSAGES.SUCCESS);
+            clearInterval(interval);
+            setUssdPollingInterval(null);
+            
+            // Complete the sale
+            await completeSale(currentOrder!);
+          } else if (statusResult.status === 'failed') {
+            setError(USSD_CONFIG.MESSAGES.FAILED);
+            setStatusMessage('');
+            clearInterval(interval);
+            setUssdPollingInterval(null);
+          } else if (statusResult.status === 'cancelled') {
+            setError(USSD_CONFIG.MESSAGES.CANCELLED);
+            setStatusMessage('');
+            clearInterval(interval);
+            setUssdPollingInterval(null);
+          } else {
+            setStatusMessage(USSD_CONFIG.MESSAGES.PENDING);
+          }
+        } else {
+          console.warn('[ZenoPay USSD] Status check failed:', statusResult);
+        }
+      } catch (err) {
+        console.error('[ZenoPay USSD] Status polling error:', err);
+      }
+    }, 5000); // Check every 5 seconds
+
+    setUssdPollingInterval(interval);
+
+    // Set timeout to stop polling after 5 minutes
+    setTimeout(() => {
+      if (interval) {
+        clearInterval(interval);
+        setUssdPollingInterval(null);
+        
+        if (ussdStatus === 'sent' || ussdStatus === 'pending') {
+          setUssdStatus('timeout');
+          setError(USSD_CONFIG.MESSAGES.TIMEOUT);
+          setStatusMessage('');
+          
+          console.warn('[ZenoPay USSD] USSD polling timeout');
+        }
+      }
+    }, USSD_CONFIG.POPUP_TIMEOUT);
+  };
+
+  // Check payment status (legacy method - kept for compatibility)
   const checkPaymentStatus = async (orderId: string) => {
     setIsCheckingStatus(true);
     try {
-      const response = await fetch(`/zenopay-check-status.php?order_id=${orderId}`);
+      const response = await fetch(ZENOPAY_CONFIG.getCheckStatusUrl(orderId));
       const result = await response.json();
 
       if (result.success && result.orders.length > 0) {
@@ -147,29 +271,6 @@ const ZenoPayPaymentModal: React.FC<ZenoPayPaymentModalProps> = ({
     }
   };
 
-  // Start polling for status updates
-  const startStatusPolling = (orderId: string) => {
-    const pollInterval = setInterval(async () => {
-      await checkPaymentStatus(orderId);
-      
-      // Stop polling if payment is completed or failed
-      if (currentOrder?.payment_status === 'COMPLETED' || 
-          currentOrder?.payment_status === 'FAILED' || 
-          currentOrder?.payment_status === 'CANCELLED') {
-        clearInterval(pollInterval);
-      }
-    }, 5000); // Check every 5 seconds
-
-    // Cleanup interval after 10 minutes (120 checks)
-    setTimeout(() => {
-      clearInterval(pollInterval);
-      if (currentOrder?.payment_status === 'PENDING') {
-        setError('Payment timeout. Please try again.');
-        setStatusMessage('');
-      }
-    }, 600000);
-  };
-
   // Complete the sale
   const completeSale = async (order: ZenoPayOrder) => {
     try {
@@ -198,7 +299,8 @@ const ZenoPayPaymentModal: React.FC<ZenoPayPaymentModalProps> = ({
           type: 'mobile_money',
           details: {
             mobileProvider: 'ZenoPay',
-            reference: order.reference
+            reference: order.reference,
+            paymentMethod: 'ussd_popup'
           },
           amount: total
         },
@@ -211,10 +313,12 @@ const ZenoPayPaymentModal: React.FC<ZenoPayPaymentModalProps> = ({
         createdAt: new Date().toISOString()
       };
 
+      console.log('[ZenoPay USSD] Sale completed successfully:', sale);
       onPaymentComplete(sale);
       onClose();
     } catch (err) {
       setError('Failed to complete sale. Please contact support.');
+      console.error('[ZenoPay USSD] Sale completion error:', err);
     }
   };
 
@@ -226,8 +330,25 @@ const ZenoPayPaymentModal: React.FC<ZenoPayPaymentModalProps> = ({
       setStatusMessage('');
       setIsCreatingOrder(false);
       setIsCheckingStatus(false);
+      setIsTriggeringUssd(false);
+      setUssdStatus('idle');
+      
+      // Clear polling interval
+      if (ussdPollingInterval) {
+        clearInterval(ussdPollingInterval);
+        setUssdPollingInterval(null);
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, ussdPollingInterval]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (ussdPollingInterval) {
+        clearInterval(ussdPollingInterval);
+      }
+    };
+  }, [ussdPollingInterval]);
 
   if (!isOpen) return null;
 
@@ -261,7 +382,34 @@ const ZenoPayPaymentModal: React.FC<ZenoPayPaymentModalProps> = ({
             <div className="bg-gray-50 p-3 rounded-lg">
               <div className="text-sm text-gray-600 mb-1">Customer:</div>
               <div className="font-medium">{customer.name}</div>
-              <div className="text-sm text-gray-500">{customer.phone}</div>
+              <div className="text-sm text-gray-500 flex items-center gap-1">
+                <Phone className="w-3 h-3" />
+                {customer.phone}
+              </div>
+            </div>
+          )}
+
+          {/* USSD Status */}
+          {ussdStatus !== 'idle' && (
+            <div className="bg-blue-50 p-3 rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <GlassBadge 
+                  variant={
+                    ussdStatus === 'completed' ? 'success' :
+                    ussdStatus === 'failed' || ussdStatus === 'cancelled' || ussdStatus === 'timeout' ? 'error' :
+                    ussdStatus === 'sent' ? 'primary' : 'warning'
+                  } 
+                  size="sm"
+                >
+                  USSD: {ussdStatus.toUpperCase()}
+                </GlassBadge>
+                {ussdStatus === 'triggering' && <Loader2 className="w-4 h-4 animate-spin text-blue-600" />}
+              </div>
+              {ussdStatus === 'sent' && (
+                <div className="text-sm text-blue-700">
+                  USSD popup sent to {customer?.phone}. Waiting for customer response...
+                </div>
+              )}
             </div>
           )}
 
@@ -317,7 +465,7 @@ const ZenoPayPaymentModal: React.FC<ZenoPayPaymentModalProps> = ({
           {!currentOrder && (
             <GlassButton
               onClick={createZenoPayOrder}
-              disabled={!isCustomerValid || isCreatingOrder}
+              disabled={!isCustomerValid || isCreatingOrder || isTriggeringUssd}
               className="w-full"
               size="lg"
             >
@@ -326,16 +474,21 @@ const ZenoPayPaymentModal: React.FC<ZenoPayPaymentModalProps> = ({
                   <Loader2 className="w-4 h-4 animate-spin mr-2" />
                   Creating Payment Order...
                 </>
+              ) : isTriggeringUssd ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  Sending USSD Popup...
+                </>
               ) : (
                 <>
-                  <CreditCard className="w-4 h-4 mr-2" />
-                  Pay with Mobile Money
+                  <Smartphone className="w-4 h-4 mr-2" />
+                  Pay with USSD Popup
                 </>
               )}
             </GlassButton>
           )}
 
-          {currentOrder?.payment_status === 'PENDING' && (
+          {currentOrder?.payment_status === 'PENDING' && ussdStatus === 'idle' && (
             <GlassButton
               onClick={() => checkPaymentStatus(currentOrder.order_id)}
               disabled={isCheckingStatus}
@@ -356,6 +509,27 @@ const ZenoPayPaymentModal: React.FC<ZenoPayPaymentModalProps> = ({
             </GlassButton>
           )}
 
+          {ussdStatus === 'sent' && (
+            <GlassButton
+              onClick={() => triggerUssdPopup(currentOrder!.order_id)}
+              disabled={isTriggeringUssd}
+              variant="outline"
+              className="w-full"
+            >
+              {isTriggeringUssd ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  Resending USSD Popup...
+                </>
+              ) : (
+                <>
+                  <Phone className="w-4 h-4 mr-2" />
+                  Resend USSD Popup
+                </>
+              )}
+            </GlassButton>
+          )}
+
           <GlassButton
             onClick={onClose}
             variant="ghost"
@@ -368,15 +542,30 @@ const ZenoPayPaymentModal: React.FC<ZenoPayPaymentModalProps> = ({
         {/* Instructions */}
         <div className="mt-6 p-3 bg-gray-50 rounded-lg">
           <div className="text-sm text-gray-600">
-            <div className="font-medium mb-1">Instructions:</div>
+            <div className="font-medium mb-1">USSD Popup Instructions:</div>
             <ul className="space-y-1 text-xs">
-              <li>• Customer will receive a payment prompt on their phone</li>
-              <li>• Payment will be processed through ZenoPay</li>
-              <li>• Status will update automatically</li>
+              <li>• Customer will receive a USSD popup on their phone ({customer?.phone})</li>
+              <li>• USSD popup will show payment amount: {total.toLocaleString('en-US', { style: 'currency', currency: 'TZS' })}</li>
+              <li>• Customer needs to confirm payment on their mobile device</li>
+              <li>• Payment status will update automatically</li>
               <li>• Sale will complete once payment is confirmed</li>
+              <li>• USSD popup will timeout after 5 minutes</li>
             </ul>
           </div>
         </div>
+
+        {/* Debug Information (only in development) */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div className="text-xs text-yellow-800">
+              <div className="font-medium mb-1">Debug Info:</div>
+              <div>USSD Status: {ussdStatus}</div>
+              <div>Order ID: {currentOrder?.order_id || 'None'}</div>
+              <div>Customer Phone: {customer?.phone || 'None'}</div>
+              <div>Amount: {total}</div>
+            </div>
+          </div>
+        )}
       </GlassCard>
     </div>
   );

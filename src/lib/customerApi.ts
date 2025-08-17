@@ -39,24 +39,30 @@ export function formatCurrency(amount: number) {
     const millions = amount / 1000000;
     if (millions >= 10) {
       // For 10M+, show as whole number
-      return `Tsh ${Math.floor(millions)}M+`;
+      return `Tsh ${Math.floor(millions)}M`;
     } else {
-      // For 1M-9.9M, show with one decimal place
-      return `Tsh ${millions.toFixed(1)}M+`;
+      // For 1M-9.9M, show with one decimal place (no trailing .0)
+      const formatted = millions.toFixed(1);
+      return `Tsh ${formatted.replace(/\.0$/, '')}M`;
     }
   } else if (amount >= 1000) {
     // For thousands
     const thousands = amount / 1000;
     if (thousands >= 10) {
       // For 10K+, show as whole number
-      return `Tsh ${Math.floor(thousands)}K+`;
+      return `Tsh ${Math.floor(thousands)}K`;
     } else {
-      // For 1K-9.9K, show with one decimal place
-      return `Tsh ${thousands.toFixed(1)}K+`;
+      // For 1K-9.9K, show with one decimal place (no trailing .0)
+      const formatted = thousands.toFixed(1);
+      return `Tsh ${formatted.replace(/\.0$/, '')}K`;
     }
   } else {
-    // For numbers less than 1000, use regular formatting
-    return 'Tsh ' + Number(amount).toLocaleString('en-TZ', { maximumFractionDigits: 0 });
+    // For numbers less than 1000, use regular formatting without trailing zeros
+    const formatted = Number(amount).toLocaleString('en-TZ', { 
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2 
+    });
+    return 'Tsh ' + formatted.replace(/\.00$/, '').replace(/\.0$/, '');
   }
 }
 

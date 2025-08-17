@@ -1,5 +1,20 @@
 import { supabase } from './supabaseClient';
 
+export interface SoldItem {
+  id: string;
+  name: string;
+  sku?: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+  category?: string;
+  brand?: string;
+  variant?: string;
+  type: 'product' | 'service' | 'repair';
+  description?: string;
+  notes?: string;
+}
+
 export interface PaymentTransaction {
   id: string;
   transactionId: string;
@@ -9,6 +24,7 @@ export interface PaymentTransaction {
   reference: string;
   status: 'completed' | 'pending' | 'failed';
   date: string;
+  timestamp: string; // For display purposes
   cashier: string;
   fees: number;
   netAmount: number;
@@ -20,6 +36,22 @@ export interface PaymentTransaction {
   paymentType: 'payment' | 'deposit' | 'refund';
   createdBy?: string;
   createdAt: string;
+  
+  // Additional fields for detailed view
+  customerPhone?: string;
+  customerEmail?: string;
+  customerAddress?: string;
+  paymentMethod?: string;
+  paymentProvider?: string;
+  cardLast4?: string;
+  cardType?: string;
+  mobileNumber?: string;
+  bankName?: string;
+  failureReason?: string;
+  metadata?: Record<string, any>;
+  
+  // Sold items
+  soldItems?: SoldItem[];
 }
 
 export interface PaymentMethodSummary {
@@ -56,6 +88,69 @@ export interface PaymentMetrics {
 }
 
 class PaymentTrackingService {
+  // Fetch sold items for a transaction
+  async fetchSoldItems(transactionId: string, source: 'device_payment' | 'pos_sale' | 'repair_payment'): Promise<SoldItem[]> {
+    try {
+      if (source === 'pos_sale') {
+        // Fetch POS sale items with simpler query to avoid join issues
+        const { data: saleItems, error } = await supabase
+          .from('lats_sale_items')
+          .select('*')
+          .eq('sale_id', transactionId);
+
+        if (error) {
+          console.error('Error fetching POS sale items:', error);
+          return [];
+        }
+
+        // Transform the items with available data
+        return saleItems?.map((item: any) => ({
+          id: item.id,
+          name: item.product_name || 'Unknown Product',
+          sku: item.sku || 'N/A',
+          quantity: item.quantity || 1,
+          unitPrice: item.unit_price || 0,
+          totalPrice: item.total_price || 0,
+          category: item.category || 'General',
+          brand: item.brand || 'Unknown',
+          variant: item.variant_name || 'Default',
+          type: 'product' as const,
+          description: item.product_name || 'Product from sale',
+          notes: item.notes || ''
+        })) || [];
+      } else if (source === 'device_payment') {
+        // For device payments, we need to get the payment amount first
+        const { data: payment, error: paymentError } = await supabase
+          .from('customer_payments')
+          .select('amount')
+          .eq('id', transactionId)
+          .single();
+
+        if (paymentError) {
+          console.error('Error fetching device payment amount:', paymentError);
+          return [];
+        }
+
+        // Create a service item with the actual payment amount
+        return [{
+          id: `service-${transactionId}`,
+          name: 'Device Repair Service',
+          quantity: 1,
+          unitPrice: payment?.amount || 0,
+          totalPrice: payment?.amount || 0,
+          type: 'service' as const,
+          description: 'Device repair and maintenance service',
+          notes: 'Repair service for device'
+        }];
+      }
+      
+      return [];
+    } catch (error) {
+      console.error('Error fetching sold items:', error);
+      return [];
+    }
+  }
+
   // Fetch all payment transactions from multiple sources
   async fetchPaymentTransactions(
     startDate?: string,
@@ -86,9 +181,11 @@ class PaymentTrackingService {
           customerName: payment.customers?.name || 'Unknown Customer',
           amount: payment.amount || 0,
           method: this.mapPaymentMethod(payment.method),
+          paymentMethod: this.mapPaymentMethod(payment.method),
           reference: `REF-${payment.id.slice(0, 8).toUpperCase()}`,
           status: payment.status || 'completed',
           date: payment.payment_date || payment.created_at,
+          timestamp: payment.payment_date || payment.created_at,
           cashier: payment.auth_users?.name || 'System',
           fees: 0, // Device payments typically don't have fees
           netAmount: payment.amount || 0,
@@ -102,6 +199,7 @@ class PaymentTrackingService {
           paymentType: payment.payment_type || 'payment',
           createdBy: payment.created_by,
           createdAt: payment.created_at
+          // soldItems will be fetched on-demand when viewing transaction details
         }));
         allPayments.push(...transformedDevicePayments);
       }
@@ -119,15 +217,19 @@ class PaymentTrackingService {
 
         if (!posSalesError && posSales) {
           console.log(`📊 PaymentTrackingService: Found ${posSales.length} POS sales`);
+          
+          // Transform POS sales without fetching sold items initially
           const transformedPOSSales = posSales.map((sale: any) => ({
             id: sale.id,
             transactionId: sale.sale_number || `SALE-${sale.id.slice(0, 8).toUpperCase()}`,
             customerName: sale.customers?.name || 'Walk-in Customer',
             amount: sale.total_amount || 0,
             method: this.mapPaymentMethod(sale.payment_method),
+            paymentMethod: this.mapPaymentMethod(sale.payment_method),
             reference: sale.sale_number || `REF-${sale.id.slice(0, 8).toUpperCase()}`,
             status: this.mapSaleStatus(sale.status),
             date: sale.created_at,
+            timestamp: sale.created_at,
             cashier: 'System', // Auth user info not available in this query
             fees: 0, // POS sales typically don't have separate fees
             netAmount: sale.total_amount || 0,
@@ -137,6 +239,7 @@ class PaymentTrackingService {
             paymentType: 'payment' as const,
             createdBy: sale.created_by,
             createdAt: sale.created_at
+            // soldItems will be fetched on-demand when viewing transaction details
           }));
           allPayments.push(...transformedPOSSales);
         } else if (posSalesError) {
@@ -196,7 +299,10 @@ class PaymentTrackingService {
         pendingAmount,
         failedAmount,
         totalFees,
-        successRate: totalAmount > 0 ? ((completedAmount / totalAmount) * 100).toFixed(1) : '0.0'
+        successRate: totalAmount > 0 ? (() => {
+          const formatted = ((completedAmount / totalAmount) * 100).toFixed(1);
+          return formatted.replace(/\.0$/, '');
+        })() : '0'
       };
     } catch (error) {
       console.error('Error calculating payment metrics:', error);
@@ -207,7 +313,7 @@ class PaymentTrackingService {
         pendingAmount: 0,
         failedAmount: 0,
         totalFees: 0,
-        successRate: '0.0'
+        successRate: '0'
       };
     }
   }

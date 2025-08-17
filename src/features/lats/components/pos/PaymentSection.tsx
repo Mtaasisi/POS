@@ -127,6 +127,21 @@ const PaymentSection: React.FC<PaymentSectionProps> = ({
   const handlePaymentSubmit = async () => {
     if (!selectedMethod) return;
 
+    // Validate mobile money payments
+    if (selectedMethod.type === 'mobile_money') {
+      if (!reference.trim()) {
+        alert('Reference number is required for mobile money payments');
+        return;
+      }
+      
+      // Validate reference format for different mobile money providers
+      const referenceRegex = /^[0-9A-Za-z]{6,12}$/;
+      if (!referenceRegex.test(reference.trim())) {
+        alert('Please enter a valid reference number (6-12 characters)');
+        return;
+      }
+    }
+
     setIsProcessing(true);
     try {
       const paymentData: PaymentData = {

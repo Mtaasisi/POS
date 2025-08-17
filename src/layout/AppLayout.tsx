@@ -44,6 +44,8 @@ import {
   TrendingUp,
   Smartphone as MobileIcon,
   Clock,
+  Upload,
+  Download,
 } from 'lucide-react';
 import GlassButton from '../features/shared/components/ui/GlassButton';
 
@@ -186,15 +188,35 @@ const AppLayout: React.FC = () => {
       // Employee & User Management
       {
         path: '/employees',
-        label: 'Employee Management',
+        label: 'Employees',
         icon: <Users size={20} />,
         roles: ['admin', 'manager']
       },
       {
         path: '/attendance',
-        label: 'My Attendance',
-        icon: <Clock size={20} />,
+        label: 'Attendance',
+        icon: <Calendar size={20} />,
         roles: ['admin', 'manager', 'technician', 'customer-care']
+      },
+
+      // Data Management
+      {
+        path: '/excel-import',
+        label: 'Data Import',
+        icon: <Upload size={20} />,
+        roles: ['admin']
+      },
+      {
+        path: '/product-export',
+        label: 'Product Export',
+        icon: <Download size={20} />,
+        roles: ['admin']
+      },
+      {
+        path: '/excel-templates',
+        label: 'Excel Templates',
+        icon: <FileText size={20} />,
+        roles: ['admin', 'customer-care']
       },
 
       // Admin Management

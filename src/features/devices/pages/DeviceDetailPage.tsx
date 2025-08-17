@@ -219,11 +219,6 @@ const DeviceDetailPage: React.FC = () => {
     );
   }
 
-  // Add debugging to see if device is found
-  console.log('DeviceDetailPage: Device ID from params:', id);
-  console.log('DeviceDetailPage: Device found in context:', device);
-  console.log('DeviceDetailPage: Total devices in context:', devices.length);
-  
   // Check if device is not found
   if (!device && !devicesLoading) {
     return (
@@ -242,7 +237,7 @@ const DeviceDetailPage: React.FC = () => {
   }
   
   // Defensive: always have transitions and remarks as arrays, and required fields as non-undefined
-  const safeDevice = {
+  const safeDevice = useMemo(() => ({
     id: device?.id || '',
     customerId: device?.customerId || '',
     customerName: device?.customerName || '',
@@ -275,7 +270,7 @@ const DeviceDetailPage: React.FC = () => {
     accessoriesConfirmed: device?.accessoriesConfirmed || false,
     problemConfirmed: device?.problemConfirmed || false,
     privacyConfirmed: device?.privacyConfirmed || false,
-  };
+  }), [device]);
   const customer = getCustomerById(safeDevice.customerId);
 
   // Helper: get file type icon/preview
@@ -391,24 +386,24 @@ const DeviceDetailPage: React.FC = () => {
   };
 
   // Mock warranty info (replace with real data integration as needed)
-  const warrantyInfo = {
+  const warrantyInfo = useMemo(() => ({
     status: safeDevice.warrantyStatus || 'None',
     startDate: safeDevice.warrantyStart,
     endDate: safeDevice.warrantyEnd,
     durationMonths: safeDevice.warrantyStart && safeDevice.warrantyEnd
       ? Math.round((new Date(safeDevice.warrantyEnd).getTime() - new Date(safeDevice.warrantyStart).getTime()) / (1000 * 60 * 60 * 24 * 30))
       : 0,
-  };
+  }), [safeDevice.warrantyStatus, safeDevice.warrantyStart, safeDevice.warrantyEnd]);
 
   // Device repair history (other devices with same serial number, excluding current)
-  const deviceHistory = devices.filter(
+  const deviceHistory = useMemo(() => devices.filter(
     d => d.serialNumber === safeDevice.serialNumber && d.id !== safeDevice.id
-  );
+  ), [devices, safeDevice.serialNumber, safeDevice.id]);
 
   // Payments for this device
-  const totalPaid = payments.filter((p: any) => p.status === 'completed').reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
+  const totalPaid = useMemo(() => payments.filter((p: any) => p.status === 'completed').reduce((sum: number, p: any) => sum + (p.amount || 0), 0), [payments]);
   // Try to get invoice total from attachments (if any invoice has an amount in file_name, e.g., 'invoice-1234-amount-500.pdf')
-  const invoiceAttachments = attachments.filter(att => att.type === 'invoice');
+  const invoiceAttachments = useMemo(() => attachments.filter(att => att.type === 'invoice'), [attachments]);
   let invoiceTotal = 0;
   invoiceAttachments.forEach(att => {
     const match = att.file_name.match(/amount[-_](\d+)/i);
@@ -967,7 +962,7 @@ const DeviceDetailPage: React.FC = () => {
     }
     fetchUserNames();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [safeDevice, safeDevice.assignedTo, allPayments, allTransitions, allRemarks, allRatings, allAttachments, auditLogs, pointsTransactions, smsLogs]);
+  }, [safeDevice.assignedTo, allPayments.length, allTransitions.length, allRemarks.length, allRatings.length, allAttachments.length, auditLogs.length, pointsTransactions.length, smsLogs.length]);
 
   // Replace getUserById with this:
   const getUserName = (userId: string) => {
@@ -1668,7 +1663,7 @@ const DeviceDetailPage: React.FC = () => {
                  <input
                    type="number"
                    min="0"
-                   step="0.01"
+                   step="1"
                    value={paymentAmount}
                    onChange={e => setPaymentAmount(e.target.value)}
                    className="w-full rounded-lg border border-gray-300 bg-white p-4 text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-all duration-300 text-lg"

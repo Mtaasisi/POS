@@ -119,6 +119,22 @@ const RepairPaymentModal: React.FC<RepairPaymentModalProps> = ({
   const handlePaymentSubmit = async () => {
     if (!isFormValid() || !user) return;
 
+    // Validate mobile money payments
+    const selectedMethod = paymentMethods.find(m => m.id === selectedPaymentMethod);
+    if (selectedMethod?.type === 'mobile_money') {
+      if (!reference.trim()) {
+        toast.error('Reference number is required for mobile money payments');
+        return;
+      }
+      
+      // Validate reference format for mobile money
+      const referenceRegex = /^[0-9A-Za-z]{6,12}$/;
+      if (!referenceRegex.test(reference.trim())) {
+        toast.error('Please enter a valid reference number (6-12 characters)');
+        return;
+      }
+    }
+
     setIsProcessing(true);
     try {
       const selectedMethod = paymentMethods.find(m => m.id === selectedPaymentMethod);

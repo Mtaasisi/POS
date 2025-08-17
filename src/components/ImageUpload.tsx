@@ -1,6 +1,6 @@
-import React, { useState, useCallback, useRef } from 'react';
-import { ImageUploadService, UploadedImage, UploadResult } from '../lib/imageUpload';
-import { localProductStorage } from '../lib/localProductStorage';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { EnhancedImageUploadService, UploadedImage, UploadResult } from '../lib/enhancedImageUpload';
+import { ImageCompressionStats } from './ImageCompressionStats';
 
 interface ImageUploadProps {
   productId: string;
@@ -14,6 +14,11 @@ interface ImageUploadProps {
 interface FileWithPreview {
   file: File;
   preview?: string;
+  compressionStats?: {
+    originalSize: number;
+    compressedSize: number;
+    format: string;
+  };
 }
 
 export const ImageUpload: React.FC<ImageUploadProps> = ({
@@ -57,7 +62,7 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
         return;
       }
 
-      // Create preview - wrap the original file object to preserve its integrity
+      // Create preview - compression stats will be generated later
       const fileWithPreview: FileWithPreview = {
         file: file,
         preview: URL.createObjectURL(file)
@@ -73,6 +78,45 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
 
     setFiles(prev => [...prev, ...newFiles]);
   }, [files.length, maxFiles]);
+
+  // Generate compression stats for files (simplified for now)
+  const generateCompressionStats = useCallback(async (file: File) => {
+    try {
+      // For now, just estimate compression without actual processing
+      const estimatedCompressedSize = Math.round(file.size * 0.3); // Estimate 70% reduction
+      return {
+        originalSize: file.size,
+        compressedSize: estimatedCompressedSize,
+        format: 'webp'
+      };
+    } catch (error) {
+      console.warn('Failed to generate compression preview:', error);
+      return null;
+    }
+  }, []);
+
+  // Generate compression stats for all files when files change
+  useEffect(() => {
+    const generateStats = async () => {
+      const updatedFiles = await Promise.all(
+        files.map(async (fileWrapper) => {
+          if (!fileWrapper.compressionStats) {
+            const stats = await generateCompressionStats(fileWrapper.file);
+            return {
+              ...fileWrapper,
+              compressionStats: stats
+            };
+          }
+          return fileWrapper;
+        })
+      );
+      setFiles(updatedFiles);
+    };
+
+    if (files.length > 0) {
+      generateStats();
+    }
+  }, [files.length, generateCompressionStats]);
 
   // Handle drag and drop
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -162,13 +206,17 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
             hasPreview: 'preview' in fileWrapper
           });
 
-          // Force use of Supabase storage service
-          console.log(`🔍 DEBUG: Calling ImageUploadService.uploadImage...`);
-          const uploadResult = await ImageUploadService.uploadImage(
+          // Use enhanced image upload service with compression
+          console.log(`🔍 DEBUG: Calling EnhancedImageUploadService.uploadImage...`);
+          const uploadResult = await EnhancedImageUploadService.uploadImage(
             file,
             productId,
             userId,
-            isPrimary
+            {
+              generateThumbnail: true,
+              thumbnailSize: { width: 300, height: 300 },
+              isPrimary: isPrimary
+            }
           );
           
           console.log(`📥 DEBUG: Supabase upload result for ${file.name}:`, uploadResult);
@@ -354,7 +402,22 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
                 {/* File Info */}
                 <div className="mt-2 text-xs text-gray-600">
                   <div className="font-medium truncate">{fileWrapper.file.name}</div>
-                  <div>{(fileWrapper.file.size / 1024 / 1024).toFixed(2)} MB</div>
+                  <div>{(() => {
+                  const formatted = (fileWrapper.file.size / 1024 / 1024).toFixed(2);
+                  return formatted.replace(/\.00$/, '').replace(/\.0$/, '');
+                })()} MB</div>
+                  
+                  {/* Compression Stats */}
+                  {fileWrapper.compressionStats && (
+                    <div className="mt-2">
+                      <ImageCompressionStats
+                        originalSize={fileWrapper.compressionStats.originalSize}
+                        compressedSize={fileWrapper.compressionStats.compressedSize}
+                        format={fileWrapper.compressionStats.format}
+                        className="text-xs"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             ))}

@@ -163,4 +163,38 @@ export const testSupabaseConnection = async () => {
     console.error('❌ Supabase connection test failed with exception:', error);
     return { success: false, error };
   }
+};
+
+// Add a retry mechanism for network issues
+export const retryWithBackoff = async <T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 3,
+  baseDelay: number = 1000
+): Promise<T> => {
+  let lastError: any;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+      
+      // Check if it's a network error
+      const isNetworkError = error.message?.includes('Failed to fetch') || 
+                           error.message?.includes('NetworkError') ||
+                           error.message?.includes('ERR_CONNECTION_CLOSED');
+      
+      if (isNetworkError && attempt < maxRetries) {
+        const delay = baseDelay * Math.pow(2, attempt);
+        console.log(`🌐 Network error, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries + 1})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      
+      // If it's not a network error or we've exhausted retries, throw the error
+      throw error;
+    }
+  }
+  
+  throw lastError;
 }; 

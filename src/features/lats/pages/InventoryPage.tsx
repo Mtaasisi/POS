@@ -428,7 +428,7 @@ const InventoryPage: React.FC = () => {
                         {categories.find(c => c.id === product.categoryId)?.name || 'N/A'}
                       </td>
                       <td className="py-3 px-4 text-sm text-gray-600">
-                        {brands.find(b => b.id === product.brandId)?.name || 'N/A'}
+                        {product.brand?.name || 'N/A'}
                       </td>
                       <td className="py-3 px-4 text-sm text-gray-600">
                         <div>
