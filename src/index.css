@@ -88,6 +88,38 @@
   box-sizing: border-box;
 }
 
+/* Modal Scrolling Improvements */
+.modal-scrollable {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db #f3f4f6;
+}
+
+.modal-scrollable::-webkit-scrollbar {
+  width: 6px;
+}
+
+.modal-scrollable::-webkit-scrollbar-track {
+  background: #f3f4f6;
+  border-radius: 3px;
+}
+
+.modal-scrollable::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+.modal-scrollable::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* Ensure modals work well on mobile */
+@media (max-width: 768px) {
+  .modal-scrollable {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',

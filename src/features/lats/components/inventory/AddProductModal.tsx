@@ -550,9 +550,9 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose}></div>
-      <div className="relative w-full max-w-5xl max-h-[95vh] bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden">
+      <div className="relative w-full max-w-5xl max-h-[95vh] bg-white rounded-xl shadow-2xl border border-gray-200 flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gray-50">
+        <div className="flex-shrink-0 flex items-center justify-between p-6 border-b border-gray-200 bg-gray-50">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
               <Package className="w-4 h-4 text-blue-600" />
@@ -573,7 +573,7 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
 
         {/* Debug Authentication Status - Only in development */}
         {process.env.NODE_ENV === 'development' && (
-          <div className="p-4 bg-yellow-50 border-b border-yellow-200">
+          <div className="flex-shrink-0 p-4 bg-yellow-50 border-b border-yellow-200">
             <div className="flex items-center gap-2 mb-2">
               <AlertIcon className="w-4 h-4 text-yellow-600" />
               <span className="font-semibold text-yellow-800 text-sm">Debug: Authentication Status</span>
@@ -586,8 +586,8 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
           </div>
         )}
 
-        {/* Modal Content */}
-        <div className="flex-1 overflow-y-auto">
+        {/* Modal Content - Scrollable */}
+        <div className="flex-1 modal-scrollable min-h-0">
           <form 
             onSubmit={async (e) => {
               console.log('📝 Form submit event triggered');
@@ -1296,7 +1296,7 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
         </div>
 
         {/* Form Actions */}
-        <div className="flex flex-col sm:flex-row gap-3 p-6 border-t border-gray-200 bg-gray-50">
+        <div className="flex-shrink-0 flex flex-col sm:flex-row gap-3 p-6 border-t border-gray-200 bg-gray-50">
           <button
             type="submit"
             disabled={!isDirty || nameExists || isSubmitting}
