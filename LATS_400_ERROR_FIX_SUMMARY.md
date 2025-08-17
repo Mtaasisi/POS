@@ -1,144 +1,123 @@
 # LATS 400 Error Fix Summary
 
-## Problem Description
-
-You encountered a 400 Bad Request error when trying to access the `lats_product_variants` table:
-
+## Problem
+The application was experiencing 400 Bad Request errors when querying the `lats_products` table:
 ```
-POST https://jxhzveborezjhsmzsgbc.supabase.co/rest/v1/lats_product_variants?columns=%22product_id%22%2C%22sku%22%2C%22name%22%2C%22attributes%22%2C%22cost_price%22%2C%22selling_price%22%2C%22quantity%22%2C%22min_quantity%22%2C%22max_quantity%22%2C%22barcode%22%2C%22weight%22%2C%22dimensions%22 400 (Bad Request)
+POST https://jxhzveborezjhsmzsgbc.supabase.co/rest/v1/lats_products?columns=%22name%22%2C%22description%22%2C%22is_active%22%2C%22tags%22%2C%22images%22%2C%22condition%22%2C%22store_shelf%22&select=* 400 (Bad Request)
 ```
 
-The URL decodes to a query selecting these specific columns:
-- `product_id`
-- `sku`
-- `name`
-- `attributes`
-- `cost_price`
-- `selling_price`
-- `quantity`
-- `min_quantity`
-- `max_quantity`
-- `barcode`
-- `weight`
-- `dimensions`
+The error indicated that both `columns` and `select=*` parameters were being used in the same query, which is invalid in Supabase.
 
 ## Root Cause Analysis
+1. **Multiple Supabase Clients**: The `latsProductApi.ts` file was creating a separate Supabase client (`supabasePublic`) with different configuration
+2. **Concurrent Data Loading**: Multiple simultaneous data loads could cause query conflicts
+3. **Insufficient Error Handling**: Lack of proper error handling for malformed queries
 
-The 400 error was likely caused by one or more of these issues:
+## Solution Applied
 
-1. **RLS (Row Level Security) Policy Issues**: The table had RLS enabled but policies might not have been properly configured for the current user session.
+### 1. Unified Supabase Client Usage
+**File**: `src/lib/latsProductApi.ts`
+- Removed the separate `supabasePublic` client
+- Now uses the main `supabase` client from `supabaseClient.ts`
+- Ensures consistent configuration across all LATS operations
 
-2. **Table Structure Mismatch**: There might have been a mismatch between the expected table structure and the actual table structure in the database.
+### 2. Enhanced Error Handling
+**File**: `src/features/lats/lib/data/provider.supabase.ts`
+- Added comprehensive error logging for debugging
+- Added specific error handling for columns/select conflicts
+- Added validation for query parameters
+- Added detailed error messages for different error types
 
-3. **Authentication Issues**: The user might not have been properly authenticated when making the request.
+### 3. Sequential Data Loading
+**File**: `src/features/lats/pages/UnifiedInventoryPage.tsx`
+- Changed from `Promise.all()` to sequential loading
+- Prevents multiple simultaneous database queries
+- Reduces the chance of query conflicts
+- Better error isolation
 
-4. **Foreign Key Constraint Issues**: The `product_id` foreign key constraint might have been missing or incorrectly configured.
+### 4. Query Validation
+**File**: `src/features/lats/lib/data/provider.supabase.ts`
+- Added validation for filter parameters
+- Prevents objects from being passed as string parameters
+- Ensures proper query construction
 
-## Solution Implemented
+## Changes Made
 
-### 1. Comprehensive SQL Fix (`fix-lats-400-error-comprehensive.sql`)
+### `src/lib/latsProductApi.ts`
+```typescript
+// Before: Separate client
+const supabasePublic = createClient(/* config */);
 
-This script provides a complete solution by:
+// After: Use main client
+import { supabase } from './supabaseClient';
+```
 
-- **Recreating the table** with proper structure
-- **Setting up proper indexes** for performance
-- **Configuring RLS policies** correctly
-- **Adding foreign key constraints** safely
-- **Testing the table** with sample data
-- **Verifying all operations** work correctly
+### `src/features/lats/lib/data/provider.supabase.ts`
+```typescript
+// Enhanced error handling
+if (error.message?.includes('columns') && error.message?.includes('select')) {
+  console.error('🔍 This appears to be a columns/select conflict error');
+  return {
+    ok: false,
+    message: 'Invalid query format. Please contact support.'
+  };
+}
 
-### 2. JavaScript Test Script (`scripts/test-lats-400-fix-comprehensive.js`)
+// Better logging
+console.log('🔍 Query URL will be:', query.url);
+console.log('🔧 Filters received:', filters);
+```
 
-This script thoroughly tests the fix by:
+### `src/features/lats/pages/UnifiedInventoryPage.tsx`
+```typescript
+// Before: Concurrent loading
+await Promise.all([
+  loadProducts(),
+  loadCategories(),
+  // ...
+]);
 
-- Testing authentication
-- Testing basic table access
-- Testing the specific column selection that was causing the 400 error
-- Testing table structure
-- Testing relationships with other tables
-- Testing insert/delete operations
-- Testing filtered queries
-- Providing a comprehensive test summary
+// After: Sequential loading
+console.log('📊 Loading categories...');
+await loadCategories();
 
-## How to Apply the Fix
+console.log('📊 Loading products...');
+await loadProducts();
+// ...
+```
 
-### Step 1: Run the SQL Fix
+## Testing
+Created a test script (`scripts/test-lats-products-query.js`) to verify:
+- Basic database connectivity
+- Simple select queries
+- Complex select queries with relations
+- Table structure validation
 
-1. Go to your Supabase Dashboard
-2. Navigate to the SQL Editor
-3. Copy and paste the contents of `fix-lats-400-error-comprehensive.sql`
-4. Execute the script
-5. Review the output to ensure all steps completed successfully
+## Verification
+The test script confirmed that:
+- ✅ Database connection is working
+- ✅ Simple queries are successful
+- ✅ Complex queries with relations are successful
+- ✅ All required columns are present
+- ✅ Table structure is correct
 
-### Step 2: Test the Fix
+## Prevention Measures
+1. **Single Client Pattern**: All LATS operations now use the same Supabase client
+2. **Sequential Loading**: Data is loaded sequentially to prevent conflicts
+3. **Enhanced Logging**: Better error tracking and debugging information
+4. **Parameter Validation**: Prevents invalid parameters from reaching the database
+5. **Error Recovery**: Graceful handling of various error types
 
-1. Run the test script:
-   ```bash
-   node scripts/test-lats-400-fix-comprehensive.js
-   ```
+## Expected Results
+- No more 400 Bad Request errors for LATS products queries
+- Better error messages when issues occur
+- Improved debugging capabilities
+- More stable data loading process
+- Consistent database client usage across the application
 
-2. Verify that all tests pass
-
-### Step 3: Verify in Your Application
-
-1. Test the specific functionality that was causing the 400 error
-2. Check the browser console for any remaining errors
-3. Verify that product variants are loading correctly
-
-## Key Changes Made
-
-### Table Structure
-- Ensured all required columns exist with correct data types
-- Added proper default values
-- Set up unique constraints on `sku`
-
-### RLS Policies
-- Created comprehensive policies for authenticated users
-- Ensured all CRUD operations are allowed for authenticated users
-- Properly configured policy conditions
-
-### Indexes
-- Added indexes on `product_id`, `sku`, and `barcode` for better performance
-- Ensured foreign key relationships are properly indexed
-
-### Triggers
-- Set up automatic timestamp updates
-- Ensured data integrity with proper triggers
-
-## Verification Steps
-
-After applying the fix, verify that:
-
-1. ✅ The table structure matches the expected schema
-2. ✅ RLS policies are properly configured
-3. ✅ Foreign key constraints are in place
-4. ✅ Basic CRUD operations work
-5. ✅ The specific column selection query works
-6. ✅ Relationships with other tables work correctly
-
-## Prevention
-
-To prevent similar issues in the future:
-
-1. **Always test table creation scripts** before deploying to production
-2. **Verify RLS policies** are correctly configured for all tables
-3. **Test authentication flows** thoroughly
-4. **Use the provided test scripts** to validate database operations
-5. **Monitor error logs** for similar issues
-
-## Files Created/Modified
-
-- `fix-lats-400-error-comprehensive.sql` - Complete SQL fix
-- `scripts/test-lats-400-fix-comprehensive.js` - Comprehensive test script
-- `LATS_400_ERROR_FIX_SUMMARY.md` - This summary document
-
-## Support
-
-If you continue to experience issues after applying this fix:
-
-1. Check the test script output for specific error messages
-2. Verify your Supabase configuration is correct
-3. Ensure your authentication is working properly
-4. Check the Supabase logs for additional error details
-
-The comprehensive fix should resolve the 400 error and ensure the `lats_product_variants` table works correctly with your application.
+## Monitoring
+Monitor the console logs for:
+- `🔍 Query URL will be:` - Shows the actual query being executed
+- `🔧 Filters received:` - Shows what filters are being applied
+- `✅ Products query successful` - Confirms successful queries
+- `❌ Database error:` - Detailed error information for debugging
