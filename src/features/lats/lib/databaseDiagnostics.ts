@@ -30,7 +30,7 @@ export async function runDatabaseDiagnostics(): Promise<DatabaseDiagnosticResult
   };
 
   try {
-    console.log('🔍 Running database diagnostics...');
+    // Reduced logging to prevent console spam
 
     // Test basic connection
     try {
@@ -39,7 +39,7 @@ export async function runDatabaseDiagnostics(): Promise<DatabaseDiagnosticResult
         result.errors.push(`Connection error: ${error.message}`);
       } else {
         result.connection = true;
-        console.log('✅ Database connection successful');
+        // Reduced logging to prevent console spam
       }
     } catch (error) {
       result.errors.push(`Connection failed: ${error}`);
@@ -52,7 +52,7 @@ export async function runDatabaseDiagnostics(): Promise<DatabaseDiagnosticResult
         result.errors.push(`Authentication error: ${error.message}`);
       } else if (user) {
         result.authentication = true;
-        console.log('✅ User authenticated:', user.email);
+        // Reduced logging to prevent console spam
       } else {
         result.errors.push('No authenticated user found');
         result.recommendations.push('Please log in to access the database');
@@ -84,7 +84,7 @@ export async function runDatabaseDiagnostics(): Promise<DatabaseDiagnosticResult
           }
         } else {
           result.tables[table as keyof typeof result.tables] = true;
-          console.log(`✅ ${table} table accessible`);
+          // Reduced logging to prevent console spam
         }
       } catch (error) {
         result.errors.push(`${table} table error: ${error}`);
@@ -108,7 +108,7 @@ export async function runDatabaseDiagnostics(): Promise<DatabaseDiagnosticResult
         result.errors.push(`Complex lats_products query error: ${error.message}`);
         result.recommendations.push('Check foreign key relationships and table names');
       } else {
-        console.log('✅ Complex lats_products query successful');
+        // Reduced logging to prevent console spam
       }
     } catch (error) {
       result.errors.push(`Complex query failed: ${error}`);

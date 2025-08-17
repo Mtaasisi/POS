@@ -143,7 +143,7 @@ const BulkImportModal: React.FC<{
               costPrice: parseFloat(row.cost_price) || data.defaultCost || 0,
               stockQuantity: parseInt(row.stock_quantity) || data.defaultStock || 0,
               minStockLevel: parseInt(row.min_stock) || 5,
-              maxStockLevel: parseInt(row.max_stock) || 100,
+              weight: parseFloat(row.weight) || 0,
               attributes: {}
             }],
             isActive: true,

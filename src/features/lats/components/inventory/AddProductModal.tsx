@@ -18,7 +18,7 @@ import {
   RefreshCw, QrCode
 } from 'lucide-react';
 import { useInventoryStore } from '../../stores/useInventoryStore';
-import BrandSuggestionInput from '../../../shared/components/ui/BrandSuggestionInput';
+
 import ModelSuggestionInput from '../../../shared/components/ui/ModelSuggestionInput';
 import { supabase } from '../../../../lib/supabaseClient';
 import { useAuth } from '../../../../context/AuthContext';
@@ -63,12 +63,8 @@ const productFormSchema = z.object({
   costPrice: z.number().min(0, 'Cost price must be 0 or greater'),
   stockQuantity: z.number().min(0, 'Stock quantity must be 0 or greater'),
   minStockLevel: z.number().min(0, 'Minimum stock level must be 0 or greater'),
-  maxStockLevel: z.number().min(0, 'Maximum stock level must be 0 or greater').optional(),
-  weight: z.number().min(0, 'Weight must be 0 or greater').optional(),
-  isActive: z.boolean().default(true),
-  tags: z.array(z.string()).default([]),
+
   images: z.array(ProductImageSchema).default([]),
-  metadata: z.record(z.string()).optional(),
   variants: z.array(z.any()).optional().default([])
 });
 
@@ -136,12 +132,9 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
       costPrice: 0,
       stockQuantity: 0,
       minStockLevel: 5,
-      maxStockLevel: 100,
-      weight: 0,
-      isActive: true,
-      tags: [],
+      
       images: [],
-      metadata: {}
+      variants: []
     }
   });
 
@@ -328,10 +321,8 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
           costPrice: variant.costPrice || 0,
           stockQuantity: variant.stockQuantity || 0,
           minStockLevel: variant.minStockLevel || 5,
-          maxStockLevel: variant.maxStockLevel || 100,
           weight: variant.weight || 0,
-          attributes: variant.attributes || {},
-          isActive: variant.isActive ?? true
+          attributes: variant.attributes || {}
         };
       }) : [{
         // Create a basic variant from main form data if no variants are provided
@@ -342,7 +333,6 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
         costPrice: data.costPrice || 0,
         stockQuantity: data.stockQuantity || 0,
         minStockLevel: data.minStockLevel || 5,
-        maxStockLevel: data.maxStockLevel || 100,
         weight: data.weight || 0,
         attributes: {},
         isActive: true
@@ -360,7 +350,7 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
         storeShelf: data.storeShelf || '',
         images: [], // Images will be uploaded after product creation
         tags: data.tags || [],
-        isActive: data.isActive,
+        isActive: true, // isActive is no longer in the schema, so it's always true
         // Use normalized variants
         variants: normalizedVariants.map(variant => ({
           sku: variant.sku || `${data.sku}-${variant.name}`,
@@ -370,7 +360,6 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
           costPrice: variant.costPrice,
           stockQuantity: variant.stockQuantity,
           minStockLevel: variant.minStockLevel,
-          maxStockLevel: variant.maxStockLevel,
           weight: variant.weight,
           attributes: variant.attributes || {},
           isActive: variant.isActive
@@ -524,7 +513,6 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
       costPrice: 0,
       stockQuantity: 0,
       minStockLevel: 5,
-      maxStockLevel: 100,
       weight: 0,
       attributes: {},
       isActive: true
@@ -571,20 +559,7 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
           </button>
         </div>
 
-        {/* Debug Authentication Status - Only in development */}
-        {process.env.NODE_ENV === 'development' && (
-          <div className="flex-shrink-0 p-4 bg-yellow-50 border-b border-yellow-200">
-            <div className="flex items-center gap-2 mb-2">
-              <AlertIcon className="w-4 h-4 text-yellow-600" />
-              <span className="font-semibold text-yellow-800 text-sm">Debug: Authentication Status</span>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs text-yellow-700">
-              <div>User: {currentUser ? currentUser.email : 'None'}</div>
-              <div>Network: {navigator.onLine ? '🟢 Online' : '🔴 Offline'}</div>
-              <div>Session: {currentUser ? '🟢 Active' : '🔴 Inactive'}</div>
-            </div>
-          </div>
-        )}
+
 
         {/* Modal Content - Scrollable */}
         <div className="flex-1 modal-scrollable min-h-0">
@@ -853,9 +828,9 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
                               />
                               <QrCode className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                             </div>
-                            <p id="sku-help" className="text-xs text-gray-500 mt-2">
+                            {/* <p id="sku-help" className="text-xs text-gray-500 mt-2">
                               Auto-generated from product name and category. Click to clear and enter manually.
-                            </p>
+                            </p> */}
                             {errors.sku && (
                               <div id="sku-error" className="text-red-500 text-sm mt-2 flex items-center gap-2">
                                 <AlertIcon size={14} />

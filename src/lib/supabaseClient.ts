@@ -77,8 +77,11 @@ export const supabase = (() => {
       // Enable real-time subscriptions
       realtime: {
         params: {
-          eventsPerSecond: 10,
+          eventsPerSecond: 5, // Reduced to prevent overload
         },
+        // Add better real-time configuration
+        heartbeatIntervalMs: 30000,
+        reconnectAfterMs: (tries) => Math.min(tries * 2000, 30000), // Slower reconnection
       },
       // Global headers - don't set Content-Type globally to avoid conflicts with file uploads
       global: {
@@ -93,14 +96,14 @@ export const supabase = (() => {
     });
     
     // Add global error handler for network issues
-    if (isBrowser) {
+    if (typeof window !== 'undefined') {
       // Listen for online/offline events
       window.addEventListener('online', () => {
-        console.log('🌐 Network connection restored');
+        // Reduced logging to prevent console spam
       });
       
       window.addEventListener('offline', () => {
-        console.log('📴 Network connection lost');
+        // Reduced logging to prevent console spam
       });
       
       // Override fetch to handle network errors gracefully
@@ -122,8 +125,23 @@ export const supabase = (() => {
           }
           return await originalFetch(input, init);
         } catch (error) {
+          // Handle QUIC protocol errors specifically
+          if (error instanceof TypeError && error.message.includes('ERR_QUIC_PROTOCOL_ERROR')) {
+            // Reduced logging to prevent console spam
+            // Return a mock response to prevent infinite retries
+            if (typeof input === 'string' && input.includes('/rest/v1/')) {
+              return new Response(JSON.stringify({ 
+                error: 'Network protocol error',
+                message: 'Please check your internet connection'
+              }), {
+                status: 503,
+                headers: { 'Content-Type': 'application/json' }
+              });
+            }
+          }
+          
           if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-            console.warn('🌐 Network error detected, attempting to use offline data');
+            // Reduced logging to prevent console spam
             // Return a mock response for auth endpoints to prevent infinite retries
             if (typeof input === 'string' && input.includes('/auth/')) {
               return new Response(JSON.stringify({ 
@@ -140,7 +158,7 @@ export const supabase = (() => {
       };
     }
     
-    console.log('✅ Supabase client instance created successfully');
+    // Reduced logging to prevent console spam
   }
   
   return supabaseInstance;

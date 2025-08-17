@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { EnhancedImageUploadService, UploadedImage, UploadResult } from '../lib/enhancedImageUpload';
 import { ImageCompressionStats } from './ImageCompressionStats';
+import { supabase } from '../lib/supabaseClient';
 
 interface ImageUploadProps {
   productId: string;
@@ -77,6 +78,11 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
     }
 
     setFiles(prev => [...prev, ...newFiles]);
+    
+    // Automatically start uploading new files in background
+    if (newFiles.length > 0) {
+      setTimeout(() => uploadFilesInBackground(newFiles), 100);
+    }
   }, [files.length, maxFiles]);
 
   // Generate compression stats for files (simplified for now)
@@ -144,15 +150,21 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
     handleFileSelect(e.dataTransfer.files);
   }, [handleFileSelect]);
 
-  // Upload files
-  const uploadFiles = async () => {
-    if (files.length === 0) return;
+  // Upload files in background (non-blocking)
+  const uploadFilesInBackground = async (filesToUpload: FileWithPreview[]) => {
+    if (filesToUpload.length === 0) return;
 
-    console.log('🔍 DEBUG: uploadFiles called');
-    console.log('🔍 DEBUG: Files to upload:', files.map(f => ({ name: f.file.name, size: f.file.size, type: f.file.type })));
+    console.log('🔍 DEBUG: uploadFilesInBackground called');
+    console.log('🔍 DEBUG: Files to upload:', filesToUpload.map(f => ({ name: f.file.name, size: f.file.size, type: f.file.type })));
 
     setUploading(true);
-    setUploadProgress({});
+    setUploadProgress(prev => {
+      const newProgress = { ...prev };
+      filesToUpload.forEach(fileWrapper => {
+        newProgress[fileWrapper.file.name] = 0;
+      });
+      return newProgress;
+    });
     setErrors([]);
 
     try {
@@ -165,16 +177,48 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
         hostname: window.location.hostname
       });
 
+      // Check network connectivity
+      console.log('🌐 Checking network connectivity...');
+      const isOnline = navigator.onLine;
+      console.log('🌐 Network status:', { isOnline, connectionType: (navigator as any).connection?.type });
+
+      if (!isOnline) {
+        throw new Error('No internet connection. Please check your network and try again.');
+      }
+
+      // Test Supabase connection
+      console.log('🔍 Testing Supabase connection...');
+      try {
+        const { data, error } = await supabase.from('devices').select('count').limit(1);
+        if (error) {
+          console.warn('⚠️ Supabase connection test failed:', error);
+        } else {
+          console.log('✅ Supabase connection test successful');
+        }
+      } catch (connectionError) {
+        console.warn('⚠️ Supabase connection test failed:', connectionError);
+      }
+
+      // Run comprehensive diagnostics
+      console.log('🔍 Running upload environment diagnostics...');
+      const diagnostics = await EnhancedImageUploadService.diagnoseUploadEnvironment();
+      console.log('📊 Upload environment diagnostics:', diagnostics);
+      
+      if (diagnostics.issues.length > 0) {
+        console.warn('⚠️ Upload environment issues detected:', diagnostics.issues);
+        // Don't fail the upload yet, but log the issues
+      }
+
       const successfulUploads: UploadedImage[] = [];
       const failedUploads: string[] = [];
 
       // Force Supabase storage mode - no more development mode fallback
       console.log('🚀 DEBUG: FORCED: Using Supabase storage mode only');
       
-      for (let i = 0; i < files.length; i++) {
-        const fileWrapper = files[i];
+      for (let i = 0; i < filesToUpload.length; i++) {
+        const fileWrapper = filesToUpload[i];
         const file = fileWrapper.file;
-        const isPrimary = i === 0; // First image is primary
+        const isPrimary = files.length === 0 && i === 0; // First image is primary if no existing files
         
         console.log(`📤 Uploading file ${i + 1}/${files.length} to Supabase:`, {
           fileName: file.name,
@@ -182,7 +226,7 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
           isPrimary
         });
         
-        setUploadProgress(prev => ({ ...prev, [file.name]: 50 }));
+        setUploadProgress(prev => ({ ...prev, [file.name]: 25 }));
         
         try {
           console.log(`🔍 DEBUG: About to upload ${file.name} to Supabase`);
@@ -206,18 +250,43 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
             hasPreview: 'preview' in fileWrapper
           });
 
-          // Use enhanced image upload service with compression
+          setUploadProgress(prev => ({ ...prev, [file.name]: 50 }));
+
+          // Use enhanced image upload service with compression and retry
           console.log(`🔍 DEBUG: Calling EnhancedImageUploadService.uploadImage...`);
-          const uploadResult = await EnhancedImageUploadService.uploadImage(
-            file,
-            productId,
-            userId,
-            {
-              generateThumbnail: true,
-              thumbnailSize: { width: 300, height: 300 },
-              isPrimary: isPrimary
+          
+          // Add retry mechanism
+          let uploadResult: UploadResult;
+          let retryCount = 0;
+          const maxRetries = 2;
+          
+          do {
+            try {
+              uploadResult = await EnhancedImageUploadService.uploadImage(
+                file,
+                productId,
+                userId,
+                {
+                  generateThumbnail: true,
+                  thumbnailSize: { width: 150, height: 150 }, // Use optimal small size
+                  isPrimary: isPrimary
+                }
+              );
+              break; // Success, exit retry loop
+            } catch (retryError: any) {
+              retryCount++;
+              console.warn(`⚠️ Upload attempt ${retryCount} failed for ${file.name}:`, retryError);
+              
+              if (retryCount <= maxRetries) {
+                console.log(`🔄 Retrying upload for ${file.name} (attempt ${retryCount + 1}/${maxRetries + 1})...`);
+                await new Promise(resolve => setTimeout(resolve, 1000 * retryCount)); // Exponential backoff
+              } else {
+                throw retryError; // Re-throw if all retries failed
+              }
             }
-          );
+          } while (retryCount <= maxRetries);
+          
+          setUploadProgress(prev => ({ ...prev, [file.name]: 75 }));
           
           console.log(`📥 DEBUG: Supabase upload result for ${file.name}:`, uploadResult);
           console.log(`📥 DEBUG: Upload success: ${uploadResult.success}`);
@@ -240,33 +309,34 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
           console.error(`❌ DEBUG: Error type:`, typeof error);
           console.error(`❌ DEBUG: Error message:`, error.message);
           console.error(`❌ DEBUG: Error stack:`, error.stack);
+          
           failedUploads.push(`${file.name}: ${error.message}`);
           setUploadProgress(prev => ({ ...prev, [file.name]: -1 }));
         }
       }
 
-      if (successfulUploads.length > 0) {
-        console.log('✅ Supabase uploads completed successfully:', successfulUploads);
-        onUploadComplete?.(successfulUploads);
+      // Call completion callback
+      if (successfulUploads.length > 0 && onUploadComplete) {
+        onUploadComplete(successfulUploads);
       }
 
-      if (failedUploads.length > 0) {
-        console.error('❌ Some Supabase uploads failed:', failedUploads);
-        const errorMessage = failedUploads.join(', ');
-        setErrors(failedUploads);
-        onUploadError?.(errorMessage);
+      if (failedUploads.length > 0 && onUploadError) {
+        onUploadError(failedUploads.join(', '));
       }
 
-    } catch (error: any) {
-      console.error('❌ Supabase upload process failed:', error);
-      const errorMessage = error.message || 'Supabase upload failed';
-      setErrors([errorMessage]);
-      onUploadError?.(errorMessage);
-    } finally {
       setUploading(false);
-      setFiles([]);
-      setUploadProgress({});
+      console.log('✅ DEBUG: Background upload completed');
+    } catch (error: any) {
+      console.error('❌ DEBUG: Background upload failed:', error);
+      setErrors(prev => [...prev, error.message]);
+      setUploading(false);
     }
+  };
+
+  // Manual upload function (for backward compatibility)
+  const uploadFiles = async () => {
+    if (files.length === 0) return;
+    await uploadFilesInBackground(files);
   };
 
   // Remove file
@@ -291,6 +361,8 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
 
   return (
     <div className={`space-y-4 ${className}`}>
+
+
       {/* Error Messages */}
       {errors.length > 0 && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-3">
@@ -302,27 +374,26 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
         </div>
       )}
 
-      {/* Drop Zone */}
+      {/* Drop Zone with File Previews */}
       <div
         ref={dropZoneRef}
-        className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center transition-colors duration-200 hover:border-gray-400"
+        className="border-2 border-dashed border-gray-300 rounded-lg p-4 transition-colors duration-200 hover:border-gray-400"
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-        <div className="space-y-2">
-          <div className="text-gray-600">
-            <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
-              <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+        {files.length === 0 ? (
+          /* Empty State */
+          <label htmlFor="file-upload" className="flex items-center justify-center gap-3 py-8 cursor-pointer hover:bg-gray-50 transition-colors">
+            <svg className="h-6 w-6 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 24 24">
+              <path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-          </div>
-          <div className="text-gray-600">
-            <label htmlFor="file-upload" className="cursor-pointer">
+            <span className="text-sm">
               <span className="font-medium text-blue-600 hover:text-blue-500">
-                Click to upload
+                Upload images
               </span>
-              <span className="text-gray-500"> or drag and drop</span>
-            </label>
+              <span className="text-gray-500"> or drag & drop</span>
+            </span>
             <input
               id="file-upload"
               ref={fileInputRef}
@@ -332,98 +403,96 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
               className="hidden"
               onChange={(e) => handleFileSelect(e.target.files)}
             />
-          </div>
-          <p className="text-xs text-gray-500">
-            PNG, JPG, GIF, WebP up to 10MB each (max {maxFiles} files)
-          </p>
-        </div>
-      </div>
-
-      {/* File Previews */}
-      {files.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-medium text-gray-900">
-              Selected Files ({files.length}/{maxFiles})
-            </h3>
-            <div className="space-x-2">
+          </label>
+        ) : (
+          /* Files Display */
+          <div className="space-y-3 cursor-pointer hover:bg-gray-50 transition-colors p-2 -m-2 rounded" onClick={() => fileInputRef.current?.click()}>
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-600">
+                {files.length} file{files.length !== 1 ? 's' : ''} selected
+              </span>
               <button
                 onClick={clearAllFiles}
-                className="text-sm text-red-600 hover:text-red-700"
+                className="text-xs text-red-600 hover:text-red-700"
                 disabled={uploading}
               >
-                Clear All
-              </button>
-              <button
-                onClick={uploadFiles}
-                disabled={uploading || files.length === 0}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {uploading ? 'Uploading...' : `Upload ${files.length} File${files.length !== 1 ? 's' : ''}`}
+                Clear
               </button>
             </div>
-          </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {files.map((fileWrapper, index) => (
-              <div key={index} className="relative group">
-                <div className="aspect-square rounded-lg overflow-hidden bg-gray-100">
-                  <img
-                    src={fileWrapper.preview}
-                    alt={fileWrapper.file.name}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-                
-                {/* Progress Overlay */}
-                {uploadProgress[fileWrapper.file.name] !== undefined && (
-                  <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-                    <div className="text-white text-center">
+            {/* Image Grid */}
+            <div className="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
+              {files.map((fileWrapper, index) => (
+                <div key={index} className="relative group">
+                  <div className="aspect-square rounded-xl overflow-hidden bg-gray-100">
+                    <img
+                      src={fileWrapper.preview}
+                      alt={fileWrapper.file.name}
+                      className="w-full h-full object-cover rounded-xl"
+                    />
+                    
+                                      {/* Upload Progress Overlay */}
+                  {uploadProgress[fileWrapper.file.name] !== undefined && (
+                    <div className="absolute inset-0 bg-black bg-opacity-50 flex flex-col items-center justify-center rounded-xl">
                       {uploadProgress[fileWrapper.file.name] === 100 ? (
-                        <div className="text-green-400">✅ Uploaded</div>
+                        <div className="text-center">
+                          <div className="text-green-400 text-2xl mb-1">✓</div>
+                          <div className="text-white text-xs">Uploaded</div>
+                        </div>
                       ) : uploadProgress[fileWrapper.file.name] === -1 ? (
-                        <div className="text-red-400">❌ Failed</div>
+                        <div className="text-center">
+                          <div className="text-red-400 text-2xl mb-1">✗</div>
+                          <div className="text-white text-xs">Failed</div>
+                        </div>
                       ) : (
-                        <div className="text-white">Uploading...</div>
+                        <div className="text-center w-full px-2">
+                          <div className="text-white text-xs mb-2">Uploading...</div>
+                          <div className="w-full bg-gray-600 rounded-full h-1.5 mb-2">
+                            <div 
+                              className="bg-blue-400 h-1.5 rounded-full transition-all duration-300"
+                              style={{ width: `${Math.max(0, uploadProgress[fileWrapper.file.name])}%` }}
+                            ></div>
+                          </div>
+                          <div className="text-white text-xs">
+                            {uploadProgress[fileWrapper.file.name]}%
+                          </div>
+                        </div>
                       )}
                     </div>
-                  </div>
-                )}
-
-                {/* Remove Button */}
-                <button
-                  onClick={() => removeFile(index)}
-                  disabled={uploading}
-                  className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
-                >
-                  ×
-                </button>
-
-                {/* File Info */}
-                <div className="mt-2 text-xs text-gray-600">
-                  <div className="font-medium truncate">{fileWrapper.file.name}</div>
-                  <div>{(() => {
-                  const formatted = (fileWrapper.file.size / 1024 / 1024).toFixed(2);
-                  return formatted.replace(/\.00$/, '').replace(/\.0$/, '');
-                })()} MB</div>
-                  
-                  {/* Compression Stats */}
-                  {fileWrapper.compressionStats && (
-                    <div className="mt-2">
-                      <ImageCompressionStats
-                        originalSize={fileWrapper.compressionStats.originalSize}
-                        compressedSize={fileWrapper.compressionStats.compressedSize}
-                        format={fileWrapper.compressionStats.format}
-                        className="text-xs"
-                      />
-                    </div>
                   )}
+                  </div>
+                  
+                  {/* Remove Button */}
+                  <button
+                    onClick={() => removeFile(index)}
+                    disabled={uploading && uploadProgress[fileWrapper.file.name] !== undefined}
+                    className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                  >
+                    ×
+                  </button>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
+
+            {/* Add More Button */}
+            <div className="flex items-center justify-center pt-2 border-t border-gray-100">
+              <label htmlFor="file-upload-more" className="cursor-pointer text-sm text-blue-600 hover:text-blue-700">
+                <span className="font-medium">+ Add more images</span>
+              </label>
+              <input
+                id="file-upload-more"
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => handleFileSelect(e.target.files)}
+              />
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };

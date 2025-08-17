@@ -34,7 +34,7 @@ export const ZENOPAY_CONFIG = {
 };
 
 // Development vs Production configuration
-export const isDevelopment = () => process.env.NODE_ENV === 'development';
+export const isDevelopment = () => import.meta.env.MODE === 'development';
 
 // Get the appropriate API base URL
 export const getApiBaseUrl = () => {

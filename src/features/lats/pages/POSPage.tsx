@@ -31,12 +31,14 @@ import {
 // Import new smart services
 import { smartSearchService } from '../lib/smartSearch';
 import { realTimeStockService } from '../lib/realTimeStock';
+
 import { dynamicPricingService } from '../lib/dynamicPricing';
 
 // Import variant-aware POS components
 import VariantProductCard from '../components/pos/VariantProductCard';
 import VariantCartItem from '../components/pos/VariantCartItem';
 import AddExternalProductModal from '../components/pos/AddExternalProductModal';
+import ProductImageDisplay from '../components/inventory/ProductImageDisplay';
 // QuickCash feature removed - not using this functionality
 import DeliverySection from '../components/pos/DeliverySection';
 import AddCustomerModal from '../../../features/customers/components/forms/AddCustomerModal';
@@ -60,6 +62,11 @@ import AnalyticsReportingSettingsTab from '../components/pos/AnalyticsReportingS
               import GeneralSettingsTab from '../components/pos/GeneralSettingsTab';
 import DynamicPricingSettingsTab from '../components/pos/DynamicPricingSettingsTab';
 import ReceiptSettingsTab from '../components/pos/ReceiptSettingsTab';
+
+// Import draft functionality
+import { useDraftManager } from '../hooks/useDraftManager';
+import DraftManagementModal from '../components/pos/DraftManagementModal';
+import DraftNotification from '../components/pos/DraftNotification';
 
 // Performance optimization constants
 const PRODUCTS_PER_PAGE = 20;
@@ -506,7 +513,7 @@ const POSPage: React.FC = () => {
       const startTime = performance.now();
       
       await Promise.all([
-        loadProducts(),
+        loadProducts({ page: 1, limit: 50 }),
         loadCategories(),
         loadBrands(),
         loadSuppliers(),
@@ -582,6 +589,49 @@ const POSPage: React.FC = () => {
   // QuickCash state removed - not using this functionality
   const [showDeliverySection, setShowDeliverySection] = useState(false);
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
+
+  // Draft functionality
+  const [showDraftModal, setShowDraftModal] = useState(false);
+  const [showDraftNotification, setShowDraftNotification] = useState(false);
+  const [draftNotes, setDraftNotes] = useState('');
+  
+  const {
+    currentDraftId,
+    hasUnsavedChanges,
+    saveDraft,
+    loadDraft,
+    deleteCurrentDraft,
+    clearAllDrafts,
+    getAllDrafts,
+    hasDrafts,
+    markAsChanged
+  } = useDraftManager({
+    cartItems,
+    customer: selectedCustomer,
+    deliveryInfo: showDeliverySection ? { enabled: true } : undefined,
+    notes: draftNotes
+  });
+
+  // Show draft notification on mount if drafts exist
+  React.useEffect(() => {
+    if (hasDrafts() && cartItems.length === 0) {
+      setShowDraftNotification(true);
+    }
+  }, [hasDrafts, cartItems.length]);
+
+  // Save draft when user leaves the page
+  React.useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (cartItems.length > 0) {
+        saveDraft();
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [cartItems.length, saveDraft]);
 
   // Add state for manual discount functionality
   const [manualDiscount, setManualDiscount] = useState(0);
@@ -1502,7 +1552,7 @@ const POSPage: React.FC = () => {
         console.log('✅ Sale saved successfully:', sale.id);
         
         // Reload products to get updated stock levels
-        await loadProducts();
+        await loadProducts({ page: 1, limit: 50 });
         
         // Calculate loyalty points earned (1 point per 100 TZS)
         const pointsEarned = Math.floor(total / 100);
@@ -1757,7 +1807,7 @@ const POSPage: React.FC = () => {
       const response = await adjustStock(productId, variantId, adjustment, reason);
       if (response.ok) {
         alert('Stock adjusted successfully');
-        await loadProducts(); // Reload products to get updated stock
+        await loadProducts({ page: 1, limit: 50 }); // Reload products to get updated stock
         checkInventoryAlerts(); // Update alerts
       } else {
         alert(`Failed to adjust stock: ${response.message}`);
@@ -1862,8 +1912,10 @@ const POSPage: React.FC = () => {
           console.log('🔍 POS: Opening Payment Tracking modal from POSTopBar');
           setShowPaymentTracking(true);
         }}
+        onOpenDrafts={() => setShowDraftModal(true)}
         isProcessingPayment={isProcessingPayment}
         hasSelectedCustomer={!!selectedCustomer}
+        draftCount={getAllDrafts().length}
       />
 
       <div className="p-4 sm:p-6 pb-20 max-w-full mx-auto space-y-6">
@@ -2426,24 +2478,25 @@ const POSPage: React.FC = () => {
                           >
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-4 flex-1 min-w-0">
-                                <div className={`relative w-14 h-14 rounded-xl flex items-center justify-center text-lg font-bold ${
-                                  isExternalProduct
-                                    ? 'bg-gradient-to-br from-orange-500 to-red-600 text-white'
-                                    : isExpanded 
-                                      ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white' 
-                                      : 'bg-gradient-to-br from-blue-100 to-indigo-100 text-blue-600'
-                                }`}>
-                                  {item.name.charAt(0).toUpperCase()}
-                                  {isExternalProduct && (
-                                    <div className="absolute -top-2 -right-2 w-5 h-5 bg-gradient-to-r from-orange-400 to-red-500 rounded-full border-2 border-white shadow-lg flex items-center justify-center">
-                                      <Package className="w-3 h-3 text-white" />
+                                <div className="relative w-14 h-14 rounded-xl overflow-hidden">
+                                  {isExternalProduct ? (
+                                    // External product - show letter with orange background
+                                    <div className={`w-full h-full bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center text-lg font-bold text-white`}>
+                                      {item.name.charAt(0).toUpperCase()}
+                                      <div className="absolute -top-2 -right-2 w-5 h-5 bg-gradient-to-r from-orange-400 to-red-500 rounded-full border-2 border-white shadow-lg flex items-center justify-center">
+                                        <Package className="w-3 h-3 text-white" />
+                                      </div>
                                     </div>
+                                  ) : (
+                                    // Regular product - show actual image
+                                    <ProductImageDisplay
+                                      images={product?.images || []}
+                                      productName={item.name}
+                                      size="lg"
+                                      className="w-full h-full"
+                                    />
                                   )}
-                                  {isLatest && !isExternalProduct && (
-                                    <div className="absolute -top-2 -right-2 w-5 h-5 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full border-2 border-white shadow-lg flex items-center justify-center">
-                                      <div className="w-2 h-2 bg-white rounded-full"></div>
-                                    </div>
-                                  )}
+
                                 </div>
                                                                  <div className="flex-1 min-w-0">
                                    <div className="font-medium text-gray-800 truncate text-xl leading-tight flex items-center gap-2">
@@ -2672,7 +2725,23 @@ const POSPage: React.FC = () => {
 
               
               {/* Main Action Buttons */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
+                {/* Save Draft Button */}
+                <GlassButton
+                  onClick={() => {
+                    if (cartItems.length > 0) {
+                      saveDraft();
+                      alert('Draft saved successfully!');
+                    }
+                  }}
+                  icon={<Clock size={20} />}
+                  variant="outline"
+                  className="w-full h-16"
+                  disabled={cartItems.length === 0}
+                >
+                  Save
+                </GlassButton>
+                
                 {/* Clear Cart Button */}
                 <GlassButton
                   onClick={() => setCartItems([])}
@@ -4393,6 +4462,34 @@ const POSPage: React.FC = () => {
         onClose={() => setShowCustomerLoyalty(false)}
       />
 
+      {/* Draft Management Modal */}
+      <DraftManagementModal
+        isOpen={showDraftModal}
+        onClose={() => setShowDraftModal(false)}
+        onLoadDraft={(draft) => {
+          setCartItems(draft.cartItems);
+          if (draft.customer) {
+            setSelectedCustomer(draft.customer);
+          }
+          if (draft.deliveryInfo) {
+            setShowDeliverySection(draft.deliveryInfo.enabled);
+          }
+          if (draft.notes) {
+            setDraftNotes(draft.notes);
+          }
+          setShowDraftModal(false);
+        }}
+        currentDraftId={currentDraftId || undefined}
+      />
+
+      {/* Draft Notification */}
+      <DraftNotification
+        draftCount={getAllDrafts().length}
+        onViewDrafts={() => setShowDraftModal(true)}
+        onDismiss={() => setShowDraftNotification(false)}
+        isVisible={showDraftNotification && getAllDrafts().length > 0}
+      />
+
       {/* POS Bottom Bar */}
       <POSBottomBar
         onViewAnalytics={() => setShowSalesAnalytics(true)}
@@ -4407,6 +4504,8 @@ const POSPage: React.FC = () => {
         onReports={() => navigate('/lats/sales-reports')}
         onLoyalty={() => setShowCustomerLoyalty(true)}
       />
+
+
       </div>
     </div>
   );

@@ -15,7 +15,7 @@ import {
   Upload, Image as ImageIcon, Trash2, CheckCircle, RefreshCw, Plus, QrCode
 } from 'lucide-react';
 import { useInventoryStore } from '../../stores/useInventoryStore';
-import BrandSuggestionInput from '../../../shared/components/ui/BrandSuggestionInput';
+
 import ModelSuggestionInput from '../../../shared/components/ui/ModelSuggestionInput';
 import { ImageUpload } from '../../../../components/ImageUpload';
 import { ImageGallery } from '../../../../components/ImageGallery';
@@ -61,12 +61,9 @@ const productFormSchema = z.object({
   costPrice: z.number().min(0, 'Cost price must be 0 or greater'),
   stockQuantity: z.number().min(0, 'Stock quantity must be 0 or greater'),
   minStockLevel: z.number().min(0, 'Minimum stock level must be 0 or greater'),
-  maxStockLevel: z.number().min(0, 'Maximum stock level must be 0 or greater').optional(),
   weight: z.number().min(0, 'Weight must be 0 or greater').optional(),
-  isActive: z.boolean().default(true),
   tags: z.array(z.string()).default([]),
   images: z.array(ProductImageSchema).default([]),
-  metadata: z.record(z.string(), z.string()).optional(),
   variants: z.array(z.any()).optional().default([])
 });
 
@@ -134,12 +131,9 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
       costPrice: 0,
       stockQuantity: 0,
       minStockLevel: 5,
-      maxStockLevel: 100,
       weight: 0,
-      isActive: true,
       tags: [],
       images: [],
-      metadata: {},
       variants: []
     }
   });
@@ -267,14 +261,11 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
           costPrice: product.costPrice || 0,
           stockQuantity: product.stockQuantity || 0,
           minStockLevel: product.minStockLevel || 5,
-          maxStockLevel: product.maxStockLevel || 100,
           weight: product.weight || 0,
-          isActive: product.isActive ?? true,
           condition: product.condition || 'new',
           storeShelf: product.storeShelf || '',
           tags: product.tags || [],
           images: [], // Images will be loaded separately by ImageUpload component
-          metadata: product.metadata || {},
           variants: product.variants || []
         });
 
@@ -289,7 +280,6 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
             costPrice: variant.costPrice || 0,
             stockQuantity: variant.stockQuantity || variant.quantity || 0,
             minStockLevel: variant.minStockLevel || variant.minQuantity || 5,
-            maxStockLevel: variant.maxStockLevel || variant.maxQuantity || 100,
             weight: variant.weight || 0,
             attributes: variant.attributes || {},
             isActive: variant.isActive ?? true
@@ -344,7 +334,6 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
           costPrice: variant.costPrice || 0,
           stockQuantity: variant.stockQuantity || 0,
           minStockLevel: variant.minStockLevel || 5,
-          maxStockLevel: variant.maxStockLevel || 100,
           weight: variant.weight || 0,
           attributes: variant.attributes || {},
           isActive: variant.isActive ?? true
@@ -358,7 +347,6 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
         costPrice: data.costPrice || 0,
         stockQuantity: data.stockQuantity || 0,
         minStockLevel: data.minStockLevel || 5,
-        maxStockLevel: data.maxStockLevel || 100,
         weight: data.weight || 0,
         attributes: {},
         isActive: true
@@ -374,7 +362,6 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
         supplierId: data.supplierId || '',
         images: data.images || [], // Include existing images from form
         tags: data.tags || [],
-        isActive: data.isActive,
         condition: data.condition,
         storeShelf: data.storeShelf || '',
         variants: normalizedVariants.map(variant => ({
@@ -386,7 +373,6 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
           costPrice: variant.costPrice,
           stockQuantity: variant.stockQuantity,
           minStockLevel: variant.minStockLevel,
-          maxStockLevel: variant.maxStockLevel,
           weight: variant.weight,
           attributes: variant.attributes || {},
           isActive: variant.isActive
@@ -504,7 +490,6 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
       costPrice: 0,
       stockQuantity: 0,
       minStockLevel: 5,
-      maxStockLevel: 100,
       weight: 0,
       attributes: {},
       isActive: true
@@ -971,20 +956,20 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
               )}
             />
 
-            {/* Max Stock Level */}
+            {/* Weight */}
             <Controller
-              name="maxStockLevel"
+              name="weight"
               control={control}
               render={({ field }) => (
                 <div>
-                  <label className="block mb-3 font-semibold text-lg text-gray-800">Max Stock Level</label>
+                  <label className="block mb-3 font-semibold text-lg text-gray-800">Weight</label>
                   <input
                     type="number"
                     min="0"
                     className="w-full py-4 px-4 bg-white/80 backdrop-blur-md border-2 rounded-xl focus:outline-none text-lg font-medium transition-all duration-200 border-gray-300 focus:border-blue-500 shadow-blue-100 focus:shadow-lg"
-                    placeholder="100"
+                    placeholder="0"
                     value={field.value}
-                    onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                    onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
                   />
                 </div>
               )}

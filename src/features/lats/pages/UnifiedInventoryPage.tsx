@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
 import GlassCard from '../../../features/shared/components/ui/GlassCard';
@@ -20,7 +20,6 @@ import { toast } from 'react-hot-toast';
 
 // Import forms and components
 import StockAdjustModal from '../components/inventory/StockAdjustModal';
-import BrandForm from '../components/inventory/BrandForm';
 import CategoryFormModal from '../components/inventory/CategoryFormModal';
 import SupplierForm from '../components/inventory/SupplierForm';
 import AddProductModal from '../components/inventory/AddProductModal';
@@ -39,6 +38,43 @@ import { useInventoryStore } from '../stores/useInventoryStore';
 import { format } from '../lib/format';
 import { latsEventBus } from '../lib/data/eventBus';
 import { runDatabaseDiagnostics, logDiagnosticResult } from '../lib/databaseDiagnostics';
+
+// Loading Progress Indicator Component
+const LoadingProgressIndicator: React.FC<{ progress: any }> = ({ progress }) => {
+  const totalSteps = 6;
+  const completedSteps = Object.values(progress).filter(Boolean).length;
+  const percentage = Math.round((completedSteps / totalSteps) * 100);
+
+  return (
+    <div className="fixed top-4 right-4 z-50 bg-white/90 backdrop-blur-sm rounded-lg p-4 shadow-lg border border-gray-200">
+      <div className="flex items-center space-x-3">
+        <div className="w-8 h-8">
+          <div className="w-8 h-8 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+        </div>
+        <div className="flex-1">
+          <div className="text-sm font-medium text-gray-700">Loading Data...</div>
+          <div className="w-32 bg-gray-200 rounded-full h-2 mt-1">
+            <div 
+              className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+              style={{ width: `${percentage}%` }}
+            ></div>
+          </div>
+          <div className="text-xs text-gray-500 mt-1">{completedSteps}/{totalSteps} steps</div>
+        </div>
+      </div>
+      <div className="mt-2 space-y-1">
+        {Object.entries(progress).map(([key, loaded]) => (
+          <div key={key} className="flex items-center space-x-2 text-xs">
+            <div className={`w-2 h-2 rounded-full ${loaded ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+            <span className={`${loaded ? 'text-green-600' : 'text-gray-500'}`}>
+              {key.charAt(0).toUpperCase() + key.slice(1)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
 
 // Tab types
 type TabType = 'inventory' | 'purchase-orders' | 'analytics' | 'settings';
@@ -88,10 +124,30 @@ const UnifiedInventoryPage: React.FC = () => {
   // Prevent multiple simultaneous data loads
   const [isDataLoading, setIsDataLoading] = useState(false);
   const [lastDataLoadTime, setLastDataLoadTime] = useState(0);
-  const DATA_LOAD_COOLDOWN = 5000; // 5 seconds cooldown between loads
+  const DATA_LOAD_COOLDOWN = 3000; // Reduced from 5 seconds to 3 seconds
   
   // Loading state for better UX
   const [showLoadingSkeleton, setShowLoadingSkeleton] = useState(true);
+  
+  // Progressive loading states
+  const [loadingProgress, setLoadingProgress] = useState({
+    categories: false,
+    brands: false,
+    suppliers: false,
+    products: false,
+    stockMovements: false,
+    sales: false
+  });
+  
+  // Cache management
+  const [dataCache, setDataCache] = useState({
+    categories: null as Category[] | null,
+    brands: null as Brand[] | null,
+    suppliers: null as Supplier[] | null,
+    products: null as Product[] | null,
+    stockMovements: null as StockMovement[] | null,
+    sales: null as any[] | null
+  });
   
   // State management
   const [activeTab, setActiveTab] = useState<TabType>('inventory');
@@ -108,75 +164,98 @@ const UnifiedInventoryPage: React.FC = () => {
 
   // Form state variables
   const [showStockAdjustModal, setShowStockAdjustModal] = useState(false);
-  const [showBrandForm, setShowBrandForm] = useState(false);
   const [showCategoryForm, setShowCategoryForm] = useState(false);
   const [showSupplierForm, setShowSupplierForm] = useState(false);
   const [selectedProductForHistory, setSelectedProductForHistory] = useState<string | null>(null);
 
-  // Load data from database on component mount
+  // Optimized data loading with parallel execution and caching
   useEffect(() => {
     const loadData = async () => {
       // Prevent multiple simultaneous loads
       if (isDataLoading) {
-        console.log('⏳ LATS Unified Inventory: Data loading already in progress, skipping...');
+        console.log('⏳ Data loading already in progress, skipping...');
         return;
       }
 
-      // Check if we recently loaded data
+      // Check cooldown period and use cache if available
       const timeSinceLastLoad = Date.now() - lastDataLoadTime;
-      if (timeSinceLastLoad < DATA_LOAD_COOLDOWN) {
-        console.log(`⏳ LATS Unified Inventory: Data loaded recently (${Math.round(timeSinceLastLoad / 1000)}s ago), skipping...`);
+      if (timeSinceLastLoad < DATA_LOAD_COOLDOWN && dataCache.products && dataCache.categories && dataCache.brands) {
+        console.log(`⏳ Data loaded recently (${Math.round(timeSinceLastLoad / 1000)}s ago), using cache...`);
+        setShowLoadingSkeleton(false);
         return;
       }
 
       await withErrorHandling(async () => {
-        console.log('🔧 LATS Unified Inventory: Loading data...');
         setIsDataLoading(true);
         setDbStatus('connecting');
         setShowLoadingSkeleton(true);
         
         try {
-          // Run database diagnostics first
-          console.log('🔍 Running database diagnostics...');
-          const diagnosticResult = await runDatabaseDiagnostics();
-          logDiagnosticResult(diagnosticResult);
-          
-          if (diagnosticResult.errors.length > 0) {
-            console.warn('⚠️ Database issues detected:', diagnosticResult.errors);
-            if (diagnosticResult.recommendations.length > 0) {
-              console.log('💡 Recommendations:', diagnosticResult.recommendations);
-            }
+          // Run diagnostics only once per session or on first load
+          if (lastDataLoadTime === 0) {
+            runDatabaseDiagnostics().then(diagnosticResult => {
+              if (diagnosticResult.errors.length > 0) {
+                console.warn('⚠️ Database issues detected:', diagnosticResult.errors);
+              }
+            });
           }
-          
-          // Show loading skeleton for at least 500ms for better UX
+
           const loadingStartTime = Date.now();
           
-          // Load data sequentially to avoid conflicts
-          console.log('📊 Loading categories...');
-          await loadCategories();
-          
-          console.log('📊 Loading brands...');
-          await loadBrands();
-          
-          console.log('📊 Loading suppliers...');
-          await loadSuppliers();
-          
-          console.log('📊 Loading products...');
-          await loadProducts();
-          
-          console.log('📊 Loading stock movements...');
-          await loadStockMovements();
-          
-          console.log('📊 Loading sales...');
-          await loadSales();
-          
-          // Ensure minimum loading time for better UX
+          // Reset loading progress
+          setLoadingProgress({
+            categories: false,
+            brands: false,
+            suppliers: false,
+            products: false,
+            stockMovements: false,
+            sales: false
+          });
+
+          // Load essential data in parallel (categories, brands, suppliers)
+          const essentialDataPromises = [
+            loadCategories().then(() => {
+              setLoadingProgress(prev => ({ ...prev, categories: true }));
+            }),
+            loadBrands().then(() => {
+              setLoadingProgress(prev => ({ ...prev, brands: true }));
+            }),
+            loadSuppliers().then(() => {
+              setLoadingProgress(prev => ({ ...prev, suppliers: true }));
+            })
+          ];
+
+          await Promise.all(essentialDataPromises);
+
+          // Load products (most important for UI)
+          await loadProducts({ page: 1, limit: 50 });
+          setLoadingProgress(prev => ({ ...prev, products: true }));
+
+          // Load secondary data in parallel (stock movements and sales)
+          const secondaryDataPromises = [
+            loadStockMovements().then(() => {
+              setLoadingProgress(prev => ({ ...prev, stockMovements: true }));
+            }),
+            loadSales().then(() => {
+              setLoadingProgress(prev => ({ ...prev, sales: true }));
+            })
+          ];
+
+          await Promise.all(secondaryDataPromises);
+
+          // Cache the loaded data
+          setDataCache({
+            categories: categories,
+            brands: brands,
+            suppliers: suppliers,
+            products: products,
+            stockMovements: stockMovements,
+            sales: sales
+          });
+
           const loadingTime = Date.now() - loadingStartTime;
-          if (loadingTime < 500) {
-            await new Promise(resolve => setTimeout(resolve, 500 - loadingTime));
-          }
+          console.log(`✅ Data loaded successfully in ${loadingTime}ms`);
           
-          console.log('📊 LATS Unified Inventory: Data loaded successfully');
           setDbStatus('connected');
           setLastDataLoadTime(Date.now());
           setShowLoadingSkeleton(false);
@@ -193,7 +272,7 @@ const UnifiedInventoryPage: React.FC = () => {
     };
     
     loadData();
-  }, [withErrorHandling, loadProducts, loadCategories, loadBrands, loadSuppliers, loadStockMovements, loadSales, isDataLoading, lastDataLoadTime]);
+  }, [withErrorHandling, loadProducts, loadCategories, loadBrands, loadSuppliers, loadStockMovements, loadSales, isDataLoading, lastDataLoadTime, dataCache.products, dataCache.categories, dataCache.brands]);
 
   // Calculate metrics
   const metrics = useMemo(() => {
@@ -406,16 +485,13 @@ const UnifiedInventoryPage: React.FC = () => {
             const product = products.find(p => p.id === productId);
             if (product) {
               const isFeatured = product.isFeatured;
-              const newTags = isFeatured 
-                ? product.tags.filter((tag: string) => tag !== 'featured')
-                : [...product.tags, 'featured'];
-              
-              await updateProduct(productId, { tags: newTags });
+                      // Note: tags field removed from database schema
+        await updateProduct(productId, { isActive: true });
             }
           });
           
           await Promise.all(updatePromises);
-          toast.success(`Successfully ${selectedProducts.some(id => products.find(p => p.id === id)?.tags.includes('featured')) ? 'unfeatured' : 'featured'} ${selectedProducts.length} products`);
+          toast.success(`Successfully updated ${selectedProducts.length} products`);
           setSelectedProducts([]);
         } catch (error) {
           console.error('Feature error:', error);
@@ -467,7 +543,7 @@ const UnifiedInventoryPage: React.FC = () => {
                   brandId: '',
                   supplierId: '',
                   images: [],
-                  tags: productData.tags ? productData.tags.split(',').map((t: string) => t.trim()) : [],
+          
                   variants: [{
                     sku: productData.sku || productData.product_code,
                     name: productData.name || productData.product_name,
@@ -501,7 +577,7 @@ const UnifiedInventoryPage: React.FC = () => {
             }
             
             await Promise.all([
-              loadProducts(),
+              loadProducts({ page: 1, limit: 50 }),
               loadCategories(),
               loadBrands(),
               loadSuppliers()
@@ -529,12 +605,12 @@ const UnifiedInventoryPage: React.FC = () => {
   const handleExport = () => {
     try {
       const csvContent = "data:text/csv;charset=utf-8," + 
-        "Name,SKU,Category,Brand,Price,Stock,Status,Description,Tags\n" +
+        "Name,SKU,Category,Brand,Price,Stock,Status,Description\n" +
         products.map(product => {
           const category = categories.find(c => c.id === product.categoryId);
                         const brand = product.brand;
           const mainVariant = product.variants?.[0];
-          return `"${product.name}","${mainVariant?.sku || 'N/A'}","${category?.name || 'Uncategorized'}","${brand?.name || 'No Brand'}","${mainVariant?.sellingPrice || 0}","${product.totalQuantity || 0}","${product.isActive ? 'Active' : 'Inactive'}","${product.description || ''}","${product.tags.join(', ')}"`;
+          return `"${product.name}","${mainVariant?.sku || 'N/A'}","${category?.name || 'Uncategorized'}","${brand?.name || 'No Brand'}","${mainVariant?.sellingPrice || 0}","${product.totalQuantity || 0}","${product.isActive ? 'Active' : 'Inactive'}","${product.description || ''}"`;
         }).join("\n");
       
       const encodedUri = encodeURI(csvContent);
@@ -580,6 +656,9 @@ const UnifiedInventoryPage: React.FC = () => {
 
   return (
     <PageErrorBoundary pageName="Unified Inventory Management" showDetails={true}>
+      {/* Loading Progress Indicator */}
+      {isDataLoading && <LoadingProgressIndicator progress={loadingProgress} />}
+      
       <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
@@ -613,7 +692,7 @@ const UnifiedInventoryPage: React.FC = () => {
 
           <div className="flex flex-wrap gap-3">
             <GlassButton
-              onClick={productModals.openAddModal}
+              onClick={() => navigate('/lats/add-product')}
               icon={<Plus size={18} />}
               className="bg-gradient-to-r from-blue-500 to-purple-600 text-white"
             >
@@ -644,7 +723,7 @@ const UnifiedInventoryPage: React.FC = () => {
               <GlassButton
                 onClick={() => {
                   setDbStatus('connecting');
-                  loadProducts();
+                  loadProducts({ page: 1, limit: 50 });
                   loadCategories();
                   loadBrands();
                   loadSuppliers();
@@ -763,7 +842,6 @@ const UnifiedInventoryPage: React.FC = () => {
 
         {activeTab === 'settings' && (
           <SettingsTab 
-            setShowBrandForm={setShowBrandForm}
             setShowCategoryForm={setShowCategoryForm}
             setShowSupplierForm={setShowSupplierForm}
           />
@@ -775,7 +853,7 @@ const UnifiedInventoryPage: React.FC = () => {
           onClose={productModals.closeAddModal}
           onProductCreated={(product) => {
             toast.success('Product created successfully!');
-            loadProducts();
+            loadProducts({ page: 1, limit: 50 });
           }}
         />
 
@@ -785,7 +863,7 @@ const UnifiedInventoryPage: React.FC = () => {
           productId={productModals.editingProductId || ''}
           onProductUpdated={(product) => {
             toast.success('Product updated successfully!');
-            loadProducts();
+            loadProducts({ page: 1, limit: 50 });
           }}
         />
 
@@ -836,22 +914,7 @@ const UnifiedInventoryPage: React.FC = () => {
           loading={isLoading}
         />
 
-        {showBrandForm && (
-          <BrandForm
-            isOpen={showBrandForm}
-            onClose={() => setShowBrandForm(false)}
-            onSubmit={async (brandData) => {
-              try {
-                await createBrand(brandData);
-                toast.success('Brand created successfully');
-                setShowBrandForm(false);
-              } catch (error) {
-                toast.error('Failed to create brand');
-                console.error('Brand creation error:', error);
-              }
-            }}
-          />
-        )}
+
 
         {showSupplierForm && (
           <SupplierForm

@@ -13,29 +13,22 @@ import PriceInput from '../../../../shared/components/ui/PriceInput';
 import { t } from '../../lib/i18n/t';
 
 // Validation schema
-const variantFormSchema = z.object({
-  sku: z.string().min(1, 'SKU is required').max(50, 'SKU must be less than 50 characters'),
-  name: z.string().min(1, 'Variant name is required').max(100, 'Variant name must be less than 100 characters'),
+const variantSchema = z.object({
+  sku: z.string().min(1, 'SKU is required'),
+  name: z.string().min(1, 'Variant name is required'),
   barcode: z.string().optional(),
   price: z.number().min(0, 'Price must be 0 or greater'),
   costPrice: z.number().min(0, 'Cost price must be 0 or greater'),
   stockQuantity: z.number().min(0, 'Stock quantity must be 0 or greater'),
   minStockLevel: z.number().min(0, 'Minimum stock level must be 0 or greater'),
-  maxStockLevel: z.number().min(0, 'Maximum stock level must be 0 or greater'),
-  weight: z.number().min(0, 'Weight must be 0 or greater').optional(),
-  dimensions: z.object({
-    length: z.number().min(0, 'Length must be 0 or greater').optional(),
-    width: z.number().min(0, 'Width must be 0 or greater').optional(),
-    height: z.number().min(0, 'Height must be 0 or greater').optional()
-  }).optional(),
-  attributes: z.record(z.string()).optional(),
-  isActive: z.boolean().default(true)
+
+  attributes: z.record(z.any()).default({})
 });
 
-type VariantFormData = z.infer<typeof variantFormSchema>;
+type VariantFormData = z.infer<typeof variantSchema>;
 
 interface ProductVariant {
-  id: string;
+  id?: string;
   sku: string;
   name: string;
   barcode?: string;
@@ -43,17 +36,12 @@ interface ProductVariant {
   costPrice: number;
   stockQuantity: number;
   minStockLevel: number;
-  maxStockLevel: number;
-  weight?: number;
   dimensions?: {
     length?: number;
     width?: number;
     height?: number;
   };
-  attributes?: Record<string, string>;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
+  attributes: Record<string, any>;
 }
 
 interface VariantFormProps {
@@ -81,7 +69,7 @@ const VariantForm: React.FC<VariantFormProps> = ({
     watch,
     reset
   } = useForm<VariantFormData>({
-    resolver: zodResolver(variantFormSchema),
+    resolver: zodResolver(variantSchema),
     defaultValues: {
       sku: variant?.sku || '',
       name: variant?.name || '',
@@ -90,11 +78,8 @@ const VariantForm: React.FC<VariantFormProps> = ({
       costPrice: variant?.costPrice || 0,
       stockQuantity: variant?.stockQuantity || 0,
       minStockLevel: variant?.minStockLevel || 0,
-      maxStockLevel: variant?.maxStockLevel || 100,
-      weight: variant?.weight || 0,
-      dimensions: variant?.dimensions || { length: 0, width: 0, height: 0 },
-      attributes: variant?.attributes || {},
-      isActive: variant?.isActive ?? true
+  
+      attributes: variant?.attributes || {}
     }
   });
 
@@ -105,11 +90,10 @@ const VariantForm: React.FC<VariantFormProps> = ({
   const costPrice = watchedValues.costPrice;
   const stockQuantity = watchedValues.stockQuantity;
   const minStockLevel = watchedValues.minStockLevel;
-  const maxStockLevel = watchedValues.maxStockLevel;
 
   // Calculate profit margin
   const profitMargin = price > 0 ? ((price - costPrice) / price) * 100 : 0;
-  const stockStatus = stockQuantity <= minStockLevel ? 'low' : stockQuantity >= maxStockLevel ? 'high' : 'normal';
+  const stockStatus = stockQuantity <= minStockLevel ? 'low' : stockQuantity >= 100 ? 'high' : 'normal';
 
   // Handle form submission
   const handleFormSubmit = async (data: VariantFormData) => {
@@ -328,24 +312,7 @@ const VariantForm: React.FC<VariantFormProps> = ({
               )}
             />
 
-            {/* Maximum Stock Level */}
-            <Controller
-              name="maxStockLevel"
-              control={control}
-              render={({ field }) => (
-                <GlassInput
-                  label="Maximum Stock Level"
-                  placeholder="100"
-                  type="number"
-                  value={field.value}
-                  onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
-                  error={errors.maxStockLevel?.message}
-                  min={0}
-                  required
-                  helperText="Overstock warning level"
-                />
-              )}
-            />
+
           </div>
 
           {/* Stock Status Summary */}
@@ -360,12 +327,12 @@ const VariantForm: React.FC<VariantFormProps> = ({
                 <div className="text-xs text-lats-text-secondary">Min Level</div>
               </div>
               <div>
-                <div className="text-lg font-semibold text-lats-text">{maxStockLevel}</div>
+                <div className="text-lg font-semibold text-lats-text">{100}</div>
                 <div className="text-xs text-lats-text-secondary">Max Level</div>
               </div>
               <div>
                 <div className="text-lg font-semibold text-lats-text">
-                  {stockQuantity > 0 ? Math.floor((stockQuantity / maxStockLevel) * 100) : 0}%
+                  {stockQuantity > 0 ? Math.floor((stockQuantity / 100) * 100) : 0}%
                 </div>
                 <div className="text-xs text-lats-text-secondary">Stock Level</div>
               </div>
@@ -393,24 +360,7 @@ const VariantForm: React.FC<VariantFormProps> = ({
 
           {isExpanded && (
             <div className="space-y-4 p-4 bg-lats-surface/30 rounded-lats-radius-md border border-lats-glass-border">
-              {/* Weight */}
-              <Controller
-                name="weight"
-                control={control}
-                render={({ field }) => (
-                  <GlassInput
-                    label="Weight (kg)"
-                    placeholder="0.00"
-                    type="number"
-                    value={field.value}
-                    onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                    error={errors.weight?.message}
-                    min={0}
-                    step={0.01}
-                    helperText="Product weight in kilograms"
-                  />
-                )}
-              />
+
 
               {/* Dimensions */}
               <div className="space-y-4">

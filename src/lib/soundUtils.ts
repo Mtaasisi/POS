@@ -27,7 +27,7 @@ export class SoundManager {
     
     // Only initialize AudioContext after user interaction
     if (!this.userInteracted) {
-      console.log('AudioContext: Waiting for user interaction');
+      // Reduced logging to prevent console spam
       return;
     }
     
@@ -52,7 +52,7 @@ export class SoundManager {
         }
         
         this.isInitialized = true;
-        console.log('AudioContext: Initialized successfully');
+        // Reduced logging to prevent console spam
       }
     } catch (error) {
       // Silently handle AudioContext creation errors to prevent console spam
@@ -66,7 +66,7 @@ export class SoundManager {
   static markUserInteracted() {
     if (!this.userInteracted) {
       this.userInteracted = true;
-      console.log('AudioContext: User interaction detected');
+      // Reduced logging to prevent console spam
       // Trigger initialization after user interaction
       this.initialize();
     }

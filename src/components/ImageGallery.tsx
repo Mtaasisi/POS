@@ -20,19 +20,22 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({
 
   // Load images
   useEffect(() => {
+    console.log('🔄 ImageGallery: Loading images for productId:', productId);
     loadImages();
   }, [productId]);
 
   const loadImages = async () => {
     try {
+      console.log('🔄 ImageGallery: Starting to load images for productId:', productId);
       setLoading(true);
       setError(null);
       const productImages = await ImageUploadService.getProductImages(productId);
+      console.log('📥 ImageGallery: Loaded images:', productImages);
       setImages(productImages);
       onImagesChange?.(productImages);
     } catch (err) {
+      console.error('❌ ImageGallery: Failed to load images:', err);
       setError('Failed to load images');
-      console.error('Failed to load images:', err);
     } finally {
       setLoading(false);
     }
@@ -46,13 +49,32 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({
 
     try {
       setDeleting(imageId);
-      const result = await ImageUploadService.deleteImage(imageId);
       
-      if (result.success) {
-        setImages(prev => prev.filter(img => img.id !== imageId));
-        onImagesChange?.(images.filter(img => img.id !== imageId));
+      // Check if this is a temporary product
+      if (productId.startsWith('temp-product-') || productId.startsWith('test-product-')) {
+        console.log('📝 Deleting image for temporary product:', productId, 'imageId:', imageId);
+        
+        // Import the EnhancedImageUploadService to handle temporary products
+        const { EnhancedImageUploadService } = await import('../lib/enhancedImageUpload');
+        const result = await EnhancedImageUploadService.deleteImage(imageId, 'product-images', productId);
+        
+        if (result.success) {
+          // Remove from local state
+          setImages(prev => prev.filter(img => img.id !== imageId));
+          onImagesChange?.(images.filter(img => img.id !== imageId));
+        } else {
+          setError(result.error || 'Failed to delete image');
+        }
       } else {
-        setError(result.error || 'Failed to delete image');
+        // Handle real products
+        const result = await ImageUploadService.deleteImage(imageId);
+        
+        if (result.success) {
+          setImages(prev => prev.filter(img => img.id !== imageId));
+          onImagesChange?.(images.filter(img => img.id !== imageId));
+        } else {
+          setError(result.error || 'Failed to delete image');
+        }
       }
     } catch (err) {
       setError('Failed to delete image');
@@ -65,20 +87,36 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({
   // Set primary image
   const handleSetPrimary = async (imageId: string) => {
     try {
-      // Update the image to be primary
-      const { data, error } = await supabase
-        .from('product_images')
-        .update({ is_primary: true })
-        .eq('id', imageId)
-        .select();
+      // Check if this is a temporary product
+      if (productId.startsWith('temp-product-') || productId.startsWith('test-product-')) {
+        console.log('📝 Setting primary image for temporary product:', productId, 'imageId:', imageId);
+        
+        // Import the EnhancedImageUploadService to handle temporary products
+        const { EnhancedImageUploadService } = await import('../lib/enhancedImageUpload');
+        const result = await EnhancedImageUploadService.setPrimaryImage(imageId, productId);
+        
+        if (result.success) {
+          // Reload images to get updated state
+          await loadImages();
+        } else {
+          setError(result.error || 'Failed to set primary image');
+        }
+      } else {
+        // Handle real products (database update)
+        const { data, error } = await supabase
+          .from('product_images')
+          .update({ is_primary: true })
+          .eq('id', imageId)
+          .select();
 
-      if (error) {
-        setError('Failed to set primary image');
-        return;
+        if (error) {
+          setError('Failed to set primary image');
+          return;
+        }
+
+        // Reload images to get updated state
+        await loadImages();
       }
-
-      // Reload images to get updated state
-      await loadImages();
     } catch (err) {
       setError('Failed to set primary image');
       console.error('Set primary error:', err);
@@ -108,14 +146,7 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({
   }
 
   if (images.length === 0) {
-    return (
-      <div className={`text-center p-8 text-gray-500 ${className}`}>
-        <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-        </svg>
-        <p className="mt-2">No images uploaded yet</p>
-      </div>
-    );
+    return null; // Hide the component when there are no images
   }
 
   return (

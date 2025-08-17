@@ -75,6 +75,60 @@ export class EnhancedImageUploadService {
   }
 
   /**
+   * Diagnostic function to check upload environment
+   */
+  static async diagnoseUploadEnvironment(): Promise<{
+    networkStatus: boolean;
+    supabaseConnection: boolean;
+    storageAccess: boolean;
+    fileSizeLimit: boolean;
+    issues: string[];
+  }> {
+    const issues: string[] = [];
+    
+    // Check network status
+    const networkStatus = navigator.onLine;
+    if (!networkStatus) {
+      issues.push('No internet connection');
+    }
+    
+    // Check Supabase connection
+    let supabaseConnection = false;
+    try {
+      const { data, error } = await supabase.from('devices').select('count').limit(1);
+      supabaseConnection = !error;
+      if (error) {
+        issues.push(`Supabase connection failed: ${error.message}`);
+      }
+    } catch (error: any) {
+      issues.push(`Supabase connection error: ${error.message}`);
+    }
+    
+    // Check storage access
+    let storageAccess = false;
+    try {
+      const { data, error } = await supabase.storage.from('product-images').list('', { limit: 1 });
+      storageAccess = !error;
+      if (error) {
+        issues.push(`Storage access failed: ${error.message}`);
+      }
+    } catch (error: any) {
+      issues.push(`Storage access error: ${error.message}`);
+    }
+    
+    // Check file size limit
+    const fileSizeLimit = true; // This would be checked per file
+    
+    return {
+      networkStatus,
+      supabaseConnection,
+      storageAccess,
+      fileSizeLimit,
+      issues
+    };
+  }
+
+  /**
    * Upload a single image with enhanced features
    */
   static async uploadImage(
@@ -132,22 +186,77 @@ export class EnhancedImageUploadService {
         path: filePath
       });
 
-      // Upload to storage
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from(bucket)
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: false,
-          contentType: file.type
+      // Add timeout wrapper for upload
+      const uploadWithTimeout = async () => {
+        const uploadPromise = supabase.storage
+          .from(bucket)
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false,
+            contentType: file.type
+          });
+
+        // Create a timeout promise
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Upload timeout after 30 seconds')), 30000);
         });
+
+        // Race between upload and timeout
+        return Promise.race([uploadPromise, timeoutPromise]) as Promise<{ data: any; error: any }>;
+      };
+
+      console.log('⏱️ Starting upload with 30-second timeout...');
+      const { data: uploadData, error: uploadError } = await uploadWithTimeout();
+      console.log('📤 Upload completed:', { uploadData, uploadError });
 
       if (uploadError) {
         console.error('❌ Upload failed:', uploadError);
+        console.error('❌ Upload error details:', {
+          message: uploadError.message,
+          statusCode: uploadError.statusCode,
+          error: uploadError.error,
+          details: uploadError.details
+        });
+        
+        // Fallback: Store image locally for temporary products
+        if (productId.startsWith('temp-product-') || productId.startsWith('test-product-')) {
+          console.log('🔄 Attempting local fallback for temporary product...');
+          try {
+            const localImageUrl = URL.createObjectURL(file);
+            const uploadedImage: UploadedImage = {
+              id: `local-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`,
+              url: localImageUrl,
+              thumbnailUrl: localImageUrl,
+              fileName: file.name,
+              fileSize: file.size,
+              mimeType: file.type,
+              isPrimary: isPrimary,
+              uploadedAt: new Date().toISOString()
+            };
+
+            // Store in development mode storage
+            if (!this.devImageStorage.has(productId)) {
+              this.devImageStorage.set(productId, []);
+            }
+            this.devImageStorage.get(productId)!.push(uploadedImage);
+
+            console.log('✅ Local fallback successful:', uploadedImage);
+            return {
+              success: true,
+              image: uploadedImage
+            };
+          } catch (fallbackError) {
+            console.error('❌ Local fallback also failed:', fallbackError);
+          }
+        }
+        
         return { 
           success: false, 
           error: this.getErrorMessage(uploadError) 
         };
       }
+
+      console.log('✅ File uploaded successfully to storage');
 
       // Get public URL
       const { data: urlData } = supabase.storage
@@ -161,44 +270,41 @@ export class EnhancedImageUploadService {
       let thumbnailUrl: string | undefined;
       if (generateThumbnail && file.type !== 'image/svg+xml') {
         try {
-          console.log('🔄 Generating compressed thumbnail...');
+          console.log('🔄 Generating optimal thumbnail with recommended specifications...');
           
-          // Determine optimal format for compression
-          const optimalFormat = ImageCompressionService.getOptimalFormat(file.type);
-          
-          // Compress the image
-          const compressedImage = await ImageCompressionService.compressImage(file, {
-            maxWidth: thumbnailSize.width,
-            maxHeight: thumbnailSize.height,
-            quality: 0.8,
-            format: optimalFormat as 'jpeg' | 'webp' | 'png'
-          });
+          // Generate optimal thumbnail according to recommended specs
+          const optimalThumbnail = await ImageCompressionService.generateOptimalThumbnail(
+            file,
+            'SMALL' // Use small size (150x150) for POS grids
+          );
 
           // Log compression statistics
-          const stats = ImageCompressionService.getCompressionStats(file.size, compressedImage.size);
-          console.log('📊 Compression stats:', {
+          const stats = ImageCompressionService.getCompressionStats(file.size, optimalThumbnail.size);
+          console.log('📊 Optimal thumbnail stats:', {
             original: stats.originalSize,
             compressed: stats.compressedSize,
             savings: `${stats.savings} (${stats.savingsPercent}%)`,
-            ratio: stats.compressionRatio
+            ratio: stats.compressionRatio,
+            dimensions: `${optimalThumbnail.width}x${optimalThumbnail.height}`,
+            format: optimalThumbnail.format
           });
 
-          // Upload compressed thumbnail to storage
+          // Upload optimal thumbnail to storage
           thumbnailUrl = await ImageCompressionService.uploadCompressedThumbnail(
-            compressedImage,
+            optimalThumbnail,
             productId,
             file.name,
             bucket
           );
 
           if (thumbnailUrl) {
-            console.log('✅ Compressed thumbnail uploaded successfully');
+            console.log('✅ Optimal thumbnail uploaded successfully');
           } else {
-            console.warn('⚠️ Failed to upload compressed thumbnail, continuing without thumbnail');
+            console.warn('⚠️ Failed to upload optimal thumbnail, continuing without thumbnail');
           }
         } catch (error) {
-          console.error('❌ Thumbnail compression failed:', error);
-          // Continue without thumbnail if compression fails
+          console.error('❌ Optimal thumbnail generation failed:', error);
+          // Continue without thumbnail if generation fails
         }
       }
 
@@ -328,8 +434,29 @@ export class EnhancedImageUploadService {
   /**
    * Delete an image
    */
-  static async deleteImage(imageId: string, bucket: string = 'product-images'): Promise<UploadResult> {
+  static async deleteImage(imageId: string, bucket: string = 'product-images', productId?: string): Promise<UploadResult> {
     try {
+      // Handle temporary products
+      if (productId && (productId.startsWith('temp-product-') || productId.startsWith('test-product-'))) {
+        console.log('📝 Deleting image for temporary product:', productId, 'imageId:', imageId);
+        
+        const devImages = this.devImageStorage.get(productId) || [];
+        const imageToDelete = devImages.find(img => img.id === imageId);
+        
+        if (!imageToDelete) {
+          console.error('❌ Image not found in development storage:', imageId);
+          return { success: false, error: 'Image not found' };
+        }
+        
+        // Remove from development storage
+        const updatedImages = devImages.filter(img => img.id !== imageId);
+        this.devImageStorage.set(productId, updatedImages);
+        
+        console.log('✅ Image deleted from development storage:', imageId);
+        return { success: true };
+      }
+
+      // Handle real products (database and storage deletion)
       // Get image info from database
       const { data: imageData, error: fetchError } = await supabase
         .from('product_images')
@@ -344,8 +471,8 @@ export class EnhancedImageUploadService {
       // Extract file path from URL
       const urlParts = imageData.image_url.split('/');
       const fileName = urlParts[urlParts.length - 1];
-      const productId = urlParts[urlParts.length - 2];
-      const filePath = `${productId}/${fileName}`;
+      const extractedProductId = urlParts[urlParts.length - 2];
+      const filePath = `${extractedProductId}/${fileName}`;
 
       // Delete from storage
       const { error: storageError } = await supabase.storage
@@ -384,8 +511,32 @@ export class EnhancedImageUploadService {
   /**
    * Set an image as primary
    */
-  static async setPrimaryImage(imageId: string): Promise<UploadResult> {
+  static async setPrimaryImage(imageId: string, productId?: string): Promise<UploadResult> {
     try {
+      // Handle temporary products
+      if (productId && (productId.startsWith('temp-product-') || productId.startsWith('test-product-'))) {
+        console.log('📝 Setting primary image for temporary product:', productId, 'imageId:', imageId);
+        
+        const devImages = this.devImageStorage.get(productId) || [];
+        
+        // Update all images to set isPrimary = false
+        devImages.forEach(img => {
+          img.isPrimary = false;
+        });
+        
+        // Set the selected image as primary
+        const targetImage = devImages.find(img => img.id === imageId);
+        if (targetImage) {
+          targetImage.isPrimary = true;
+          console.log('✅ Primary image set successfully for temporary product:', imageId);
+          return { success: true };
+        } else {
+          console.error('❌ Image not found in development storage:', imageId);
+          return { success: false, error: 'Image not found' };
+        }
+      }
+
+      // Handle real products (database update)
       const { data, error } = await supabase
         .from('product_images')
         .update({ is_primary: true })

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { ShoppingCart, DollarSign, CreditCard, Receipt, Trash2, Package, Search } from 'lucide-react';
+import { ShoppingCart, DollarSign, CreditCard, Receipt, Trash2, Package, Search, Bug, X } from 'lucide-react';
 import { useInventoryStore } from '../../stores/useInventoryStore';
 import { usePOSStore } from '../../stores/usePOSStore';
 import GlassCard from '../ui/GlassCard';
@@ -36,11 +36,70 @@ const EnhancedPOSComponent: React.FC = () => {
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
+  const [debugInfo, setDebugInfo] = useState<any>(null);
+  const [showDebug, setShowDebug] = useState(false);
 
   // Load products on mount
   useEffect(() => {
-    loadProducts();
+    loadProducts({ page: 1, limit: 50 });
   }, [loadProducts]);
+
+  // Debug data fetching and validation
+  useEffect(() => {
+    const debugData = {
+      timestamp: new Date().toISOString(),
+      inventoryStore: {
+        productsCount: products?.length || 0,
+        isLoading: inventoryLoading,
+        error: inventoryError?.message || null,
+        hasProducts: !!products && products.length > 0
+      },
+      posStore: {
+        searchResultsCount: searchResults?.length || 0,
+        searchTerm,
+        isSearchingProducts,
+        hasSearchResults: !!searchResults && searchResults.length > 0
+      },
+      localState: {
+        cartItemsCount: cartItems.length,
+        searchQuery,
+        showSearchResults,
+        selectedPaymentMethod,
+        customerName,
+        customerPhone,
+        customerEmail,
+        hasCartItems: cartItems.length > 0
+      },
+      dataIntegrity: {
+        productsHaveVariants: products?.every(p => p.variants && p.variants.length > 0),
+        productsHavePrices: products?.every(p => p.variants?.some(v => v.sellingPrice > 0)),
+        productsHaveStock: products?.every(p => p.variants?.some(v => v.quantity >= 0))
+      }
+    };
+
+    setDebugInfo(debugData);
+    
+    // Log debugging information
+    console.log('🔍 EnhancedPOSComponent Debug Info:', debugData);
+    
+    // Check for data issues
+    if (inventoryLoading) {
+      console.log('⏳ EnhancedPOSComponent: Loading products...');
+    }
+    
+    if (inventoryError) {
+      console.error('❌ EnhancedPOSComponent: Error loading products:', inventoryError);
+    }
+    
+    if (products && products.length === 0) {
+      console.warn('⚠️ EnhancedPOSComponent: No products loaded');
+    }
+    
+    if (products?.some(p => !p.variants || p.variants.length === 0)) {
+      console.warn('⚠️ EnhancedPOSComponent: Some products have no variants', products.filter(p => !p.variants || p.variants.length === 0));
+    }
+    
+  }, [products, inventoryLoading, inventoryError, searchResults, searchTerm, isSearchingProducts, cartItems, searchQuery, showSearchResults, selectedPaymentMethod, customerName, customerPhone, customerEmail]);
 
   // Handle product search
   const handleSearch = async (query: string) => {

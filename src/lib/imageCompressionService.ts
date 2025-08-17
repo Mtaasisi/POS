@@ -26,6 +26,13 @@ export class ImageCompressionService {
     maintainAspectRatio: true
   };
 
+  // Recommended thumbnail specifications
+  private static readonly THUMBNAIL_SPECS = {
+    SMALL: { width: 150, height: 150, quality: 0.85, maxSizeKB: 50 },
+    MEDIUM: { width: 200, height: 200, quality: 0.8, maxSizeKB: 80 },
+    LARGE: { width: 300, height: 300, quality: 0.75, maxSizeKB: 120 }
+  };
+
   /**
    * Compress an image file for thumbnail generation
    */
@@ -103,32 +110,118 @@ export class ImageCompressionService {
   }
 
   /**
-   * Generate multiple compressed versions of an image
+   * Generate optimal product thumbnail according to recommended specifications
+   * - Square ratio (1:1)
+   * - 150x150 to 200x200 pixels
+   * - Under 50KB file size
+   * - WebP format (with JPEG fallback)
    */
-  static async generateMultipleSizes(
+  static async generateOptimalThumbnail(
     file: File,
-    sizes: Array<{ width: number; height: number; quality?: number }>
-  ): Promise<Array<CompressedImage & { sizeName: string }>> {
-    const results: Array<CompressedImage & { sizeName: string }> = [];
+    targetSize: 'SMALL' | 'MEDIUM' | 'LARGE' = 'SMALL'
+  ): Promise<CompressedImage> {
+    const specs = this.THUMBNAIL_SPECS[targetSize];
+    
+    // Try WebP first (best compression)
+    try {
+      const webpResult = await this.compressImage(file, {
+        maxWidth: specs.width,
+        maxHeight: specs.height,
+        quality: specs.quality,
+        format: 'webp',
+        maintainAspectRatio: false // Force square ratio
+      });
 
-    for (const size of sizes) {
-      try {
-        const compressed = await this.compressImage(file, {
-          maxWidth: size.width,
-          maxHeight: size.height,
-          quality: size.quality || 0.8
+      // Check if file size is within limits
+      if (webpResult.size <= specs.maxSizeKB * 1024) {
+        console.log(`✅ Optimal ${targetSize} thumbnail generated (WebP):`, {
+          size: `${(webpResult.size / 1024).toFixed(1)}KB`,
+          dimensions: `${webpResult.width}x${webpResult.height}`,
+          compressionRatio: webpResult.compressionRatio.toFixed(2)
         });
-
-        results.push({
-          ...compressed,
-          sizeName: `${size.width}x${size.height}`
-        });
-      } catch (error) {
-        console.error(`Failed to generate ${size.width}x${size.height} version:`, error);
+        return webpResult;
       }
+
+      // If too large, reduce quality and try again
+      const reducedQuality = Math.max(0.5, specs.quality - 0.1);
+      const reducedResult = await this.compressImage(file, {
+        maxWidth: specs.width,
+        maxHeight: specs.height,
+        quality: reducedQuality,
+        format: 'webp',
+        maintainAspectRatio: false
+      });
+
+      if (reducedResult.size <= specs.maxSizeKB * 1024) {
+        console.log(`✅ Optimal ${targetSize} thumbnail generated (WebP, reduced quality):`, {
+          size: `${(reducedResult.size / 1024).toFixed(1)}KB`,
+          dimensions: `${reducedResult.width}x${reducedResult.height}`,
+          compressionRatio: reducedResult.compressionRatio.toFixed(2)
+        });
+        return reducedResult;
+      }
+
+    } catch (webpError) {
+      console.warn('⚠️ WebP generation failed, falling back to JPEG:', webpError);
     }
 
-    return results;
+    // Fallback to JPEG if WebP fails or is too large
+    try {
+      const jpegResult = await this.compressImage(file, {
+        maxWidth: specs.width,
+        maxHeight: specs.height,
+        quality: specs.quality,
+        format: 'jpeg',
+        maintainAspectRatio: false
+      });
+
+      // If still too large, reduce quality further
+      if (jpegResult.size > specs.maxSizeKB * 1024) {
+        const finalQuality = Math.max(0.4, specs.quality - 0.2);
+        const finalResult = await this.compressImage(file, {
+          maxWidth: specs.width,
+          maxHeight: specs.height,
+          quality: finalQuality,
+          format: 'jpeg',
+          maintainAspectRatio: false
+        });
+
+        console.log(`✅ Optimal ${targetSize} thumbnail generated (JPEG, reduced quality):`, {
+          size: `${(finalResult.size / 1024).toFixed(1)}KB`,
+          dimensions: `${finalResult.width}x${finalResult.height}`,
+          compressionRatio: finalResult.compressionRatio.toFixed(2)
+        });
+        return finalResult;
+      }
+
+      console.log(`✅ Optimal ${targetSize} thumbnail generated (JPEG):`, {
+        size: `${(jpegResult.size / 1024).toFixed(1)}KB`,
+        dimensions: `${jpegResult.width}x${jpegResult.height}`,
+        compressionRatio: jpegResult.compressionRatio.toFixed(2)
+      });
+      return jpegResult;
+
+    } catch (jpegError) {
+      console.error('❌ JPEG fallback also failed:', jpegError);
+      throw new Error('Failed to generate optimal thumbnail in any format');
+    }
+  }
+
+  /**
+   * Generate multiple thumbnail sizes for different use cases
+   */
+  static async generateThumbnailSet(file: File): Promise<{
+    small: CompressedImage;
+    medium: CompressedImage;
+    large: CompressedImage;
+  }> {
+    const [small, medium, large] = await Promise.all([
+      this.generateOptimalThumbnail(file, 'SMALL'),
+      this.generateOptimalThumbnail(file, 'MEDIUM'),
+      this.generateOptimalThumbnail(file, 'LARGE')
+    ]);
+
+    return { small, medium, large };
   }
 
   /**
@@ -229,64 +322,68 @@ export class ImageCompressionService {
   }
 
   /**
-   * Get MIME type for image format
+   * Get optimal format for a given file type
    */
-  private static getMimeType(format: string): string {
-    switch (format.toLowerCase()) {
-      case 'jpeg':
-      case 'jpg':
-        return 'image/jpeg';
-      case 'webp':
-        return 'image/webp';
-      case 'png':
-        return 'image/png';
-      default:
-        return 'image/jpeg';
-    }
-  }
-
-  /**
-   * Get file extension for image format
-   */
-  private static getFileExtension(format: string): string {
-    switch (format.toLowerCase()) {
-      case 'jpeg':
-      case 'jpg':
-        return 'jpg';
-      case 'webp':
-        return 'webp';
-      case 'png':
-        return 'png';
-      default:
-        return 'jpg';
-    }
-  }
-
-  /**
-   * Check if WebP is supported in the browser
-   */
-  static isWebPSupported(): boolean {
+  static getOptimalFormat(fileType: string): 'webp' | 'jpeg' | 'png' {
+    // Check if WebP is supported
     const canvas = document.createElement('canvas');
-    canvas.width = 1;
-    canvas.height = 1;
-    return canvas.toDataURL('image/webp').indexOf('image/webp') === 5;
-  }
-
-  /**
-   * Get optimal format based on browser support and file type
-   */
-  static getOptimalFormat(originalFormat: string): string {
-    // If WebP is supported and original is not SVG, use WebP for better compression
-    if (this.isWebPSupported() && originalFormat !== 'image/svg+xml') {
-      return 'webp';
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      canvas.width = 1;
+      canvas.height = 1;
+      const webpSupported = canvas.toDataURL('image/webp').startsWith('data:image/webp');
+      
+      if (webpSupported) {
+        return 'webp';
+      }
     }
     
-    // Fallback to JPEG for photos, PNG for graphics
-    if (originalFormat === 'image/png' || originalFormat === 'image/gif') {
+    // Fallback based on original format
+    if (fileType.includes('png') || fileType.includes('transparent')) {
       return 'png';
     }
     
     return 'jpeg';
+  }
+
+  /**
+   * Check if browser supports WebP format
+   */
+  static isWebPSupported(): boolean {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      canvas.width = 1;
+      canvas.height = 1;
+      return canvas.toDataURL('image/webp').startsWith('data:image/webp');
+    }
+    return false;
+  }
+
+  /**
+   * Get file extension for a format
+   */
+  static getFileExtension(format: string): string {
+    switch (format.toLowerCase()) {
+      case 'webp': return 'webp';
+      case 'jpeg':
+      case 'jpg': return 'jpg';
+      case 'png': return 'png';
+      default: return 'jpg';
+    }
+  }
+
+  /**
+   * Get MIME type for a format
+   */
+  static getMimeType(format: string): string {
+    switch (format.toLowerCase()) {
+      case 'webp': return 'image/webp';
+      case 'jpeg':
+      case 'jpg': return 'image/jpeg';
+      case 'png': return 'image/png';
+      default: return 'image/jpeg';
+    }
   }
 
   /**

@@ -1,5 +1,6 @@
 // POS Component for LATS module using inventory store with enhanced variant support
 import React, { useState, useEffect, useMemo } from 'react';
+import { Bug } from 'lucide-react';
 import { useInventoryStore } from '../../stores/useInventoryStore';
 import { usePOSStore } from '../../stores/usePOSStore';
 import GlassCard from '../ui/GlassCard';
@@ -33,11 +34,66 @@ const POSComponent: React.FC = () => {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearchResults, setShowSearchResults] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<any>(null);
+  const [showDebug, setShowDebug] = useState(false);
 
   // Load products on mount
   useEffect(() => {
-    loadProducts();
+    loadProducts({ page: 1, limit: 50 });
   }, [loadProducts]);
+
+  // Debug data fetching and validation
+  useEffect(() => {
+    const debugData = {
+      timestamp: new Date().toISOString(),
+      inventoryStore: {
+        productsCount: products?.length || 0,
+        isLoading,
+        error: error?.message || null,
+        hasProducts: !!products && products.length > 0
+      },
+      posStore: {
+        searchResultsCount: searchResults?.length || 0,
+        searchTerm,
+        isSearchingProducts,
+        hasSearchResults: !!searchResults && searchResults.length > 0
+      },
+      localState: {
+        cartItemsCount: cartItems.length,
+        searchQuery,
+        showSearchResults,
+        hasCartItems: cartItems.length > 0
+      },
+      dataIntegrity: {
+        productsHaveVariants: products?.every(p => p.variants && p.variants.length > 0),
+        productsHavePrices: products?.every(p => p.variants?.some(v => v.sellingPrice > 0)),
+        productsHaveStock: products?.every(p => p.variants?.some(v => v.quantity >= 0))
+      }
+    };
+
+    setDebugInfo(debugData);
+    
+    // Log debugging information
+    console.log('🔍 POSComponent Debug Info:', debugData);
+    
+    // Check for data issues
+    if (isLoading) {
+      console.log('⏳ POSComponent: Loading products...');
+    }
+    
+    if (error) {
+      console.error('❌ POSComponent: Error loading products:', error);
+    }
+    
+    if (products && products.length === 0) {
+      console.warn('⚠️ POSComponent: No products loaded');
+    }
+    
+    if (products?.some(p => !p.variants || p.variants.length === 0)) {
+      console.warn('⚠️ POSComponent: Some products have no variants', products.filter(p => !p.variants || p.variants.length === 0));
+    }
+    
+  }, [products, isLoading, error, searchResults, searchTerm, isSearchingProducts, cartItems, searchQuery, showSearchResults]);
 
   // Handle product search
   const handleSearch = async (query: string) => {
@@ -129,8 +185,32 @@ const POSComponent: React.FC = () => {
     return format.money(amount);
   };
 
+  // Debug panel component
+  const DebugPanel = () => (
+    <div className="fixed top-4 right-4 z-50 bg-black bg-opacity-90 text-white p-4 rounded-lg max-w-md max-h-96 overflow-auto text-xs">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="font-bold">🔍 POS Debug Info</h3>
+        <button onClick={() => setShowDebug(false)} className="text-white hover:text-red-400">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+      <pre className="whitespace-pre-wrap">
+        {JSON.stringify(debugInfo, null, 2)}
+      </pre>
+    </div>
+  );
+
   return (
     <div className="min-h-screen p-6">
+      {/* Debug button */}
+      <button
+        onClick={() => setShowDebug(!showDebug)}
+        className="fixed top-4 left-4 p-2 bg-blue-500 text-white rounded-full opacity-50 hover:opacity-100 transition-opacity z-40"
+        title="Debug Info"
+      >
+        <Bug className="w-4 h-4" />
+      </button>
+
       <div className="max-w-7xl mx-auto">
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-gray-900">Point of Sale</h1>
@@ -366,6 +446,9 @@ const POSComponent: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Debug Panel */}
+      {showDebug && <DebugPanel />}
     </div>
   );
 };

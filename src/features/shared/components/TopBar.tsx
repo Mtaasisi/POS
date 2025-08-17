@@ -133,6 +133,7 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, isMenuOpen, isNavCollapse
       actions.push(
         { label: 'Add Customer', icon: <Users size={16} />, action: () => navigate('/customers') },
         { label: 'Add Device', icon: <Smartphone size={16} />, action: () => navigate('/devices/new') },
+        { label: 'Add Product', icon: <Plus size={16} />, action: () => navigate('/lats/add-product') },
         { label: 'Unified Inventory', icon: <Package size={16} />, action: () => navigate('/lats/unified-inventory') }
       );
     }

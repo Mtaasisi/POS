@@ -26,6 +26,7 @@ import {
   BarChart3,
   Activity,
   ArrowLeft,
+  Clock,
 } from 'lucide-react';
 import SearchDropdown from '../../../shared/components/SearchDropdown';
 
@@ -43,8 +44,10 @@ interface POSTopBarProps {
   onViewReceipts: () => void;
   onViewSales: () => void;
   onOpenPaymentTracking: () => void;
+  onOpenDrafts: () => void;
   isProcessingPayment: boolean;
   hasSelectedCustomer: boolean;
+  draftCount?: number;
 }
 
 const POSTopBar: React.FC<POSTopBarProps> = ({
@@ -61,8 +64,10 @@ const POSTopBar: React.FC<POSTopBarProps> = ({
   onViewReceipts,
   onViewSales,
   onOpenPaymentTracking,
+  onOpenDrafts,
   isProcessingPayment,
   hasSelectedCustomer,
+  draftCount = 0,
 }) => {
   const { currentUser, logout } = useAuth();
   const navigate = useNavigate();
@@ -266,6 +271,25 @@ const POSTopBar: React.FC<POSTopBarProps> = ({
               </button>
               <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-white/95 backdrop-blur-sm border border-gray-200/50 text-gray-700 text-xs font-medium rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-50">
                 Payment Tracking
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-white/95"></div>
+              </div>
+            </div>
+            
+            <div className="relative group">
+              <button 
+                onClick={onOpenDrafts}
+                className="p-3 rounded-lg bg-white/30 hover:bg-white/50 transition-all duration-300 backdrop-blur-sm border border-white/30 shadow-sm hover:scale-110 relative"
+                title="Saved Drafts"
+              >
+                <Clock size={18} className="text-gray-700" />
+                {draftCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-blue-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                    {draftCount > 9 ? '9+' : draftCount}
+                  </span>
+                )}
+              </button>
+              <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-white/95 backdrop-blur-sm border border-gray-200/50 text-gray-700 text-xs font-medium rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-50">
+                Saved Drafts {draftCount > 0 && `(${draftCount})`}
                 <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-white/95"></div>
               </div>
             </div>

@@ -18,7 +18,7 @@ import {
 import { toast } from 'react-hot-toast';
 
 // Import product forms
-import BrandForm from '../components/inventory/BrandForm';
+
 import CategoryFormModal from '../components/inventory/CategoryFormModal';
 import SupplierForm from '../components/inventory/SupplierForm';
 import VariantProductCard from '../components/inventory/VariantProductCard';
@@ -152,7 +152,7 @@ const ProductCatalogPage: React.FC = () => {
 
   // Form state variables
   const [showProductForm, setShowProductForm] = useState(false);
-  const [showBrandForm, setShowBrandForm] = useState(false);
+
   const [showCategoryForm, setShowCategoryForm] = useState(false);
   const [showSupplierForm, setShowSupplierForm] = useState(false);
 
@@ -164,7 +164,7 @@ const ProductCatalogPage: React.FC = () => {
       
       try {
         await Promise.all([
-          loadProducts(),
+          loadProducts({ page: 1, limit: 50 }),
           loadCategories(),
           loadBrands(),
           loadSuppliers()
@@ -198,7 +198,7 @@ const ProductCatalogPage: React.FC = () => {
     try {
       // For now, we'll load all products and handle pagination client-side
       // In a real implementation, you'd want server-side pagination
-      await loadProducts();
+      await loadProducts({ page: 1, limit: 50 });
       setCachedProducts(products || []);
       setHasMore(false); // Disable pagination for now
     } catch (error) {
@@ -217,7 +217,7 @@ const ProductCatalogPage: React.FC = () => {
       
       try {
         await Promise.all([
-          loadProducts(),
+          loadProducts({ page: 1, limit: 50 }),
           loadCategories(),
           loadBrands(),
           loadSuppliers()
@@ -263,7 +263,7 @@ const ProductCatalogPage: React.FC = () => {
       console.log('🔄 [DEBUG] Product created event received, refreshing data...');
       // Clear cache and reload
       localStorage.removeItem(CACHE_KEY);
-      loadProducts();
+      loadProducts({ page: 1, limit: 50 });
       loadCategories();
       loadBrands();
       loadSuppliers();
@@ -273,7 +273,7 @@ const ProductCatalogPage: React.FC = () => {
       console.log('🔄 [DEBUG] Product updated event received, refreshing data...');
       // Clear cache and reload
       localStorage.removeItem(CACHE_KEY);
-      loadProducts();
+      loadProducts({ page: 1, limit: 50 });
       loadCategories();
       loadBrands();
       loadSuppliers();
@@ -283,7 +283,7 @@ const ProductCatalogPage: React.FC = () => {
       console.log('🔄 [DEBUG] Product deleted event received, refreshing data...');
       // Clear cache and reload
       localStorage.removeItem(CACHE_KEY);
-      loadProducts();
+      loadProducts({ page: 1, limit: 50 });
       loadCategories();
       loadBrands();
       loadSuppliers();
@@ -508,16 +508,13 @@ const ProductCatalogPage: React.FC = () => {
               const product = cachedProducts.find(p => p.id === productId);
               if (product) {
                 const isFeatured = product.isFeatured;
-                                 const newTags = isFeatured 
-                   ? product.tags.filter((tag: string) => tag !== 'featured')
-                   : [...product.tags, 'featured'];
-                
-                await updateProduct(productId, { tags: newTags });
+                                         // Note: tags field removed from database schema
+        await updateProduct(productId, { isActive: true });
               }
             });
             
             await Promise.all(updatePromises);
-            toast.success(`Successfully ${selectedProducts.some(id => cachedProducts.find(p => p.id === id)?.tags.includes('featured')) ? 'unfeatured' : 'featured'} ${selectedProducts.length} products`);
+            toast.success(`Successfully updated ${selectedProducts.length} products`);
             setSelectedProducts([]);
           } catch (error) {
             console.error('Feature error:', error);
@@ -573,7 +570,7 @@ const ProductCatalogPage: React.FC = () => {
                   brandId: '', // Will need to be resolved
                   supplierId: '', // Will need to be resolved
                   images: [],
-                  tags: productData.tags ? productData.tags.split(',').map((t: string) => t.trim()) : [],
+          
                   variants: [{
                     sku: productData.sku || productData.product_code,
                     name: productData.name || productData.product_name,
@@ -610,7 +607,7 @@ const ProductCatalogPage: React.FC = () => {
             
             // Reload data
             await Promise.all([
-              loadProducts(),
+              loadProducts({ page: 1, limit: 50 }),
               loadCategories(),
               loadBrands(),
               loadSuppliers()
@@ -638,12 +635,12 @@ const ProductCatalogPage: React.FC = () => {
   const handleExport = () => {
     try {
       const csvContent = "data:text/csv;charset=utf-8," + 
-        "Name,SKU,Category,Brand,Price,Stock,Status,Description,Tags\n" +
+        "Name,SKU,Category,Brand,Price,Stock,Status,Description\n" +
         cachedProducts.map(product => {
           const category = categories.find(c => c.id === product.categoryId);
           const brand = brands.find(b => b.id === product.brandId);
           const mainVariant = product.variants?.[0];
-          return `"${product.name}","${mainVariant?.sku || 'N/A'}","${category?.name || 'Uncategorized'}","${brand?.name || 'No Brand'}","${mainVariant?.sellingPrice || 0}","${product.totalQuantity || 0}","${product.isActive ? 'Active' : 'Inactive'}","${product.description || ''}","${product.tags.join(', ')}"`;
+          return `"${product.name}","${mainVariant?.sku || 'N/A'}","${category?.name || 'Uncategorized'}","${brand?.name || 'No Brand'}","${mainVariant?.sellingPrice || 0}","${product.totalQuantity || 0}","${product.isActive ? 'Active' : 'Inactive'}","${product.description || ''}"`;
         }).join("\n");
       
       const encodedUri = encodeURI(csvContent);
@@ -710,7 +707,7 @@ const ProductCatalogPage: React.FC = () => {
         {
           name: 'iPhone 14 Pro',
           description: 'Latest iPhone with advanced camera system and A16 Bionic chip',
-          tags: ['smartphone', 'apple', 'camera', 'premium'],
+
           variants: [{
             sku: 'IPH14P-128',
             name: 'iPhone 14 Pro 128GB',
@@ -726,7 +723,7 @@ const ProductCatalogPage: React.FC = () => {
         {
           name: 'Samsung Galaxy S23',
           description: 'Flagship Android smartphone with S Pen support',
-          tags: ['smartphone', 'samsung', 'android', 's-pen'],
+
           variants: [{
             sku: 'SAMS23-256',
             name: 'Samsung Galaxy S23 256GB',
@@ -742,7 +739,7 @@ const ProductCatalogPage: React.FC = () => {
         {
           name: 'MacBook Pro 14"',
           description: 'Professional laptop with M2 Pro chip and Liquid Retina display',
-          tags: ['laptop', 'apple', 'professional', 'm2'],
+
           variants: [{
             sku: 'MBP14-512',
             name: 'MacBook Pro 14" 512GB',
@@ -758,7 +755,7 @@ const ProductCatalogPage: React.FC = () => {
         {
           name: 'Dell XPS 13',
           description: 'Ultrabook with InfinityEdge display and Intel processor',
-          tags: ['laptop', 'dell', 'ultrabook', 'intel'],
+
           variants: [{
             sku: 'DLLXPS-256',
             name: 'Dell XPS 13 256GB',
@@ -774,7 +771,7 @@ const ProductCatalogPage: React.FC = () => {
         {
           name: 'AirPods Pro',
           description: 'Wireless earbuds with active noise cancellation',
-          tags: ['earbuds', 'apple', 'wireless', 'noise-cancellation'],
+
           variants: [{
             sku: 'AIRPP-2',
             name: 'AirPods Pro 2nd Generation',
@@ -842,7 +839,7 @@ const ProductCatalogPage: React.FC = () => {
       
       // Reload data to show the new items
       await Promise.all([
-        loadProducts(),
+        loadProducts({ page: 1, limit: 50 }),
         loadCategories(),
         loadBrands(),
         loadSuppliers()
@@ -923,7 +920,7 @@ const ProductCatalogPage: React.FC = () => {
             <GlassButton
               onClick={() => {
                 setDbStatus('connecting');
-                loadProducts();
+                loadProducts({ page: 1, limit: 50 });
                 loadCategories();
                 loadBrands();
                 loadSuppliers();
@@ -1040,14 +1037,14 @@ const ProductCatalogPage: React.FC = () => {
           </button>
 
           <button
-            onClick={() => setShowBrandForm(true)}
+            onClick={() => window.open('/brand-management', '_blank')}
             className="p-3 bg-white rounded-lg border border-purple-200 hover:shadow-md transition-all duration-200 hover:scale-[1.02] text-left"
           >
             <div className="flex items-center gap-2 mb-1">
               <Crown className="w-4 h-4 text-purple-600" />
-              <span className="text-xs font-medium text-purple-700">New Brand</span>
+              <span className="text-xs font-medium text-purple-700">Manage Brands</span>
             </div>
-            <p className="text-xs text-gray-600">Add brand</p>
+            <p className="text-xs text-gray-600">Open brand management</p>
           </button>
 
           <button
@@ -1495,12 +1492,12 @@ const ProductCatalogPage: React.FC = () => {
                 onClick={() => {
                   try {
                     const csvContent = "data:text/csv;charset=utf-8," + 
-                      "Name,SKU,Category,Brand,Price,Stock,Status,Description,Tags\n" +
+                      "Name,SKU,Category,Brand,Price,Stock,Status,Description\n" +
                       filteredProducts.map(p => {
                         const category = categories.find(c => c.id === p.categoryId);
                         const brand = brands.find(b => b.id === p.brandId);
                         const mainVariant = p.variants?.[0];
-                        return `"${p.name}","${mainVariant?.sku || 'N/A'}","${category?.name || 'Uncategorized'}","${brand?.name || 'No Brand'}","${mainVariant?.sellingPrice || 0}","${p.totalQuantity || 0}","${p.isActive ? 'Active' : 'Inactive'}","${p.description || ''}","${p.tags.join(', ')}"`;
+                        return `"${p.name}","${mainVariant?.sku || 'N/A'}","${category?.name || 'Uncategorized'}","${brand?.name || 'No Brand'}","${mainVariant?.sellingPrice || 0}","${p.totalQuantity || 0}","${p.isActive ? 'Active' : 'Inactive'}","${p.description || ''}"`;
                       }).join("\n");
                     const encodedUri = encodeURI(csvContent);
                     const link = document.createElement("a");
@@ -1558,7 +1555,7 @@ const ProductCatalogPage: React.FC = () => {
           <GlassButton
             onClick={() => {
               setDbStatus('connecting');
-              loadProducts();
+              loadProducts({ page: 1, limit: 50 });
               loadCategories();
               loadBrands();
               loadSuppliers();
@@ -1582,7 +1579,7 @@ const ProductCatalogPage: React.FC = () => {
           toast.success('Product created successfully!');
           // Clear cache and reload
           localStorage.removeItem(CACHE_KEY);
-          loadProducts();
+          loadProducts({ page: 1, limit: 50 });
           loadCategories();
           loadBrands();
           loadSuppliers();
@@ -1597,34 +1594,14 @@ const ProductCatalogPage: React.FC = () => {
           toast.success('Product updated successfully!');
           // Clear cache and reload
           localStorage.removeItem(CACHE_KEY);
-          loadProducts();
+          loadProducts({ page: 1, limit: 50 });
           loadCategories();
           loadBrands();
           loadSuppliers();
         }}
       />
 
-      {/* Brand Form */}
-      {showBrandForm && (
-        <BrandForm
-          onSubmit={async (brand) => {
-            try {
-              const result = await createBrand(brand);
-              if (result.ok) {
-                toast.success('Brand created successfully!');
-                setShowBrandForm(false);
-              } else {
-                toast.error(result.message || 'Failed to create brand');
-              }
-            } catch (error) {
-              console.error('Error creating brand:', error);
-              toast.error('Failed to create brand');
-            }
-          }}
-          onCancel={() => setShowBrandForm(false)}
-          loading={isLoading}
-        />
-      )}
+
 
       {/* Category Form Modal */}
       <CategoryFormModal

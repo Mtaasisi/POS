@@ -51,7 +51,6 @@ interface ProductExportData {
     quantity: number;
     minQuantity: number;
     maxQuantity?: number;
-    weight?: number;
     dimensions?: Record<string, any>;
     createdAt: string;
     updatedAt: string;
@@ -67,7 +66,6 @@ interface ProductExportData {
   quantity?: number;
   minQuantity?: number;
   maxQuantity?: number;
-  weight?: number;
   dimensions?: string;
   
   // Additional data
@@ -204,7 +202,7 @@ const ProductExcelExport: React.FC = () => {
             quantity: 0,
             minQuantity: 0,
             maxQuantity: 0,
-            weight: 0,
+    
             dimensions: '',
             
             // Additional data
@@ -273,7 +271,7 @@ const ProductExcelExport: React.FC = () => {
                 quantity: v.quantity,
                 minQuantity: v.min_quantity,
                 maxQuantity: v.max_quantity,
-                weight: v.weight,
+        
                 dimensions: v.dimensions,
                 createdAt: v.created_at,
                 updatedAt: v.updated_at,
@@ -289,7 +287,7 @@ const ProductExcelExport: React.FC = () => {
               quantity: variant.quantity,
               minQuantity: variant.min_quantity,
               maxQuantity: variant.max_quantity,
-              weight: variant.weight,
+      
               dimensions: variant.dimensions ? 
                 `${variant.dimensions.length || 0}L x ${variant.dimensions.width || 0}W x ${variant.dimensions.height || 0}H` : '',
               
@@ -331,7 +329,7 @@ const ProductExcelExport: React.FC = () => {
         // Current Variant Information
         'Variant ID', 'Variant SKU', 'Variant Name', 'Variant Barcode',
         'Cost Price', 'Selling Price', 'Quantity', 'Min Quantity', 'Max Quantity',
-        'Weight (kg)', 'Dimensions (LxWxH)', 'Variant Attributes',
+        'Dimensions (LxWxH)', 'Variant Attributes',
         
         // All Variants Summary
         'All Variants Count', 'All Variants Data',
@@ -396,7 +394,7 @@ const ProductExcelExport: React.FC = () => {
           product.quantity || 0,
           product.minQuantity || 0,
           product.maxQuantity || 0,
-          product.weight || 0,
+  
           `"${(product.dimensions || '').replace(/"/g, '""')}"`,
           `"${JSON.stringify(product.allVariants?.find(v => v.id === product.variantId)?.attributes || {}).replace(/"/g, '""')}"`,
           

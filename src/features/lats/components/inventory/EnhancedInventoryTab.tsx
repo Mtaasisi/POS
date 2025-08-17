@@ -4,6 +4,7 @@ import GlassButton from '../../../shared/components/ui/GlassButton';
 import SearchBar from '../../../shared/components/ui/SearchBar';
 import GlassSelect from '../../../shared/components/ui/GlassSelect';
 import VariantProductCard from './VariantProductCard';
+import ProductImageDisplay from './ProductImageDisplay';
 import { 
   Package, Grid, List, Star, CheckCircle, XCircle, 
   Download, Upload, Edit, Eye, Trash2, DollarSign, TrendingUp,
@@ -83,6 +84,44 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
   productModals,
   deleteProduct
 }) => {
+  // Debug logging (reduced to prevent console spam)
+  if (process.env.NODE_ENV === 'development' && false) { // Disabled debug logging
+    console.log('🔍 EnhancedInventoryTab Debug:', {
+      categoriesCount: categories?.length || 0,
+      brandsCount: brands?.length || 0,
+      categories: categories?.slice(0, 3), // First 3 categories
+      brands: brands?.slice(0, 3), // First 3 brands
+      selectedCategory,
+      selectedBrand
+    });
+  }
+
+  // Card variant state for grid view
+  const [cardVariant, setCardVariant] = React.useState<'default' | 'detailed'>('detailed');
+
+  // Unified filter component function
+  const renderFilterSelect = (
+    options: any[],
+    value: string,
+    onChange: (value: string) => void,
+    placeholder: string,
+    count: number
+  ) => (
+    <div className="min-w-[120px]">
+      <GlassSelect
+        options={[
+          { value: 'all', label: `All ${placeholder}s` },
+          ...(options || []).map(item => ({
+            value: item.name,
+            label: item.name
+          }))
+        ]}
+        value={value}
+        onChange={onChange}
+        placeholder={`${placeholder} (${count})`}
+      />
+    </div>
+  );
   return (
     <div className="space-y-6">
       {/* Comprehensive Statistics Dashboard */}
@@ -152,11 +191,11 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
         </GlassCard>
       </div>
 
-      {/* Advanced Filters and Controls */}
-      <GlassCard className="p-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Search</label>
+      {/* Minimal Search & Filters */}
+      <div className="bg-white/60 backdrop-blur-sm rounded-lg border border-white/20 p-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Search */}
+          <div className="flex-1 min-w-[200px]">
             <SearchBar
               onSearch={setSearchQuery}
               placeholder="Search products, SKU, brand..."
@@ -171,44 +210,30 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
             />
           </div>
           
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
-            <GlassSelect
-              options={[
-                { value: 'all', label: 'All Categories' },
-                ...categories.map(category => ({
-                  value: category.name,
-                  label: category.name
-                }))
-              ]}
-              value={selectedCategory}
-              onChange={setSelectedCategory}
-              placeholder="Select Category"
-            />
-          </div>
+          {/* Category */}
+          {renderFilterSelect(
+            categories,
+            selectedCategory,
+            setSelectedCategory,
+            'Category',
+            categories?.length || 0
+          )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Brand</label>
-            <GlassSelect
-              options={[
-                { value: 'all', label: 'All Brands' },
-                ...brands.map(brand => ({
-                  value: brand.name,
-                  label: brand.name
-                }))
-              ]}
-              value={selectedBrand}
-              onChange={setSelectedBrand}
-              placeholder="Select Brand"
-            />
-          </div>
+          {/* Brand */}
+          {renderFilterSelect(
+            brands,
+            selectedBrand,
+            setSelectedBrand,
+            'Brand',
+            brands?.length || 0
+          )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+          {/* Status */}
+          <div className="min-w-[100px]">
             <select
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+              className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-md bg-white/80 focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
               <option value="all">All Status</option>
               <option value="in-stock">In Stock</option>
@@ -219,12 +244,12 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
             </select>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Sort By</label>
+          {/* Sort */}
+          <div className="min-w-[100px]">
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+              className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-md bg-white/80 focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
               <option value="name">Name</option>
               <option value="price">Price (High to Low)</option>
@@ -234,40 +259,49 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
             </select>
           </div>
 
-          <div className="flex items-end space-x-2">
+          {/* View Toggle */}
+          <button
+            onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
+            className="px-2 py-1.5 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
+            title={`Switch to ${viewMode === 'grid' ? 'list' : 'grid'} view`}
+          >
+            {viewMode === 'grid' ? <List size={16} /> : <Grid size={16} />}
+          </button>
+
+          {/* Card Variant Toggle (only show in grid view) */}
+          {viewMode === 'grid' && (
             <button
-              onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
-              className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-              title={`Switch to ${viewMode === 'grid' ? 'list' : 'grid'} view`}
+              onClick={() => setCardVariant(cardVariant === 'detailed' ? 'default' : 'detailed')}
+              className="px-2 py-1.5 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
+              title={`Switch to ${cardVariant === 'detailed' ? 'compact' : 'detailed'} cards`}
             >
-              {viewMode === 'grid' ? <List size={18} /> : <Grid size={18} />}
+              {cardVariant === 'detailed' ? <Package size={16} /> : <Grid size={16} />}
             </button>
+          )}
+
+          {/* Quick Filters */}
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-1.5 text-sm">
+              <input
+                type="checkbox"
+                checked={showLowStockOnly}
+                onChange={(e) => setShowLowStockOnly(e.target.checked)}
+                className="w-3 h-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span className="text-gray-600">Low Stock</span>
+            </label>
+            <label className="flex items-center gap-1.5 text-sm">
+              <input
+                type="checkbox"
+                checked={showFeaturedOnly}
+                onChange={(e) => setShowFeaturedOnly(e.target.checked)}
+                className="w-3 h-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span className="text-gray-600">Featured</span>
+            </label>
           </div>
         </div>
-
-        {/* Quick Filters */}
-        <div className="flex flex-wrap gap-3 mt-4 pt-4 border-t border-gray-200">
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={showLowStockOnly}
-              onChange={(e) => setShowLowStockOnly(e.target.checked)}
-              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-            />
-            <span className="text-sm text-gray-700">Low Stock Only</span>
-          </label>
-
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={showFeaturedOnly}
-              onChange={(e) => setShowFeaturedOnly(e.target.checked)}
-              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-            />
-            <span className="text-sm text-gray-700">Featured Only</span>
-          </label>
-        </div>
-      </GlassCard>
+      </div>
 
       {/* Bulk Actions */}
       {selectedProducts.length > 0 && (
@@ -362,9 +396,12 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
                       </td>
                       <td className="py-4 px-4">
                         <div className="flex items-center space-x-3">
-                          <div className="w-10 h-10 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg flex items-center justify-center">
-                            <Package className="w-5 h-5 text-blue-600" />
-                          </div>
+                          <ProductImageDisplay
+                            images={product.images}
+                            productName={product.name}
+                            size="sm"
+                            className="flex-shrink-0"
+                          />
                           <div>
                             <p className="font-medium text-gray-900">{product.name}</p>
                             <p className="text-sm text-gray-600">
@@ -442,7 +479,11 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
         </GlassCard>
       ) : (
         /* Grid View */
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div className={`grid gap-4 ${
+          cardVariant === 'detailed' 
+            ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' 
+            : 'grid-cols-1 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6'
+        }`}>
           {products.map((product) => {
             const category = categories.find(c => c.id === product.categoryId);
             const brand = product.brand;
@@ -465,7 +506,7 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
                   }
                 }}
                 showActions={true}
-                variant="default"
+                variant={cardVariant}
               />
             );
           })}

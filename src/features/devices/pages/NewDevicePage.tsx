@@ -5,7 +5,7 @@ import GlassButton from '../../../features/shared/components/ui/GlassButton';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { SimpleBackButton as BackButton } from '../../../features/shared/components/ui/SimpleBackButton';
-import { ArrowLeft, User, Smartphone, Tag, Layers, Hash, FileText, DollarSign, Key, Phone, Mail, MapPin, Calendar, Clock, ChevronDown, Battery, Camera as CameraIcon, Wifi, Bluetooth, Plug, Volume2, Mic, Speaker, Vibrate, Cpu, HardDrive, Droplet, Shield, Wrench, AlertTriangle as AlertIcon, Eye, Edit, MessageCircle, Users, Star, UserPlus } from 'lucide-react';
+import { ArrowLeft, User, Smartphone, Tag, Layers, Hash, FileText, DollarSign, Key, Phone, Mail, MapPin, Calendar, Clock, ChevronDown, Battery, Camera as CameraIcon, Wifi, Bluetooth, Plug, Volume2, Mic, Speaker, Vibrate, Cpu, HardDrive, Droplet, Shield, Wrench, AlertTriangle as AlertIcon, Eye, Edit, MessageCircle, Users, Star, UserPlus, Brain, Zap, Lightbulb, Search, Sparkles, Package, RefreshCw, WifiOff, Store } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 import Modal from '../../../features/shared/components/ui/Modal';
 import { useCustomers } from '../../../context/CustomersContext';
@@ -16,7 +16,8 @@ import CountdownTimer from '../../../features/shared/components/ui/CountdownTime
 import { useAuth } from '../../../context/AuthContext';
 import deviceModels from '../../../data/deviceModels';
 import ModelSuggestionInput from '../../../features/shared/components/ui/ModelSuggestionInput';
-import BrandSuggestionInput from '../../../features/shared/components/ui/BrandSuggestionInput';
+import BrandInput from '../../../features/shared/components/ui/BrandInput';
+
 import ConditionAssessment from '../components/ConditionAssessment';
 import DeviceQRCodePrint from '../components/DeviceQRCodePrint';
 import { smsService } from '../../../services/smsService';
@@ -24,6 +25,11 @@ import { SoundManager } from '../../../lib/soundUtils';
 import { useDraftForm } from '../../../lib/useDraftForm';
 import { saveActionOffline } from '../../../lib/offlineSync';
 import { whatsappService } from '../../../services/whatsappService';
+import geminiService from '../../../services/geminiService';
+import offlineAIService from '../../../services/offlineAIService';
+import StepIndicator from '../components/StepIndicator';
+import InteractiveDeviceDiagram from '../components/InteractiveDeviceDiagram';
+import VideoTutorials from '../components/VideoTutorials';
 
 
 const COMMON_MODELS = {
@@ -100,6 +106,49 @@ const DeviceIntakeUnifiedPage: React.FC = () => {
   );
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [note, setNote] = useState('');
+
+  // AI Analysis state
+  const [aiAnalysis, setAiAnalysis] = useState<{
+    isAnalyzing: boolean;
+    problem: string;
+    solutions: string[];
+    estimatedCost: string;
+    difficulty: string;
+    timeEstimate: string;
+    partsNeeded: string[];
+    error?: string;
+  }>({
+    isAnalyzing: false,
+    problem: '',
+    solutions: [],
+    estimatedCost: '',
+    difficulty: '',
+    timeEstimate: '',
+    partsNeeded: []
+  });
+  const [showAiAnalysis, setShowAiAnalysis] = useState(false);
+  const [aiAnalysisEnabled, setAiAnalysisEnabled] = useState(true);
+  const [aiLanguage, setAiLanguage] = useState<'swahili' | 'english'>('swahili');
+  const [isLanguageSwitching, setIsLanguageSwitching] = useState(false);
+
+  // Enhanced AI Analysis Features
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [currentAnalysisStep, setCurrentAnalysisStep] = useState(0);
+  const [selectedProblemArea, setSelectedProblemArea] = useState<string | null>(null);
+  const [repairSteps, setRepairSteps] = useState<Array<{
+    id: string;
+    title: string;
+    description: string;
+    status: 'pending' | 'active' | 'completed' | 'error';
+  }>>([]);
+  const [problemAreas, setProblemAreas] = useState<Array<{
+    id: string;
+    name: string;
+    description: string;
+    x: number;
+    y: number;
+    severity: 'low' | 'medium' | 'high';
+  }>>([]);
 
   // New state for inline customer creation
   const [showCreateCustomer, setShowCreateCustomer] = useState(false);
@@ -275,6 +324,429 @@ const DeviceIntakeUnifiedPage: React.FC = () => {
   const minIssueWords = 5;
   const isIssueDescriptionValid = countWords(formData.issueDescription) >= minIssueWords;
   const [issueDescriptionTouched, setIssueDescriptionTouched] = useState(false);
+
+  // Enhanced AI Analysis function with offline capabilities
+  const analyzeDeviceProblem = async () => {
+    if (!formData.brand || !formData.model || !formData.issueDescription.trim()) {
+      toast.error('Please fill in brand, model, and issue description for AI analysis');
+      return;
+    }
+
+    setAiAnalysis(prev => ({ ...prev, isAnalyzing: true, error: undefined }));
+    
+    // Initialize repair steps
+    const steps = [
+      { id: '1', title: 'Analyzing Device', description: 'Examining device specifications and issue', status: 'active' as const },
+      { id: '2', title: 'Identifying Problem', description: 'Determining root cause of issue', status: 'pending' as const },
+      { id: '3', title: 'Generating Solutions', description: 'Creating repair recommendations', status: 'pending' as const },
+      { id: '4', title: 'Estimating Costs', description: 'Calculating repair costs and time', status: 'pending' as const }
+    ];
+    setRepairSteps(steps);
+    setCurrentAnalysisStep(0);
+
+    try {
+      // Check online status first
+      if (!isOnline) {
+        // Use offline AI analysis
+        console.log('🔴 Offline mode - using local AI analysis');
+        toast.info('Working offline - using local AI analysis');
+        
+        const offlineResult = await offlineAIService.analyzeDevice(
+          formData.brand,
+          formData.model,
+          formData.issueDescription,
+          aiLanguage
+        );
+
+        // Update steps
+        setRepairSteps(prev => prev.map((step, index) => ({
+          ...step,
+          status: index <= 3 ? 'completed' : 'pending'
+        })));
+
+        setAiAnalysis({
+          isAnalyzing: false,
+          problem: offlineResult.problem,
+          solutions: offlineResult.solutions,
+          estimatedCost: offlineResult.estimatedCost,
+          difficulty: offlineResult.difficulty,
+          timeEstimate: offlineResult.timeEstimate,
+          partsNeeded: offlineResult.partsNeeded
+        });
+
+        // Generate problem areas for device diagram
+        generateProblemAreas(offlineResult);
+        
+        setShowAiAnalysis(true);
+        toast.success(`Offline analysis completed! (${Math.round(offlineResult.confidence * 100)}% confidence)`);
+        return;
+      }
+
+      // Try online AI first
+      try {
+        const testResponse = await geminiService.testConnection();
+        if (!testResponse.success) {
+          throw new Error('Online AI not available');
+        }
+
+        // Update step 1
+        setRepairSteps(prev => prev.map((step, index) => ({
+          ...step,
+          status: index === 0 ? 'completed' : index === 1 ? 'active' : 'pending'
+        })));
+        setCurrentAnalysisStep(1);
+
+        // Create prompt based on selected language
+        let prompt;
+        
+        if (aiLanguage === 'swahili') {
+          prompt = `Analyze this device repair problem and provide detailed solutions in SIMPLE SWAHILI with TECHNICAL TERMS IN ENGLISH:
+
+Device: ${formData.brand} ${formData.model}
+Issue Description: ${formData.issueDescription}
+Device Conditions: ${selectedConditions.join(', ')} ${otherConditionText ? `, ${otherConditionText}` : ''}
+
+Please provide a structured analysis in JSON format with the following fields, using SIMPLE SWAHILI but TECHNICAL TERMS IN ENGLISH:
+
+{
+  "problem": "Maelezo rahisi ya tatizo la kifaa",
+  "solutions": ["Njia ya 1 ya kurekebisha", "Njia ya 2 ya kurekebisha", "Njia ya 3 ya kurekebisha"],
+  "estimatedCost": "Bei ya kurekebisha (Tsh)",
+  "difficulty": "Rahisi/Wastani/Ngumu",
+  "timeEstimate": "Muda wa kurekebisha",
+  "partsNeeded": ["Part 1", "Part 2", "Part 3"],
+  "commonCauses": ["Sababu ya 1", "Sababu ya 2"],
+  "preventionTips": ["Ushauri wa 1", "Ushauri wa 2"]
+}
+
+IMPORTANT INSTRUCTIONS:
+- Use SIMPLE SWAHILI for general explanations
+- Use ENGLISH for technical terms and part names
+- Keep language simple and practical for Dar es Salaam technicians
+- Use Tanzanian Shillings (Tsh) for costs
+- Focus on practical, actionable solutions for a local repair shop
+
+TECHNICAL TERMS TO USE IN ENGLISH:
+- Cable (not "kebo")
+- Screen/LCD (not "skrini")
+- Battery (not "betri")
+- Charger (not "chaaji")
+- Motherboard (not "bodi kuu")
+- RAM (not "kumbukumbu")
+- Storage (not "uhifadhi")
+- Processor/CPU (not "kichakata")
+- Speaker (not "spika")
+- Microphone/Mic (not "kipaza sauti")
+- Camera (not "kamera")
+- Sensor (not "hisia")
+- Adhesive (not "gundi")
+- Connector (not "unganisho")
+- Port (not "mlango")
+- Button (not "kitufe")
+- Switch (not "swichi")
+- Circuit (not "mzunguko")
+- Voltage (not "volti")
+- Current (not "umeme")`;
+        } else {
+          prompt = `Analyze this device repair problem and provide detailed solutions in ENGLISH:
+
+Device: ${formData.brand} ${formData.model}
+Issue Description: ${formData.issueDescription}
+Device Conditions: ${selectedConditions.join(', ')} ${otherConditionText ? `, ${otherConditionText}` : ''}
+
+Please provide a structured analysis in JSON format with the following fields:
+
+{
+  "problem": "Clear description of the main problem",
+  "solutions": ["Solution 1", "Solution 2", "Solution 3"],
+  "estimatedCost": "Estimated repair cost range in USD",
+  "difficulty": "Easy/Medium/Hard",
+  "timeEstimate": "Estimated repair time",
+  "partsNeeded": ["Part 1", "Part 2", "Part 3"],
+  "commonCauses": ["Cause 1", "Cause 2"],
+  "preventionTips": ["Tip 1", "Tip 2"]
+}
+
+IMPORTANT INSTRUCTIONS:
+- Use clear, professional English
+- Focus on practical, actionable solutions for a device repair shop
+- Include specific parts that might need replacement
+- Use realistic cost estimates
+- Provide detailed technical analysis`;
+        }
+
+        // Update step 2
+        setRepairSteps(prev => prev.map((step, index) => ({
+          ...step,
+          status: index <= 1 ? 'completed' : index === 2 ? 'active' : 'pending'
+        })));
+        setCurrentAnalysisStep(2);
+
+        const response = await geminiService.chat([
+          { role: 'user', content: prompt }
+        ]);
+
+        if (response.success && response.data) {
+          // Update step 3
+          setRepairSteps(prev => prev.map((step, index) => ({
+            ...step,
+            status: index <= 2 ? 'completed' : index === 3 ? 'active' : 'pending'
+          })));
+          setCurrentAnalysisStep(3);
+
+          try {
+            const jsonMatch = response.data.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              const parsed = JSON.parse(jsonMatch[0]);
+              setAiAnalysis({
+                isAnalyzing: false,
+                problem: parsed.problem || 'Analysis completed',
+                solutions: parsed.solutions || [],
+                estimatedCost: parsed.estimatedCost || 'Cost to be determined',
+                difficulty: parsed.difficulty || 'Medium',
+                timeEstimate: parsed.timeEstimate || '1-2 hours',
+                partsNeeded: parsed.partsNeeded || []
+              });
+            } else {
+              setAiAnalysis({
+                isAnalyzing: false,
+                problem: 'AI analysis completed',
+                solutions: [response.data],
+                estimatedCost: 'Cost to be determined',
+                difficulty: 'Medium',
+                timeEstimate: '1-2 hours',
+                partsNeeded: []
+              });
+            }
+
+                         // Generate problem areas for device diagram
+             generateProblemAreas({
+               problem: parsed.problem || 'Analysis completed',
+               solutions: parsed.solutions || [],
+               partsNeeded: parsed.partsNeeded || []
+             });
+
+            // Complete all steps
+            setRepairSteps(prev => prev.map(step => ({ ...step, status: 'completed' })));
+            setCurrentAnalysisStep(4);
+
+            setShowAiAnalysis(true);
+            toast.success('🟢 Online AI analysis completed!');
+          } catch (parseError) {
+            setAiAnalysis({
+              isAnalyzing: false,
+              problem: 'AI analysis completed',
+              solutions: [response.data],
+              estimatedCost: 'Cost to be determined',
+              difficulty: 'Medium',
+              timeEstimate: '1-2 hours',
+              partsNeeded: []
+            });
+            setShowAiAnalysis(true);
+            toast.success('AI analysis completed!');
+          }
+        } else {
+          throw new Error(response.error || 'AI analysis failed');
+        }
+      } catch (onlineError) {
+        console.log('🔄 Online AI failed, falling back to offline analysis');
+        
+        // Fallback to offline analysis
+        const offlineResult = await offlineAIService.analyzeDevice(
+          formData.brand,
+          formData.model,
+          formData.issueDescription,
+          aiLanguage
+        );
+
+        setAiAnalysis({
+          isAnalyzing: false,
+          problem: offlineResult.problem,
+          solutions: offlineResult.solutions,
+          estimatedCost: offlineResult.estimatedCost,
+          difficulty: offlineResult.difficulty,
+          timeEstimate: offlineResult.timeEstimate,
+          partsNeeded: offlineResult.partsNeeded
+        });
+
+        // Generate problem areas for device diagram
+        generateProblemAreas(offlineResult);
+
+        // Complete all steps
+        setRepairSteps(prev => prev.map(step => ({ ...step, status: 'completed' })));
+        setCurrentAnalysisStep(4);
+
+        setShowAiAnalysis(true);
+        toast.success(`🔄 Fallback analysis completed! (${Math.round(offlineResult.confidence * 100)}% confidence)`);
+      }
+    } catch (error) {
+      setAiAnalysis(prev => ({ 
+        ...prev, 
+        isAnalyzing: false, 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      }));
+      setRepairSteps(prev => prev.map(step => ({ ...step, status: 'error' })));
+      toast.error('AI analysis failed. Please try again.');
+    }
+  };
+
+  // Generate problem areas for device diagram
+  const generateProblemAreas = (analysis: any) => {
+    const areas = [];
+    const issue = analysis.problem.toLowerCase();
+    
+    // Screen issues
+    if (issue.includes('screen') || issue.includes('display') || issue.includes('lcd')) {
+      areas.push({
+        id: 'screen',
+        name: 'Screen',
+        description: 'Display or touch issues',
+        x: 50,
+        y: 30,
+        severity: 'high' as const
+      });
+    }
+    
+    // Battery issues
+    if (issue.includes('battery') || issue.includes('power') || issue.includes('charge')) {
+      areas.push({
+        id: 'battery',
+        name: 'Battery',
+        description: 'Power or charging issues',
+        x: 20,
+        y: 70,
+        severity: 'medium' as const
+      });
+    }
+    
+    // Camera issues
+    if (issue.includes('camera') || issue.includes('photo') || issue.includes('video')) {
+      areas.push({
+        id: 'camera',
+        name: 'Camera',
+        description: 'Camera or photo issues',
+        x: 80,
+        y: 25,
+        severity: 'medium' as const
+      });
+    }
+    
+    // Audio issues
+    if (issue.includes('speaker') || issue.includes('audio') || issue.includes('sound')) {
+      areas.push({
+        id: 'audio',
+        name: 'Audio',
+        description: 'Speaker or microphone issues',
+        x: 15,
+        y: 50,
+        severity: 'low' as const
+      });
+    }
+    
+    setProblemAreas(areas);
+  };
+
+  // Online status listener
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // Auto-trigger AI analysis when issue description is complete
+  useEffect(() => {
+    if (aiAnalysisEnabled && 
+        formData.brand && 
+        formData.model && 
+        isIssueDescriptionValid && 
+        formData.issueDescription.length > 20 &&
+        !aiAnalysis.isAnalyzing &&
+        !aiAnalysis.problem) {
+      // Debounce the analysis
+      const timer = setTimeout(() => {
+        analyzeDeviceProblem();
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [formData.brand, formData.model, formData.issueDescription, aiAnalysisEnabled, aiLanguage]);
+
+  // Get UI labels based on selected language
+  const getUILabels = () => {
+    if (aiLanguage === 'swahili') {
+      return {
+        modalTitle: 'Uchambuzi wa Kifaa na AI',
+        problemAnalysis: 'Uchambuzi wa Tatizo',
+        solutions: 'Njia za Kurekebisha',
+        estimatedCost: 'Bei ya Kurekebisha',
+        difficulty: 'Kiwango cha Ugumu',
+        timeEstimate: 'Muda wa Kurekebisha',
+        partsNeeded: 'Sehemu Zinazohitajika',
+        noParts: 'Hakuna sehemu maalum zilizotambuliwa',
+        analyzing: 'Inachambua...',
+        retryAnalysis: 'Jaribu Tena',
+        reAnalyze: 'Chambua Tena',
+        applySuggestions: 'Tumia Mapendekezo',
+        close: 'Funga',
+        aiAnalyzing: 'AI inachambua tatizo...',
+        analysisAvailable: 'Uchambuzi wa AI unapatikana',
+        viewAnalysis: 'Tazama Uchambuzi',
+        analysisFailed: 'Uchambuzi wa AI umeshindwa',
+        retry: 'Jaribu Tena',
+        willAnalyze: 'AI itachambua wakati maelezo yatakapokamilika',
+        suggestionsApplied: 'Mapendekezo ya AI yamewekwa kwenye fomu',
+        aiAnalysis: 'Uchambuzi wa AI',
+        serviceError: 'Hitilafu ya Huduma ya AI',
+        setupInstructions: 'Jinsi ya kuweka AI Analysis:',
+        goToSettings: '1. Nenda kwenye Mipangilio → Muunganisho',
+        findGemini: '2. Tafuta "Gemini AI" muunganisho',
+        addApiKey: '3. Ongeza API key yako ya Google Gemini',
+        enableIntegration: '4. Wezesha muunganisho',
+        testConnection: '5. Jaribu muunganisho',
+        getApiKey: 'Pata API key ya bure kutoka:'
+      };
+    } else {
+      return {
+        modalTitle: 'AI Device Analysis',
+        problemAnalysis: 'Problem Analysis',
+        solutions: 'Recommended Solutions',
+        estimatedCost: 'Estimated Cost',
+        difficulty: 'Difficulty Level',
+        timeEstimate: 'Time Estimate',
+        partsNeeded: 'Parts Needed',
+        noParts: 'No specific parts identified',
+        analyzing: 'Analyzing...',
+        retryAnalysis: 'Retry Analysis',
+        reAnalyze: 'Re-analyze',
+        applySuggestions: 'Apply Suggestions',
+        close: 'Close',
+        aiAnalyzing: 'AI is analyzing the problem...',
+        analysisAvailable: 'AI analysis available',
+        viewAnalysis: 'View Analysis',
+        analysisFailed: 'AI analysis failed',
+        retry: 'Retry',
+        willAnalyze: 'AI will analyze when description is complete',
+        suggestionsApplied: 'AI suggestions applied to form',
+        aiAnalysis: 'AI Analysis',
+        serviceError: 'AI Service Error',
+        setupInstructions: 'How to set up AI Analysis:',
+        goToSettings: '1. Go to Settings → Integrations',
+        findGemini: '2. Find "Gemini AI" integration',
+        addApiKey: '3. Add your Google Gemini API key',
+        enableIntegration: '4. Enable the integration',
+        testConnection: '5. Test the connection',
+        getApiKey: 'Get a free API key from:'
+      };
+    }
+  };
+
+  const labels = getUILabels();
 
   // Customer creation function
   const handleCreateCustomer = async () => {
@@ -559,109 +1031,7 @@ const DeviceIntakeUnifiedPage: React.FC = () => {
   return (
     <div className="p-4 sm:p-6 h-full overflow-y-auto pt-8">
       <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6">
-        {/* Progress Indicator */}
-        <div className="bg-white/50 backdrop-blur-md rounded-xl p-4 border border-gray-200">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-4">
-              <BackButton to="/dashboard" />
-              <div>
-                <h2 className="text-lg font-semibold text-gray-900">Device Intake Form</h2>
-                <div className="text-sm text-gray-600">
-                  {selectedCustomer ? 'Customer Selected' : 'Customer Required'}
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <div className="flex items-center space-x-4">
-            <div className={`flex items-center space-x-2 ${selectedCustomer ? 'text-green-600' : 'text-gray-400'}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${selectedCustomer ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
-                {selectedCustomer ? (
-                  <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                ) : (
-                  <User size={16} />
-                )}
-              </div>
-              <span className="text-sm font-medium">Customer</span>
-            </div>
-            
-            <div className="flex-1 h-1 bg-gray-200 rounded">
-              <div className={`h-1 rounded transition-all duration-300 ${selectedCustomer ? 'bg-green-500' : 'bg-gray-200'}`} style={{ width: selectedCustomer ? '100%' : '0%' }}></div>
-            </div>
-            
-            <div className={`flex items-center space-x-2 ${formData.brand && formData.model && imeiOrSerial ? 'text-green-600' : 'text-gray-400'}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${formData.brand && formData.model && imeiOrSerial ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
-                {formData.brand && formData.model && imeiOrSerial ? (
-                  <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                ) : (
-                  <Smartphone size={16} />
-                )}
-              </div>
-              <span className="text-sm font-medium">Device</span>
-            </div>
-            
-            <div className="flex-1 h-1 bg-gray-200 rounded">
-              <div className={`h-1 rounded transition-all duration-300 ${formData.brand && formData.model && imeiOrSerial ? 'bg-green-500' : 'bg-gray-200'}`} style={{ width: formData.brand && formData.model && imeiOrSerial ? '100%' : '0%' }}></div>
-            </div>
-            
-            <div className={`flex items-center space-x-2 ${formData.assignedTo ? 'text-green-600' : 'text-gray-400'}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${formData.assignedTo ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
-                {formData.assignedTo ? (
-                  <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                ) : (
-                  <Wrench size={16} />
-                )}
-              </div>
-              <span className="text-sm font-medium">Technician</span>
-            </div>
-          </div>
-          
-          {/* Completion Status */}
-          <div className="mt-3 text-xs text-gray-500">
-            {selectedCustomer && formData.brand && formData.model && imeiOrSerial && formData.assignedTo ? (
-              <span className="text-green-600 font-medium">✓ Ready to submit</span>
-            ) : (
-              <span>Complete all sections to submit</span>
-            )}
-          </div>
-          
-          {/* Auto-save indicator */}
-          {showAutoSave && (
-            <div className="mt-2 flex items-center gap-2 text-xs text-blue-600">
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-              <span>Saving draft...</span>
-            </div>
-          )}
-          
-          {lastSaved && !showAutoSave && (
-            <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">
-              <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-              <span>Last saved: {lastSaved.toLocaleTimeString()}</span>
-            </div>
-          )}
-          
-          {/* Completion percentage */}
-          <div className="mt-2">
-            <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-              <span>Form completion</span>
-              <span>{completionPercentage}%</span>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-1">
-              <div 
-                className="bg-blue-500 h-1 rounded-full transition-all duration-300" 
-                style={{ width: `${completionPercentage}%` }}
-              ></div>
-            </div>
-          </div>
-        </div>
+
 
         {/* Quick Actions Panel */}
         {completionPercentage >= 80 && (
@@ -672,7 +1042,7 @@ const DeviceIntakeUnifiedPage: React.FC = () => {
                 {completionPercentage}% Complete
               </span>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
               <button
                 type="button"
                 onClick={() => setShowConditionAssessment(true)}
@@ -681,6 +1051,22 @@ const DeviceIntakeUnifiedPage: React.FC = () => {
                 <AlertIcon size={16} className="text-orange-500" />
                 <span className="text-sm font-medium">Add Device Issues</span>
               </button>
+              
+                              <button
+                  type="button"
+                  onClick={analyzeDeviceProblem}
+                  disabled={!formData.brand || !formData.model || !formData.issueDescription.trim() || aiAnalysis.isAnalyzing}
+                  className="flex items-center gap-2 p-3 bg-white rounded-lg border border-blue-200 hover:bg-blue-50 transition-colors disabled:opacity-50"
+                >
+                  {aiAnalysis.isAnalyzing ? (
+                    <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    <Brain size={16} className="text-purple-500" />
+                  )}
+                  <span className="text-sm font-medium">
+                    {aiAnalysis.isAnalyzing ? labels.analyzing : labels.aiAnalysis}
+                  </span>
+                </button>
               
               <button
                 type="button"
@@ -1169,7 +1555,7 @@ const DeviceIntakeUnifiedPage: React.FC = () => {
                       Brand *
                       {!formData.brand && <span className="text-xs text-gray-400 ml-2">(Required)</span>}
                     </label>
-                    <BrandSuggestionInput
+                    <BrandInput
                       value={formData.brand}
                       onChange={val => setFormData(prev => ({ ...prev, brand: val }))}
                       placeholder="Enter brand"
@@ -1431,7 +1817,22 @@ const DeviceIntakeUnifiedPage: React.FC = () => {
                 </div>
                 {/* Issue Description */}
                 <div className="md:col-span-2">
-                  <label className={`block mb-2 font-medium ${fieldErrors.issueDescription ? 'text-red-600' : 'text-gray-700'}`}>Issue Description *</label>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className={`block font-medium ${fieldErrors.issueDescription ? 'text-red-600' : 'text-gray-700'}`}>Issue Description *</label>
+                    <div className="flex items-center gap-2">
+                      {/* AI Analysis Toggle */}
+                      <label className="flex items-center gap-2 text-sm text-gray-600">
+                        <input
+                          type="checkbox"
+                          checked={aiAnalysisEnabled}
+                          onChange={(e) => setAiAnalysisEnabled(e.target.checked)}
+                          className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                        />
+                        <Brain size={16} className="text-purple-500" />
+                        AI Analysis
+                      </label>
+                    </div>
+                  </div>
                   <textarea
                     name="issueDescription"
                     value={formData.issueDescription}
@@ -1451,6 +1852,47 @@ const DeviceIntakeUnifiedPage: React.FC = () => {
                   {/* Validation message */}
                   {issueDescriptionTouched && !isIssueDescriptionValid && (
                     <div className="text-red-600 text-xs mt-1">Please enter at least 5 words in the Issue Description.</div>
+                  )}
+                  
+                  {/* AI Analysis Status */}
+                  {aiAnalysisEnabled && formData.issueDescription.length > 0 && (
+                    <div className="mt-3">
+                      {aiAnalysis.isAnalyzing ? (
+                        <div className="flex items-center gap-2 text-blue-600 text-sm">
+                          <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                          <span>{labels.aiAnalyzing}</span>
+                        </div>
+                      ) : aiAnalysis.problem ? (
+                        <div className="flex items-center gap-2 text-green-600 text-sm">
+                          <Sparkles size={16} />
+                          <span>{labels.analysisAvailable}</span>
+                          <button
+                            type="button"
+                            onClick={() => setShowAiAnalysis(true)}
+                            className="text-blue-600 hover:text-blue-700 underline text-sm"
+                          >
+                            {labels.viewAnalysis}
+                          </button>
+                        </div>
+                      ) : aiAnalysis.error ? (
+                        <div className="flex items-center gap-2 text-red-600 text-sm">
+                          <AlertIcon size={16} />
+                          <span>{labels.analysisFailed}</span>
+                          <button
+                            type="button"
+                            onClick={analyzeDeviceProblem}
+                            className="text-blue-600 hover:text-blue-700 underline text-sm"
+                          >
+                            {labels.retry}
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 text-gray-600 text-sm">
+                          <Search size={16} />
+                          <span>{labels.willAnalyze}</span>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
                 {/* Device Condition Checklist */}
@@ -1706,6 +2148,255 @@ const DeviceIntakeUnifiedPage: React.FC = () => {
           }}
         />
       )}
+      {/* AI Analysis Modal */}
+      {showAiAnalysis && (
+        <Modal
+          isOpen={showAiAnalysis}
+          onClose={() => setShowAiAnalysis(false)}
+          title={labels.modalTitle}
+          size="lg"
+        >
+          <div className="space-y-6">
+            {/* Language Toggle Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-gray-200">
+              <div className="flex items-center gap-3">
+                <div className="w-5 h-5 text-blue-600">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="2" y1="12" x2="22" y2="12"/>
+                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                  </svg>
+                </div>
+                <span className="text-sm font-medium text-gray-700">Analysis Language:</span>
+              </div>
+              <div className="flex bg-gray-100 rounded-lg p-1">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (aiLanguage !== 'swahili' && !isLanguageSwitching) {
+                      setIsLanguageSwitching(true);
+                      setAiLanguage('swahili');
+                      // Auto re-analyze if we have existing analysis
+                      if (aiAnalysis.problem) {
+                        toast.success('Switching to Swahili and re-analyzing...');
+                        await analyzeDeviceProblem();
+                      }
+                      setIsLanguageSwitching(false);
+                    }
+                  }}
+                  disabled={isLanguageSwitching}
+                  className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                    aiLanguage === 'swahili'
+                      ? 'bg-blue-500 text-white shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200'
+                  } ${isLanguageSwitching ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  {isLanguageSwitching && aiLanguage === 'swahili' ? (
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Switching...
+                    </div>
+                  ) : (
+                    '🇹🇿 Swahili'
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (aiLanguage !== 'english' && !isLanguageSwitching) {
+                      setIsLanguageSwitching(true);
+                      setAiLanguage('english');
+                      // Auto re-analyze if we have existing analysis
+                      if (aiAnalysis.problem) {
+                        toast.success('Switching to English and re-analyzing...');
+                        await analyzeDeviceProblem();
+                      }
+                      setIsLanguageSwitching(false);
+                    }
+                  }}
+                  disabled={isLanguageSwitching}
+                  className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                    aiLanguage === 'english'
+                      ? 'bg-blue-500 text-white shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200'
+                  } ${isLanguageSwitching ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  {isLanguageSwitching && aiLanguage === 'english' ? (
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Switching...
+                    </div>
+                  ) : (
+                    '🇬🇧 English'
+                  )}
+                </button>
+              </div>
+            </div>
+            {/* Error State */}
+            {aiAnalysis.error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <h4 className="font-semibold text-red-900 mb-2 flex items-center gap-2">
+                  <AlertIcon size={20} />
+                  {labels.serviceError}
+                </h4>
+                <p className="text-red-800 mb-3">{aiAnalysis.error}</p>
+                {aiAnalysis.error.includes('not configured') && (
+                  <div className="bg-white border border-red-200 rounded-lg p-3">
+                    <h5 className="font-medium text-red-900 mb-2">{labels.setupInstructions}</h5>
+                    <ol className="text-sm text-red-700 space-y-1">
+                      <li>{labels.goToSettings}</li>
+                      <li>{labels.findGemini}</li>
+                      <li>{labels.addApiKey}</li>
+                      <li>{labels.enableIntegration}</li>
+                      <li>{labels.testConnection}</li>
+                    </ol>
+                    <div className="mt-3 text-xs text-red-600">
+                      {labels.getApiKey} <a href="https://makersuite.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="underline">Google AI Studio</a>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Problem Summary */}
+            {!aiAnalysis.error && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h4 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
+                  <AlertIcon size={20} />
+                  {labels.problemAnalysis}
+                </h4>
+                <p className="text-blue-800">{aiAnalysis.problem}</p>
+              </div>
+            )}
+
+            {/* Solutions */}
+            {!aiAnalysis.error && aiAnalysis.solutions.length > 0 && (
+              <div>
+                <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                  <Lightbulb size={20} className="text-yellow-500" />
+                  {labels.solutions}
+                </h4>
+                <div className="space-y-3">
+                  {aiAnalysis.solutions.map((solution, index) => (
+                    <div key={index} className="bg-white border border-gray-200 rounded-lg p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-sm font-semibold flex-shrink-0 mt-0.5">
+                          {index + 1}
+                        </div>
+                        <p className="text-gray-800">{solution}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Repair Details */}
+            {!aiAnalysis.error && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Estimated Cost */}
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <h5 className="font-semibold text-green-900 mb-2 flex items-center gap-2">
+                    <DollarSign size={16} />
+                    {labels.estimatedCost}
+                  </h5>
+                  <p className="text-green-800 font-medium">{aiAnalysis.estimatedCost}</p>
+                </div>
+
+                {/* Difficulty */}
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                  <h5 className="font-semibold text-orange-900 mb-2 flex items-center gap-2">
+                    <Zap size={16} />
+                    {labels.difficulty}
+                  </h5>
+                  <p className="text-orange-800 font-medium capitalize">{aiAnalysis.difficulty}</p>
+                </div>
+
+                {/* Time Estimate */}
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                  <h5 className="font-semibold text-purple-900 mb-2 flex items-center gap-2">
+                    <Clock size={16} />
+                    {labels.timeEstimate}
+                  </h5>
+                  <p className="text-purple-800 font-medium">{aiAnalysis.timeEstimate}</p>
+                </div>
+
+                {/* Parts Needed */}
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <h5 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                    <Package size={16} />
+                    {labels.partsNeeded}
+                  </h5>
+                  {aiAnalysis.partsNeeded.length > 0 ? (
+                    <ul className="space-y-1">
+                      {aiAnalysis.partsNeeded.map((part, index) => (
+                        <li key={index} className="text-gray-700 text-sm flex items-center gap-2">
+                          <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+                          {part}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-gray-600 text-sm">{labels.noParts}</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex justify-between items-center pt-4 border-t border-gray-200">
+              <button
+                type="button"
+                onClick={analyzeDeviceProblem}
+                disabled={aiAnalysis.isAnalyzing}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              >
+                {aiAnalysis.isAnalyzing ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    {labels.analyzing}
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw size={16} />
+                    {aiAnalysis.error ? labels.retryAnalysis : labels.reAnalyze}
+                  </>
+                )}
+              </button>
+              
+              <div className="flex gap-2">
+                {!aiAnalysis.error && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Apply AI suggestions to form
+                      if (aiAnalysis.estimatedCost && !formData.repairCost) {
+                        const costMatch = aiAnalysis.estimatedCost.match(/Tsh\s*(\d+(?:,\d+)*(?:\.\d{2})?)/);
+                        if (costMatch) {
+                          setFormData(prev => ({ ...prev, repairCost: costMatch[1].replace(/,/g, '') }));
+                        }
+                      }
+                      setShowAiAnalysis(false);
+                      toast.success(labels.suggestionsApplied);
+                    }}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  >
+                    {labels.applySuggestions}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowAiAnalysis(false)}
+                  className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors"
+                >
+                  {labels.close}
+                </button>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {showNoteModal && (
         <Modal
           isOpen={showNoteModal}

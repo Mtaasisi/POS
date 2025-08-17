@@ -11,12 +11,13 @@ interface ProductVariant {
   id: string;
   sku: string;
   name: string;
+  barcode?: string;
   price: number;
   costPrice: number;
   stockQuantity: number;
   minStockLevel: number;
-  maxStockLevel: number;
-  isActive: boolean;
+  weight?: number;
+  attributes: Record<string, any>;
 }
 
 interface Product {
@@ -75,7 +76,7 @@ const ProductResultCard: React.FC<ProductResultCardProps> = ({
     return 'normal';
   };
 
-  const stockStatus = primaryVariant ? getStockStatus(primaryVariant.stockQuantity, primaryVariant.minStockLevel, primaryVariant.maxStockLevel) : 'normal';
+  const stockStatus = primaryVariant ? getStockStatus(primaryVariant.stockQuantity, primaryVariant.minStockLevel, 100) : 'normal';
 
   // Get stock status badge
   const getStockStatusBadge = () => {

@@ -120,6 +120,12 @@ export default defineConfig({
     proxy: {},
     // Add better error handling for development
     middlewareMode: false,
+    // Increase header size limit to prevent 431 errors
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, apikey, X-Client-Info',
+    },
   },
   // Ensure config.js is copied to build output
   publicDir: 'public',

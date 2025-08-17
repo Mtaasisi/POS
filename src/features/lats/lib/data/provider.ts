@@ -34,6 +34,7 @@ export interface LatsDataProvider {
   // Products
   getProducts(filters?: any): Promise<ApiResponse<PaginatedResponse<Product>>>;
   getProduct(id: string): Promise<ApiResponse<Product>>;
+  getProductVariants(productId: string): Promise<ApiResponse<ProductVariant[]>>;
   createProduct(data: ProductFormData): Promise<ApiResponse<Product>>;
   updateProduct(id: string, data: ProductFormData): Promise<ApiResponse<Product>>;
   deleteProduct(id: string): Promise<ApiResponse<void>>;

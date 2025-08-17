@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
-import { Package, ChevronDown, ChevronUp, Tag, Hash, Plus, Minus, Search, AlertCircle, Image, X } from 'lucide-react';
+import { Package, ChevronDown, ChevronUp, Tag, Hash, Plus, Minus, Search, AlertCircle, Image, X, Bug } from 'lucide-react';
 import GlassCard from '../ui/GlassCard';
 import GlassButton from '../ui/GlassButton';
 import GlassBadge from '../ui/GlassBadge';
@@ -29,8 +29,6 @@ interface VariantProductCardProps {
   className?: string;
 }
 
-
-
 const VariantProductCard: React.FC<VariantProductCardProps> = ({
   product,
   onAddToCart,
@@ -44,6 +42,77 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
   const navigate = useNavigate();
   const [selectedVariant, setSelectedVariant] = useState<ProductSearchVariant | null>(null);
   const [showVariantModal, setShowVariantModal] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<any>(null);
+  const [showDebug, setShowDebug] = useState(false);
+
+  // Debug data fetching and validation
+  useEffect(() => {
+    const debugData = {
+      timestamp: new Date().toISOString(),
+      productId: product?.id,
+      productName: product?.name,
+      hasProduct: !!product,
+      variantsCount: product?.variants?.length || 0,
+      hasVariants: !!product?.variants && product.variants.length > 0,
+      variantsData: product?.variants?.map(v => ({
+        id: v.id,
+        sku: v.sku,
+        name: v.name,
+        sellingPrice: v.sellingPrice,
+        quantity: v.quantity,
+        hasBarcode: !!v.barcode,
+        attributes: v.attributes
+      })) || [],
+      hasImages: !!product?.images && product.images.length > 0,
+      imagesCount: product?.images?.length || 0,
+      hasCategory: !!product?.categoryName,
+      categoryName: product?.categoryName,
+      hasBrand: !!product?.brandName,
+      brandName: product?.brandName,
+      hasTags: !!product?.tags && product.tags.length > 0,
+      tagsCount: product?.tags?.length || 0,
+      primaryVariant: getPrimaryVariant(product),
+      stockStatus: getProductStockStatus(product),
+      totalStock: getProductTotalStock(product),
+      isSingleVariant: isSingleVariantProduct(product),
+      isMultiVariant: isMultiVariantProduct(product),
+      bestVariant: getBestVariant(product),
+      priceRange: product?.variants ? {
+        min: Math.min(...product.variants.map(v => v.sellingPrice).filter(p => p > 0)),
+        max: Math.max(...product.variants.map(v => v.sellingPrice).filter(p => p > 0))
+      } : null,
+      dataIntegrity: {
+        hasValidId: !!product?.id,
+        hasValidName: !!product?.name,
+        hasValidVariants: product?.variants?.every(v => v.id && v.sku && v.sellingPrice >= 0),
+        hasValidPrices: product?.variants?.every(v => v.sellingPrice > 0),
+        hasValidStock: product?.variants?.every(v => v.quantity >= 0)
+      }
+    };
+
+    setDebugInfo(debugData);
+    
+    // Log debugging information
+    console.log('🔍 VariantProductCard Debug Info:', debugData);
+    
+    // Check for data issues
+    if (!product) {
+      console.error('❌ VariantProductCard: No product data provided');
+    }
+    
+    if (!product?.variants || product.variants.length === 0) {
+      console.warn('⚠️ VariantProductCard: Product has no variants', product);
+    }
+    
+    if (product?.variants?.some(v => v.sellingPrice <= 0)) {
+      console.warn('⚠️ VariantProductCard: Some variants have invalid prices', product.variants);
+    }
+    
+    if (product?.variants?.some(v => v.quantity < 0)) {
+      console.warn('⚠️ VariantProductCard: Some variants have negative stock', product.variants);
+    }
+    
+  }, [product]);
 
   // Get primary variant using utility function
   const primaryVariant = getPrimaryVariant(product);
@@ -53,12 +122,17 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
 
   // Get stock status badge
   const getStockStatusBadge = () => {
+    // Handle products with no variants
+    if (!product.variants || product.variants.length === 0) {
+      return <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-gray-50 text-gray-700 border border-gray-200">No Variants</span>;
+    }
+    
     if (!primaryVariant) return null;
     
     switch (stockStatus) {
       case 'out-of-stock':
         return <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700 border border-red-200">Out of Stock</span>;
-      case 'low':
+      case 'low-stock':
         return <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-orange-50 text-orange-700 border border-orange-200">Low Stock</span>;
       default:
         return <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">In Stock</span>;
@@ -68,7 +142,7 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
   // Get price display - show only the cheapest price
   const getPriceDisplay = () => {
     if (!product.variants || product.variants.length === 0) {
-      return 'No price set';
+      return 'No variants';
     }
 
     // Get all valid prices
@@ -92,6 +166,12 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
 
   // Handle card click
   const handleCardClick = () => {
+    // Don't allow interaction for products with no variants
+    if (!product.variants || product.variants.length === 0) {
+      console.warn('⚠️ Cannot add product to cart: No variants available', product);
+      return;
+    }
+    
     if (!primaryVariant || primaryVariant.quantity <= 0) return; // Don't do anything if out of stock
     
     if (isMultiVariantProduct(product)) {
@@ -124,17 +204,48 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
 
   const thumbnail = getProductThumbnail();
 
+  // Debug panel component
+  const DebugPanel = () => (
+    <div className="fixed top-4 right-4 z-50 bg-black bg-opacity-90 text-white p-4 rounded-lg max-w-md max-h-96 overflow-auto text-xs">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="font-bold">🔍 Debug Info</h3>
+        <button onClick={() => setShowDebug(false)} className="text-white hover:text-red-400">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+      <pre className="whitespace-pre-wrap">
+        {JSON.stringify(debugInfo, null, 2)}
+      </pre>
+    </div>
+  );
+
   // Compact variant with subtle colors
   if (variant === 'compact') {
+    const hasNoVariants = !product.variants || product.variants.length === 0;
+    const isDisabled = hasNoVariants || !primaryVariant || primaryVariant.quantity <= 0;
+    
     return (
       <>
         <div 
-          className={`bg-white border border-gray-200 rounded-lg p-4 cursor-pointer transition-all duration-200 hover:border-blue-300 hover:shadow-md active:scale-95 ${className} ${
-            !primaryVariant || primaryVariant.quantity <= 0 ? 'opacity-50 cursor-not-allowed' : ''
-          }`}
+          className={`bg-white border border-gray-200 rounded-lg p-4 transition-all duration-200 ${className} ${
+            isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-blue-300 hover:shadow-md active:scale-95'
+          } ${hasNoVariants ? 'border-gray-300 bg-gray-50' : ''}`}
           onClick={handleCardClick}
           style={{ minHeight: '60px' }}
+          title={hasNoVariants ? 'This product has no variants and cannot be added to cart. Please add variants in the inventory management.' : ''}
         >
+          {/* Debug button for compact variant */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowDebug(!showDebug);
+            }}
+            className="absolute top-1 right-1 p-1 bg-blue-500 text-white rounded-full opacity-50 hover:opacity-100 transition-opacity"
+            title="Debug Info"
+          >
+            <Bug className="w-3 h-3" />
+          </button>
+
           <div className="flex items-center gap-2">
             {/* Product Image */}
             <div className="flex-shrink-0">
@@ -163,7 +274,7 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
             {/* Product Info */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between mb-1">
-                <h3 className="font-medium text-gray-900 truncate text-sm">{product.name}</h3>
+                <h3 className={`font-medium truncate text-sm ${hasNoVariants ? 'text-gray-500' : 'text-gray-900'}`}>{product.name}</h3>
                 {getStockStatusBadge()}
               </div>
               <p className="text-xs text-gray-500 font-mono">{primaryVariant?.sku || 'N/A'}</p>
@@ -171,26 +282,41 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
 
             {/* Price */}
             <div className="text-right">
-              <div className="font-semibold text-blue-900 text-sm">{getPriceDisplay()}</div>
+              <div className={`font-semibold text-sm ${hasNoVariants ? 'text-gray-500' : 'text-blue-900'}`}>{getPriceDisplay()}</div>
               <div className="text-xs text-gray-500">Stock: {getTotalStock()}</div>
             </div>
           </div>
         </div>
 
-
+        {showDebug && <DebugPanel />}
       </>
     );
   }
 
   // Default detailed variant with cart-style UI
+  const hasNoVariants = !product.variants || product.variants.length === 0;
+  const isDisabled = hasNoVariants || !primaryVariant || primaryVariant.quantity <= 0;
+  
   return (
     <>
       <div 
-        className={`relative bg-white border-2 border-gray-200 rounded-xl transition-all duration-300 hover:border-gray-300 hover:shadow-md active:scale-95 ${className} ${
-          !primaryVariant || primaryVariant.quantity <= 0 ? 'opacity-50 cursor-not-allowed' : ''
-        }`}
+        className={`relative bg-white border-2 rounded-xl transition-all duration-300 ${className} ${
+          isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-gray-300 hover:shadow-md active:scale-95'
+        } ${hasNoVariants ? 'border-gray-300 bg-gray-50' : 'border-gray-200'}`}
         onClick={handleCardClick}
+        title={hasNoVariants ? 'This product has no variants and cannot be added to cart. Please add variants in the inventory management.' : ''}
       >
+        {/* Debug button for detailed variant */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowDebug(!showDebug);
+          }}
+          className="absolute top-2 right-2 p-2 bg-blue-500 text-white rounded-full opacity-50 hover:opacity-100 transition-opacity z-20"
+          title="Debug Info"
+        >
+          <Bug className="w-4 h-4" />
+        </button>
         
         {/* Stock Count Badge - Card Corner */}
         {showStockInfo && getTotalStock() > 0 && (
@@ -294,6 +420,8 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
         />,
         document.body
       )}
+
+      {showDebug && <DebugPanel />}
     </>
   );
 };

@@ -426,10 +426,14 @@ export class ImageUploadService {
    */
   static async getProductImages(productId: string): Promise<UploadedImage[]> {
     try {
-      // Skip query if productId is a temporary ID
+      // Check if productId is a temporary ID and get from development storage
       if (productId.startsWith('temp-product-') || productId.startsWith('test-product-')) {
-        console.log('📝 Skipping image fetch for temporary product:', productId);
-        return [];
+        console.log('📝 Getting images from development storage for temporary product:', productId);
+        // Import the EnhancedImageUploadService to access development storage
+        const { EnhancedImageUploadService } = await import('./enhancedImageUpload');
+        const devImages = EnhancedImageUploadService.getDevImages(productId);
+        console.log('📦 Development storage images for product:', productId, 'count:', devImages.length);
+        return devImages;
       }
 
       // Check cache first

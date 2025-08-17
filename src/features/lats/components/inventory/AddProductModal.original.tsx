@@ -18,7 +18,7 @@ import {
   RefreshCw, QrCode
 } from 'lucide-react';
 import { useInventoryStore } from '../../stores/useInventoryStore';
-import BrandSuggestionInput from '../../../shared/components/ui/BrandSuggestionInput';
+
 import ModelSuggestionInput from '../../../shared/components/ui/ModelSuggestionInput';
 import { supabase } from '../../../../lib/supabaseClient';
 import { useAuth } from '../../../../context/AuthContext';

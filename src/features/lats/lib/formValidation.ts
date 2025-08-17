@@ -143,12 +143,61 @@ export class LatsFormValidator {
     });
 
     // Validate variants
-    if (!data.variants || !Array.isArray(data.variants) || data.variants.length === 0) {
-      errors.push({
-        field: 'variants',
-        message: 'At least one variant is required'
+    if (data.variants && data.variants.length > 0) {
+      data.variants.forEach((variant: any, index: number) => {
+        // Validate required fields
+        if (!variant.sku || variant.sku.trim() === '') {
+          errors.push({
+            field: `variants.${index}.sku`,
+            message: 'SKU is required for each variant'
+          });
+        }
+
+        if (!variant.name || variant.name.trim() === '') {
+          errors.push({
+            field: `variants.${index}.name`,
+            message: 'Variant name is required'
+          });
+        }
+
+        // Validate numeric fields
+        if (variant.price !== undefined && (isNaN(variant.price) || variant.price < 0)) {
+          errors.push({
+            field: `variants.${index}.price`,
+            message: 'Price must be a positive number'
+          });
+        }
+
+        if (variant.costPrice !== undefined && (isNaN(variant.costPrice) || variant.costPrice < 0)) {
+          errors.push({
+            field: `variants.${index}.costPrice`,
+            message: 'Cost price must be a positive number'
+          });
+        }
+
+        if (variant.stockQuantity !== undefined && (isNaN(variant.stockQuantity) || variant.stockQuantity < 0)) {
+          errors.push({
+            field: `variants.${index}.stockQuantity`,
+            message: 'Stock quantity must be a positive number'
+          });
+        }
+
+        if (variant.minStockLevel !== undefined && (isNaN(variant.minStockLevel) || variant.minStockLevel < 0)) {
+          errors.push({
+            field: `variants.${index}.minStockLevel`,
+            message: 'Minimum stock level must be a positive number'
+          });
+        }
+
+        // Validate that minStockLevel is not greater than stockQuantity
+        if (variant.minStockLevel && variant.stockQuantity &&
+            Number(variant.minStockLevel) > Number(variant.stockQuantity)) {
+          errors.push({
+            field: `variants.${index}.minStockLevel`,
+            message: 'Minimum stock level cannot be greater than current stock quantity'
+          });
+        }
       });
-      return errors;
     }
 
     // Check for duplicate SKUs across all variants
@@ -167,83 +216,6 @@ export class LatsFormValidator {
         message: `Duplicate SKUs found: ${duplicateSkuList}. Each variant must have a unique SKU.`
       });
     }
-
-    // Validate each variant
-    data.variants.forEach((variant: any, index: number) => {
-      const variantSchema: ValidationSchema = {
-        [`variants.${index}.sku`]: {
-          required: true,
-          minLength: 1,
-          maxLength: 50,
-          pattern: /^[A-Z0-9-_]+$/,
-          message: 'SKU must contain only uppercase letters, numbers, hyphens, and underscores'
-        },
-        [`variants.${index}.name`]: {
-          required: true,
-          minLength: 1,
-          maxLength: 100
-        },
-        [`variants.${index}.price`]: {
-          required: true,
-          min: 0,
-          max: 999999, // Reasonable maximum price
-          message: 'Price must be between 0 and 999,999'
-        },
-        [`variants.${index}.costPrice`]: {
-          required: true,
-          min: 0,
-          max: 999999,
-          message: 'Cost price must be between 0 and 999,999'
-        },
-        [`variants.${index}.stockQuantity`]: {
-          required: true,
-          min: 0,
-          max: 999999,
-          message: 'Stock quantity must be between 0 and 999,999'
-        },
-        [`variants.${index}.minStockLevel`]: {
-          required: true,
-          min: 0,
-          max: 999999,
-          message: 'Minimum stock level must be between 0 and 999,999'
-        },
-        [`variants.${index}.maxStockLevel`]: {
-          min: 0,
-          max: 999999,
-          message: 'Maximum stock level must be between 0 and 999,999'
-        }
-      };
-
-      // Validate variant fields
-      Object.keys(variantSchema).forEach(fieldName => {
-        const fieldPath = fieldName.split('.');
-        const value = fieldPath.reduce((obj: any, key: string) => obj?.[key], data);
-        const rules = variantSchema[fieldName];
-        
-        const error = this.validateField(value, rules, fieldName);
-        if (error) {
-          errors.push(error);
-        }
-      });
-
-      // Validate that maxStockLevel is greater than minStockLevel if both are set
-      if (variant.maxStockLevel && variant.minStockLevel && 
-          Number(variant.maxStockLevel) <= Number(variant.minStockLevel)) {
-        errors.push({
-          field: `variants.${index}.maxStockLevel`,
-          message: 'Maximum stock level must be greater than minimum stock level'
-        });
-      }
-
-      // Validate that selling price is reasonable compared to cost price
-      if (variant.price && variant.costPrice && 
-          Number(variant.price) < Number(variant.costPrice)) {
-        errors.push({
-          field: `variants.${index}.price`,
-          message: 'Selling price should not be less than cost price'
-        });
-      }
-    });
 
     return errors;
   }
@@ -387,13 +359,6 @@ export class LatsFormValidator {
       errors.push({
         field: 'minStockLevel',
         message: 'Minimum stock level cannot be negative'
-      });
-    }
-    
-    if (maxLevel !== undefined && maxLevel < minLevel) {
-      errors.push({
-        field: 'maxStockLevel',
-        message: 'Maximum stock level must be higher than minimum stock level'
       });
     }
     

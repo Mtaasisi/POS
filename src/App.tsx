@@ -8,6 +8,7 @@ import { PaymentsProvider } from './context/PaymentsContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { LoadingProvider, useLoading } from './context/LoadingContext';
 import { GeneralSettingsProvider } from './context/GeneralSettingsContext';
+import { BrandsProvider } from './context/BrandsContext';
 import { Toaster } from 'react-hot-toast';
 
 import BackgroundSelector from './features/settings/components/BackgroundSelector';
@@ -25,6 +26,9 @@ import AppLayout from './layout/AppLayout';
 import { ErrorBoundary } from './features/shared/components/ErrorBoundary';
 import SettingsPage from './features/settings/pages/SettingsPage';
 import AdminSettingsPage from './features/admin/pages/AdminSettingsPage';
+import AdminManagementPage from './features/admin/pages/AdminManagementPage';
+import UserManagementPage from './features/users/pages/UserManagementPage';
+import SupplierManagementPage from './features/lats/pages/SupplierManagementPage';
 import SMSControlCenterPage from './features/reports/pages/SMSControlCenterPage';
 import PointsManagementPage from './features/finance/pages/PointsManagementPage';
 import PaymentsReportPage from './features/finance/pages/PaymentsReportPage';
@@ -77,6 +81,7 @@ import BusinessAnalyticsPage from './features/lats/pages/BusinessAnalyticsPage';
 import InventoryPage from './features/lats/pages/InventoryPage';
 import ProductCatalogPage from './features/lats/pages/ProductCatalogPage';
 import UnifiedInventoryPage from './features/lats/pages/UnifiedInventoryPage';
+import AddProductPage from './features/lats/pages/AddProductPage';
 
 import ProductDetailPage from './features/lats/pages/ProductDetailPage';
 import POSPage from './features/lats/pages/POSPage';
@@ -87,6 +92,7 @@ import { supabase } from './lib/supabaseClient';
 import { reminderService } from './lib/reminderService';
 import { initializeCache } from './lib/offlineCache';
 import { getPendingActions, clearPendingActions } from './lib/offlineSync';
+import HeaderSizeDiagnostic from './components/HeaderSizeDiagnostic';
 
 
 // LoadingProgressWrapper component that can access the loading context
@@ -106,10 +112,24 @@ const LoadingProgressWrapper: React.FC = () => {
 const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnline, isSyncing }) => {
   const { addCustomer } = useCustomers();
   const { assignToTechnician, updateDeviceStatus } = useDevices();
+  const [showHeaderDiagnostic, setShowHeaderDiagnostic] = useState(false);
 
   // Initialize database check on app startup
   useEffect(() => {
     initializeDatabaseCheck().catch(console.error);
+  }, []);
+
+  // Add keyboard shortcut for header diagnostic (Ctrl+Shift+H)
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.ctrlKey && event.shiftKey && event.key === 'H') {
+        event.preventDefault();
+        setShowHeaderDiagnostic(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   // Handle offline sync
@@ -177,6 +197,11 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
           Syncing your offline changes...
         </div>
       )}
+      
+      {/* Header Size Diagnostic Modal */}
+      {showHeaderDiagnostic && (
+        <HeaderSizeDiagnostic onClose={() => setShowHeaderDiagnostic(false)} />
+      )}
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         
@@ -218,6 +243,8 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
           <Route path="/points-management" element={<RoleProtectedRoute allowedRoles={['admin']}><PointsManagementPage /></RoleProtectedRoute>} />
           <Route path="/payments-report" element={<RoleProtectedRoute allowedRoles={['admin']}><PaymentsReportPage /></RoleProtectedRoute>} />
           <Route path="/admin-settings" element={<RoleProtectedRoute allowedRoles={['admin']}><AdminSettingsPage /></RoleProtectedRoute>} />
+          <Route path="/admin-management" element={<RoleProtectedRoute allowedRoles={['admin']}><AdminManagementPage /></RoleProtectedRoute>} />
+          <Route path="/users" element={<RoleProtectedRoute allowedRoles={['admin']}><UserManagementPage /></RoleProtectedRoute>} />
           <Route path="/audit-logs" element={<RoleProtectedRoute allowedRoles={['admin']}><AuditLogsPage /></RoleProtectedRoute>} />
           <Route path="/finance" element={<RoleProtectedRoute allowedRoles={['admin']}><FinanceManagementPage /></RoleProtectedRoute>} />
           <Route path="/payments-accounts" element={<RoleProtectedRoute allowedRoles={['admin']}><PaymentsAccountsPage /></RoleProtectedRoute>} />
@@ -275,6 +302,9 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
           
           {/* Keep product detail route for individual product views */}
           <Route path="/lats/products/:id" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><ProductDetailPage /></RoleProtectedRoute>} />
+          
+          {/* Add Product Route */}
+          <Route path="/lats/add-product" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><AddProductPage /></RoleProtectedRoute>} />
 
           <Route path="/lats/sales-reports" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><SalesReportsPage /></RoleProtectedRoute>} />
           <Route path="/lats/loyalty" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><CustomerLoyaltyPage /></RoleProtectedRoute>} />
@@ -283,6 +313,7 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
           <Route path="/lats/purchase-orders" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><PurchaseOrdersPage /></RoleProtectedRoute>} />
           <Route path="/lats/purchase-orders/new" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><NewPurchaseOrderPage /></RoleProtectedRoute>} />
           <Route path="/lats/purchase-orders/:id" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><PurchaseOrderDetailPage /></RoleProtectedRoute>} />
+          <Route path="/lats/supplier-management" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><SupplierManagementPage /></RoleProtectedRoute>} />
           <Route path="/lats/spare-parts" element={<RoleProtectedRoute allowedRoles={['admin', 'technician']}><SparePartsPage /></RoleProtectedRoute>} />
           
           {/* Payment routes */}
@@ -435,11 +466,13 @@ function App() {
                   <PaymentsProvider>
                     <LoadingProvider>
                       <GeneralSettingsProvider>
-                        <AppContent 
-                          isOnline={isOnline} 
-                          isSyncing={isSyncing} 
-                        />
-                        <LoadingProgressWrapper />
+                        <BrandsProvider>
+                          <AppContent 
+                            isOnline={isOnline} 
+                            isSyncing={isSyncing} 
+                          />
+                          <LoadingProgressWrapper />
+                        </BrandsProvider>
                       </GeneralSettingsProvider>
                     </LoadingProvider>
                   </PaymentsProvider>

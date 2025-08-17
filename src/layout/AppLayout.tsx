@@ -155,6 +155,12 @@ const AppLayout: React.FC = () => {
         icon: <Package size={20} />,
         roles: ['admin', 'customer-care']
       },
+      {
+        path: '/lats/add-product',
+        label: 'Add Product',
+        icon: <Plus size={20} />,
+        roles: ['admin', 'customer-care']
+      },
 
       // Customer Management
       {
@@ -221,7 +227,7 @@ const AppLayout: React.FC = () => {
 
       // Admin Management
       {
-        path: '/admin',
+        path: '/admin-management',
         label: 'Admin Management',
         icon: <Settings size={20} />,
         roles: ['admin']

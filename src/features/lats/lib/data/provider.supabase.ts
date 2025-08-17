@@ -12,6 +12,55 @@ import {
   InsufficientStockError, POSSettings
 } from '../../types/pos';
 
+/**
+ * Generate a simple SVG placeholder image as a data URL
+ */
+function generateSimplePlaceholder(text: string = 'Image', width: number = 300, height: number = 300): string {
+  const svg = `
+    <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="${width}" height="${height}" fill="#F3F4F6"/>
+      <text x="${width / 2}" y="${height / 2}" font-family="Arial, sans-serif" font-size="16" fill="#6B6B6B" text-anchor="middle" dy=".3em">${text}</text>
+    </svg>
+  `;
+
+  return `data:image/svg+xml;base64,${btoa(svg)}`;
+}
+
+/**
+ * Check if a URL is from an unreliable service
+ */
+function isUnreliableUrl(url: string): boolean {
+  if (!url || typeof url !== 'string') return true;
+  
+  const unreliableDomains = [
+    'via.placeholder.com',
+    'placehold.it',
+    'placehold.co',
+    'dummyimage.com',
+    'picsum.photos',
+    'lorempixel.com',
+    'loremflickr.com'
+  ];
+  
+  return unreliableDomains.some(domain => url.toLowerCase().includes(domain));
+}
+
+/**
+ * Replace all placeholder images with local SVG placeholders
+ */
+function replacePlaceholderImages(images: string[]): string[] {
+  if (!Array.isArray(images)) return [];
+  
+  return images.map(imageUrl => {
+    // Check if it's a placeholder service URL
+    if (isUnreliableUrl(imageUrl)) {
+      console.log('🔄 Replacing placeholder image:', imageUrl);
+      return generateSimplePlaceholder('Product Image', 400, 400);
+    }
+    return imageUrl;
+  });
+}
+
 // Supabase Data Provider
 class SupabaseDataProvider implements LatsDataProvider {
   
@@ -274,21 +323,60 @@ class SupabaseDataProvider implements LatsDataProvider {
       console.log('✅ User authenticated:', user.email);
       console.log('🔧 Filters received:', filters);
 
-      // Build the select query properly - avoid using both columns and select
-      let query = supabase
-        .from('lats_products')
-        .select(`
-          *,
-          lats_categories(name),
-          lats_brands(name),
-          lats_suppliers(name),
-          lats_product_variants(*)
-        `)
-        .order('name');
+      // Quick health check - verify table exists
+      try {
+        const { error: healthCheckError } = await supabase
+          .from('lats_products')
+          .select('id')
+          .limit(1);
+        
+        if (healthCheckError) {
+          console.error('❌ Health check failed:', healthCheckError);
+          return {
+            ok: false,
+            message: 'Database table not accessible. Please check your database configuration.'
+          };
+        }
+      } catch (healthError) {
+        console.error('❌ Health check exception:', healthError);
+        return {
+          ok: false,
+          message: 'Database connection failed. Please check your network connection.'
+        };
+      }
+
+      // Extract pagination parameters
+      const page = filters?.page || 1;
+      const limit = Math.min(filters?.limit || 50, 100); // Max 100 items per page
+      const offset = (page - 1) * limit;
+
+      // Build the select query with optimized structure
+              let query = supabase
+          .from('lats_products')
+          .select(`
+            id,
+            name,
+            description,
+            category_id,
+            brand_id,
+            supplier_id,
+            tags,
+            is_active,
+            total_quantity,
+            total_value,
+            condition,
+            store_shelf,
+            created_at,
+            updated_at,
+            lats_categories(name, description, color),
+            lats_brands(name, logo, website, description),
+            lats_suppliers(name, contact_person, email, phone, address, website, notes),
+            lats_product_variants(id, product_id, name, sku, cost_price, selling_price, quantity)
+          `, { count: 'exact' })
+          .order('name');
 
       // Apply filters with proper validation
       if (filters?.categoryId) {
-        // Validate categoryId is a string
         if (typeof filters.categoryId === 'object') {
           console.error('❌ getProducts: Object passed as categoryId:', filters.categoryId);
           return { 
@@ -299,7 +387,6 @@ class SupabaseDataProvider implements LatsDataProvider {
         query = query.eq('category_id', String(filters.categoryId).trim());
       }
       if (filters?.brandId) {
-        // Validate brandId is a string
         if (typeof filters.brandId === 'object') {
           console.error('❌ getProducts: Object passed as brandId:', filters.brandId);
           return { 
@@ -310,7 +397,6 @@ class SupabaseDataProvider implements LatsDataProvider {
         query = query.eq('brand_id', String(filters.brandId).trim());
       }
       if (filters?.supplierId) {
-        // Validate supplierId is a string
         if (typeof filters.supplierId === 'object') {
           console.error('❌ getProducts: Object passed as supplierId:', filters.supplierId);
           return { 
@@ -324,10 +410,16 @@ class SupabaseDataProvider implements LatsDataProvider {
         query = query.eq('is_active', filters.isActive);
       }
 
-      console.log('🔍 Executing products query...');
-      console.log('🔍 Query URL will be:', query.url);
+      // Apply pagination
+      query = query.range(offset, offset + limit - 1);
+
+      console.log('🔍 Executing optimized products query...');
+      const startTime = performance.now();
       
       const { data, error, count } = await query;
+
+      const endTime = performance.now();
+      console.log(`✅ Products query completed in ${(endTime - startTime).toFixed(2)}ms`);
 
       if (error) {
         console.error('❌ Database error:', error);
@@ -343,51 +435,190 @@ class SupabaseDataProvider implements LatsDataProvider {
           };
         }
         
-        // Check for malformed query errors
-        if (error.message?.includes('columns') && error.message?.includes('select')) {
-          console.error('🔍 This appears to be a columns/select conflict error');
+        // Try fallback query without joins if the main query fails
+        console.log('🔄 Trying fallback query without joins...');
+        try {
+          const fallbackQuery = supabase
+            .from('lats_products')
+            .select('id, name, description, category_id, brand_id, supplier_id, tags, is_active, total_quantity, total_value, condition, store_shelf, created_at, updated_at', { count: 'exact' })
+            .order('name')
+            .range(offset, offset + limit - 1);
+
+          const { data: fallbackData, error: fallbackError, count: fallbackCount } = await fallbackQuery;
+          
+          if (fallbackError) {
+            console.error('❌ Fallback query also failed:', fallbackError);
+            throw fallbackError;
+          }
+          
+          console.log('✅ Fallback query successful, processing data without joins...');
+          
+          // Process data without joins
+          const transformedProducts = (fallbackData || []).map((product: any) => ({
+            id: product.id,
+            name: product.name,
+            description: product.description,
+            shortDescription: product.description,
+            sku: '', // SKU is not in the main products table
+            barcode: '', // Barcode is not in the main products table
+            categoryId: product.category_id,
+            brandId: product.brand_id,
+            supplierId: product.supplier_id,
+            images: replacePlaceholderImages([]),
+            tags: product.tags || [],
+            isActive: product.is_active ?? true,
+            isFeatured: false, // is_featured is not in the main products table
+            isDigital: false, // is_digital is not in the main products table
+            requiresShipping: true, // requires_shipping is not in the main products table
+            taxRate: 0, // tax_rate is not in the main products table
+            totalQuantity: product.total_quantity || 0,
+            totalValue: product.total_value || 0,
+            // Price information (will be 0 for fallback since no variants loaded)
+            price: 0,
+            costPrice: 0,
+            priceRange: '0',
+            variants: [],
+            condition: product.condition || 'new',
+            storeShelf: product.store_shelf,
+            category: undefined,
+            brand: undefined,
+            supplier: undefined,
+            variants: [],
+            createdAt: product.created_at,
+            updatedAt: product.updated_at
+          }));
+
           return {
-            ok: false,
-            message: 'Invalid query format. Please contact support.'
+            ok: true,
+            data: {
+              data: transformedProducts,
+              total: fallbackCount || 0,
+              page: page,
+              limit: limit,
+              totalPages: Math.ceil((fallbackCount || 0) / limit)
+            }
           };
+          
+        } catch (fallbackError) {
+          console.error('❌ Both main and fallback queries failed');
+          throw error; // Throw the original error
         }
-        
-        // Check for other common errors
-        if (error.code === 'PGRST301') {
-          return {
-            ok: false,
-            message: 'Invalid query parameters. Please check your filters.'
-          };
-        }
-        
-        throw error;
       }
 
       console.log('✅ Products query successful, processing data...');
       console.log('📊 Raw data count:', data?.length || 0);
 
-      // Fetch images for all products
+      // Fetch images and variants for products in batches to avoid large queries
       const productIds = (data || []).map((product: any) => product.id);
       let productImages: any[] = [];
+      let productVariants: any[] = [];
       
-      if (productIds.length > 0) {
+      // Limit the number of products to process to avoid overwhelming the database
+      const maxProductsToProcess = 50;
+      const limitedProductIds = productIds.slice(0, maxProductsToProcess);
+      
+      if (limitedProductIds.length > 0) {
+        console.log(`📦 Processing ${limitedProductIds.length} products (limited from ${productIds.length} total)`);
         try {
-          const { data: imagesData, error: imagesError } = await supabase
-            .from('product_images')
-            .select('*')
-            .in('product_id', productIds)
-            .order('is_primary', { ascending: false })
-            .order('created_at', { ascending: true });
+                      // Fetch images in batches of 5 to avoid query size limits (reduced from 20 to 10, then to 5)
+            const batchSize = 5;
+            for (let i = 0; i < limitedProductIds.length; i += batchSize) {
+              const batch = limitedProductIds.slice(i, i + batchSize);
+            
+            try {
+              // Fetch images
+              const { data: batchImages, error: batchError } = await supabase
+                .from('product_images')
+                .select('product_id, image_url, is_primary')
+                .in('product_id', batch)
+                .order('is_primary', { ascending: false })
+                .order('created_at', { ascending: true });
 
-          if (imagesError) {
-            console.error('❌ Error fetching product images:', imagesError);
-          } else {
-            productImages = imagesData || [];
-            console.log('📸 Fetched images for', productImages.length, 'products');
+              if (batchError) {
+                console.error('❌ Error fetching product images batch:', batchError);
+              } else {
+                productImages.push(...(batchImages || []));
+              }
+              
+              // Fetch variants (for price information) with smaller batch size and retry logic
+              let batchVariants: any[] = [];
+              let variantsError: any = null;
+              
+              // Retry logic for variant queries with simplified column selection
+              const maxRetries = 3;
+              for (let retry = 0; retry < maxRetries; retry++) {
+                try {
+                  const { data: variants, error: error } = await supabase
+                    .from('lats_product_variants')
+                    .select('id, product_id, name, sku, cost_price, selling_price, quantity')
+                    .in('product_id', batch)
+                    .order('selling_price', { ascending: true });
+
+                  if (error) {
+                    variantsError = error;
+                    console.warn(`⚠️ Variant batch query attempt ${retry + 1} failed:`, error);
+                    console.warn(`⚠️ Error code: ${error.code}, Message: ${error.message}`);
+                    
+                    // If it's a 400 error and we have more retries, wait before retrying
+                    if (retry < maxRetries - 1) {
+                      const delay = Math.pow(2, retry) * 1000; // Exponential backoff: 1s, 2s, 4s
+                      console.log(`⏳ Waiting ${delay}ms before retry...`);
+                      await new Promise(resolve => setTimeout(resolve, delay));
+                      continue;
+                    }
+                  } else {
+                    batchVariants = variants || [];
+                    variantsError = null;
+                    console.log(`✅ Variant batch query succeeded on attempt ${retry + 1}`);
+                    break; // Success, exit retry loop
+                  }
+                } catch (retryError) {
+                  variantsError = retryError;
+                  console.error(`❌ Exception in variant batch query attempt ${retry + 1}:`, retryError);
+                  
+                  if (retry < maxRetries - 1) {
+                    const delay = Math.pow(2, retry) * 1000;
+                    console.log(`⏳ Waiting ${delay}ms before retry...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                  }
+                }
+              }
+
+              if (variantsError) {
+                console.error('❌ All variant batch query attempts failed, falling back to individual queries');
+                // If all batch queries fail, try individual queries as fallback
+                console.log('🔄 Attempting individual variant queries as fallback...');
+                for (const productId of batch) {
+                  try {
+                    const { data: singleVariants, error: singleError } = await supabase
+                      .from('lats_product_variants')
+                      .select('id, product_id, name, sku, cost_price, selling_price, quantity')
+                      .eq('product_id', productId)
+                      .order('selling_price', { ascending: true });
+                    
+                    if (!singleError && singleVariants) {
+                      productVariants.push(...singleVariants);
+                    }
+                  } catch (singleQueryError) {
+                    console.error(`❌ Error fetching variants for product ${productId}:`, singleQueryError);
+                  }
+                }
+              } else {
+                productVariants.push(...batchVariants);
+              }
+            } catch (batchError) {
+              console.error('❌ Error in batch processing:', batchError);
+            }
           }
-        } catch (imagesError) {
-          console.error('❌ Exception fetching product images:', imagesError);
+          console.log('📸 Fetched images for', productImages.length, 'products');
+          console.log('💰 Fetched variants for', productVariants.length, 'products');
+        } catch (error) {
+          console.error('❌ Exception fetching product data:', error);
+          // Continue processing even if batch fetching fails
+          console.log('🔄 Continuing with empty variant and image data...');
         }
+      } else {
+        console.log('📦 No products to process for variants and images');
       }
 
       // Transform the data to match the expected format
@@ -396,6 +627,20 @@ class SupabaseDataProvider implements LatsDataProvider {
         const productImageList = productImages
           .filter((img: any) => img.product_id === product.id)
           .map((img: any) => img.image_url);
+
+        // Get variants for this product (from the main query or batch fetch)
+        const productVariantList = product.lats_product_variants || productVariants.filter(v => v.product_id === product.id) || [];
+
+        // Get price information from variants
+        const lowestPrice = productVariantList.length > 0 
+          ? Math.min(...productVariantList.map((v: any) => v.selling_price || 0))
+          : 0;
+        const highestPrice = productVariantList.length > 0
+          ? Math.max(...productVariantList.map((v: any) => v.selling_price || 0))
+          : 0;
+        const priceRange = lowestPrice === highestPrice 
+          ? lowestPrice 
+          : `${lowestPrice} - ${highestPrice}`;
 
         return {
           id: product.id,
@@ -407,15 +652,21 @@ class SupabaseDataProvider implements LatsDataProvider {
           categoryId: product.category_id,
           brandId: product.brand_id,
           supplierId: product.supplier_id,
-          images: productImageList.length > 0 ? productImageList : (product.images || []),
+          images: replacePlaceholderImages(productImageList.length > 0 ? productImageList : []),
           tags: product.tags || [],
           isActive: product.is_active ?? true,
-          isFeatured: product.is_featured ?? false,
-          isDigital: product.is_digital ?? false,
-          requiresShipping: product.requires_shipping ?? true,
-          taxRate: product.tax_rate || 0,
+          isFeatured: false, // is_featured is not in the main products table
+          isDigital: false, // is_digital is not in the main products table
+          requiresShipping: true, // requires_shipping is not in the main products table
+          taxRate: 0, // tax_rate is not in the main products table
           totalQuantity: product.total_quantity || 0,
           totalValue: product.total_value || 0,
+          // Add price information from variants
+          price: lowestPrice,
+          costPrice: productVariantList.length > 0 
+            ? Math.min(...productVariantList.map((v: any) => v.cost_price || 0))
+            : 0,
+          priceRange: priceRange,
           condition: product.condition || 'new',
           storeShelf: product.store_shelf,
           category: product.lats_categories ? {
@@ -447,7 +698,8 @@ class SupabaseDataProvider implements LatsDataProvider {
             createdAt: product.lats_suppliers.created_at,
             updatedAt: product.lats_suppliers.updated_at
           } : undefined,
-          variants: (product.lats_product_variants || []).map((variant: any) => ({
+          // Include variants with simplified data structure
+          variants: productVariantList.map((variant: any) => ({
             id: variant.id,
             productId: variant.product_id,
             sku: variant.sku,
@@ -456,13 +708,13 @@ class SupabaseDataProvider implements LatsDataProvider {
             costPrice: variant.cost_price || 0,
             sellingPrice: variant.selling_price || 0,
             quantity: variant.quantity || 0,
-            minQuantity: variant.min_quantity || 0,
-            maxQuantity: variant.max_quantity,
-            barcode: variant.barcode,
-            weight: variant.weight,
-            dimensions: variant.dimensions,
-            createdAt: variant.created_at,
-            updatedAt: variant.updated_at
+            min_quantity: variant.min_quantity || 0,
+            max_quantity: variant.max_quantity || null,
+            barcode: variant.barcode || null,
+            weight: variant.weight || null,
+            dimensions: variant.dimensions || null,
+            createdAt: variant.created_at || new Date().toISOString(),
+            updatedAt: variant.updated_at || new Date().toISOString()
           })),
           createdAt: product.created_at,
           updatedAt: product.updated_at
@@ -475,10 +727,10 @@ class SupabaseDataProvider implements LatsDataProvider {
         ok: true,
         data: {
           data: transformedProducts,
-          total: count || transformedProducts.length,
-          page: 1,
-          limit: transformedProducts.length,
-          totalPages: 1
+          total: count || 0,
+          page: page,
+          limit: limit,
+          totalPages: Math.ceil((count || 0) / limit)
         }
       };
     } catch (error) {
@@ -501,147 +753,200 @@ class SupabaseDataProvider implements LatsDataProvider {
         };
       }
 
-      // Handle case where an object might be passed instead of a string
-      if (typeof id === 'object') {
-        console.error('❌ getProduct: Object passed instead of string ID:', id);
-        return { 
-          ok: false, 
-          message: 'Invalid product ID format. Expected string, received object.' 
-        };
-      }
+      console.log('🔍 Fetching product with full data:', id);
 
-      // Convert to string and trim whitespace
-      const sanitizedId = String(id).trim();
-      
-      if (!sanitizedId) {
-        console.error('❌ getProduct: Empty ID after sanitization');
-        return { 
-          ok: false, 
-          message: 'Product ID cannot be empty' 
-        };
-      }
-
-      console.log('🔍 [DEBUG] getProduct called with ID:', sanitizedId, 'Type:', typeof sanitizedId);
-
-      // Check authentication first
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      
-      if (authError || !user) {
-        console.error('❌ Authentication error:', authError?.message || 'User not authenticated');
-        return { 
-          ok: false, 
-          message: 'Authentication required. Please log in to access products.' 
-        };
-      }
-
-      const { data, error } = await supabase
+      // Get the product with basic info - fetch ALL available fields
+      const { data: product, error: productError } = await supabase
         .from('lats_products')
         .select(`
           *,
-          lats_categories(name),
-          lats_brands(name),
-          lats_suppliers(name),
-          lats_product_variants(*)
+          lats_categories(id, name, description, color, created_at, updated_at),
+          lats_brands(id, name, logo, website, description, created_at, updated_at),
+          lats_suppliers(id, name, contact_person, email, phone, address, website, notes, created_at, updated_at)
         `)
-        .eq('id', sanitizedId)
+        .eq('id', id)
         .single();
 
-      if (error) {
-        console.error('❌ Database error:', error);
-        if (error.code === 'PGRST116') {
-          return { 
-            ok: false, 
-            message: 'Row Level Security (RLS) policy violation. Please ensure you are properly authenticated.' 
-          };
-        }
-        throw error;
+      if (productError) {
+        console.error('❌ Error fetching product:', productError);
+        return { ok: false, message: 'Product not found' };
       }
 
-      // Debug logging
-      console.log('🔍 [DEBUG] Raw data from database:', data);
-      console.log('🔍 [DEBUG] Variants data:', data.lats_product_variants);
-      
-      // Fetch product images
-      let productImages: string[] = [];
-      try {
-        const { data: imagesData, error: imagesError } = await supabase
-          .from('product_images')
-          .select('image_url')
-          .eq('product_id', sanitizedId)
-          .order('is_primary', { ascending: false })
-          .order('created_at', { ascending: true });
+      // Get product variants
+      const { data: variants, error: variantsError } = await supabase
+        .from('lats_product_variants')
+        .select('*')
+        .eq('product_id', id);
 
-        if (imagesError) {
-          console.error('❌ Error fetching product images:', imagesError);
-        } else {
-          productImages = (imagesData || []).map((img: any) => img.image_url);
-        }
-      } catch (imagesError) {
-        console.error('❌ Exception fetching product images:', imagesError);
+      if (variantsError) {
+        console.error('❌ Error fetching product variants:', variantsError);
       }
-      
-      const product = {
-        id: data.id,
-        name: data.name,
-        description: data.description,
-        shortDescription: data.short_description,
-        sku: data.lats_product_variants?.[0]?.sku || '', // Use first variant's SKU as main product SKU
-        barcode: data.lats_product_variants?.[0]?.barcode || '', // Use first variant's barcode as main product barcode
-        categoryId: data.category_id,
-        brandId: data.brand_id,
-        supplierId: data.supplier_id,
-        images: productImages, // Use fetched images
-        tags: data.tags || [],
-        isActive: data.is_active,
-        isFeatured: data.is_featured || false,
-        isDigital: data.is_digital || false,
-        requiresShipping: data.requires_shipping !== false, // Default to true
-        taxRate: data.tax_rate || 0.16,
-        variants: (data.lats_product_variants || []).map((variant: any) => {
-          console.log('🔍 [DEBUG] Processing variant:', variant);
-          return {
-            id: variant.id,
-            productId: variant.product_id,
-            sku: variant.sku,
-            name: variant.name,
-            attributes: variant.attributes || {},
-            costPrice: variant.cost_price || 0,
-            sellingPrice: variant.selling_price || 0,
-            price: variant.selling_price, // Keep both for compatibility
-            quantity: variant.quantity || 0,
-            stockQuantity: variant.quantity || 0, // Add stockQuantity for UI compatibility
-            minQuantity: variant.min_quantity,
-            minStockLevel: variant.min_quantity, // Add minStockLevel for UI compatibility
-            maxQuantity: variant.max_quantity,
-            maxStockLevel: variant.max_quantity, // Add maxStockLevel for UI compatibility
-            barcode: variant.barcode,
-            weight: variant.weight,
-            dimensions: variant.dimensions,
-            isActive: true, // Add isActive for UI compatibility
-            createdAt: variant.created_at,
-            updatedAt: variant.updated_at
-          };
-        }),
-        totalQuantity: data.total_quantity || 0,
-        totalValue: data.total_value || 0,
-        debutDate: data.debut_date,
-        debutNotes: data.debut_notes,
-        debutFeatures: data.debut_features || [],
-        metadata: data.metadata || {},
-        category: data.lats_categories,
-        brand: data.lats_brands,
-        supplier: data.lats_suppliers,
-        createdAt: data.created_at,
-        updatedAt: data.updated_at
+
+      // Get product images
+      const { data: images, error: imagesError } = await supabase
+        .from('product_images')
+        .select('image_url, is_primary')
+        .eq('product_id', id)
+        .order('is_primary', { ascending: false })
+        .order('created_at', { ascending: true });
+
+      if (imagesError) {
+        console.error('❌ Error fetching product images:', imagesError);
+      }
+
+      const transformedProduct: Product = {
+        id: product.id,
+        name: product.name,
+        description: product.description,
+        shortDescription: product.short_description || product.description,
+        sku: variants && variants.length > 0 ? variants[0].sku : '', // Get SKU from first variant
+        barcode: variants && variants.length > 0 ? variants[0].barcode : '', // Get barcode from first variant
+        categoryId: product.category_id,
+        brandId: product.brand_id,
+        supplierId: product.supplier_id,
+        images: (images || []).map(img => img.image_url),
+        tags: product.tags || [],
+        isActive: product.is_active ?? true,
+        isFeatured: product.is_featured ?? false,
+        isDigital: product.is_digital ?? false,
+        requiresShipping: product.requires_shipping ?? true,
+        taxRate: product.tax_rate ?? 0.16,
+        totalQuantity: product.total_quantity || 0,
+        totalValue: product.total_value || 0,
+        // Add price information from variants
+        price: variants && variants.length > 0 
+          ? Math.min(...variants.map((v: any) => v.selling_price || 0))
+          : 0,
+        costPrice: variants && variants.length > 0
+          ? Math.min(...variants.map((v: any) => v.cost_price || 0))
+          : 0,
+        priceRange: variants && variants.length > 0
+          ? (() => {
+              const prices = variants.map((v: any) => v.selling_price || 0);
+              const min = Math.min(...prices);
+              const max = Math.max(...prices);
+              return min === max ? min.toString() : `${min} - ${max}`;
+            })()
+          : '0',
+        condition: product.condition || 'new',
+        storeShelf: product.store_shelf,
+        debutDate: product.debut_date,
+        debutNotes: product.debut_notes,
+        debutFeatures: product.debut_features || [],
+        metadata: product.metadata || {},
+        category: product.lats_categories ? {
+          id: product.lats_categories.id,
+          name: product.lats_categories.name,
+          description: product.lats_categories.description,
+          color: product.lats_categories.color,
+          createdAt: product.lats_categories.created_at,
+          updatedAt: product.lats_categories.updated_at
+        } : undefined,
+        brand: product.lats_brands ? {
+          id: product.lats_brands.id,
+          name: product.lats_brands.name,
+          logo: product.lats_brands.logo,
+          website: product.lats_brands.website,
+          description: product.lats_brands.description,
+          createdAt: product.lats_brands.created_at,
+          updatedAt: product.lats_brands.updated_at
+        } : undefined,
+        supplier: product.lats_suppliers ? {
+          id: product.lats_suppliers.id,
+          name: product.lats_suppliers.name,
+          contactPerson: product.lats_suppliers.contact_person,
+          email: product.lats_suppliers.email,
+          phone: product.lats_suppliers.phone,
+          address: product.lats_suppliers.address,
+          website: product.lats_suppliers.website,
+          notes: product.lats_suppliers.notes,
+          createdAt: product.lats_suppliers.created_at,
+          updatedAt: product.lats_suppliers.updated_at
+        } : undefined,
+        variants: (variants || []).map((variant: any) => ({
+          id: variant.id,
+          productId: variant.product_id,
+          sku: variant.sku,
+          name: variant.name,
+          attributes: variant.attributes || {},
+          costPrice: variant.cost_price || 0,
+          sellingPrice: variant.selling_price || 0,
+          quantity: variant.quantity || 0,
+          min_quantity: variant.min_quantity || 0,
+          max_quantity: variant.max_quantity,
+          barcode: variant.barcode || null,
+          weight: variant.weight || null,
+          dimensions: variant.dimensions || null,
+          createdAt: variant.created_at,
+          updatedAt: variant.updated_at
+        })),
+        createdAt: product.created_at,
+        updatedAt: product.updated_at
       };
 
-      console.log('🔍 [DEBUG] Final product object:', product);
-      console.log('🔍 [DEBUG] Product variants:', product.variants);
+      console.log('✅ Product fetched successfully:', {
+        id: transformedProduct.id,
+        name: transformedProduct.name,
+        variantsCount: transformedProduct.variants?.length || 0,
+        hasCategory: !!transformedProduct.category,
+        hasBrand: !!transformedProduct.brand,
+        hasSupplier: !!transformedProduct.supplier,
+        totalQuantity: transformedProduct.totalQuantity,
+        totalValue: transformedProduct.totalValue,
+        isFeatured: transformedProduct.isFeatured,
+        isDigital: transformedProduct.isDigital,
+        requiresShipping: transformedProduct.requiresShipping,
+        taxRate: transformedProduct.taxRate,
+        condition: transformedProduct.condition,
+        storeShelf: transformedProduct.storeShelf,
+        debutDate: transformedProduct.debutDate,
+        debutNotes: transformedProduct.debutNotes,
+        debutFeatures: transformedProduct.debutFeatures?.length || 0
+      });
 
-      return { ok: true, data: product };
+      return { ok: true, data: transformedProduct };
     } catch (error) {
-      console.error('Error fetching product:', error);
-      return { ok: false, message: 'Failed to fetch product' };
+      console.error('💥 Exception in getProduct:', error);
+      return { ok: false, message: 'Failed to get product' };
+    }
+  }
+
+  // New function to load product variants separately
+  async getProductVariants(productId: string): Promise<ApiResponse<any[]>> {
+    try {
+      const { data: variants, error } = await supabase
+        .from('lats_product_variants')
+        .select('id, product_id, name, sku, cost_price, selling_price, quantity')
+        .eq('product_id', productId)
+        .order('name');
+
+      if (error) {
+        console.error('❌ Error fetching product variants:', error);
+        return { ok: false, message: 'Failed to fetch product variants' };
+      }
+
+      const transformedVariants = (variants || []).map((variant: any) => ({
+        id: variant.id,
+        productId: variant.product_id,
+        sku: variant.sku,
+        name: variant.name,
+        attributes: variant.attributes || {},
+        costPrice: variant.cost_price || 0,
+        sellingPrice: variant.selling_price || 0,
+        quantity: variant.quantity || 0,
+        min_quantity: variant.min_quantity || 0,
+        max_quantity: variant.max_quantity || null,
+        barcode: variant.barcode || null,
+        weight: variant.weight || null,
+        dimensions: variant.dimensions || null,
+        createdAt: variant.created_at || new Date().toISOString(),
+        updatedAt: variant.updated_at || new Date().toISOString()
+      }));
+
+      return { ok: true, data: transformedVariants };
+    } catch (error) {
+      console.error('💥 Exception in getProductVariants:', error);
+      return { ok: false, message: 'Failed to get product variants' };
     }
   }
 
@@ -836,7 +1141,6 @@ class SupabaseDataProvider implements LatsDataProvider {
             selling_price: variant.price || variant.sellingPrice || variant.selling_price || 0,
             quantity: variant.stockQuantity || variant.quantity || 0,
             min_quantity: variant.minStockLevel || variant.minQuantity || variant.min_quantity || 0,
-            max_quantity: variant.maxStockLevel || variant.maxQuantity || variant.max_quantity || null,
             barcode: variant.barcode || null,
             weight: variant.weight || null,
             dimensions: variant.dimensions || null,
@@ -977,7 +1281,6 @@ class SupabaseDataProvider implements LatsDataProvider {
               cost_price: Number(variant.costPrice) || 0,
               quantity: Number(variant.stockQuantity) || 0,
               min_quantity: Number(variant.minStockLevel) || 0,
-              max_quantity: variant.maxStockLevel ? Number(variant.maxStockLevel) : null,
               weight: variant.weight ? Number(variant.weight) : null,
               dimensions: variant.dimensions || null,
               attributes: variant.attributes || {}
@@ -1014,7 +1317,6 @@ class SupabaseDataProvider implements LatsDataProvider {
               cost_price: Number(variant.costPrice) || 0,
               quantity: Number(variant.stockQuantity) || 0,
               min_quantity: Number(variant.minStockLevel) || 0,
-              max_quantity: variant.maxStockLevel ? Number(variant.maxStockLevel) : null,
               weight: variant.weight ? Number(variant.weight) : null,
               dimensions: variant.dimensions || null,
               attributes: variant.attributes || {}
@@ -1118,7 +1420,7 @@ class SupabaseDataProvider implements LatsDataProvider {
           sku: variant.sku,
           name: variant.name,
           attributes: variant.attributes,
-          price: variant.selling_price,
+          sellingPrice: variant.selling_price,
           quantity: variant.quantity,
           barcode: variant.barcode
         })),

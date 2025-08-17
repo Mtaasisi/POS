@@ -45,55 +45,37 @@ export interface Supplier {
 }
 
 export interface ProductVariant {
-  id: string;
-  productId: string;
+  id?: string;
   sku: string;
   name: string;
   barcode?: string;
-  attributes: Record<string, any>;
+  price: number;
   costPrice: number;
-  sellingPrice: number;
-  quantity: number;
-  minQuantity: number;
-  maxQuantity?: number;
+  stockQuantity: number;
+  minStockLevel: number;
   weight?: number;
-  dimensions?: {
-    length?: number;
-    width?: number;
-    height?: number;
-  };
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
+  attributes: Record<string, any>;
 }
 
 export interface Product {
   id: string;
   name: string;
   description?: string;
-  shortDescription?: string;
   sku: string;
   barcode?: string;
   categoryId: string;
   brandId?: string;
   supplierId?: string;
-  images?: string[];
-  tags: string[];
-  isActive: boolean;
-  totalQuantity: number;
-  totalValue: number;
-  variants: ProductVariant[];
-  category?: Category;
-  brand?: Brand;
-  supplier?: Supplier;
-  // Add new fields from database
-  condition?: string;
+  condition: string;
   storeShelf?: string;
-  // Debut information
-  debutDate?: string;
-  debutNotes?: string;
-  debutFeatures?: string[];
-  metadata?: Record<string, any>;
+  price: number;
+  costPrice: number;
+  stockQuantity: number;
+  minStockLevel: number;
+  weight?: number;
+  tags: string[];
+  images: ProductImage[];
+  variants: ProductVariant[];
   createdAt: string;
   updatedAt: string;
 }
@@ -203,7 +185,6 @@ export interface ProductFormData {
     costPrice: number;
     stockQuantity: number;
     minStockLevel: number;
-    maxStockLevel?: number;
     weight?: number;
     dimensions?: {
       length?: number;
@@ -211,7 +192,6 @@ export interface ProductFormData {
       height?: number;
     };
     attributes?: Record<string, any>;
-    isActive: boolean;
   }>;
   metadata?: Record<string, any>;
 }

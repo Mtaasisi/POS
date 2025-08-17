@@ -5,6 +5,7 @@ import GlassButton from '../ui/GlassButton';
 import GlassBadge from '../ui/GlassBadge';
 import { format } from '../../lib/format';
 import { CartItem } from '../../types/pos';
+import ProductImageDisplay from '../inventory/ProductImageDisplay';
 
 interface VariantCartItemProps {
   item: CartItem;
@@ -114,20 +115,12 @@ const VariantCartItem: React.FC<VariantCartItemProps> = ({
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3 flex-1 min-w-0">
             {/* Product Thumbnail */}
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden">
-              {thumbnail ? (
-                <img 
-                  src={thumbnail} 
-                  alt={item.productName}
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none';
-                    e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                  }}
-                />
-              ) : null}
-              <Package className="w-4 h-4 text-blue-600 hidden" />
-            </div>
+            <ProductImageDisplay
+              images={thumbnail ? [thumbnail] : []}
+              productName={item.productName}
+              size="sm"
+              className="flex-shrink-0"
+            />
             <div className="flex-1 min-w-0">
               <div className="font-medium text-sm text-gray-900 truncate">
                 {item.productName}
@@ -172,17 +165,15 @@ const VariantCartItem: React.FC<VariantCartItemProps> = ({
           {/* Product Thumbnail */}
           <div className="w-10 h-10 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden">
             {thumbnail ? (
-              <img 
-                src={thumbnail} 
+              <ImageDisplay 
+                imageUrl={thumbnail} 
                 alt={item.productName}
                 className="w-full h-full object-cover"
-                onError={(e) => {
-                  e.currentTarget.style.display = 'none';
-                  e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                }}
+                fallbackIcon={true}
               />
-            ) : null}
-            <Package className="w-5 h-5 text-blue-600 hidden" />
+            ) : (
+              <Package className="w-5 h-5 text-blue-600" />
+            )}
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="font-medium text-gray-900 truncate">{item.productName}</h3>

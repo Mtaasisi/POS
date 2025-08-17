@@ -50,7 +50,6 @@ export class LatsDataTransformer {
         costPrice: variant.cost_price || 0,
         stockQuantity: variant.quantity_in_stock || 0,
         minStockLevel: formData.minimum_stock_level || 0,
-        maxStockLevel: formData.maximum_stock_level || undefined,
         weight: variant.weight_kg || undefined,
         dimensions: variant.dimensions_cm ? this.parseDimensions(variant.dimensions_cm) : undefined,
         attributes: variant.attributes || {},
@@ -66,7 +65,6 @@ export class LatsDataTransformer {
         costPrice: formData.cost_price || 0,
         stockQuantity: formData.quantity_in_stock || 0,
         minStockLevel: formData.minimum_stock_level || 0,
-        maxStockLevel: formData.maximum_stock_level || undefined,
         weight: formData.weight_kg || undefined,
         dimensions: formData.dimensions_cm ? this.parseDimensions(formData.dimensions_cm) : undefined,
         attributes: {},
@@ -103,11 +101,9 @@ export class LatsDataTransformer {
         costPrice: variant.costPrice,
         quantity: variant.quantity || variant.stockQuantity || 0,
         minQuantity: variant.minQuantity || variant.minStockLevel || 0,
-        maxQuantity: variant.maxQuantity || variant.maxStockLevel || undefined,
         weight: variant.weight,
         dimensions: variant.dimensions,
-        attributes: variant.attributes,
-        isActive: variant.isActive
+        attributes: variant.attributes
       }))
     };
   }
@@ -125,7 +121,6 @@ export class LatsDataTransformer {
       supplierId: apiData.supplierId || apiData.supplier_id || undefined,
       images: apiData.images || [],
       tags: apiData.tags || [],
-      isActive: apiData.isActive ?? true,
       isFeatured: apiData.isFeatured ?? false,
       isDigital: apiData.isDigital ?? false,
       requiresShipping: apiData.requiresShipping ?? true,
@@ -138,7 +133,6 @@ export class LatsDataTransformer {
         costPrice: variant.costPrice || variant.cost_price || 0,
         stockQuantity: variant.stockQuantity || variant.quantity || 0,
         minStockLevel: variant.minStockLevel || variant.min_quantity || 0,
-        maxStockLevel: variant.maxStockLevel || variant.max_quantity || undefined,
         weight: variant.weight || undefined,
         dimensions: variant.dimensions || undefined,
         attributes: variant.attributes || {},
@@ -313,7 +307,6 @@ export class LatsDataTransformer {
         costPrice: variant.costPrice || 0,
         stockQuantity: variant.stockQuantity || variant.quantity || 0,
         minStockLevel: variant.minStockLevel || variant.minQuantity || 0,
-        maxStockLevel: variant.maxStockLevel || variant.maxQuantity || undefined,
         weight: variant.weight || undefined,
         dimensions: variant.dimensions || undefined,
         attributes: variant.attributes || {},
@@ -394,7 +387,6 @@ export class LatsDataTransformer {
       SellingPrice: mainVariant?.price || mainVariant?.sellingPrice || 0,
       StockQuantity: mainVariant?.stockQuantity || mainVariant?.quantity || 0,
       MinStockLevel: mainVariant?.minStockLevel || mainVariant?.minQuantity || 0,
-      MaxStockLevel: mainVariant?.maxStockLevel || mainVariant?.maxQuantity || '',
       Barcode: mainVariant?.barcode || product.barcode || '',
       Weight: mainVariant?.weight || '',
       Dimensions: mainVariant?.dimensions ? this.transformDimensionsToString(mainVariant.dimensions) : '',
@@ -431,7 +423,6 @@ export class LatsDataTransformer {
         costPrice: parseFloat(csvData.CostPrice || csvData.costPrice || '0'),
         stockQuantity: parseInt(csvData.StockQuantity || csvData.stockQuantity || csvData.quantity || '0'),
         minStockLevel: parseInt(csvData.MinStockLevel || csvData.minStockLevel || '0'),
-        maxStockLevel: csvData.MaxStockLevel || csvData.maxStockLevel ? parseInt(csvData.MaxStockLevel || csvData.maxStockLevel) : undefined,
         weight: csvData.Weight || csvData.weight ? parseFloat(csvData.Weight || csvData.weight) : undefined,
         dimensions: csvData.Dimensions || csvData.dimensions ? this.parseDimensions(csvData.Dimensions || csvData.dimensions) : undefined,
         attributes: {},

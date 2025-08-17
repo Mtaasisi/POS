@@ -17,7 +17,6 @@ export interface LatsProduct {
   supplierId?: string;
   images?: string[];
   tags?: string[];
-  isActive: boolean;
   isFeatured: boolean;
   isDigital: boolean;
   requiresShipping: boolean;
@@ -39,7 +38,6 @@ export interface LatsProductVariant {
   sellingPrice: number;
   quantity: number;
   minQuantity: number;
-  maxQuantity?: number;
   barcode?: string;
   weight?: number;
   dimensions?: {
@@ -61,7 +59,6 @@ export interface CreateProductData {
   brandId?: string;
   supplierId?: string;
   tags?: string[];
-  isActive?: boolean;
   isFeatured?: boolean;
   isDigital?: boolean;
   requiresShipping?: boolean;
@@ -74,7 +71,6 @@ export interface CreateProductData {
     costPrice: number;
     quantity: number;
     minQuantity: number;
-    maxQuantity?: number;
     weight?: number;
     dimensions?: {
       length?: number;
@@ -82,7 +78,6 @@ export interface CreateProductData {
       height?: number;
     };
     attributes?: Record<string, any>;
-    isActive?: boolean;
   }>;
   images?: Array<{
     image_url: string;
@@ -144,7 +139,6 @@ export async function createProduct(
       selling_price: (variant.sellingPrice ?? variant.price) ?? 0,
       quantity: (variant.quantity ?? variant.stockQuantity) ?? 0,
       min_quantity: (variant.minQuantity ?? variant.minStockLevel) ?? 0,
-      max_quantity: (variant.maxQuantity ?? variant.maxStockLevel) ?? null,
       barcode: variant.barcode,
       weight: variant.weight,
       dimensions: variant.dimensions
@@ -261,59 +255,111 @@ export async function getProduct(productId: string): Promise<LatsProduct & { ima
 
 // Get all products
 export async function getProducts(): Promise<LatsProduct[]> {
-  const { data, error } = await supabase
-    .from('lats_products')
-    .select(`
-      *,
-      lats_categories(name),
-      lats_brands(name),
-      lats_suppliers(name),
-      lats_product_variants(*)
-    `)
-    .order('created_at', { ascending: false });
+  try {
+    // First, get all products without variants to avoid large join queries
+    const { data: products, error } = await supabase
+      .from('lats_products')
+      .select(`
+        *,
+        lats_categories(name),
+        lats_brands(name),
+        lats_suppliers(name)
+      `)
+      .order('created_at', { ascending: false });
 
-  if (error) {
-    console.error('❌ Error fetching products:', error);
+    if (error) {
+      console.error('❌ Error fetching products:', error);
+      throw error;
+    }
+
+    if (!products || products.length === 0) {
+      return [];
+    }
+
+    // Get product IDs for variant fetching
+    const productIds = products.map(product => product.id);
+    
+    // Fetch variants in batches to avoid URL length issues
+    const BATCH_SIZE = 20;
+    const allVariants: any[] = [];
+    
+    for (let i = 0; i < productIds.length; i += BATCH_SIZE) {
+      const batch = productIds.slice(i, i + BATCH_SIZE);
+      const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
+      const totalBatches = Math.ceil(productIds.length / BATCH_SIZE);
+      
+      console.log(`📦 Fetching variants batch ${batchNumber}/${totalBatches} (${batch.length} products)`);
+      
+      try {
+        const { data: batchVariants, error: batchError } = await supabase
+          .from('lats_product_variants')
+          .select('*')
+          .in('product_id', batch)
+          .order('name');
+
+        if (batchError) {
+          console.error(`❌ Error fetching variants batch ${batchNumber}:`, batchError);
+          continue; // Skip this batch and continue with others
+        }
+
+        allVariants.push(...(batchVariants || []));
+        console.log(`✅ Batch ${batchNumber} returned ${batchVariants?.length || 0} variants`);
+      } catch (batchError) {
+        console.error(`❌ Exception processing variants batch ${batchNumber}:`, batchError);
+        continue; // Skip this batch and continue with others
+      }
+    }
+
+    // Group variants by product ID
+    const variantsByProductId = new Map<string, any[]>();
+    allVariants.forEach(variant => {
+      if (!variantsByProductId.has(variant.product_id)) {
+        variantsByProductId.set(variant.product_id, []);
+      }
+      variantsByProductId.get(variant.product_id)!.push(variant);
+    });
+
+    // Map products with their variants
+    return (products || []).map(product => ({
+      id: product.id,
+      name: product.name,
+      description: product.description,
+      sku: product.sku,
+      barcode: product.barcode,
+      categoryId: product.category_id,
+      brandId: product.brand_id,
+      supplierId: product.supplier_id,
+      tags: product.tags,
+      isActive: product.is_active,
+      isFeatured: product.is_featured,
+      isDigital: product.is_digital,
+      requiresShipping: product.requires_shipping,
+      taxRate: product.tax_rate,
+      totalQuantity: product.total_quantity,
+      totalValue: product.total_value,
+      createdAt: product.created_at,
+      updatedAt: product.updated_at,
+      variants: (variantsByProductId.get(product.id) || []).map((variant: any) => ({
+        id: variant.id,
+        productId: variant.product_id,
+        sku: variant.sku,
+        name: variant.name,
+        attributes: variant.attributes || {},
+        costPrice: variant.cost_price,
+        sellingPrice: variant.selling_price,
+        quantity: variant.quantity,
+        minQuantity: variant.min_quantity,
+        barcode: variant.barcode,
+        weight: variant.weight,
+        dimensions: variant.dimensions,
+        createdAt: variant.created_at,
+        updatedAt: variant.updated_at
+      }))
+    }));
+  } catch (error) {
+    console.error('💥 Exception in getProducts:', error);
     throw error;
   }
-
-  return (data || []).map(product => ({
-    id: product.id,
-    name: product.name,
-    description: product.description,
-    sku: product.sku,
-    barcode: product.barcode,
-    categoryId: product.category_id,
-    brandId: product.brand_id,
-    supplierId: product.supplier_id,
-    tags: product.tags,
-    isActive: product.is_active,
-    isFeatured: product.is_featured,
-    isDigital: product.is_digital,
-    requiresShipping: product.requires_shipping,
-    taxRate: product.tax_rate,
-    totalQuantity: product.total_quantity,
-    totalValue: product.total_value,
-    createdAt: product.created_at,
-    updatedAt: product.updated_at,
-    variants: product.lats_product_variants?.map((variant: any) => ({
-      id: variant.id,
-      productId: variant.product_id,
-      sku: variant.sku,
-      name: variant.name,
-      attributes: variant.attributes || {},
-      costPrice: variant.cost_price,
-      sellingPrice: variant.selling_price,
-      quantity: variant.quantity,
-      minQuantity: variant.min_quantity,
-      maxQuantity: variant.max_quantity,
-      barcode: variant.barcode,
-      weight: variant.weight,
-      dimensions: variant.dimensions,
-      createdAt: variant.created_at,
-      updatedAt: variant.updated_at
-    })) || []
-  }));
 }
 
 // Update a product
@@ -366,7 +412,6 @@ export async function updateProduct(
           selling_price: variant.sellingPrice,
           quantity: variant.stockQuantity,
           min_quantity: variant.minStockLevel,
-          max_quantity: variant.maxStockLevel,
           barcode: variant.barcode,
           weight: variant.weight,
           dimensions: variant.dimensions

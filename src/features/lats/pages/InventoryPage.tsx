@@ -20,7 +20,7 @@ import { toast } from 'react-hot-toast';
 // Import inventory forms
 
 import StockAdjustModal from '../components/inventory/StockAdjustModal';
-import BrandForm from '../components/inventory/BrandForm';
+
 import CategoryFormModal from '../components/inventory/CategoryFormModal';
 import SupplierForm from '../components/inventory/SupplierForm';
 import VariantForm from '../components/inventory/VariantForm';
@@ -72,7 +72,7 @@ const InventoryPage: React.FC = () => {
 
   // Form modals
   const [showStockAdjustModal, setShowStockAdjustModal] = useState(false);
-  const [showBrandForm, setShowBrandForm] = useState(false);
+
   const [showCategoryForm, setShowCategoryForm] = useState(false);
   const [showSupplierForm, setShowSupplierForm] = useState(false);
   const [showVariantForm, setShowVariantForm] = useState(false);
@@ -86,7 +86,7 @@ const InventoryPage: React.FC = () => {
         
         try {
           await Promise.all([
-            loadProducts(),
+            loadProducts({ page: 1, limit: 50 }),
             loadCategories(),
             loadBrands(),
             loadSuppliers(),
@@ -316,11 +316,11 @@ const InventoryPage: React.FC = () => {
                 Add Category
               </GlassButton>
               <GlassButton
-                onClick={() => setShowBrandForm(true)}
+                onClick={() => window.open('/brand-management', '_blank')}
                 variant="secondary"
                 icon={<Crown size={18} />}
               >
-                Add Brand
+                Manage Brands
               </GlassButton>
             </div>
           }
@@ -520,22 +520,7 @@ const InventoryPage: React.FC = () => {
           loading={isLoading}
         />
 
-        {showBrandForm && (
-          <BrandForm
-            isOpen={showBrandForm}
-            onClose={() => setShowBrandForm(false)}
-            onSubmit={async (brandData) => {
-              try {
-                await createBrand(brandData);
-                toast.success('Brand created successfully');
-                setShowBrandForm(false);
-              } catch (error) {
-                toast.error('Failed to create brand');
-                console.error('Brand creation error:', error);
-              }
-            }}
-          />
-        )}
+
 
         {showSupplierForm && (
           <SupplierForm
@@ -578,7 +563,7 @@ const InventoryPage: React.FC = () => {
           onProductCreated={(product) => {
             toast.success('Product created successfully!');
             // Refresh the products list
-            loadProducts();
+            loadProducts({ page: 1, limit: 50 });
           }}
         />
 
@@ -589,7 +574,7 @@ const InventoryPage: React.FC = () => {
           onProductUpdated={(product) => {
             toast.success('Product updated successfully!');
             // Refresh the products list
-            loadProducts();
+            loadProducts({ page: 1, limit: 50 });
           }}
         />
       </div>

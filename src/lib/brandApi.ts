@@ -290,4 +290,25 @@ export const searchBrands = async (query: string): Promise<Brand[]> => {
     console.error('Error in searchBrands:', error);
     throw error;
   }
+};
+
+// Get brands by category
+export const getBrandsByCategory = async (category: string): Promise<Brand[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('lats_brands')
+      .select('*')
+      .contains('category', [category])
+      .order('name');
+
+    if (error) {
+      console.error('Error fetching brands by category:', error);
+      throw new Error('Failed to fetch brands by category');
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('Error in getBrandsByCategory:', error);
+    throw error;
+  }
 }; 

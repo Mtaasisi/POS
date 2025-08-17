@@ -44,7 +44,7 @@ const NewPurchaseOrderPage: React.FC = () => {
 
   // Load data on component mount
   useEffect(() => {
-    loadProducts();
+    loadProducts({ page: 1, limit: 50 });
     loadSuppliers();
   }, [loadProducts, loadSuppliers]);
 
