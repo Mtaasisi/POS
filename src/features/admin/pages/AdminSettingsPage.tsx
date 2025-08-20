@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../../context/AuthContext';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../../../lib/supabaseClient';
 import { 
   getAdminSettings,
@@ -9,6 +10,12 @@ import {
   groupSettingsByCategory,
   flattenSettingsForDatabase
 } from '../../../lib/adminSettingsApi';
+import { 
+  getAttendanceSettings,
+  saveAttendanceSettings,
+  defaultAttendanceSettings
+} from '../../../lib/attendanceSettingsApi';
+import OfficeMap from '../components/OfficeMap';
 import { 
   Settings,
   Database,
@@ -58,7 +65,10 @@ import {
   ToggleRight,
   MessageCircle,
   Image,
-  Clock
+  Clock,
+  MapPin,
+  Users,
+  Compass
 } from 'lucide-react';
 import GlassCard from '../../../features/shared/components/ui/GlassCard';
 import GlassButton from '../../../features/shared/components/ui/GlassButton';
@@ -150,6 +160,29 @@ interface SystemSettings {
     autoScaling: boolean;
     autoUpdates: boolean;
   };
+  attendance: {
+    enabled: boolean;
+    requireLocation: boolean;
+    requireWifi: boolean;
+    allowMobileData: boolean;
+    gpsAccuracy: number;
+    checkInRadius: number;
+    checkInTime: string;
+    checkOutTime: string;
+    gracePeriod: number;
+    offices: {
+      name: string;
+      lat: number;
+      lng: number;
+      radius: number;
+      address: string;
+      networks: {
+        ssid: string;
+        bssid?: string;
+        description: string;
+      }[];
+    }[];
+  };
   performanceMonitoring: {
     realTimeMetrics: boolean;
     alertThresholds: {
@@ -190,6 +223,7 @@ interface SystemSettings {
 
 const AdminSettingsPage: React.FC = () => {
   const { currentUser } = useAuth();
+  const [searchParams] = useSearchParams();
   const [activeSection, setActiveSection] = useState('database');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -275,6 +309,41 @@ const AdminSettingsPage: React.FC = () => {
       autoScaling: false,
       autoUpdates: false
     },
+    attendance: {
+      enabled: true,
+      requireLocation: true,
+      requireWifi: true,
+      allowMobileData: true,
+      gpsAccuracy: 50,
+      checkInRadius: 100,
+      checkInTime: '08:00',
+      checkOutTime: '17:00',
+      gracePeriod: 15,
+      offices: [
+        {
+          name: 'Arusha Main Office',
+          lat: -3.359178,
+          lng: 36.661366,
+          radius: 100,
+          address: 'Main Office, Arusha, Tanzania',
+          networks: [
+            {
+              ssid: 'Office_WiFi',
+              bssid: '00:11:22:33:44:55',
+              description: 'Main office WiFi network'
+            },
+            {
+              ssid: 'Office_Guest',
+              description: 'Guest WiFi network'
+            },
+            {
+              ssid: '4G_Mobile',
+              description: 'Mobile data connection'
+            }
+          ]
+        }
+      ]
+    },
     performanceMonitoring: {
       realTimeMetrics: true,
       alertThresholds: {
@@ -317,7 +386,13 @@ const AdminSettingsPage: React.FC = () => {
 
   useEffect(() => {
     loadSystemSettings();
-  }, []);
+    
+    // Set active section from URL parameter
+    const section = searchParams.get('section');
+    if (section) {
+      setActiveSection(section);
+    }
+  }, [searchParams]);
 
   const loadSystemSettings = async () => {
     setLoading(true);
@@ -343,10 +418,14 @@ const AdminSettingsPage: React.FC = () => {
         }
       });
 
+      // Load attendance settings
+      const attendanceSettings = await getAttendanceSettings();
+
       // Update settings with loaded data
       setSettings(prev => ({
         ...prev,
-        ...systemSettings
+        ...systemSettings,
+        attendance: attendanceSettings
       }));
 
       toast.success('System settings loaded successfully');
@@ -361,20 +440,26 @@ const AdminSettingsPage: React.FC = () => {
   const saveSettings = async (section: string, data: any) => {
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from('settings')
-        .upsert(
-          Object.entries(data).map(([key, value]) => ({
-            key: `${section}_${key}`,
-            value: JSON.stringify(value)
-          })),
-          { onConflict: 'key' }
-        );
+      if (section === 'attendance') {
+        // Save attendance settings using the dedicated API
+        await saveAttendanceSettings(data);
+      } else {
+        // Save other settings using the general approach
+        const { error } = await supabase
+          .from('settings')
+          .upsert(
+            Object.entries(data).map(([key, value]) => ({
+              key: `${section}_${key}`,
+              value: JSON.stringify(value)
+            })),
+            { onConflict: 'key' }
+          );
 
-      if (error) {
-        console.error('Error saving settings:', error);
-        toast.error('Failed to save settings');
-        return;
+        if (error) {
+          console.error('Error saving settings:', error);
+          toast.error('Failed to save settings');
+          return;
+        }
       }
 
       toast.success('Settings saved successfully');
@@ -491,6 +576,7 @@ const AdminSettingsPage: React.FC = () => {
                   { id: 'database', label: 'Database', icon: Database },
                   { id: 'backend', label: 'Backend', icon: Server },
                   { id: 'integrations', label: 'Integrations', icon: Globe },
+                  { id: 'attendance', label: 'Attendance', icon: Users },
                   { id: 'security', label: 'Security', icon: Shield },
                   { id: 'performance', label: 'Performance', icon: Zap },
                   { id: 'monitoring', label: 'Monitoring', icon: Activity },
@@ -555,6 +641,17 @@ const AdminSettingsPage: React.FC = () => {
                 onSave={(data) => saveSettings('integrations', data)}
                 expanded={expandedSections}
                 onToggle={toggleSection}
+                getStatusIcon={getStatusIcon}
+                getStatusColor={getStatusColor}
+              />
+            )}
+
+            {activeSection === 'attendance' && (
+              <AttendanceSettings 
+                settings={settings.attendance}
+                onSave={(data) => saveSettings('attendance', data)}
+                expanded={expandedSections.has('attendance')}
+                onToggle={() => toggleSection('attendance')}
                 getStatusIcon={getStatusIcon}
                 getStatusColor={getStatusColor}
               />
@@ -810,6 +907,506 @@ const BrandingSettings: React.FC<{
             >
               <RotateCcw className="w-4 h-4" />
               Reset
+            </GlassButton>
+          </div>
+        </div>
+      )}
+    </GlassCard>
+  );
+};
+
+// Attendance Settings Component
+const AttendanceSettings: React.FC<{
+  settings: any;
+  onSave: (data: any) => void;
+  expanded: boolean;
+  onToggle: () => void;
+  getStatusIcon: (status: string) => React.ReactNode;
+  getStatusColor: (status: string) => string;
+}> = ({ settings, onSave, expanded, onToggle, getStatusIcon, getStatusColor }) => {
+  const [localSettings, setLocalSettings] = useState(settings);
+  const [saving, setSaving] = useState(false);
+  const [editingOffice, setEditingOffice] = useState<number | null>(null);
+  const [selectedOffice, setSelectedOffice] = useState<any>(null);
+  const [newOffice, setNewOffice] = useState({
+    name: '',
+    lat: '',
+    lng: '',
+    radius: '100',
+    address: '',
+    networks: [{ ssid: '', description: '' }]
+  });
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await onSave(localSettings);
+      toast.success('Attendance settings saved successfully');
+    } catch (error) {
+      toast.error('Failed to save attendance settings');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addOffice = () => {
+    if (newOffice.name && newOffice.lat && newOffice.lng) {
+      setLocalSettings({
+        ...localSettings,
+        offices: [
+          ...localSettings.offices,
+          {
+            name: newOffice.name,
+            lat: parseFloat(newOffice.lat),
+            lng: parseFloat(newOffice.lng),
+            radius: parseInt(newOffice.radius),
+            address: newOffice.address,
+            networks: newOffice.networks.filter(n => n.ssid)
+          }
+        ]
+      });
+      setNewOffice({
+        name: '',
+        lat: '',
+        lng: '',
+        radius: '100',
+        address: '',
+        networks: [{ ssid: '', description: '' }]
+      });
+    }
+  };
+
+  const removeOffice = (index: number) => {
+    setLocalSettings({
+      ...localSettings,
+      offices: localSettings.offices.filter((_, i) => i !== index)
+    });
+  };
+
+  const updateOffice = (index: number, field: string, value: any) => {
+    const updatedOffices = [...localSettings.offices];
+    updatedOffices[index] = { ...updatedOffices[index], [field]: value };
+    setLocalSettings({ ...localSettings, offices: updatedOffices });
+  };
+
+  const addNetwork = (officeIndex: number) => {
+    const updatedOffices = [...localSettings.offices];
+    updatedOffices[officeIndex].networks.push({ ssid: '', description: '' });
+    setLocalSettings({ ...localSettings, offices: updatedOffices });
+  };
+
+  const removeNetwork = (officeIndex: number, networkIndex: number) => {
+    const updatedOffices = [...localSettings.offices];
+    updatedOffices[officeIndex].networks.splice(networkIndex, 1);
+    setLocalSettings({ ...localSettings, offices: updatedOffices });
+  };
+
+  const updateNetwork = (officeIndex: number, networkIndex: number, field: string, value: string) => {
+    const updatedOffices = [...localSettings.offices];
+    updatedOffices[officeIndex].networks[networkIndex] = {
+      ...updatedOffices[officeIndex].networks[networkIndex],
+      [field]: value
+    };
+    setLocalSettings({ ...localSettings, offices: updatedOffices });
+  };
+
+  const getCurrentLocation = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setNewOffice(prev => ({
+            ...prev,
+            lat: position.coords.latitude.toString(),
+            lng: position.coords.longitude.toString()
+          }));
+          toast.success('Current location detected!');
+        },
+        (error) => {
+          console.error('Error getting location:', error);
+          toast.error('Failed to get current location. Please enter coordinates manually.');
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 60000
+        }
+      );
+    } else {
+      toast.error('Geolocation is not supported by this browser.');
+    }
+  };
+
+  return (
+    <GlassCard className="p-6">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <Users className="w-6 h-6 text-blue-600" />
+          <h2 className="text-xl font-semibold text-gray-800">Attendance Configuration</h2>
+        </div>
+        <button
+          onClick={onToggle}
+          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+        >
+          {expanded ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+        </button>
+      </div>
+
+      {expanded && (
+        <div className="space-y-6">
+          {/* General Settings */}
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4">
+            <h4 className="font-medium text-gray-900 mb-4 flex items-center">
+              <Settings className="h-5 w-5 text-blue-600 mr-2" />
+              General Settings
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex items-center justify-between p-3 bg-white rounded-lg">
+                <span className="text-sm font-medium text-gray-700">Enable Attendance</span>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={localSettings.enabled}
+                    onChange={(e) => setLocalSettings({ ...localSettings, enabled: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+              </div>
+              <div className="flex items-center justify-between p-3 bg-white rounded-lg">
+                <span className="text-sm font-medium text-gray-700">Require Location</span>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={localSettings.requireLocation}
+                    onChange={(e) => setLocalSettings({ ...localSettings, requireLocation: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+              </div>
+              <div className="flex items-center justify-between p-3 bg-white rounded-lg">
+                <span className="text-sm font-medium text-gray-700">Require WiFi</span>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={localSettings.requireWifi}
+                    onChange={(e) => setLocalSettings({ ...localSettings, requireWifi: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+              </div>
+              <div className="flex items-center justify-between p-3 bg-white rounded-lg">
+                <span className="text-sm font-medium text-gray-700">Allow Mobile Data</span>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={localSettings.allowMobileData}
+                    onChange={(e) => setLocalSettings({ ...localSettings, allowMobileData: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          {/* Location Settings */}
+          <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4">
+            <h4 className="font-medium text-gray-900 mb-4 flex items-center">
+              <MapPin className="h-5 w-5 text-green-600 mr-2" />
+              Location Settings
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <GlassInput
+                label="GPS Accuracy (meters)"
+                type="number"
+                value={localSettings.gpsAccuracy}
+                onChange={(e) => setLocalSettings({ ...localSettings, gpsAccuracy: parseInt(e.target.value) })}
+                min="10"
+                max="1000"
+              />
+              <GlassInput
+                label="Check-in Radius (meters)"
+                type="number"
+                value={localSettings.checkInRadius}
+                onChange={(e) => setLocalSettings({ ...localSettings, checkInRadius: parseInt(e.target.value) })}
+                min="10"
+                max="1000"
+              />
+              <GlassInput
+                label="Grace Period (minutes)"
+                type="number"
+                value={localSettings.gracePeriod}
+                onChange={(e) => setLocalSettings({ ...localSettings, gracePeriod: parseInt(e.target.value) })}
+                min="0"
+                max="60"
+              />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+              <GlassInput
+                label="Check-in Time"
+                type="time"
+                value={localSettings.checkInTime}
+                onChange={(e) => setLocalSettings({ ...localSettings, checkInTime: e.target.value })}
+              />
+              <GlassInput
+                label="Check-out Time"
+                type="time"
+                value={localSettings.checkOutTime}
+                onChange={(e) => setLocalSettings({ ...localSettings, checkOutTime: e.target.value })}
+              />
+            </div>
+          </div>
+
+          {/* Office Locations */}
+          <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg p-4">
+            <h4 className="font-medium text-gray-900 mb-4 flex items-center">
+              <MapPin className="h-5 w-5 text-purple-600 mr-2" />
+              Office Locations
+            </h4>
+            
+            {/* Office Map */}
+            <div className="mb-6">
+              <OfficeMap
+                offices={localSettings.offices}
+                selectedOffice={selectedOffice}
+                onOfficeSelect={setSelectedOffice}
+                showRadius={true}
+              />
+            </div>
+            
+            {/* Existing Offices */}
+            {localSettings.offices.map((office: any, officeIndex: number) => (
+              <div key={officeIndex} className="bg-white rounded-lg p-4 mb-4 border border-gray-200">
+                <div className="flex items-center justify-between mb-4">
+                  <h5 className="font-medium text-gray-900">{office.name}</h5>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setEditingOffice(editingOffice === officeIndex ? null : officeIndex)}
+                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => removeOffice(officeIndex)}
+                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+                
+                {editingOffice === officeIndex ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <GlassInput
+                        label="Office Name"
+                        value={office.name}
+                        onChange={(e) => updateOffice(officeIndex, 'name', e.target.value)}
+                      />
+                      <GlassInput
+                        label="Address"
+                        value={office.address}
+                        onChange={(e) => updateOffice(officeIndex, 'address', e.target.value)}
+                      />
+                      <GlassInput
+                        label="Latitude"
+                        type="number"
+                        step="any"
+                        value={office.lat}
+                        onChange={(e) => updateOffice(officeIndex, 'lat', parseFloat(e.target.value))}
+                      />
+                      <GlassInput
+                        label="Longitude"
+                        type="number"
+                        step="any"
+                        value={office.lng}
+                        onChange={(e) => updateOffice(officeIndex, 'lng', parseFloat(e.target.value))}
+                      />
+                      <GlassInput
+                        label="Radius (meters)"
+                        type="number"
+                        value={office.radius}
+                        onChange={(e) => updateOffice(officeIndex, 'radius', parseInt(e.target.value))}
+                      />
+                    </div>
+                    
+                    {/* Networks */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <h6 className="font-medium text-gray-700">WiFi Networks</h6>
+                        <button
+                          onClick={() => addNetwork(officeIndex)}
+                          className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      </div>
+                      {office.networks.map((network: any, networkIndex: number) => (
+                        <div key={networkIndex} className="flex gap-2 mb-2">
+                          <input
+                            type="text"
+                            placeholder="SSID"
+                            value={network.ssid}
+                            onChange={(e) => updateNetwork(officeIndex, networkIndex, 'ssid', e.target.value)}
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Description"
+                            value={network.description}
+                            onChange={(e) => updateNetwork(officeIndex, networkIndex, 'description', e.target.value)}
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                          <button
+                            onClick={() => removeNetwork(officeIndex, networkIndex)}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-600">
+                    <p><strong>Address:</strong> {office.address}</p>
+                    <p><strong>Coordinates:</strong> {office.lat}, {office.lng}</p>
+                    <p><strong>Radius:</strong> {office.radius}m</p>
+                    <p><strong>Networks:</strong> {office.networks.length} configured</p>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {/* Add New Office */}
+            <div className="bg-white rounded-lg p-4 border-2 border-dashed border-gray-300">
+              <h5 className="font-medium text-gray-900 mb-4">Add New Office</h5>
+              
+              {/* Get Current Location Button */}
+              <div className="mb-4">
+                <GlassButton
+                  onClick={getCurrentLocation}
+                  className="bg-green-600 text-white hover:bg-green-700"
+                >
+                  <Compass className="w-4 h-4 mr-2" />
+                  Get Current Location
+                </GlassButton>
+                <p className="text-sm text-gray-600 mt-2">
+                  💡 Click this button to automatically detect your current location for the new office
+                </p>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <GlassInput
+                  label="Office Name"
+                  value={newOffice.name}
+                  onChange={(e) => setNewOffice({ ...newOffice, name: e.target.value })}
+                />
+                <GlassInput
+                  label="Address"
+                  value={newOffice.address}
+                  onChange={(e) => setNewOffice({ ...newOffice, address: e.target.value })}
+                />
+                <GlassInput
+                  label="Latitude"
+                  type="number"
+                  step="any"
+                  value={newOffice.lat}
+                  onChange={(e) => setNewOffice({ ...newOffice, lat: e.target.value })}
+                />
+                <GlassInput
+                  label="Longitude"
+                  type="number"
+                  step="any"
+                  value={newOffice.lng}
+                  onChange={(e) => setNewOffice({ ...newOffice, lng: e.target.value })}
+                />
+                <GlassInput
+                  label="Radius (meters)"
+                  type="number"
+                  value={newOffice.radius}
+                  onChange={(e) => setNewOffice({ ...newOffice, radius: e.target.value })}
+                />
+              </div>
+              
+              {/* Networks for new office */}
+              <div className="mb-4">
+                <h6 className="font-medium text-gray-700 mb-2">WiFi Networks</h6>
+                {newOffice.networks.map((network, index) => (
+                  <div key={index} className="flex gap-2 mb-2">
+                    <input
+                      type="text"
+                      placeholder="SSID"
+                      value={network.ssid}
+                      onChange={(e) => {
+                        const updatedNetworks = [...newOffice.networks];
+                        updatedNetworks[index].ssid = e.target.value;
+                        setNewOffice({ ...newOffice, networks: updatedNetworks });
+                      }}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Description"
+                      value={network.description}
+                      onChange={(e) => {
+                        const updatedNetworks = [...newOffice.networks];
+                        updatedNetworks[index].description = e.target.value;
+                        setNewOffice({ ...newOffice, networks: updatedNetworks });
+                      }}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    {newOffice.networks.length > 1 && (
+                      <button
+                        onClick={() => {
+                          const updatedNetworks = newOffice.networks.filter((_, i) => i !== index);
+                          setNewOffice({ ...newOffice, networks: updatedNetworks });
+                        }}
+                        className="p-2 text-red-600 hover:bg-red-50 rounded"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button
+                  onClick={() => setNewOffice({ ...newOffice, networks: [...newOffice.networks, { ssid: '', description: '' }] })}
+                  className="p-2 text-blue-600 hover:bg-blue-50 rounded"
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  Add Network
+                </button>
+              </div>
+              
+              <button
+                onClick={addOffice}
+                className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Add Office
+              </button>
+            </div>
+          </div>
+
+          {/* Save Button */}
+          <div className="flex justify-end">
+            <GlassButton
+              onClick={handleSave}
+              disabled={saving}
+              className="bg-blue-600 text-white hover:bg-blue-700"
+            >
+              {saving ? (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  Save Settings
+                </>
+              )}
             </GlassButton>
           </div>
         </div>

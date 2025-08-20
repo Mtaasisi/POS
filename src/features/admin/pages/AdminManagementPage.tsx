@@ -9,7 +9,7 @@ import {
   Building, Settings, Database, HardDrive, Shield, FileText,
   Users, CreditCard, BarChart2, Package, Calendar, Smartphone,
   MessageCircle, MessageSquare, Stethoscope, Plus, Edit, Trash2,
-  Eye, Download, Upload, RefreshCw, CheckCircle, AlertTriangle
+  Eye, Download, Upload, RefreshCw, CheckCircle, AlertTriangle, MapPin, Layers
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
@@ -63,8 +63,26 @@ const AdminManagementPage: React.FC = () => {
       title: 'Supplier Management',
       description: 'Manage suppliers and vendor relationships',
       icon: <Users size={24} />,
-      path: '/lats/supplier-management',
+      path: '/supplier-management',
       color: 'from-teal-500 to-teal-600',
+      category: 'inventory'
+    },
+    {
+      id: 'store-locations',
+      title: 'Store Locations',
+      description: 'Manage store locations and branches',
+      icon: <MapPin size={24} />,
+      path: '/store-locations',
+      color: 'from-amber-500 to-amber-600',
+      category: 'inventory'
+    },
+    {
+      id: 'shelf-management',
+      title: 'Shelf Management',
+      description: 'Manage shelves and product locations',
+      icon: <Layers size={24} />,
+      path: '/shelf-management',
+      color: 'from-purple-500 to-purple-600',
       category: 'inventory'
     },
     {
