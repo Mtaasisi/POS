@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LATS CHANCE WhatsApp Integration</title>
+    <style>
+        body {
+            width: 320px;
+            padding: 16px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            font-size: 12px;
+            opacity: 0.8;
+        }
+
+        .status {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 16px;
+            text-align: center;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-connected {
+            background-color: #4CAF50;
+        }
+
+        .status-disconnected {
+            background-color: #f44336;
+        }
+
+        .button {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-bottom: 8px;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: block;
+            text-align: center;
+        }
+
+        .button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-1px);
+        }
+
+        .button.primary {
+            background: #25D366;
+        }
+
+        .button.primary:hover {
+            background: #128C7E;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 16px;
+        }
+
+        .stat {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 8px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .stat-label {
+            font-size: 10px;
+            opacity: 0.8;
+        }
+
+        .footer {
+            margin-top: 16px;
+            text-align: center;
+            font-size: 10px;
+            opacity: 0.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo">⚡ LATS CHANCE</div>
+        <div class="subtitle">WhatsApp Business Integration</div>
+    </div>
+
+    <div class="status">
+        <span class="status-indicator status-connected" id="statusIndicator"></span>
+        <span id="statusText">Connected</span>
+    </div>
+
+    <a href="#" class="button primary" id="openDashboard">
+        📊 Open Dashboard
+    </a>
+
+    <a href="#" class="button" id="testConnection">
+        🔧 Test Connection
+    </a>
+
+    <a href="#" class="button" id="settings">
+        ⚙️ Settings
+    </a>
+
+    <div class="stats">
+        <div class="stat">
+            <div class="stat-value" id="messageCount">0</div>
+            <div class="stat-label">Messages</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value" id="ticketCount">0</div>
+            <div class="stat-label">Tickets</div>
+        </div>
+    </div>
+
+    <div class="footer">
+        Version 1.0.0
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>

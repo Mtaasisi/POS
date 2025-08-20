@@ -23,6 +23,7 @@ interface GeneralSettingsContextType {
   showConfirmations: boolean;
   enableSoundEffects: boolean;
   enableAnimations: boolean;
+  refreshSettings: () => Promise<void>;
 }
 
 const GeneralSettingsContext = createContext<GeneralSettingsContextType | undefined>(undefined);
@@ -41,7 +42,9 @@ export const GeneralSettingsProvider: React.FC<{ children: React.ReactNode }> = 
     loading,
     error,
     saveSettings,
-    updateSettings
+    updateSettings,
+    loadSettings,
+    refreshSettings
   } = useGeneralSettings();
 
   const [currentSettings, setCurrentSettings] = useState<GeneralSettings | null>(null);
@@ -53,6 +56,21 @@ export const GeneralSettingsProvider: React.FC<{ children: React.ReactNode }> = 
       applySettingsToUI(settings);
     }
   }, [settings]);
+
+  // Listen for settings update events
+  useEffect(() => {
+    const handleSettingsUpdate = (event: CustomEvent) => {
+      if (event.detail.type === 'general') {
+        loadSettings();
+      }
+    };
+
+    window.addEventListener('settingsUpdated', handleSettingsUpdate as EventListener);
+    
+    return () => {
+      window.removeEventListener('settingsUpdated', handleSettingsUpdate as EventListener);
+    };
+  }, [loadSettings]);
 
   // Apply all settings to the UI
   const applySettingsToUI = (settings: GeneralSettings) => {
@@ -181,6 +199,8 @@ export const GeneralSettingsProvider: React.FC<{ children: React.ReactNode }> = 
     return new Intl.DateTimeFormat(locale, options).format(date);
   };
 
+
+
   const contextValue: GeneralSettingsContextType = {
     settings: currentSettings,
     loading,
@@ -201,7 +221,8 @@ export const GeneralSettingsProvider: React.FC<{ children: React.ReactNode }> = 
     confirmDelete: currentSettings?.confirm_delete ?? true,
     showConfirmations: currentSettings?.show_confirmations ?? true,
     enableSoundEffects: currentSettings?.enable_sound_effects ?? true,
-    enableAnimations: currentSettings?.enable_animations ?? true
+    enableAnimations: currentSettings?.enable_animations ?? true,
+    refreshSettings
   };
 
   return (

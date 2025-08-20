@@ -1,6 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { retryWithBackoff } from '../lib/supabaseClient';
+import { toast } from 'react-hot-toast';
+import { POSSettingsAPI } from '../lib/posSettingsApi';
+
+// Import the inventory store for automatic product loading
+import { useInventoryStore } from '../features/lats/stores/useInventoryStore';
 
 interface AuthContextType {
   currentUser: any;
@@ -67,6 +72,158 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [error, setError] = useState<string | null>(null);
   const initializedRef = useRef(false);
   const authProviderMountCount = useRef(0);
+  const dataLoadedRef = useRef(false);
+  
+  // Expose data loaded flag globally for cache manager
+  if (typeof window !== 'undefined') {
+    window.__AUTH_DATA_LOADED_FLAG__ = dataLoadedRef.current;
+  }
+
+  // Function to load products and other data automatically in background
+  const loadInitialDataInBackground = async () => {
+    // Prevent multiple data loads
+    if (dataLoadedRef.current) {
+      console.log('📦 Data already loaded, skipping...');
+      return;
+    }
+    
+    try {
+      console.log('🚀 Starting automatic data loading in background...');
+      dataLoadedRef.current = true;
+      
+      // Small delay to ensure UI is fully loaded first
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Get the inventory store
+      const inventoryStore = useInventoryStore.getState();
+      
+      // Load inventory data first (highest priority)
+      const inventoryPromises = [
+        inventoryStore.loadProducts({ page: 1, limit: 50 }),
+        inventoryStore.loadCategories(),
+        inventoryStore.loadBrands(),
+        inventoryStore.loadSuppliers()
+      ];
+      
+      // Load other data sources
+      const otherDataPromises = [
+        loadCustomersData(),
+        loadDevicesData(),
+        loadSettingsData()
+      ];
+      
+      // Execute inventory loading first, then other data
+      console.log('🚀 Starting inventory data loading...');
+      const inventoryResults = await Promise.allSettled(inventoryPromises);
+      
+      console.log('🚀 Starting other data loading...');
+      const otherResults = await Promise.allSettled(otherDataPromises);
+      
+      // Combine results
+      const results = [...inventoryResults, ...otherResults];
+      
+      // Count successful loads
+      const successfulLoads = results.filter(result => result.status === 'fulfilled').length;
+      const totalLoads = results.length;
+      
+      console.log(`✅ Background data loading completed: ${successfulLoads}/${totalLoads} successful`);
+      
+      // Show a subtle toast notification
+      if (successfulLoads > 0) {
+        // Get specific data counts for better feedback
+        const inventoryCount = results[0]?.status === 'fulfilled' ? '📦' : '';
+        const customerCount = results[4]?.status === 'fulfilled' ? '👥' : '';
+        const deviceCount = results[5]?.status === 'fulfilled' ? '📱' : '';
+        const settingsCount = results[6]?.status === 'fulfilled' ? '⚙️' : '';
+        
+        const icons = [inventoryCount, customerCount, deviceCount, settingsCount].filter(Boolean).join(' ');
+        
+        toast.success(`${icons} ${successfulLoads} data sources loaded successfully`, {
+          duration: 4000,
+          position: 'bottom-right'
+        });
+      }
+    } catch (error) {
+      console.error('❌ Error in background data loading:', error);
+      // Don't throw error - this is background loading, shouldn't affect login
+    }
+  };
+
+  // Helper function to load customer data
+  const loadCustomersData = async () => {
+    try {
+      console.log('👥 Loading customer data...');
+      
+      // Add retry logic for customer loading
+      let retryCount = 0;
+      const maxRetries = 3;
+      
+      while (retryCount < maxRetries) {
+        try {
+          // Import dynamically to avoid circular dependencies
+          const { fetchAllCustomers } = await import('../lib/customerApi');
+          const customers = await fetchAllCustomers();
+          console.log(`✅ Loaded ${customers.length} customers successfully`);
+          
+          // Show a specific notification for customer loading
+          if (customers.length > 0) {
+            toast.success(`👥 ${customers.length} customers loaded successfully`, {
+              duration: 2000,
+              position: 'bottom-right'
+            });
+          }
+          
+          return customers;
+        } catch (error) {
+          retryCount++;
+          console.warn(`⚠️ Customer loading attempt ${retryCount} failed:`, error);
+          
+          if (retryCount < maxRetries) {
+            console.log(`⏳ Retrying customer loading in 1 second... (${retryCount}/${maxRetries})`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          } else {
+            console.error('❌ All customer loading attempts failed');
+            throw error;
+          }
+        }
+      }
+      
+      return [];
+    } catch (error) {
+      console.error('❌ Error loading customers:', error);
+      return [];
+    }
+  };
+
+  // Helper function to load device data
+  const loadDevicesData = async () => {
+    try {
+      console.log('📱 Loading device data...');
+      // Import dynamically to avoid circular dependencies
+      const { fetchAllDevices } = await import('../lib/deviceApi');
+      const devices = await fetchAllDevices();
+      console.log(`✅ Loaded ${devices.length} devices`);
+      return devices;
+    } catch (error) {
+      console.error('❌ Error loading devices:', error);
+      return [];
+    }
+  };
+
+  // Helper function to load settings data
+  const loadSettingsData = async () => {
+    try {
+      console.log('⚙️ Loading settings data...');
+      // Import dynamically to avoid circular dependencies
+      const { POSSettingsService } = await import('../lib/posSettingsApi');
+      const generalSettings = await POSSettingsService.loadGeneralSettings();
+      console.log('✅ Loaded general settings');
+      return generalSettings;
+    } catch (error) {
+      console.error('❌ Error loading settings:', error);
+      return null;
+    }
+  };
 
   const fetchAndSetUserProfile = async (user: any) => {
     try {
@@ -130,6 +287,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
         setCurrentUser(defaultUser);
         setLoading(false);
+        
+        // Start background data loading after successful authentication
+        loadInitialDataInBackground();
         return;
       }
 
@@ -140,6 +300,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('🔍 Mapped user data:', mappedUser);
       setCurrentUser(mappedUser);
       setLoading(false);
+      
+      // Start background data loading after successful authentication
+      loadInitialDataInBackground();
     } catch (err) {
       console.error('Error in fetchAndSetUserProfile:', err);
       // Set user with default technician role if there's an error
@@ -152,6 +315,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
       setCurrentUser(fallbackUser);
       setLoading(false);
+      
+      // Start background data loading after successful authentication
+      loadInitialDataInBackground();
     }
   };
 
@@ -240,8 +406,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         fetchAndSetUserProfile(session.user);
       } else if (event === 'SIGNED_OUT') {
         console.log('👋 User signed out');
+        
+        // Clear POS settings user cache
+        POSSettingsAPI.clearUserCache();
+        
         setCurrentUser(null);
         setLoading(false);
+        dataLoadedRef.current = false; // Reset data loaded flag
       } else if (event === 'TOKEN_REFRESHED' && session?.user) {
         console.log('🔄 Token refreshed for user:', session.user.email);
         // Don't refetch profile on token refresh, just ensure user is still set
@@ -304,9 +475,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       console.log('👋 Logging out user');
       setLoading(true);
+      
+      // Clear POS settings user cache
+      POSSettingsAPI.clearUserCache();
+      
       await supabase.auth.signOut();
       setCurrentUser(null);
       setError(null);
+      dataLoadedRef.current = false; // Reset data loaded flag
       console.log('✅ Logout successful');
     } catch (err) {
       console.error('❌ Logout error:', err);
