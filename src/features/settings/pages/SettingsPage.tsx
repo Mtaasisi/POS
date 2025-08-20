@@ -31,11 +31,14 @@ import {
   Image,
   Database,
   Cloud,
-  HardDrive
+  HardDrive,
+  Truck,
+  MessageCircle
 } from 'lucide-react';
 import GlassButton from '../../../features/shared/components/ui/GlassButton';
 import LogoUpload from '../../../features/shared/components/ui/LogoUpload';
 import { hostingerUploadService } from '../../../lib/hostingerUploadService';
+import { whatsappBusinessApi } from '../../../services/whatsappBusinessApi';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 
@@ -94,6 +97,34 @@ const SettingsPage: React.FC = () => {
       returnPolicy: '7 days return policy',
       warrantyPeriod: 3,
       warrantyUnit: 'months'
+    },
+    delivery: {
+      enable_delivery: false,
+      default_delivery_fee: 2000,
+      free_delivery_threshold: 50000,
+      max_delivery_distance: 20,
+      enable_delivery_areas: false,
+      delivery_areas: ['City Center', 'Suburbs', 'Outskirts'],
+      area_delivery_fees: { 'City Center': 1500, 'Suburbs': 2500, 'Outskirts': 3500 },
+      area_delivery_times: { 'City Center': 2, 'Suburbs': 3, 'Outskirts': 4 },
+      enable_delivery_hours: false,
+      delivery_start_time: '08:00',
+      delivery_end_time: '18:00',
+      enable_same_day_delivery: false,
+      enable_next_day_delivery: true,
+      delivery_time_slots: ['Morning', 'Afternoon', 'Evening'],
+      notify_customer_on_delivery: true,
+      notify_driver_on_assignment: true,
+      enable_sms_notifications: true,
+      enable_email_notifications: false,
+      enable_driver_assignment: false,
+      driver_commission: 10,
+      require_signature: true,
+      enable_driver_tracking: false,
+      enable_scheduled_delivery: false,
+      enable_partial_delivery: false,
+      require_advance_payment: false,
+      advance_payment_percent: 50
     }
   });
 
@@ -108,8 +139,25 @@ const SettingsPage: React.FC = () => {
   });
   const [passwordLoading, setPasswordLoading] = useState(false);
 
+  // WhatsApp Business API settings state
+  const [whatsappSettings, setWhatsappSettings] = useState({
+    accessToken: '',
+    phoneNumberId: '',
+    businessAccountId: '',
+    appId: '',
+    appSecret: '',
+    webhookVerifyToken: '',
+    apiVersion: 'v18.0',
+    enabled: false
+  });
+  const [whatsappLoading, setWhatsappLoading] = useState(false);
+  const [whatsappSaving, setWhatsappSaving] = useState(false);
+  const [showWhatsappSecrets, setShowWhatsappSecrets] = useState(false);
+  const [whatsappTestResult, setWhatsappTestResult] = useState<{ success: boolean; error?: string; data?: any } | null>(null);
+
   useEffect(() => {
     loadUserSettingsData();
+    loadWhatsappSettings();
   }, [currentUser?.id]);
 
   const loadUserSettingsData = async () => {
@@ -237,6 +285,90 @@ const SettingsPage: React.FC = () => {
     }
   };
 
+  // WhatsApp Business API functions
+  const loadWhatsappSettings = async () => {
+    try {
+      setWhatsappLoading(true);
+      const config = whatsappBusinessApi.getConfig();
+      
+      if (config) {
+        setWhatsappSettings({
+          accessToken: config.accessToken,
+          phoneNumberId: config.phoneNumberId,
+          businessAccountId: config.businessAccountId,
+          appId: config.appId,
+          appSecret: config.appSecret,
+          webhookVerifyToken: config.webhookVerifyToken,
+          apiVersion: config.apiVersion,
+          enabled: whatsappBusinessApi.isConfigured()
+        });
+      }
+    } catch (error) {
+      console.error('Error loading WhatsApp settings:', error);
+    } finally {
+      setWhatsappLoading(false);
+    }
+  };
+
+  const saveWhatsappSettings = async () => {
+    try {
+      setWhatsappSaving(true);
+      
+      const success = await whatsappBusinessApi.updateConfig({
+        accessToken: whatsappSettings.accessToken,
+        phoneNumberId: whatsappSettings.phoneNumberId,
+        businessAccountId: whatsappSettings.businessAccountId,
+        appId: whatsappSettings.appId,
+        appSecret: whatsappSettings.appSecret,
+        webhookVerifyToken: whatsappSettings.webhookVerifyToken,
+        apiVersion: whatsappSettings.apiVersion
+      });
+
+      if (success) {
+        toast.success('WhatsApp Business API settings saved successfully');
+        setWhatsappSettings(prev => ({ ...prev, enabled: true }));
+      } else {
+        toast.error('Failed to save WhatsApp Business API settings');
+      }
+    } catch (error) {
+      console.error('Error saving WhatsApp settings:', error);
+      toast.error('Failed to save WhatsApp Business API settings');
+    } finally {
+      setWhatsappSaving(false);
+    }
+  };
+
+  const testWhatsappConnection = async () => {
+    try {
+      setWhatsappLoading(true);
+      setWhatsappTestResult(null);
+      
+      const result = await whatsappBusinessApi.testConnection();
+      setWhatsappTestResult(result);
+      
+      if (result.success) {
+        toast.success('WhatsApp Business API connection successful');
+      } else {
+        toast.error(`Connection failed: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error testing WhatsApp connection:', error);
+      setWhatsappTestResult({
+        success: false,
+        error: error instanceof Error ? error.message : 'Test failed'
+      });
+      toast.error('Failed to test WhatsApp Business API connection');
+    } finally {
+      setWhatsappLoading(false);
+    }
+  };
+
+  const generateWebhookToken = () => {
+    const token = Math.random().toString(36).substring(2, 15) + 
+                  Math.random().toString(36).substring(2, 15);
+    setWhatsappSettings(prev => ({ ...prev, webhookVerifyToken: token }));
+  };
+
   const sections = [
     {
       id: 'profile',
@@ -301,6 +433,22 @@ const SettingsPage: React.FC = () => {
       color: 'text-teal-600',
       bgColor: 'bg-teal-50',
       borderColor: 'border-teal-200'
+    },
+    {
+      id: 'delivery',
+      name: 'Delivery',
+      icon: <Truck className="h-5 w-5" />,
+      color: 'text-amber-600',
+      bgColor: 'bg-amber-50',
+      borderColor: 'border-amber-200'
+    },
+    {
+      id: 'whatsapp',
+      name: 'WhatsApp',
+      icon: <MessageCircle className="h-5 w-5" />,
+      color: 'text-green-600',
+      bgColor: 'bg-green-50',
+      borderColor: 'border-green-200'
     }
   ];
 
@@ -1058,6 +1206,670 @@ const SettingsPage: React.FC = () => {
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {activeSection === 'delivery' && (
+            <div className="space-y-6">
+              <div className="bg-white p-6 rounded-lg border">
+                <h3 className="text-lg font-semibold mb-6 flex items-center gap-2">
+                  <Truck className="h-6 w-6 text-amber-600" />
+                  Delivery Settings
+                </h3>
+                <p className="text-gray-600 mb-6">
+                  Configure delivery options, areas, fees, and driver management for your business.
+                </p>
+                
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* General Delivery Settings */}
+                  <div className="space-y-4">
+                    <h4 className="text-md font-semibold text-gray-800 border-b border-gray-200 pb-2">
+                      General Settings
+                    </h4>
+                    
+                    <div className="space-y-3">
+                      <label className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={settings.delivery?.enable_delivery || false}
+                          onChange={(e) => setSettings(prev => ({
+                            ...prev,
+                            delivery: { ...prev.delivery, enable_delivery: e.target.checked }
+                          }))}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-sm font-medium text-gray-700">Enable Delivery Service</span>
+                      </label>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Default Delivery Fee (TZS)
+                        </label>
+                        <input
+                          type="number"
+                          value={settings.delivery?.default_delivery_fee || 2000}
+                          onChange={(e) => setSettings(prev => ({
+                            ...prev,
+                            delivery: { ...prev.delivery, default_delivery_fee: Number(e.target.value) }
+                          }))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          min="0"
+                          step="100"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Free Delivery Threshold (TZS)
+                        </label>
+                        <input
+                          type="number"
+                          value={settings.delivery?.free_delivery_threshold || 50000}
+                          onChange={(e) => setSettings(prev => ({
+                            ...prev,
+                            delivery: { ...prev.delivery, free_delivery_threshold: Number(e.target.value) }
+                          }))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          min="0"
+                          step="1000"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Max Delivery Distance (km)
+                        </label>
+                        <input
+                          type="number"
+                          value={settings.delivery?.max_delivery_distance || 20}
+                          onChange={(e) => setSettings(prev => ({
+                            ...prev,
+                            delivery: { ...prev.delivery, max_delivery_distance: Number(e.target.value) }
+                          }))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          min="1"
+                          max="100"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Delivery Areas */}
+                  <div className="space-y-4">
+                    <h4 className="text-md font-semibold text-gray-800 border-b border-gray-200 pb-2">
+                      Delivery Areas
+                    </h4>
+                    
+                    <div className="space-y-3">
+                      <label className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={settings.delivery?.enable_delivery_areas || false}
+                          onChange={(e) => setSettings(prev => ({
+                            ...prev,
+                            delivery: { ...prev.delivery, enable_delivery_areas: e.target.checked }
+                          }))}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-sm font-medium text-gray-700">Enable Area-based Pricing</span>
+                      </label>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Delivery Areas (comma separated)
+                        </label>
+                        <input
+                          type="text"
+                          value={settings.delivery?.delivery_areas?.join(', ') || ''}
+                          onChange={(e) => setSettings(prev => ({
+                            ...prev,
+                            delivery: { 
+                              ...prev.delivery, 
+                              delivery_areas: e.target.value.split(',').map(area => area.trim()).filter(area => area)
+                            }
+                          }))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="City Center, Suburbs, Outskirts"
+                        />
+                      </div>
+
+                      {/* Area-based Fees */}
+                      {settings.delivery?.enable_delivery_areas && settings.delivery?.delivery_areas?.length > 0 && (
+                        <div className="space-y-2">
+                          <label className="block text-sm font-medium text-gray-700">
+                            Area-based Delivery Fees
+                          </label>
+                          {settings.delivery.delivery_areas.map((area, index) => (
+                            <div key={index} className="flex items-center gap-2">
+                              <span className="text-sm text-gray-600 min-w-[80px]">{area}:</span>
+                              <input
+                                type="number"
+                                value={settings.delivery?.area_delivery_fees?.[area] || 0}
+                                onChange={(e) => setSettings(prev => ({
+                                  ...prev,
+                                  delivery: {
+                                    ...prev.delivery,
+                                    area_delivery_fees: {
+                                      ...prev.delivery?.area_delivery_fees,
+                                      [area]: Number(e.target.value)
+                                    }
+                                  }
+                                }))}
+                                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                min="0"
+                                step="100"
+                                placeholder="Fee"
+                              />
+                              <span className="text-sm text-gray-500">TZS</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Time Settings */}
+                <div className="mt-8 space-y-4">
+                  <h4 className="text-md font-semibold text-gray-800 border-b border-gray-200 pb-2">
+                    Time Settings
+                  </h4>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <label className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={settings.delivery?.enable_delivery_hours || false}
+                        onChange={(e) => setSettings(prev => ({
+                          ...prev,
+                          delivery: { ...prev.delivery, enable_delivery_hours: e.target.checked }
+                        }))}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm font-medium text-gray-700">Enable Delivery Hours</span>
+                    </label>
+
+                    <label className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={settings.delivery?.enable_same_day_delivery || false}
+                        onChange={(e) => setSettings(prev => ({
+                          ...prev,
+                          delivery: { ...prev.delivery, enable_same_day_delivery: e.target.checked }
+                        }))}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm font-medium text-gray-700">Same Day Delivery</span>
+                    </label>
+
+                    <label className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={settings.delivery?.enable_next_day_delivery || false}
+                        onChange={(e) => setSettings(prev => ({
+                          ...prev,
+                          delivery: { ...prev.delivery, enable_next_day_delivery: e.target.checked }
+                        }))}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm font-medium text-gray-700">Next Day Delivery</span>
+                    </label>
+                  </div>
+
+                  {settings.delivery?.enable_delivery_hours && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Delivery Start Time
+                        </label>
+                        <input
+                          type="time"
+                          value={settings.delivery?.delivery_start_time || '08:00'}
+                          onChange={(e) => setSettings(prev => ({
+                            ...prev,
+                            delivery: { ...prev.delivery, delivery_start_time: e.target.value }
+                          }))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Delivery End Time
+                        </label>
+                        <input
+                          type="time"
+                          value={settings.delivery?.delivery_end_time || '18:00'}
+                          onChange={(e) => setSettings(prev => ({
+                            ...prev,
+                            delivery: { ...prev.delivery, delivery_end_time: e.target.value }
+                          }))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Notification Settings */}
+                <div className="mt-8 space-y-4">
+                  <h4 className="text-md font-semibold text-gray-800 border-b border-gray-200 pb-2">
+                    Notification Settings
+                  </h4>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <label className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={settings.delivery?.notify_customer_on_delivery || false}
+                        onChange={(e) => setSettings(prev => ({
+                          ...prev,
+                          delivery: { ...prev.delivery, notify_customer_on_delivery: e.target.checked }
+                        }))}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm font-medium text-gray-700">Notify Customer on Delivery</span>
+                    </label>
+
+                    <label className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={settings.delivery?.notify_driver_on_assignment || false}
+                        onChange={(e) => setSettings(prev => ({
+                          ...prev,
+                          delivery: { ...prev.delivery, notify_driver_on_assignment: e.target.checked }
+                        }))}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm font-medium text-gray-700">Notify Driver on Assignment</span>
+                    </label>
+
+                    <label className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={settings.delivery?.enable_sms_notifications || false}
+                        onChange={(e) => setSettings(prev => ({
+                          ...prev,
+                          delivery: { ...prev.delivery, enable_sms_notifications: e.target.checked }
+                        }))}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm font-medium text-gray-700">SMS Notifications</span>
+                    </label>
+
+                    <label className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={settings.delivery?.enable_email_notifications || false}
+                        onChange={(e) => setSettings(prev => ({
+                          ...prev,
+                          delivery: { ...prev.delivery, enable_email_notifications: e.target.checked }
+                        }))}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm font-medium text-gray-700">Email Notifications</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Advanced Settings */}
+                <div className="mt-8 space-y-4">
+                  <h4 className="text-md font-semibold text-gray-800 border-b border-gray-200 pb-2">
+                    Advanced Settings
+                  </h4>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <label className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={settings.delivery?.require_signature || false}
+                        onChange={(e) => setSettings(prev => ({
+                          ...prev,
+                          delivery: { ...prev.delivery, require_signature: e.target.checked }
+                        }))}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm font-medium text-gray-700">Require Signature</span>
+                    </label>
+
+                    <label className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={settings.delivery?.enable_driver_tracking || false}
+                        onChange={(e) => setSettings(prev => ({
+                          ...prev,
+                          delivery: { ...prev.delivery, enable_driver_tracking: e.target.checked }
+                        }))}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm font-medium text-gray-700">Driver Tracking</span>
+                    </label>
+
+                    <label className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={settings.delivery?.enable_scheduled_delivery || false}
+                        onChange={(e) => setSettings(prev => ({
+                          ...prev,
+                          delivery: { ...prev.delivery, enable_scheduled_delivery: e.target.checked }
+                        }))}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm font-medium text-gray-700">Scheduled Delivery</span>
+                    </label>
+
+                    <label className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={settings.delivery?.require_advance_payment || false}
+                        onChange={(e) => setSettings(prev => ({
+                          ...prev,
+                          delivery: { ...prev.delivery, require_advance_payment: e.target.checked }
+                        }))}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm font-medium text-gray-700">Require Advance Payment</span>
+                    </label>
+                  </div>
+
+                  {settings.delivery?.require_advance_payment && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Advance Payment Percentage
+                      </label>
+                      <input
+                        type="number"
+                        value={settings.delivery?.advance_payment_percent || 50}
+                        onChange={(e) => setSettings(prev => ({
+                          ...prev,
+                          delivery: { ...prev.delivery, advance_payment_percent: Number(e.target.value) }
+                        }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        min="0"
+                        max="100"
+                        step="5"
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Driver Commission (%)
+                    </label>
+                    <input
+                      type="number"
+                      value={settings.delivery?.driver_commission || 10}
+                      onChange={(e) => setSettings(prev => ({
+                        ...prev,
+                        delivery: { ...prev.delivery, driver_commission: Number(e.target.value) }
+                      }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      min="0"
+                      max="50"
+                      step="1"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <Truck className="h-5 w-5 text-blue-600 mt-0.5" />
+                    <div>
+                      <h4 className="font-medium text-blue-800">Delivery Tips</h4>
+                      <ul className="text-sm text-blue-700 mt-2 space-y-1">
+                        <li>• Set realistic delivery fees based on your area and costs</li>
+                        <li>• Enable area-based pricing for better profitability</li>
+                        <li>• Configure delivery hours to manage customer expectations</li>
+                        <li>• Use notifications to keep customers informed</li>
+                        <li>• Consider driver tracking for better service quality</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+
+                <GlassButton
+                  onClick={() => saveSettings('Delivery', settings)}
+                  disabled={saving}
+                  className="flex items-center gap-2 mt-6"
+                >
+                  <Save className="h-4 w-4" />
+                  {saving ? 'Saving...' : 'Save Delivery Settings'}
+                </GlassButton>
+              </div>
+            </div>
+          )}
+
+          {activeSection === 'whatsapp' && (
+            <div className="space-y-6">
+              <div className="bg-white p-6 rounded-lg border">
+                <h3 className="text-lg font-semibold mb-6 flex items-center gap-2">
+                  <MessageCircle className="h-6 w-6 text-green-600" />
+                  WhatsApp Business API Settings
+                </h3>
+                <p className="text-gray-600 mb-6">
+                  Configure WhatsApp Business API for sending and receiving messages. This uses Meta's official WhatsApp Business API.
+                </p>
+
+                {/* Setup Instructions */}
+                <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <MessageCircle className="h-5 w-5 text-blue-600 mt-0.5" />
+                    <div>
+                      <h4 className="font-medium text-blue-800">Setup Instructions</h4>
+                      <ol className="text-sm text-blue-700 mt-2 space-y-1">
+                        <li>1. Create a Meta Developer account at <a href="https://developers.facebook.com" target="_blank" rel="noopener noreferrer" className="underline">developers.facebook.com</a></li>
+                        <li>2. Create a WhatsApp Business App in the Meta Developer Console</li>
+                        <li>3. Add a phone number to your WhatsApp Business App</li>
+                        <li>4. Get your Access Token, Phone Number ID, and Business Account ID</li>
+                        <li>5. Configure your webhook URL and verify token</li>
+                      </ol>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* API Configuration */}
+                  <div className="space-y-4">
+                    <h4 className="text-md font-semibold text-gray-800 border-b border-gray-200 pb-2">
+                      API Configuration
+                    </h4>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Access Token *
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showWhatsappSecrets ? 'text' : 'password'}
+                          value={whatsappSettings.accessToken}
+                          onChange={(e) => setWhatsappSettings(prev => ({ ...prev, accessToken: e.target.value }))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                          placeholder="EAA..."
+                        />
+                        <button
+                          onClick={() => setShowWhatsappSecrets(!showWhatsappSecrets)}
+                          className="absolute right-2 top-1/2 transform -translate-y-1/2 p-1 text-gray-500 hover:text-gray-700"
+                        >
+                          {showWhatsappSecrets ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">Your Meta App's access token</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Phone Number ID *
+                      </label>
+                      <input
+                        type="text"
+                        value={whatsappSettings.phoneNumberId}
+                        onChange={(e) => setWhatsappSettings(prev => ({ ...prev, phoneNumberId: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                        placeholder="123456789"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">The ID of your WhatsApp Business phone number</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Business Account ID *
+                      </label>
+                      <input
+                        type="text"
+                        value={whatsappSettings.businessAccountId}
+                        onChange={(e) => setWhatsappSettings(prev => ({ ...prev, businessAccountId: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                        placeholder="123456789"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Your Meta Business Account ID</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        API Version
+                      </label>
+                      <select
+                        value={whatsappSettings.apiVersion}
+                        onChange={(e) => setWhatsappSettings(prev => ({ ...prev, apiVersion: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      >
+                        <option value="v18.0">v18.0 (Latest)</option>
+                        <option value="v17.0">v17.0</option>
+                        <option value="v16.0">v16.0</option>
+                        <option value="v15.0">v15.0</option>
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">Meta Graph API version to use</p>
+                    </div>
+                  </div>
+
+                  {/* Webhook Configuration */}
+                  <div className="space-y-4">
+                    <h4 className="text-md font-semibold text-gray-800 border-b border-gray-200 pb-2">
+                      Webhook Configuration
+                    </h4>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Webhook Verify Token *
+                      </label>
+                      <div className="flex space-x-2">
+                        <input
+                          type="text"
+                          value={whatsappSettings.webhookVerifyToken}
+                          onChange={(e) => setWhatsappSettings(prev => ({ ...prev, webhookVerifyToken: e.target.value }))}
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                          placeholder="your-verify-token"
+                        />
+                        <button
+                          onClick={generateWebhookToken}
+                          className="px-3 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors text-sm"
+                        >
+                          Generate
+                        </button>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">Token for webhook verification</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Webhook URL
+                      </label>
+                      <input
+                        type="text"
+                        value={`${window.location.origin}/api/whatsapp-business-webhook`}
+                        readOnly
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-600"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Use this URL in your Meta App webhook settings</p>
+                    </div>
+
+                    {/* Connection Test */}
+                    <div className="mt-6">
+                      <h4 className="text-md font-semibold text-gray-800 mb-3">Test Connection</h4>
+                      <button
+                        onClick={testWhatsappConnection}
+                        disabled={whatsappLoading || !whatsappSettings.accessToken || !whatsappSettings.phoneNumberId}
+                        className="w-full px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {whatsappLoading ? 'Testing...' : 'Test Connection'}
+                      </button>
+
+                      {whatsappTestResult && (
+                        <div className={`mt-3 p-3 rounded-md ${
+                          whatsappTestResult.success 
+                            ? 'bg-green-50 border border-green-200' 
+                            : 'bg-red-50 border border-red-200'
+                        }`}>
+                          <div className="flex items-center space-x-2">
+                            {whatsappTestResult.success ? (
+                              <CheckCircle className="text-green-600" size={20} />
+                            ) : (
+                              <XCircle className="text-red-600" size={20} />
+                            )}
+                            <span className={`font-medium ${
+                              whatsappTestResult.success ? 'text-green-800' : 'text-red-800'
+                            }`}>
+                              {whatsappTestResult.success ? 'Connection Successful' : 'Connection Failed'}
+                            </span>
+                          </div>
+                          {whatsappTestResult.error && (
+                            <p className="text-sm text-red-700 mt-1">{whatsappTestResult.error}</p>
+                          )}
+                          {whatsappTestResult.success && whatsappTestResult.data && (
+                            <div className="text-sm text-green-700 mt-2">
+                              <p><strong>Phone Number:</strong> {whatsappTestResult.data.phoneNumber}</p>
+                              <p><strong>Verified Name:</strong> {whatsappTestResult.data.verifiedName}</p>
+                              <p><strong>Quality Rating:</strong> {whatsappTestResult.data.qualityRating}</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Help Links */}
+                <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+                  <h4 className="font-medium text-gray-900 mb-3">Helpful Links</h4>
+                  <div className="space-y-2">
+                    <a
+                      href="https://developers.facebook.com/docs/whatsapp/cloud-api/get-started"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center space-x-2 text-sm text-blue-600 hover:text-blue-800"
+                    >
+                      <MessageCircle size={14} />
+                      <span>WhatsApp Business API Documentation</span>
+                    </a>
+                    <a
+                      href="https://developers.facebook.com/apps"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center space-x-2 text-sm text-blue-600 hover:text-blue-800"
+                    >
+                      <MessageCircle size={14} />
+                      <span>Meta Developer Console</span>
+                    </a>
+                    <a
+                      href="https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center space-x-2 text-sm text-blue-600 hover:text-blue-800"
+                    >
+                      <MessageCircle size={14} />
+                      <span>Webhook Setup Guide</span>
+                    </a>
+                  </div>
+                </div>
+
+                <GlassButton
+                  onClick={saveWhatsappSettings}
+                  disabled={whatsappSaving}
+                  className="flex items-center gap-2 mt-6"
+                >
+                  <Save className="h-4 w-4" />
+                  {whatsappSaving ? 'Saving...' : 'Save WhatsApp Settings'}
+                </GlassButton>
               </div>
             </div>
           )}

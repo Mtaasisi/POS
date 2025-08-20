@@ -4,6 +4,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useDevices } from '../../../context/DevicesContext';
 import { useCustomers } from '../../../context/CustomersContext';
 import { useNavigationHistory } from '../../../hooks/useNavigationHistory';
+import { useNotifications } from '../../notifications/hooks/useNotifications';
 import {
   Bell,
   Search,
@@ -39,6 +40,7 @@ import {
 import ActivityCounter from './ui/ActivityCounter';
 import GlassButton from './ui/GlassButton';
 import SearchDropdown from './SearchDropdown';
+import CacheClearButton from '../../../components/CacheClearButton';
 
 interface TopBarProps {
   onMenuToggle: () => void;
@@ -52,6 +54,15 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, isMenuOpen, isNavCollapse
   const { customers } = useCustomers();
   const navigate = useNavigate();
   const location = useLocation();
+  
+  // Use the notifications hook
+  const { 
+    notifications, 
+    unreadNotifications, 
+    markAsRead, 
+    markAsActioned, 
+    dismissNotification 
+  } = useNotifications();
   
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -343,57 +354,100 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, isMenuOpen, isNavCollapse
                 className="p-2 rounded-lg bg-white/30 hover:bg-white/50 transition-all duration-300 backdrop-blur-sm border border-white/30 relative shadow-sm"
               >
                 <Bell size={20} className="text-gray-700" />
-                {(activityCounts.activeDevices > 0 || activityCounts.newCustomers > 0 || activityCounts.overdueDevices > 0) && (
-                  <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full notification-badge border-2 border-white shadow-sm"></div>
+                {unreadNotifications.length > 0 && (
+                  <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full notification-badge border-2 border-white shadow-sm flex items-center justify-center">
+                    <span className="text-xs text-white font-bold">
+                      {unreadNotifications.length > 9 ? '9+' : unreadNotifications.length}
+                    </span>
+                  </div>
                 )}
               </button>
               
               {/* Notifications Dropdown */}
               {showNotifications && (
-                <div className="absolute right-0 top-full mt-3 w-80 bg-white/95 backdrop-blur-xl rounded-xl shadow-xl border border-white/30 z-50">
+                <div className="absolute right-0 top-full mt-3 w-80 bg-white/95 backdrop-blur-xl rounded-xl shadow-xl border border-white/30 z-50 max-h-96 overflow-y-auto">
                   <div className="p-4">
-                    <h3 className="font-semibold text-gray-900 mb-3">Notifications</h3>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-semibold text-gray-900">Notifications</h3>
+                      {unreadNotifications.length > 0 && (
+                        <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full">
+                          {unreadNotifications.length} unread
+                        </span>
+                      )}
+                    </div>
                     <div className="space-y-2">
-                      {activityCounts.activeDevices > 0 && (
-                        <div className="flex items-center gap-3 p-3 rounded-lg bg-blue-50 border border-blue-200">
-                          <div className="p-2 rounded-full bg-blue-500">
-                            <Smartphone size={16} className="text-white" />
+                      {notifications.length > 0 ? (
+                        notifications.slice(0, 8).map((notification) => (
+                          <div
+                            key={notification.id}
+                            className={`flex items-start gap-3 p-3 rounded-lg border transition-all duration-200 hover:shadow-sm cursor-pointer ${
+                              notification.status === 'unread' 
+                                ? 'bg-blue-50 border-blue-200' 
+                                : 'bg-gray-50 border-gray-200'
+                            }`}
+                            onClick={() => {
+                              if (notification.status === 'unread') {
+                                markAsRead(notification.id);
+                              }
+                              if (notification.actionUrl) {
+                                navigate(notification.actionUrl);
+                                setShowNotifications(false);
+                              }
+                            }}
+                          >
+                            <div className={`p-2 rounded-full text-lg ${notification.color || 'bg-gray-500'}`}>
+                              {notification.icon || '🔔'}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-sm font-medium ${
+                                notification.status === 'unread' ? 'text-gray-900' : 'text-gray-700'
+                              }`}>
+                                {notification.title}
+                              </p>
+                              <p className="text-xs text-gray-600 mt-1 line-clamp-2">
+                                {notification.message}
+                              </p>
+                              <p className="text-xs text-gray-500 mt-1">
+                                {new Date(notification.createdAt).toLocaleString()}
+                              </p>
+                            </div>
+                            <div className="flex flex-col gap-1">
+                              {notification.status === 'unread' && (
+                                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                              )}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  dismissNotification(notification.id);
+                                }}
+                                className="text-gray-400 hover:text-gray-600 transition-colors"
+                                title="Dismiss"
+                              >
+                                <X size={12} />
+                              </button>
+                            </div>
                           </div>
-                          <div className="flex-1">
-                            <p className="text-sm font-medium text-gray-900">{formatNumber(activityCounts.activeDevices)} active devices</p>
-                            <p className="text-xs text-gray-600">Devices currently being repaired</p>
-                          </div>
-                        </div>
-                      )}
-                      {activityCounts.newCustomers > 0 && (
-                        <div className="flex items-center gap-3 p-3 rounded-lg bg-green-50 border border-green-200">
-                          <div className="p-2 rounded-full bg-green-500">
-                            <Users size={16} className="text-white" />
-                          </div>
-                          <div className="flex-1">
-                            <p className="text-sm font-medium text-gray-900">{formatNumber(activityCounts.newCustomers)} new customers</p>
-                            <p className="text-xs text-gray-600">Recently added customers</p>
-                          </div>
-                        </div>
-                      )}
-                      {activityCounts.overdueDevices > 0 && (
-                        <div className="flex items-center gap-3 p-3 rounded-lg bg-red-50 border border-red-200">
-                          <div className="p-2 rounded-full bg-red-500">
-                            <Smartphone size={16} className="text-white" />
-                          </div>
-                          <div className="flex-1">
-                            <p className="text-sm font-medium text-gray-900">{formatNumber(activityCounts.overdueDevices)} overdue devices</p>
-                            <p className="text-xs text-gray-600">Devices past due date</p>
-                          </div>
-                        </div>
-                      )}
-                      {activityCounts.activeDevices === 0 && activityCounts.newCustomers === 0 && activityCounts.overdueDevices === 0 && (
+                        ))
+                      ) : (
                         <div className="text-center py-6 text-gray-500">
                           <Bell size={24} className="mx-auto mb-2 opacity-50" />
-                          <p className="text-sm font-medium">No new notifications</p>
+                          <p className="text-sm font-medium">No notifications</p>
                         </div>
                       )}
                     </div>
+                    {notifications.length > 8 && (
+                      <div className="mt-3 pt-3 border-t border-gray-200">
+                        <button
+                          onClick={() => {
+                            navigate('/notifications');
+                            setShowNotifications(false);
+                          }}
+                          className="w-full text-center text-sm text-blue-600 hover:text-blue-700 font-medium"
+                        >
+                          View all notifications
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -467,6 +521,15 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, isMenuOpen, isNavCollapse
                         <Settings size={16} className="text-gray-500" />
                         <span className="text-sm text-gray-700">Settings</span>
                       </button>
+                      
+                      <div className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-orange-50 transition-colors">
+                        <Trash2 size={16} className="text-orange-500" />
+                        <CacheClearButton 
+                          variant="text" 
+                          className="text-sm text-orange-700 hover:text-orange-800"
+                          showConfirmation={true}
+                        />
+                      </div>
                       
                       <button
                         onClick={handleLogout}

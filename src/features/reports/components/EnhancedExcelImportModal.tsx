@@ -611,7 +611,7 @@ const EnhancedExcelImportModal: React.FC<EnhancedExcelImportModalProps> = ({
       const totalFields = Object.keys(columnMapping).length;
       
       // Only log in development mode to avoid console spam
-      if (process.env.NODE_ENV === 'development') {
+      if (import.meta.env.MODE === 'development') {
         console.log('Detected columns:', detectedColumns);
         console.log('Original headers:', headers);
       }

@@ -27,7 +27,7 @@ const GlassSelect = forwardRef<HTMLSelectElement, GlassSelectProps>(
     label, 
     error, 
     helperText, 
-    options,
+    options = [],
     placeholder,
     variant = 'default',
     size = 'md',

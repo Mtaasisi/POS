@@ -45,7 +45,7 @@ const BrandInput: React.FC<BrandInputProps> = ({
 
     if (!inputValue.trim()) {
       setFilteredBrands(availableBrands);
-      setShowDropdown(true);
+      // Don't automatically show dropdown for empty input
       return;
     }
 
@@ -103,10 +103,7 @@ const BrandInput: React.FC<BrandInputProps> = ({
   // Initialize filtered brands when component mounts or brands change
   useEffect(() => {
     setFilteredBrands(availableBrands);
-    // Show dropdown if input is empty and suggestions are enabled
-    if (showSuggestions && !value.trim() && availableBrands.length > 0) {
-      setShowDropdown(true);
-    }
+    // Don't automatically show dropdown - only show when user explicitly interacts
   }, [brands, category, showSuggestions, value]);
 
   return (
@@ -118,14 +115,10 @@ const BrandInput: React.FC<BrandInputProps> = ({
           value={value}
           onChange={(e) => handleInputChange(e.target.value)}
           onFocus={() => {
-            if (showSuggestions) {
-              setShowDropdown(true);
-            }
+            // Don't automatically show dropdown on focus
           }}
           onClick={() => {
-            if (showSuggestions) {
-              setShowDropdown(true);
-            }
+            // Don't automatically show dropdown on click
           }}
           placeholder={placeholder}
           required={required}
@@ -142,7 +135,17 @@ const BrandInput: React.FC<BrandInputProps> = ({
             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
           </div>
         ) : (
-          <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+          <button
+            type="button"
+            onClick={() => {
+              if (showSuggestions) {
+                setShowDropdown(!showDropdown);
+              }
+            }}
+            className="absolute right-4 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 rounded transition-colors"
+          >
+            <ChevronDown className="text-gray-400" size={16} />
+          </button>
         )}
       </div>
 

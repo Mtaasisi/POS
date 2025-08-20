@@ -4,6 +4,7 @@ import GlassButton from '../../../features/shared/components/ui/GlassButton';
 import SecureAttendanceVerification from './SecureAttendanceVerification';
 import { Clock, CheckCircle, AlertTriangle, Calendar, LogIn, LogOut, Shield } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { useAttendanceSettings } from '../../../hooks/useAttendanceSettings';
 
 interface EmployeeAttendanceCardProps {
   employeeId: string;
@@ -31,6 +32,7 @@ const EmployeeAttendanceCard: React.FC<EmployeeAttendanceCardProps> = ({
   officeLocation,
   officeNetworks
 }) => {
+  const { settings: attendanceSettings, loading: settingsLoading } = useAttendanceSettings();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [todayAttendance, setTodayAttendance] = useState<{
     checkIn?: string;
@@ -39,6 +41,10 @@ const EmployeeAttendanceCard: React.FC<EmployeeAttendanceCardProps> = ({
   }>({ status: 'not-started' });
 
   const [showSecurityVerification, setShowSecurityVerification] = useState(false);
+
+  // Use attendance settings if no office location is provided
+  const effectiveOfficeLocation = officeLocation || attendanceSettings.offices[0];
+  const effectiveOfficeNetworks = officeNetworks || attendanceSettings.offices[0]?.networks || [];
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -49,8 +55,15 @@ const EmployeeAttendanceCard: React.FC<EmployeeAttendanceCardProps> = ({
   }, []);
 
   const handleCheckIn = () => {
+    // Check if attendance is enabled
+    if (!attendanceSettings.enabled) {
+      toast.error('Attendance system is disabled');
+      return;
+    }
+
     // If security verification is required, show verification first
-    if (officeLocation && officeNetworks) {
+    if (effectiveOfficeLocation && effectiveOfficeNetworks && 
+        (attendanceSettings.requireLocation || attendanceSettings.requireWifi)) {
       setShowSecurityVerification(true);
       return;
     }

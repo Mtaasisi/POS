@@ -4,8 +4,10 @@ import GlassButton from '../../../features/shared/components/ui/GlassButton';
 import LocationVerification from './LocationVerification';
 import NetworkVerification from './NetworkVerification';
 import PhotoVerification from './PhotoVerification';
+import AutoLocationVerification from './AutoLocationVerification';
 import { Shield, CheckCircle, AlertTriangle, Lock } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { useAttendanceSettings } from '../../../hooks/useAttendanceSettings';
 
 interface SecureAttendanceVerificationProps {
   onAllVerificationsComplete: () => void;
@@ -39,6 +41,7 @@ const SecureAttendanceVerification: React.FC<SecureAttendanceVerificationProps> 
   officeLocation,
   officeNetworks
 }) => {
+  const { settings: attendanceSettings } = useAttendanceSettings();
   const [currentStep, setCurrentStep] = useState<VerificationStep>('location');
   const [verificationStatus, setVerificationStatus] = useState<VerificationStatus>({
     location: false,
@@ -47,13 +50,54 @@ const SecureAttendanceVerification: React.FC<SecureAttendanceVerificationProps> 
   });
   const [capturedPhoto, setCapturedPhoto] = useState<string>('');
 
+  // Determine which verification steps are required based on settings
+  const requiresLocation = attendanceSettings.requireLocation;
+  const requiresNetwork = attendanceSettings.requireWifi;
+  const requiresPhoto = true; // Always require photo for security
+
+  // Determine the first step based on requirements
+  const getInitialStep = (): VerificationStep => {
+    if (requiresLocation) return 'location';
+    if (requiresNetwork) return 'network';
+    return 'photo';
+  };
+
+  // State for auto-detected office
+  const [detectedOffice, setDetectedOffice] = useState<any>(null);
+
   const handleLocationSuccess = () => {
     setVerificationStatus(prev => ({ ...prev, location: true }));
-    setCurrentStep('network');
-    toast.success('Location verified! Moving to network verification.');
+    
+    // Determine next step based on requirements
+    if (requiresNetwork) {
+      setCurrentStep('network');
+      toast.success('Location verified! Moving to network verification.');
+    } else {
+      setCurrentStep('photo');
+      toast.success('Location verified! Moving to photo verification.');
+    }
   };
 
   const handleLocationFailed = () => {
+    setVerificationStatus(prev => ({ ...prev, location: false }));
+    onVerificationFailed();
+  };
+
+  const handleAutoLocationSuccess = (officeInfo: any) => {
+    setDetectedOffice(officeInfo.office);
+    setVerificationStatus(prev => ({ ...prev, location: true }));
+    
+    // Determine next step based on requirements
+    if (requiresNetwork) {
+      setCurrentStep('network');
+      toast.success(`Office detected: ${officeInfo.office.name}! Moving to network verification.`);
+    } else {
+      setCurrentStep('photo');
+      toast.success(`Office detected: ${officeInfo.office.name}! Moving to photo verification.`);
+    }
+  };
+
+  const handleAutoLocationFailed = () => {
     setVerificationStatus(prev => ({ ...prev, location: false }));
     onVerificationFailed();
   };
@@ -198,10 +242,10 @@ const SecureAttendanceVerification: React.FC<SecureAttendanceVerificationProps> 
 
       {/* Verification Components */}
       {currentStep === 'location' && (
-        <LocationVerification
-          onVerificationSuccess={handleLocationSuccess}
-          onVerificationFailed={handleLocationFailed}
-          officeLocation={officeLocation}
+        <AutoLocationVerification
+          onVerificationSuccess={handleAutoLocationSuccess}
+          onVerificationFailed={handleAutoLocationFailed}
+          employeeName={employeeName}
         />
       )}
 
@@ -209,7 +253,7 @@ const SecureAttendanceVerification: React.FC<SecureAttendanceVerificationProps> 
         <NetworkVerification
           onVerificationSuccess={handleNetworkSuccess}
           onVerificationFailed={handleNetworkFailed}
-          officeNetworks={officeNetworks}
+          officeNetworks={detectedOffice?.networks || officeNetworks}
         />
       )}
 
@@ -237,14 +281,20 @@ const SecureAttendanceVerification: React.FC<SecureAttendanceVerificationProps> 
             <div className="bg-green-50 border border-green-200 rounded-lg p-4">
               <h4 className="font-medium text-green-800 mb-2">Verification Summary</h4>
               <div className="space-y-2 text-sm">
-                <div className="flex items-center gap-2">
-                  <CheckCircle size={16} className="text-green-600" />
-                  <span className="text-green-700">Location verified - You are at the office</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle size={16} className="text-green-600" />
-                  <span className="text-green-700">Network verified - Connected to office WiFi</span>
-                </div>
+                {requiresLocation && (
+                  <div className="flex items-center gap-2">
+                    <CheckCircle size={16} className="text-green-600" />
+                    <span className="text-green-700">
+                      Location verified - {detectedOffice ? `Detected: ${detectedOffice.name}` : 'You are at the office'}
+                    </span>
+                  </div>
+                )}
+                {requiresNetwork && (
+                  <div className="flex items-center gap-2">
+                    <CheckCircle size={16} className="text-green-600" />
+                    <span className="text-green-700">Network verified - Connected to office WiFi</span>
+                  </div>
+                )}
                 <div className="flex items-center gap-2">
                   <CheckCircle size={16} className="text-green-600" />
                   <span className="text-green-700">Photo verified - Identity confirmed</span>
@@ -268,25 +318,29 @@ const SecureAttendanceVerification: React.FC<SecureAttendanceVerificationProps> 
           <h4 className="font-semibold text-gray-900">Why These Verifications?</h4>
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-blue-50 p-4 rounded-lg">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-lg">📍</span>
-                <span className="font-medium text-blue-800">Location</span>
+            {requiresLocation && (
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-lg">📍</span>
+                  <span className="font-medium text-blue-800">Location</span>
+                </div>
+                <p className="text-sm text-blue-700">
+                  Ensures you are physically present at the office location using GPS coordinates.
+                </p>
               </div>
-              <p className="text-sm text-blue-700">
-                Ensures you are physically present at the office location using GPS coordinates.
-              </p>
-            </div>
+            )}
 
-            <div className="bg-green-50 p-4 rounded-lg">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-lg">📶</span>
-                <span className="font-medium text-green-800">Network</span>
+            {requiresNetwork && (
+              <div className="bg-green-50 p-4 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-lg">📶</span>
+                  <span className="font-medium text-green-800">Network</span>
+                </div>
+                <p className="text-sm text-green-700">
+                  Confirms you are connected to the office WiFi network, preventing remote check-ins.
+                </p>
               </div>
-              <p className="text-sm text-green-700">
-                Confirms you are connected to the office WiFi network, preventing remote check-ins.
-              </p>
-            </div>
+            )}
 
             <div className="bg-purple-50 p-4 rounded-lg">
               <div className="flex items-center gap-2 mb-2">
