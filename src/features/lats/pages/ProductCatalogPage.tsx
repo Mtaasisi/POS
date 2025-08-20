@@ -22,7 +22,7 @@ import { toast } from 'react-hot-toast';
 import CategoryFormModal from '../components/inventory/CategoryFormModal';
 import SupplierForm from '../components/inventory/SupplierForm';
 import VariantProductCard from '../components/inventory/VariantProductCard';
-import AddProductModal from '../components/inventory/AddProductModal';
+// AddProductModal removed - using AddProductPage instead
 import EditProductModal from '../components/inventory/EditProductModal';
 import { useProductModals } from '../hooks/useProductModals';
 
@@ -646,14 +646,14 @@ const ProductCatalogPage: React.FC = () => {
       const encodedUri = encodeURI(csvContent);
       const link = document.createElement("a");
       link.setAttribute("href", encodedUri);
-      link.setAttribute("download", `product-catalog-${new Date().toISOString().split('T')[0]}.csv`);
+      link.setAttribute("download", `product-inventory-${new Date().toISOString().split('T')[0]}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      toast.success('Product catalog exported successfully!');
+      toast.success('Product inventory exported successfully!');
     } catch (error) {
       console.error('Export error:', error);
-      toast.error('Failed to export product catalog');
+      toast.error('Failed to export product inventory');
     }
   };
 
@@ -875,8 +875,8 @@ const ProductCatalogPage: React.FC = () => {
         <div className="flex items-center gap-4">
           <BackButton to="/dashboard" />
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Product Catalog</h1>
-            <p className="text-gray-600 mt-1">Manage products, categories, and pricing</p>
+            <h1 className="text-3xl font-bold text-gray-900">Product Inventory</h1>
+            <p className="text-gray-600 mt-1">Manage products, inventory, and stock levels</p>
             {/* Database Status Indicator */}
             <div className="flex items-center gap-2 mt-2">
               <div className={`w-2 h-2 rounded-full ${
@@ -896,7 +896,7 @@ const ProductCatalogPage: React.FC = () => {
 
         <div className="flex flex-wrap gap-3">
           <GlassButton
-            onClick={productModals.openAddModal}
+            onClick={() => navigate('/lats/add-product')}
             icon={<Plus size={18} />}
             className="bg-gradient-to-r from-blue-500 to-purple-600 text-white"
           >
@@ -984,7 +984,7 @@ const ProductCatalogPage: React.FC = () => {
         <GlassCard className="bg-gradient-to-br from-purple-50 to-purple-100">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-purple-600">Catalog Value</p>
+              <p className="text-sm font-medium text-purple-600">Inventory Value</p>
               <p className="text-2xl font-bold text-purple-900">{formatMoney(metrics.total * (products.find(p => p.id === '1')?.variants?.[0]?.sellingPrice || 0))}</p>
             </div>
             <div className="p-3 bg-purple-50/20 rounded-full">
@@ -1019,8 +1019,8 @@ const ProductCatalogPage: React.FC = () => {
             <Package className="w-4 h-4 text-purple-600" />
           </div>
           <div>
-            <h3 className="font-medium text-purple-900">Product Catalog Management</h3>
-            <p className="text-sm text-purple-600">Add and manage products, brands, categories, and suppliers</p>
+            <h3 className="font-medium text-purple-900">Product Inventory Management</h3>
+            <p className="text-sm text-purple-600">Add and manage products, inventory, and stock levels</p>
           </div>
         </div>
         
@@ -1033,7 +1033,7 @@ const ProductCatalogPage: React.FC = () => {
               <Package className="w-4 h-4 text-purple-600" />
               <span className="text-xs font-medium text-purple-700">New Product</span>
             </div>
-            <p className="text-xs text-gray-600">Add product to catalog</p>
+            <p className="text-xs text-gray-600">Add product to inventory</p>
           </button>
 
           <button
@@ -1372,7 +1372,7 @@ const ProductCatalogPage: React.FC = () => {
                         <td className="py-4 px-4 text-center">
                           <div className="flex items-center justify-center space-x-2">
                             <button
-                              onClick={(e) => { e.stopPropagation(); productModals.openEditModal(product); }}
+                              onClick={(e) => { e.stopPropagation(); navigate(`/lats/products/${product.id}/edit`); }}
                               className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
                             >
                               <Edit className="w-4 h-4" />
@@ -1460,7 +1460,7 @@ const ProductCatalogPage: React.FC = () => {
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <GlassButton
-              onClick={productModals.openAddModal}
+              onClick={() => navigate('/lats/add-product')}
               icon={<Plus size={18} />}
             >
               Add Your First Product
@@ -1572,19 +1572,7 @@ const ProductCatalogPage: React.FC = () => {
       {/* Product Catalog Form Modals */}
       
       {/* Product Modals */}
-      <AddProductModal
-        isOpen={productModals.showAddModal}
-        onClose={productModals.closeAddModal}
-        onProductCreated={(product) => {
-          toast.success('Product created successfully!');
-          // Clear cache and reload
-          localStorage.removeItem(CACHE_KEY);
-          loadProducts({ page: 1, limit: 50 });
-          loadCategories();
-          loadBrands();
-          loadSuppliers();
-        }}
-      />
+      {/* AddProductModal removed - use AddProductPage instead */}
 
       <EditProductModal
         isOpen={productModals.showEditModal}

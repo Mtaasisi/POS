@@ -25,7 +25,7 @@ class DemoDataProvider implements LatsDataProvider {
   private cart: Cart | null = null;
   private sales: Sale[] = [];
   private posSettings: POSSettings = {
-    taxRate: 0.16,
+
     currency: 'TZS',
     receiptHeader: 'LATS Device Repair',
     receiptFooter: 'Thank you for your business!',
@@ -136,7 +136,7 @@ class DemoDataProvider implements LatsDataProvider {
         brandId: 'brand-1',
         supplierId: 'supp-1',
         images: ['/images/iphone13-screen.jpg'],
-        tags: ['screen', 'iphone', 'replacement'],
+  
         isActive: true,
         variants: [
           {
@@ -181,7 +181,7 @@ class DemoDataProvider implements LatsDataProvider {
         brandId: 'brand-2',
         supplierId: 'supp-1',
         images: ['/images/s21-battery.jpg'],
-        tags: ['battery', 'samsung', 'replacement'],
+  
         isActive: true,
         variants: [
           {
@@ -212,7 +212,7 @@ class DemoDataProvider implements LatsDataProvider {
         brandId: 'brand-1',
         supplierId: 'supp-1',
         images: ['/images/macbook-charger.jpg'],
-        tags: ['charger', 'macbook', 'apple'],
+  
         isActive: true,
         variants: [
           {
@@ -243,7 +243,7 @@ class DemoDataProvider implements LatsDataProvider {
         brandId: 'brand-3',
         supplierId: 'supp-2',
         images: ['/images/dell-keyboard.jpg'],
-        tags: ['keyboard', 'dell', 'laptop'],
+  
         isActive: true,
         variants: [
           {
@@ -288,7 +288,7 @@ class DemoDataProvider implements LatsDataProvider {
         brandId: 'brand-1',
         supplierId: 'supp-1',
         images: ['/images/ipad-case.jpg'],
-        tags: ['case', 'ipad', 'protection'],
+  
         isActive: true,
         variants: [
           {
@@ -594,8 +594,7 @@ class DemoDataProvider implements LatsDataProvider {
 
     this.products.forEach(product => {
       if (product.name.toLowerCase().includes(search) || 
-          product.description?.toLowerCase().includes(search) ||
-          product.tags.some(tag => tag.toLowerCase().includes(search))) {
+          product.description?.toLowerCase().includes(search)) {
         
         const category = this.categories.find(c => c.id === product.categoryId);
         const brand = product.brandId ? this.brands.find(b => b.id === product.brandId) : undefined;
@@ -618,7 +617,7 @@ class DemoDataProvider implements LatsDataProvider {
             barcode: v.barcode
           })),
           images: product.images,
-          tags: product.tags
+
         });
       }
     });
@@ -981,7 +980,7 @@ class DemoDataProvider implements LatsDataProvider {
     if (!this.cart) return;
 
     this.cart.subtotal = this.cart.items.reduce((sum, item) => sum + item.totalPrice, 0);
-    this.cart.tax = this.cart.subtotal * this.posSettings.taxRate;
+
     this.cart.total = this.cart.subtotal + this.cart.tax - this.cart.discount;
     this.cart.itemCount = this.cart.items.reduce((sum, item) => sum + item.quantity, 0);
     this.cart.updatedAt = new Date().toISOString();

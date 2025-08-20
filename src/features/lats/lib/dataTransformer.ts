@@ -31,12 +31,7 @@ export class LatsDataTransformer {
       brandId: formData.brand ? this.findBrandId(formData.brand) : undefined,
       supplierId: this.isValidUUID(formData.supplier_id) ? formData.supplier_id : undefined,
       images: [],
-      tags: [],
       isActive: formData.is_active ?? true,
-      isFeatured: false,
-      isDigital: false,
-      requiresShipping: true,
-      taxRate: 0,
       variants: []
     };
 
@@ -50,8 +45,7 @@ export class LatsDataTransformer {
         costPrice: variant.cost_price || 0,
         stockQuantity: variant.quantity_in_stock || 0,
         minStockLevel: formData.minimum_stock_level || 0,
-        weight: variant.weight_kg || undefined,
-        dimensions: variant.dimensions_cm ? this.parseDimensions(variant.dimensions_cm) : undefined,
+
         attributes: variant.attributes || {},
         isActive: true
       }));
@@ -65,8 +59,7 @@ export class LatsDataTransformer {
         costPrice: formData.cost_price || 0,
         stockQuantity: formData.quantity_in_stock || 0,
         minStockLevel: formData.minimum_stock_level || 0,
-        weight: formData.weight_kg || undefined,
-        dimensions: formData.dimensions_cm ? this.parseDimensions(formData.dimensions_cm) : undefined,
+
         attributes: {},
         isActive: true
       }];
@@ -87,12 +80,7 @@ export class LatsDataTransformer {
       brandId: this.isValidUUID(data.brandId || '') ? data.brandId : undefined,
       supplierId: this.isValidUUID(data.supplierId || '') ? data.supplierId : undefined,
       images: data.images || [],
-      tags: data.tags || [],
       isActive: data.isActive,
-      isFeatured: data.isFeatured,
-      isDigital: data.isDigital,
-      requiresShipping: data.requiresShipping,
-      taxRate: data.taxRate,
       variants: data.variants.map(variant => ({
         sku: variant.sku,
         name: variant.name,
@@ -101,8 +89,7 @@ export class LatsDataTransformer {
         costPrice: variant.costPrice,
         quantity: variant.quantity || variant.stockQuantity || 0,
         minQuantity: variant.minQuantity || variant.minStockLevel || 0,
-        weight: variant.weight,
-        dimensions: variant.dimensions,
+
         attributes: variant.attributes
       }))
     };
@@ -120,11 +107,6 @@ export class LatsDataTransformer {
       brandId: apiData.brandId || apiData.brand_id || undefined,
       supplierId: apiData.supplierId || apiData.supplier_id || undefined,
       images: apiData.images || [],
-      tags: apiData.tags || [],
-      isFeatured: apiData.isFeatured ?? false,
-      isDigital: apiData.isDigital ?? false,
-      requiresShipping: apiData.requiresShipping ?? true,
-      taxRate: apiData.taxRate || 0,
       variants: (apiData.variants || []).map((variant: any) => ({
         sku: variant.sku || '',
         name: variant.name || '',
@@ -133,8 +115,8 @@ export class LatsDataTransformer {
         costPrice: variant.costPrice || variant.cost_price || 0,
         stockQuantity: variant.stockQuantity || variant.quantity || 0,
         minStockLevel: variant.minStockLevel || variant.min_quantity || 0,
-        weight: variant.weight || undefined,
-        dimensions: variant.dimensions || undefined,
+
+
         attributes: variant.attributes || {},
         isActive: variant.isActive ?? true
       }))
@@ -290,7 +272,7 @@ export class LatsDataTransformer {
       brandId: product.brandId || product.brand_id,
       supplierId: product.supplierId || product.supplier_id,
       images: product.images || [],
-      tags: product.tags || [],
+      tags: [],
       isActive: product.isActive ?? true,
       isFeatured: product.isFeatured ?? false,
       isDigital: product.isDigital ?? false,
@@ -391,7 +373,7 @@ export class LatsDataTransformer {
       Weight: mainVariant?.weight || '',
       Dimensions: mainVariant?.dimensions ? this.transformDimensionsToString(mainVariant.dimensions) : '',
       Status: product.isActive ? 'Active' : 'Inactive',
-      Tags: (product.tags || []).join(', '),
+              Tags: '',
       CreatedAt: product.createdAt || product.created_at || '',
       UpdatedAt: product.updatedAt || product.updated_at || ''
     };

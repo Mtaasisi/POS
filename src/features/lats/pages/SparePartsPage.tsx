@@ -220,15 +220,9 @@ const SparePartsPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className="min-h-screen">
       
       <div className="max-w-7xl mx-auto p-4">
-        <LATSBreadcrumb 
-          items={[
-            { label: 'LATS', href: '/lats' },
-            { label: 'Spare Parts', href: '/lats/spare-parts' }
-          ]} 
-        />
 
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
@@ -256,32 +250,7 @@ const SparePartsPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Quick Actions */}
-        <LATSQuickActions
-          actions={[
-            {
-              label: 'Low Stock Alert',
-              icon: AlertTriangle,
-              count: spareParts.filter(p => p.quantity <= p.minQuantity && p.quantity > 0).length,
-              onClick: () => setStockFilter('low-stock'),
-              color: 'yellow'
-            },
-            {
-              label: 'Out of Stock',
-              icon: XCircle,
-              count: spareParts.filter(p => p.quantity === 0).length,
-              onClick: () => setStockFilter('out-of-stock'),
-              color: 'red'
-            },
-            {
-              label: 'Usage History',
-              icon: History,
-              count: sparePartUsage.length,
-              onClick: () => {/* TODO: Show usage history modal */},
-              color: 'blue'
-            }
-          ]}
-        />
+
 
         {/* Filters and Search */}
         <GlassCard className="mb-6">

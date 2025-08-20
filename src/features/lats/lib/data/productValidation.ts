@@ -100,15 +100,7 @@ export function validateProductCompleteness(product: Product): ProductValidation
         variantMissingFields.push('barcode');
       }
 
-      if (!variant.weight) {
-        warnings.push(`Variant ${index + 1}: Weight is recommended`);
-        variantMissingFields.push('weight');
-      }
-
-      if (!variant.dimensions) {
-        warnings.push(`Variant ${index + 1}: Dimensions are recommended`);
-        variantMissingFields.push('dimensions');
-      }
+      
 
       errors.push(...variantErrors);
 
@@ -153,8 +145,7 @@ export function calculateProductCompleteness(product: Product): ProductCompleten
     'minQuantity',
     'maxQuantity',
     'barcode',
-    'weight',
-    'dimensions',
+
     'attributes'
   ];
 
@@ -249,19 +240,7 @@ export function calculateProductCompleteness(product: Product): ProductCompleten
       }
       totalFields++;
 
-      if (variant.weight) {
-        completedFields++;
-      } else {
-        missingOptional.push(`variant-${variant.id}-weight`);
-      }
-      totalFields++;
 
-      if (variant.dimensions) {
-        completedFields++;
-      } else {
-        missingOptional.push(`variant-${variant.id}-dimensions`);
-      }
-      totalFields++;
     });
   } else {
     missingCritical.push('variants');
@@ -285,9 +264,7 @@ export function getDefaultProductValues(): Partial<Product> {
   return {
     description: 'Product description needed',
     isActive: true,
-    taxRate: 0.16,
-    requiresShipping: true,
-    isDigital: false
+
   };
 }
 
@@ -300,8 +277,7 @@ export function getDefaultVariantValues(): Partial<ProductVariant> {
     maxQuantity: 100,
     costPrice: 0,
     quantity: 0,
-    weight: 0,
-    dimensions: '',
+
     barcode: '',
     attributes: {},
     isActive: true
@@ -323,9 +299,7 @@ export function autoFixProductData(product: Product): Product {
     fixedProduct.isActive = true;
   }
 
-  if (!fixedProduct.taxRate) {
-    fixedProduct.taxRate = 0.16;
-  }
+
 
   // Fix variant issues
   if (fixedProduct.variants) {
@@ -362,15 +336,7 @@ export function autoFixProductData(product: Product): Product {
         fixedVariant.barcode = `${fixedVariant.sku}-${Date.now()}`;
       }
 
-      // Set default weight
-      if (!fixedVariant.weight) {
-        fixedVariant.weight = 0;
-      }
 
-      // Set default dimensions
-      if (!fixedVariant.dimensions) {
-        fixedVariant.dimensions = '';
-      }
 
       // Set default attributes
       if (!fixedVariant.attributes) {

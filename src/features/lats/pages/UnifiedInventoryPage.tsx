@@ -22,7 +22,7 @@ import { toast } from 'react-hot-toast';
 import StockAdjustModal from '../components/inventory/StockAdjustModal';
 import CategoryFormModal from '../components/inventory/CategoryFormModal';
 import SupplierForm from '../components/inventory/SupplierForm';
-import AddProductModal from '../components/inventory/AddProductModal';
+// AddProductModal removed - using AddProductPage instead
 import EditProductModal from '../components/inventory/EditProductModal';
 import VariantProductCard from '../components/inventory/VariantProductCard';
 import { useProductModals } from '../hooks/useProductModals';
@@ -360,7 +360,7 @@ const UnifiedInventoryPage: React.FC = () => {
         });
       }
     } else {
-      // Catalog tab status filter
+      // Inventory tab status filter
       if (selectedStatus !== 'all') {
         filtered = filtered.filter(product => product.isActive === (selectedStatus === 'active'));
       }
@@ -374,8 +374,8 @@ const UnifiedInventoryPage: React.FC = () => {
       });
     }
 
-    // Apply featured filter (catalog tab)
-    if (activeTab === 'catalog' && showFeaturedOnly) {
+    // Apply featured filter (inventory tab)
+    if (activeTab === 'inventory' && showFeaturedOnly) {
       filtered = filtered.filter(product => product.isFeatured);
     }
 
@@ -616,14 +616,14 @@ const UnifiedInventoryPage: React.FC = () => {
       const encodedUri = encodeURI(csvContent);
       const link = document.createElement("a");
       link.setAttribute("href", encodedUri);
-      link.setAttribute("download", `product-catalog-${new Date().toISOString().split('T')[0]}.csv`);
+      link.setAttribute("download", `product-inventory-${new Date().toISOString().split('T')[0]}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      toast.success('Product catalog exported successfully!');
+      toast.success('Product inventory exported successfully!');
     } catch (error) {
       console.error('Export error:', error);
-      toast.error('Failed to export product catalog');
+      toast.error('Failed to export product inventory');
     }
   };
 
@@ -666,7 +666,7 @@ const UnifiedInventoryPage: React.FC = () => {
             <BackButton to="/dashboard" />
             <div>
               <h1 className="text-3xl font-bold text-gray-900">Unified Inventory Management</h1>
-              <p className="text-gray-600 mt-1">Manage products, inventory, and catalog in one place</p>
+              <p className="text-gray-600 mt-1">Manage products and inventory in one place</p>
               {/* Database Status Indicator */}
               <div className="flex items-center gap-2 mt-2">
                 <div className={`w-2 h-2 rounded-full ${
@@ -691,6 +691,13 @@ const UnifiedInventoryPage: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap gap-3">
+            <GlassButton
+              onClick={() => navigate('/lats/inventory-management')}
+              icon={<Settings size={18} />}
+              className="bg-gradient-to-r from-gray-500 to-gray-600 text-white"
+            >
+              Inventory Management
+            </GlassButton>
             <GlassButton
               onClick={() => navigate('/lats/add-product')}
               icon={<Plus size={18} />}
@@ -848,14 +855,7 @@ const UnifiedInventoryPage: React.FC = () => {
         )}
 
         {/* Product Modals */}
-        <AddProductModal
-          isOpen={productModals.showAddModal}
-          onClose={productModals.closeAddModal}
-          onProductCreated={(product) => {
-            toast.success('Product created successfully!');
-            loadProducts({ page: 1, limit: 50 });
-          }}
-        />
+        {/* AddProductModal removed - use AddProductPage instead */}
 
         <EditProductModal
           isOpen={productModals.showEditModal}

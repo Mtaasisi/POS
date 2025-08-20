@@ -40,7 +40,7 @@ import {
 import { format } from 'date-fns';
 import { Product, ProductVariant, UploadedImage } from '../types/inventory';
 import { getLatsProvider } from '../lib/data/provider';
-import { ImageUploadService } from '../../../lib/imageUpload';
+import { RobustImageService, ProductImage } from '../../../lib/robustImageService';
 import { 
 	calculateTotalStock, 
 	calculateTotalCostValue, 
@@ -55,8 +55,8 @@ import { supabase } from '../../../lib/supabaseClient';
 import GlassBadge from '../../../features/shared/components/ui/GlassBadge';
 import GlassCard from '../../../features/shared/components/ui/GlassCard';
 import LoadingSkeleton, { TextSkeleton } from '../../../features/shared/components/ui/LoadingSkeleton';
-import ImageDisplay from '../../../features/shared/components/ui/ImageDisplay';
-import EditProductModal from '../components/inventory/EditProductModal';
+import { SimpleImageDisplay } from '../../../components/SimpleImageDisplay';
+
 
 const ProductDetailPage: React.FC = () => {
 	const { id } = useParams<{ id: string }>();
@@ -66,7 +66,7 @@ const ProductDetailPage: React.FC = () => {
 	const [error, setError] = useState<string | null>(null);
 	const [product, setProduct] = useState<Product | null>(null);
 	const [images, setImages] = useState<UploadedImage[]>([]);
-	const [showEditModal, setShowEditModal] = useState(false);
+
 	const [debugInfo, setDebugInfo] = useState<any>(null);
 	const [showDebug, setShowDebug] = useState(false);
 
@@ -79,10 +79,8 @@ const ProductDetailPage: React.FC = () => {
 			const { ok, data, message } = await provider.getProduct(id);
 			if (ok && data) {
 				setProduct(data as Product);
-				const refreshedImages = await ImageUploadService.getProductImages(id);
-				// Process images to prevent header size issues
-				const processedImages = processProductImages(refreshedImages || []);
-				setImages(processedImages);
+				const refreshedImages = await RobustImageService.getProductImages(id);
+				setImages(refreshedImages);
 				console.log('🔄 ProductDetailPage: Data refreshed successfully', data);
 			} else {
 				console.error('❌ Failed to refresh product data:', message);
@@ -138,11 +136,10 @@ const ProductDetailPage: React.FC = () => {
 				
 				// Load images with error handling
 				try {
-					const imagesResult = await ImageUploadService.getProductImages(id);
+					const imagesResult = await RobustImageService.getProductImages(id);
 					if (isMounted) {
-						const processedImages = processProductImages(imagesResult || []);
-						setImages(processedImages);
-						console.log('📸 Images loaded:', processedImages.length);
+						setImages(imagesResult);
+						console.log('📸 Images loaded:', imagesResult.length);
 					}
 				} catch (imageError) {
 					console.error('❌ Failed to load images:', imageError);
@@ -251,7 +248,7 @@ const ProductDetailPage: React.FC = () => {
 							<Bug size={18} />
 						</button>
 						<button
-							onClick={() => setShowEditModal(true)}
+							onClick={() => navigate(`/lats/products/${id}/edit`)}
 							className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors"
 							aria-label="Edit product"
 						>
@@ -286,18 +283,12 @@ const ProductDetailPage: React.FC = () => {
 						{/* Product Image */}
 						<div className="lg:w-1/3">
 							<div className="aspect-square w-full overflow-hidden rounded-lg bg-gray-50 border border-gray-200">
-								{primaryImage ? (
-									<ImageDisplay 
-										imageUrl={primaryImage.url} 
-										thumbnailUrl={primaryImage.thumbnailUrl} 
-										alt={product.name} 
-										className="h-full w-full object-contain" 
-									/>
-								) : (
-									<div className="flex h-full w-full items-center justify-center text-gray-400">
-										<ImageIcon size={48} />
-									</div>
-								)}
+								<SimpleImageDisplay
+									images={images}
+									productName={product.name}
+									size="xl"
+									className="h-full w-full"
+								/>
 							</div>
 						</div>
 
@@ -408,35 +399,7 @@ const ProductDetailPage: React.FC = () => {
 
 
 
-								{/* Product Flags */}
-								<div className="flex items-start gap-2">
-									<Settings size={16} className="text-gray-400 mt-0.5" />
-									<div>
-										<span className="text-sm text-gray-500">Product Flags</span>
-										<div className="flex flex-wrap gap-1 mt-1">
-											{product.isFeatured && (
-												<span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded-full">
-													Featured
-												</span>
-											)}
-											{product.isDigital && (
-												<span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
-													Digital
-												</span>
-											)}
-											{product.requiresShipping && (
-												<span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
-													Shipping Required
-												</span>
-											)}
-											{product.taxRate > 0 && (
-												<span className="px-2 py-1 bg-orange-100 text-orange-800 text-xs rounded-full">
-													Tax: {(product.taxRate * 100).toFixed(1)}%
-												</span>
-											)}
-										</div>
-									</div>
-								</div>
+
 
 								{/* Metadata */}
 								{product.metadata && Object.keys(product.metadata).length > 0 && (
@@ -638,24 +601,7 @@ const ProductDetailPage: React.FC = () => {
 				)}
 			</div>
 
-			{/* Edit Product Modal */}
-			<EditProductModal
-				isOpen={showEditModal}
-				onClose={() => setShowEditModal(false)}
-				productId={id || ''}
-				onProductUpdated={async (updatedProduct) => {
-					setProduct(updatedProduct);
-					if (id) {
-						try {
-							const refreshedImages = await ImageUploadService.getProductImages(id);
-							setImages(refreshedImages || []);
-						} catch (error) {
-							console.error('❌ Failed to refresh images after update:', error);
-						}
-					}
-					setShowEditModal(false);
-				}}
-			/>
+
 
 			{/* Debug Panel */}
 			{showDebug && <DebugPanel />}

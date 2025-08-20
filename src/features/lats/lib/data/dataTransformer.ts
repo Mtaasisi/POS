@@ -1,3 +1,4 @@
+export class DataTransformer {
   // Generate unique SKU that doesn't exist in database
   async generateUniqueSKU(productName: string, supabase: any): Promise<string> {
     let attempts = 0;
@@ -93,3 +94,23 @@
     
     return fixedVariants;
   }
+
+  // Generate a simple SKU from product name
+  generateSimpleSKU(productName: string): string {
+    if (!productName) return 'SKU-' + Date.now();
+    
+    // Remove special characters and convert to uppercase
+    const cleanName = productName
+      .replace(/[^a-zA-Z0-9\s]/g, '')
+      .replace(/\s+/g, '-')
+      .toUpperCase()
+      .substring(0, 8);
+    
+    return cleanName || 'SKU-' + Date.now();
+  }
+
+  // Generate SKU for a product
+  generateSKU(productName: string): string {
+    return this.generateSimpleSKU(productName);
+  }
+}

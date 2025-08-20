@@ -372,47 +372,7 @@ export class LatsFormValidator {
     return errors;
   }
 
-  // Validate dimensions
-  validateDimensions(dimensions: any): ValidationError[] {
-    const errors: ValidationError[] = [];
-    
-    if (dimensions) {
-      if (dimensions.length && dimensions.length < 0) {
-        errors.push({
-          field: 'dimensions.length',
-          message: 'Length must be positive'
-        });
-      }
-      
-      if (dimensions.width && dimensions.width < 0) {
-        errors.push({
-          field: 'dimensions.width',
-          message: 'Width must be positive'
-        });
-      }
-      
-      if (dimensions.height && dimensions.height < 0) {
-        errors.push({
-          field: 'dimensions.height',
-          message: 'Height must be positive'
-        });
-      }
-    }
-    
-    return errors;
-  }
 
-  // Validate weight
-  validateWeight(weight: number): ValidationError | null {
-    if (weight !== undefined && weight < 0) {
-      return {
-        field: 'weight',
-        message: 'Weight must be positive'
-      };
-    }
-    
-    return null;
-  }
 
   // Validate barcode
   validateBarcode(barcode: string): ValidationError | null {

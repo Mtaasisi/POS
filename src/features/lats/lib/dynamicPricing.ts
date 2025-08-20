@@ -152,6 +152,17 @@ export class DynamicPricingService {
     basePrice: number, 
     context: PricingContext
   ): { finalPrice: number; appliedDiscounts: AppliedDiscount[] } {
+    // Safety check for basePrice
+    if (basePrice === undefined || basePrice === null || isNaN(basePrice)) {
+      console.warn('🔧 Dynamic Pricing: Invalid basePrice provided:', basePrice, 'returning 0');
+      return {
+        finalPrice: 0,
+        appliedDiscounts: []
+      };
+    }
+    
+    console.log('🔧 Dynamic Pricing: Calculating price for basePrice:', basePrice, 'context:', context);
+    
     const appliedDiscounts: AppliedDiscount[] = [];
     let finalPrice = basePrice;
     let totalDiscount = 0;
@@ -161,8 +172,11 @@ export class DynamicPricingService {
       .filter(rule => rule.isActive)
       .sort((a, b) => a.priority - b.priority);
 
+    console.log('🔧 Dynamic Pricing: Found', applicableRules.length, 'active rules');
+
     for (const rule of applicableRules) {
       if (this.evaluateRule(rule, context)) {
+        console.log('🔧 Dynamic Pricing: Rule applies:', rule.name);
         const discount = this.calculateDiscount(rule, basePrice, context);
         
         if (discount > 0) {
@@ -175,11 +189,14 @@ export class DynamicPricingService {
           });
 
           totalDiscount += discount;
+          console.log('🔧 Dynamic Pricing: Applied discount:', discount, 'from rule:', rule.name);
         }
       }
     }
 
     finalPrice = Math.max(0, basePrice - totalDiscount);
+    
+    console.log('🔧 Dynamic Pricing: Final result - basePrice:', basePrice, 'totalDiscount:', totalDiscount, 'finalPrice:', finalPrice);
     
     return {
       finalPrice: Math.round(finalPrice),
@@ -241,6 +258,12 @@ export class DynamicPricingService {
     basePrice: number, 
     context: PricingContext
   ): number {
+    // Safety check for basePrice
+    if (basePrice === undefined || basePrice === null || isNaN(basePrice)) {
+      console.warn('🔧 Dynamic Pricing: Invalid basePrice in calculateDiscount:', basePrice);
+      return 0;
+    }
+    
     const { discount } = rule;
     let discountAmount = 0;
 
@@ -275,6 +298,12 @@ export class DynamicPricingService {
     discount: DiscountConfig, 
     context: PricingContext
   ): number {
+    // Safety check for basePrice
+    if (basePrice === undefined || basePrice === null || isNaN(basePrice)) {
+      console.warn('🔧 Dynamic Pricing: Invalid basePrice in calculateTieredDiscount:', basePrice);
+      return 0;
+    }
+    
     // Example tiered discount: 5% for first 50K, 10% for next 50K, 15% for rest
     const tiers = [
       { threshold: 0, rate: 0.05 },

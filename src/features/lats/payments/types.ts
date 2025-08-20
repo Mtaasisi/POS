@@ -1,6 +1,6 @@
 // Shared payment types and provider interface
 
-export type ProviderId = 'zenopay' | 'paypal' | 'stripe' | 'flutterwave' | 'mock';
+export type ProviderId = 'zenopay' | 'paypal' | 'stripe' | 'flutterwave' | 'beem' | 'mock';
 
 export type PaymentStatus = 'PENDING' | 'SUCCESS' | 'FAILED' | 'CANCELLED' | 'UNKNOWN';
 
@@ -53,6 +53,7 @@ export interface WebhookResult {
 
 export interface PaymentCredentials {
   apiKey?: string;
+  secretKey?: string;
   baseUrl?: string;
   webhookUrl?: string;
 }

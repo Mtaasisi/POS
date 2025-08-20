@@ -228,12 +228,40 @@ class SupabaseDataProvider implements LatsDataProvider {
   // Suppliers
   async getSuppliers(): Promise<ApiResponse<Supplier[]>> {
     try {
-      // Suppliers have public read access, so no authentication check needed for reading
+      // Optimized supplier fetch with better error handling and performance
+      const startTime = performance.now();
 
       const { data, error } = await supabase
         .from('lats_suppliers')
-        .select('*')
-        .order('name');
+        .select(`
+          id, 
+          name, 
+          contact_person, 
+          email, 
+          phone, 
+          address, 
+          website, 
+          notes, 
+          company_name,
+          description,
+          phone2,
+          whatsapp,
+          instagram,
+          wechat_id,
+          city,
+          country,
+          payment_account_type,
+          mobile_money_account,
+          bank_account_number,
+          bank_name,
+          created_at, 
+          updated_at
+        `)
+        .order('name')
+        .limit(500); // Reduced limit for better performance
+
+      const fetchTime = performance.now() - startTime;
+      console.log(`🏢 Supplier fetch completed in ${fetchTime.toFixed(2)}ms`);
 
       if (error) {
         console.error('❌ Database error:', error);
@@ -245,7 +273,33 @@ class SupabaseDataProvider implements LatsDataProvider {
         }
         throw error;
       }
-      return { ok: true, data: data || [] };
+
+      // Optimized data processing - only process if data exists
+      const suppliers = (data || []).map(supplier => ({
+        ...supplier,
+        // Only convert to string if value exists to reduce processing
+        name: supplier.name || '',
+        contact_person: supplier.contact_person || '',
+        email: supplier.email || '',
+        phone: supplier.phone || '',
+        address: supplier.address || '',
+        website: supplier.website || '',
+        notes: supplier.notes || '',
+        company_name: supplier.company_name || '',
+        description: supplier.description || '',
+        phone2: supplier.phone2 || '',
+        whatsapp: supplier.whatsapp || '',
+        instagram: supplier.instagram || '',
+        wechat_id: supplier.wechat_id || '',
+        city: supplier.city || '',
+        country: supplier.country || '',
+        payment_account_type: supplier.payment_account_type || '',
+        mobile_money_account: supplier.mobile_money_account || '',
+        bank_account_number: supplier.bank_account_number || '',
+        bank_name: supplier.bank_name || ''
+      }));
+
+      return { ok: true, data: suppliers };
     } catch (error) {
       console.error('Error fetching suppliers:', error);
       return { ok: false, message: 'Failed to fetch suppliers' };
@@ -306,6 +360,106 @@ class SupabaseDataProvider implements LatsDataProvider {
     }
   }
 
+  // Add paginated supplier fetch for better performance
+  async getSuppliersPaginated(page: number = 1, limit: number = 50): Promise<ApiResponse<{suppliers: Supplier[], total: number}>> {
+    try {
+      const startTime = performance.now();
+      const offset = (page - 1) * limit;
+
+      // Get total count first
+      const { count, error: countError } = await supabase
+        .from('lats_suppliers')
+        .select('*', { count: 'exact', head: true });
+
+      if (countError) {
+        console.error('❌ Count error:', countError);
+        throw countError;
+      }
+
+      // Get paginated data
+      const { data, error } = await supabase
+        .from('lats_suppliers')
+        .select(`
+          id, 
+          name, 
+          contact_person, 
+          email, 
+          phone, 
+          address, 
+          website, 
+          notes, 
+          company_name,
+          description,
+          phone2,
+          whatsapp,
+          instagram,
+          wechat_id,
+          city,
+          country,
+          payment_account_type,
+          mobile_money_account,
+          bank_account_number,
+          bank_name,
+          created_at, 
+          updated_at
+        `)
+        .order('name')
+        .range(offset, offset + limit - 1);
+
+      const fetchTime = performance.now() - startTime;
+      console.log(`🏢 Paginated supplier fetch (page ${page}, limit ${limit}) completed in ${fetchTime.toFixed(2)}ms`);
+
+      if (error) {
+        console.error('❌ Database error:', error);
+        if (error.code === 'PGRST116') {
+          return { 
+            ok: false, 
+            message: 'Row Level Security (RLS) policy violation. Please ensure you are properly authenticated.' 
+          };
+        }
+        throw error;
+      }
+
+      // Optimized data processing
+      const suppliers = (data || []).map(supplier => ({
+        ...supplier,
+        name: supplier.name || '',
+        contact_person: supplier.contact_person || '',
+        email: supplier.email || '',
+        phone: supplier.phone || '',
+        address: supplier.address || '',
+        website: supplier.website || '',
+        notes: supplier.notes || '',
+        company_name: supplier.company_name || '',
+        description: supplier.description || '',
+        phone2: supplier.phone2 || '',
+        whatsapp: supplier.whatsapp || '',
+        instagram: supplier.instagram || '',
+        wechat_id: supplier.wechat_id || '',
+        city: supplier.city || '',
+        country: supplier.country || '',
+        payment_account_type: supplier.payment_account_type || '',
+        mobile_money_account: supplier.mobile_money_account || '',
+        bank_account_number: supplier.bank_account_number || '',
+        bank_name: supplier.bank_name || ''
+      }));
+
+      return { 
+        ok: true, 
+        data: { 
+          suppliers, 
+          total: count || 0,
+          page,
+          limit,
+          totalPages: Math.ceil((count || 0) / limit)
+        } 
+      };
+    } catch (error) {
+      console.error('Error fetching paginated suppliers:', error);
+      return { ok: false, message: 'Failed to fetch suppliers' };
+    }
+  }
+
   // Products
   async getProducts(filters?: any): Promise<ApiResponse<PaginatedResponse<Product>>> {
     try {
@@ -360,12 +514,13 @@ class SupabaseDataProvider implements LatsDataProvider {
             category_id,
             brand_id,
             supplier_id,
-            tags,
+            images,
             is_active,
             total_quantity,
             total_value,
             condition,
             store_shelf,
+            attributes,
             created_at,
             updated_at,
             lats_categories(name, description, color),
@@ -440,7 +595,7 @@ class SupabaseDataProvider implements LatsDataProvider {
         try {
           const fallbackQuery = supabase
             .from('lats_products')
-            .select('id, name, description, category_id, brand_id, supplier_id, tags, is_active, total_quantity, total_value, condition, store_shelf, created_at, updated_at', { count: 'exact' })
+            .select('id, name, category_id, brand_id, supplier_id, tags, is_active, total_quantity, total_value, condition, store_shelf, internal_notes, created_at, updated_at', { count: 'exact' })
             .order('name')
             .range(offset, offset + limit - 1);
 
@@ -457,20 +612,14 @@ class SupabaseDataProvider implements LatsDataProvider {
           const transformedProducts = (fallbackData || []).map((product: any) => ({
             id: product.id,
             name: product.name,
-            description: product.description,
-            shortDescription: product.description,
+            shortDescription: '',
             sku: '', // SKU is not in the main products table
             barcode: '', // Barcode is not in the main products table
             categoryId: product.category_id,
             brandId: product.brand_id,
             supplierId: product.supplier_id,
             images: replacePlaceholderImages([]),
-            tags: product.tags || [],
             isActive: product.is_active ?? true,
-            isFeatured: false, // is_featured is not in the main products table
-            isDigital: false, // is_digital is not in the main products table
-            requiresShipping: true, // requires_shipping is not in the main products table
-            taxRate: 0, // tax_rate is not in the main products table
             totalQuantity: product.total_quantity || 0,
             totalValue: product.total_value || 0,
             // Price information (will be 0 for fallback since no variants loaded)
@@ -480,10 +629,11 @@ class SupabaseDataProvider implements LatsDataProvider {
             variants: [],
             condition: product.condition || 'new',
             storeShelf: product.store_shelf,
+            internalNotes: '',
+            attributes: product.attributes || {},
             category: undefined,
             brand: undefined,
             supplier: undefined,
-            variants: [],
             createdAt: product.created_at,
             updatedAt: product.updated_at
           }));
@@ -645,20 +795,14 @@ class SupabaseDataProvider implements LatsDataProvider {
         return {
           id: product.id,
           name: product.name,
-          description: product.description,
-          shortDescription: product.description,
+          shortDescription: '',
           sku: product.sku || '',
           barcode: product.barcode,
           categoryId: product.category_id,
           brandId: product.brand_id,
           supplierId: product.supplier_id,
           images: replacePlaceholderImages(productImageList.length > 0 ? productImageList : []),
-          tags: product.tags || [],
-          isActive: product.is_active ?? true,
-          isFeatured: false, // is_featured is not in the main products table
-          isDigital: false, // is_digital is not in the main products table
-          requiresShipping: true, // requires_shipping is not in the main products table
-          taxRate: 0, // tax_rate is not in the main products table
+                      isActive: product.is_active ?? true,
           totalQuantity: product.total_quantity || 0,
           totalValue: product.total_value || 0,
           // Add price information from variants
@@ -669,6 +813,8 @@ class SupabaseDataProvider implements LatsDataProvider {
           priceRange: priceRange,
           condition: product.condition || 'new',
           storeShelf: product.store_shelf,
+          internalNotes: '',
+          attributes: product.attributes || {},
           category: product.lats_categories ? {
             id: product.lats_categories.id,
             name: product.lats_categories.name,
@@ -797,20 +943,14 @@ class SupabaseDataProvider implements LatsDataProvider {
       const transformedProduct: Product = {
         id: product.id,
         name: product.name,
-        description: product.description,
-        shortDescription: product.short_description || product.description,
+        shortDescription: '',
         sku: variants && variants.length > 0 ? variants[0].sku : '', // Get SKU from first variant
         barcode: variants && variants.length > 0 ? variants[0].barcode : '', // Get barcode from first variant
         categoryId: product.category_id,
         brandId: product.brand_id,
         supplierId: product.supplier_id,
         images: (images || []).map(img => img.image_url),
-        tags: product.tags || [],
-        isActive: product.is_active ?? true,
-        isFeatured: product.is_featured ?? false,
-        isDigital: product.is_digital ?? false,
-        requiresShipping: product.requires_shipping ?? true,
-        taxRate: product.tax_rate ?? 0.16,
+                    isActive: product.is_active ?? true,
         totalQuantity: product.total_quantity || 0,
         totalValue: product.total_value || 0,
         // Add price information from variants
@@ -830,6 +970,8 @@ class SupabaseDataProvider implements LatsDataProvider {
           : '0',
         condition: product.condition || 'new',
         storeShelf: product.store_shelf,
+        internalNotes: '',
+        attributes: product.attributes || {},
         debutDate: product.debut_date,
         debutNotes: product.debut_notes,
         debutFeatures: product.debut_features || [],
@@ -893,10 +1035,7 @@ class SupabaseDataProvider implements LatsDataProvider {
         hasSupplier: !!transformedProduct.supplier,
         totalQuantity: transformedProduct.totalQuantity,
         totalValue: transformedProduct.totalValue,
-        isFeatured: transformedProduct.isFeatured,
-        isDigital: transformedProduct.isDigital,
-        requiresShipping: transformedProduct.requiresShipping,
-        taxRate: transformedProduct.taxRate,
+        
         condition: transformedProduct.condition,
         storeShelf: transformedProduct.storeShelf,
         debutDate: transformedProduct.debutDate,
@@ -1024,14 +1163,16 @@ class SupabaseDataProvider implements LatsDataProvider {
       // Prepare main product create data with only fields that exist in the database
       const mainProductCreateData: any = {
         name: data.name,
-        description: data.description || null,
         is_active: Boolean(data.isActive),
         // Add fields that already exist in database schema
         tags: data.tags || [],
         images: data.images || [],
         // Add new fields from the migration
         condition: data.condition || 'new',
-        store_shelf: data.storeShelf || null
+        store_shelf: data.storeShelf || null,
+        // Add internal notes field - removed as it doesn't exist in schema
+        // Add attributes field for product-level specifications
+        attributes: data.attributes || {}
       };
       
       // Only add category_id if it's a valid UUID
@@ -1229,7 +1370,7 @@ class SupabaseDataProvider implements LatsDataProvider {
       // Only include fields that exist in the lats_products table
       const mainProductUpdateData = {
         name: data.name,
-        description: data.description || null,
+
         category_id: data.categoryId,
         brand_id: data.brandId || null,
         supplier_id: data.supplierId || null,
@@ -1238,7 +1379,9 @@ class SupabaseDataProvider implements LatsDataProvider {
         is_active: Boolean(data.isActive),
         // Add new fields from the migration
         condition: data.condition || 'new',
-        store_shelf: data.storeShelf || null
+        store_shelf: data.storeShelf || null,
+        // Add attributes field for product-level specifications
+        attributes: data.attributes || {}
       };
       
       console.log('📦 [DEBUG] Main product update data:', mainProductUpdateData);
@@ -1402,33 +1545,51 @@ class SupabaseDataProvider implements LatsDataProvider {
           lats_brands(name),
           lats_product_variants(*)
         `)
-        .or(`name.ilike.%${query}%,description.ilike.%${query}%`)
+        .or(`name.ilike.%${query}%`)
         .eq('is_active', true);
 
       if (error) throw error;
 
-      const results = (data || []).map((product: any) => ({
-        id: product.id,
-        name: product.name,
-        description: product.description,
-        categoryId: product.category_id,
-        categoryName: product.lats_categories?.name || '',
-        brandId: product.brand_id,
-        brandName: product.lats_brands?.name,
-        variants: (product.lats_product_variants || []).map((variant: any) => ({
-          id: variant.id,
-          sku: variant.sku,
-          name: variant.name,
-          attributes: variant.attributes,
-          sellingPrice: variant.selling_price,
-          quantity: variant.quantity,
-          barcode: variant.barcode
-        })),
-        images: product.images || [],
-        tags: product.tags || []
+      // Fetch images for all products in parallel
+      const productsWithImages = await Promise.all((data || []).map(async (product: any) => {
+        // Get product images from the product_images table
+        const { data: images, error: imagesError } = await supabase
+          .from('product_images')
+          .select('image_url, thumbnail_url, is_primary')
+          .eq('product_id', product.id)
+          .order('is_primary', { ascending: false })
+          .order('created_at', { ascending: true });
+
+        if (imagesError) {
+          console.error('Error fetching images for product:', product.id, imagesError);
+        }
+
+        // Extract image URLs, prioritizing primary images first
+        const imageUrls = (images || []).map(img => img.image_url || img.thumbnail_url).filter(Boolean);
+
+        return {
+          id: product.id,
+          name: product.name,
+
+          categoryId: product.category_id,
+          categoryName: product.lats_categories?.name || '',
+          brandId: product.brand_id,
+          brandName: product.lats_brands?.name,
+          variants: (product.lats_product_variants || []).map((variant: any) => ({
+            id: variant.id,
+            sku: variant.sku,
+            name: variant.name,
+            attributes: variant.attributes,
+            sellingPrice: variant.selling_price,
+            quantity: variant.quantity,
+            barcode: variant.barcode
+          })),
+          images: imageUrls,
+          tags: []
+        };
       }));
 
-      return { ok: true, data: results };
+      return { ok: true, data: productsWithImages };
     } catch (error) {
       console.error('Error searching products:', error);
       return { ok: false, message: 'Failed to search products' };
@@ -1547,22 +1708,48 @@ class SupabaseDataProvider implements LatsDataProvider {
   // Purchase Orders
   async getPurchaseOrders(): Promise<ApiResponse<PurchaseOrder[]>> {
     try {
-      const { data, error } = await supabase
+      // Fetch purchase orders without joins to avoid foreign key issues
+      const { data: orders, error: ordersError } = await supabase
         .from('lats_purchase_orders')
-        .select(`
-          *,
-          lats_suppliers(name),
-          lats_purchase_order_items(*)
-        `)
+        .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (ordersError) throw ordersError;
+      
+      // Fetch suppliers separately
+      const { data: suppliers, error: suppliersError } = await supabase
+        .from('lats_suppliers')
+        .select('id, name');
+
+      if (suppliersError) {
+        console.warn('Warning: Could not fetch suppliers:', suppliersError.message);
+      }
+
+      // Fetch purchase order items separately
+      const { data: items, error: itemsError } = await supabase
+        .from('lats_purchase_order_items')
+        .select('*');
+
+      if (itemsError) {
+        console.warn('Warning: Could not fetch purchase order items:', itemsError.message);
+      }
+
+      // Create lookup maps
+      const suppliersMap = new Map((suppliers || []).map(s => [s.id, s]));
+      const itemsMap = new Map();
+      (items || []).forEach(item => {
+        if (!itemsMap.has(item.purchase_order_id)) {
+          itemsMap.set(item.purchase_order_id, []);
+        }
+        itemsMap.get(item.purchase_order_id).push(item);
+      });
       
       // Transform snake_case to camelCase
-      const transformedData = (data || []).map(order => ({
+      const transformedData = (orders || []).map(order => ({
         id: order.id,
         orderNumber: order.order_number,
         supplierId: order.supplier_id,
+        supplierName: suppliersMap.get(order.supplier_id)?.name || 'Unknown Supplier',
         status: order.status,
         totalAmount: order.total_amount || 0,
         expectedDelivery: order.expected_delivery,
@@ -1570,7 +1757,7 @@ class SupabaseDataProvider implements LatsDataProvider {
         createdBy: order.created_by,
         createdAt: order.created_at,
         updatedAt: order.updated_at,
-        items: (order.lats_purchase_order_items || []).map((item: any) => ({
+        items: (itemsMap.get(order.id) || []).map((item: any) => ({
           id: item.id,
           purchaseOrderId: item.purchase_order_id,
           productId: item.product_id,
@@ -1592,31 +1779,50 @@ class SupabaseDataProvider implements LatsDataProvider {
 
   async getPurchaseOrder(id: string): Promise<ApiResponse<PurchaseOrder>> {
     try {
-      const { data, error } = await supabase
+      // Fetch purchase order without joins to avoid foreign key issues
+      const { data: order, error: orderError } = await supabase
         .from('lats_purchase_orders')
-        .select(`
-          *,
-          lats_suppliers(name),
-          lats_purchase_order_items(*)
-        `)
+        .select('*')
         .eq('id', id)
         .single();
 
-      if (error) throw error;
+      if (orderError) throw orderError;
+      
+      // Fetch supplier separately
+      const { data: supplier, error: supplierError } = await supabase
+        .from('lats_suppliers')
+        .select('id, name')
+        .eq('id', order.supplier_id)
+        .single();
+
+      if (supplierError) {
+        console.warn('Warning: Could not fetch supplier:', supplierError.message);
+      }
+
+      // Fetch purchase order items separately
+      const { data: items, error: itemsError } = await supabase
+        .from('lats_purchase_order_items')
+        .select('*')
+        .eq('purchase_order_id', id);
+
+      if (itemsError) {
+        console.warn('Warning: Could not fetch purchase order items:', itemsError.message);
+      }
       
       // Transform snake_case to camelCase
       const transformedData = {
-        id: data.id,
-        orderNumber: data.order_number,
-        supplierId: data.supplier_id,
-        status: data.status,
-        totalAmount: data.total_amount || 0,
-        expectedDelivery: data.expected_delivery,
-        notes: data.notes,
-        createdBy: data.created_by,
-        createdAt: data.created_at,
-        updatedAt: data.updated_at,
-        items: (data.lats_purchase_order_items || []).map((item: any) => ({
+        id: order.id,
+        orderNumber: order.order_number,
+        supplierId: order.supplier_id,
+        supplierName: supplier?.name || 'Unknown Supplier',
+        status: order.status,
+        totalAmount: order.total_amount || 0,
+        expectedDelivery: order.expected_delivery,
+        notes: order.notes,
+        createdBy: order.created_by,
+        createdAt: order.created_at,
+        updatedAt: order.updated_at,
+        items: (items || []).map((item: any) => ({
           id: item.id,
           purchaseOrderId: item.purchase_order_id,
           productId: item.product_id,

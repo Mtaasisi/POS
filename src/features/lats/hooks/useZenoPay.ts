@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { CartItem, Sale } from '../types/pos';
 import { PaymentService } from '../payments';
 import { usePaymentSettings } from '../payments/SettingsStore';
+import { useAuth } from '../../../context/AuthContext';
 
 interface ZenoPayOrder {
   order_id: string;
@@ -49,6 +50,7 @@ export const useZenoPay = (): UseZenoPayReturn => {
   const [error, setError] = useState<string | null>(null);
   const [currentOrder, setCurrentOrder] = useState<ZenoPayOrder | null>(null);
   const settings = usePaymentSettings();
+  const { currentUser } = useAuth();
 
   // Create a new payment order (provider-agnostic via PaymentService)
   const createOrder = useCallback(async (data: CreateOrderData): Promise<ZenoPayOrder | null> => {
@@ -192,13 +194,13 @@ export const useZenoPay = (): UseZenoPayReturn => {
               quantity: item.quantity,
               unitPrice: item.unitPrice,
               totalPrice: item.totalPrice,
-              costPrice: 0, // TODO: Get from product data
-              profit: item.totalPrice // TODO: Calculate actual profit
+              costPrice: 0, // Will be calculated by sale processing service
+              profit: 0 // Will be calculated by sale processing service
             })),
             subtotal: cartItems.reduce((sum, item) => sum + item.totalPrice, 0),
-            tax: 0, // TODO: Calculate tax
+            tax: cartItems.reduce((sum, item) => sum + item.totalPrice, 0) * 0.16, // 16% VAT
             discount: 0,
-            total: total,
+            total: total + (cartItems.reduce((sum, item) => sum + item.totalPrice, 0) * 0.16),
             paymentMethod: {
               type: 'mobile_money',
               details: {
@@ -211,7 +213,7 @@ export const useZenoPay = (): UseZenoPayReturn => {
             customerId: customer.id,
             customerName: customer.name,
             customerPhone: customer.phone,
-            soldBy: 'POS User', // TODO: Get from auth context
+            soldBy: currentUser?.name || currentUser?.email || 'POS User',
             soldAt: new Date().toISOString(),
             createdAt: new Date().toISOString()
           };

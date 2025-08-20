@@ -53,14 +53,12 @@ export interface ProductVariant {
   costPrice: number;
   stockQuantity: number;
   minStockLevel: number;
-  weight?: number;
   attributes: Record<string, any>;
 }
 
 export interface Product {
   id: string;
   name: string;
-  description?: string;
   sku: string;
   barcode?: string;
   categoryId: string;
@@ -68,14 +66,15 @@ export interface Product {
   supplierId?: string;
   condition: string;
   storeShelf?: string;
+  internalNotes?: string;
   price: number;
   costPrice: number;
   stockQuantity: number;
   minStockLevel: number;
-  weight?: number;
-  tags: string[];
   images: ProductImage[];
   variants: ProductVariant[];
+  // Product-level specifications
+  attributes?: Record<string, any>;
   createdAt: string;
   updatedAt: string;
 }
@@ -124,15 +123,14 @@ export interface PurchaseOrderItem {
 export interface SparePart {
   id: string;
   name: string;
-  description?: string;
-  sku: string;
+  partNumber: string;
   categoryId: string;
   costPrice: number;
+  sellingPrice: number;
   quantity: number;
   minQuantity: number;
-  maxQuantity?: number;
   location?: string;
-  isActive: boolean;
+  compatibleDevices?: string;
   category?: Category;
   createdAt: string;
   updatedAt: string;
@@ -153,13 +151,14 @@ export interface SparePartUsage {
 // Form Data Types
 export interface ProductFormData {
   name: string;
-  description?: string;
   shortDescription?: string;
   sku: string;
   barcode?: string;
   categoryId: string;
   brandId?: string;
   supplierId?: string;
+  storeShelf?: string;
+  internalNotes?: string;
   images?: Array<{
     image_url: string;
     thumbnail_url?: string;
@@ -167,16 +166,13 @@ export interface ProductFormData {
     file_size: number;
     is_primary: boolean;
   }>;
-  tags: string[];
   isActive: boolean;
-  isFeatured: boolean;
-  isDigital: boolean;
-  requiresShipping: boolean;
-  taxRate: number;
   // Debut information
   debutDate?: string;
   debutNotes?: string;
   debutFeatures?: string[];
+  // Product-level specifications
+  attributes?: Record<string, any>;
   variants: Array<{
     sku: string;
     name: string;
@@ -185,12 +181,6 @@ export interface ProductFormData {
     costPrice: number;
     stockQuantity: number;
     minStockLevel: number;
-    weight?: number;
-    dimensions?: {
-      length?: number;
-      width?: number;
-      height?: number;
-    };
     attributes?: Record<string, any>;
   }>;
   metadata?: Record<string, any>;

@@ -24,7 +24,7 @@ import StockAdjustModal from '../components/inventory/StockAdjustModal';
 import CategoryFormModal from '../components/inventory/CategoryFormModal';
 import SupplierForm from '../components/inventory/SupplierForm';
 import VariantForm from '../components/inventory/VariantForm';
-import AddProductModal from '../components/inventory/AddProductModal';
+// AddProductModal removed - using AddProductPage instead
 import EditProductModal from '../components/inventory/EditProductModal';
 import { useProductModals } from '../hooks/useProductModals';
 
@@ -242,7 +242,7 @@ const InventoryPage: React.FC = () => {
             actions={
               <div className="flex flex-wrap gap-3">
                               <GlassButton
-                onClick={productModals.openAddModal}
+                onClick={() => navigate('/lats/add-product')}
                 icon={<Plus size={18} />}
                 className="bg-gradient-to-r from-green-500 to-green-600 text-white"
               >
@@ -265,7 +265,7 @@ const InventoryPage: React.FC = () => {
             <p className="text-gray-500 mb-6">Get started by adding your first product to the inventory.</p>
             <div className="flex gap-3 justify-center">
               <GlassButton
-                onClick={productModals.openAddModal}
+                onClick={() => navigate('/lats/add-product')}
                 icon={<Plus size={18} />}
                 className="bg-gradient-to-r from-green-500 to-green-600 text-white"
               >
@@ -295,7 +295,7 @@ const InventoryPage: React.FC = () => {
           actions={
             <div className="flex flex-wrap gap-3">
               <GlassButton
-                onClick={productModals.openAddModal}
+                onClick={() => navigate('/lats/add-product')}
                 icon={<Plus size={18} />}
                 className="bg-gradient-to-r from-green-500 to-green-600 text-white"
               >
@@ -557,15 +557,7 @@ const InventoryPage: React.FC = () => {
         )}
 
         {/* Product Modals */}
-        <AddProductModal
-          isOpen={productModals.showAddModal}
-          onClose={productModals.closeAddModal}
-          onProductCreated={(product) => {
-            toast.success('Product created successfully!');
-            // Refresh the products list
-            loadProducts({ page: 1, limit: 50 });
-          }}
-        />
+        {/* AddProductModal removed - use AddProductPage instead */}
 
         <EditProductModal
           isOpen={productModals.showEditModal}

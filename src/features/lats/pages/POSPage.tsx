@@ -38,7 +38,8 @@ import { dynamicPricingService } from '../lib/dynamicPricing';
 import VariantProductCard from '../components/pos/VariantProductCard';
 import VariantCartItem from '../components/pos/VariantCartItem';
 import AddExternalProductModal from '../components/pos/AddExternalProductModal';
-import ProductImageDisplay from '../components/inventory/ProductImageDisplay';
+import { SimpleImageDisplay } from '../../../components/SimpleImageDisplay';
+import { ProductImage } from '../../../lib/robustImageService';
 // QuickCash feature removed - not using this functionality
 import DeliverySection from '../components/pos/DeliverySection';
 import AddCustomerModal from '../../../features/customers/components/forms/AddCustomerModal';
@@ -57,9 +58,9 @@ import SearchFilterSettingsTab from '../components/pos/SearchFilterSettingsTab';
 import UserPermissionsSettingsTab from '../components/pos/UserPermissionsSettingsTab';
 import LoyaltyCustomerSettingsTab from '../components/pos/LoyaltyCustomerSettingsTab';
 import AnalyticsReportingSettingsTab from '../components/pos/AnalyticsReportingSettingsTab';
-              import AdvancedNotificationSettingsTab from '../components/pos/AdvancedNotificationSettingsTab';
-              import AdvancedSettingsTab from '../components/pos/AdvancedSettingsTab';
-              import GeneralSettingsTab from '../components/pos/GeneralSettingsTab';
+import AdvancedNotificationSettingsTab from '../components/pos/AdvancedNotificationSettingsTab';
+import AdvancedSettingsTab from '../components/pos/AdvancedSettingsTab';
+import GeneralSettingsTab from '../components/pos/GeneralSettingsTab';
 import DynamicPricingSettingsTab from '../components/pos/DynamicPricingSettingsTab';
 import ReceiptSettingsTab from '../components/pos/ReceiptSettingsTab';
 
@@ -67,6 +68,37 @@ import ReceiptSettingsTab from '../components/pos/ReceiptSettingsTab';
 import { useDraftManager } from '../hooks/useDraftManager';
 import DraftManagementModal from '../components/pos/DraftManagementModal';
 import DraftNotification from '../components/pos/DraftNotification';
+import { POSSettingsService } from '../../../lib/posSettingsApi';
+import { toast } from 'react-hot-toast';
+import { 
+  useDynamicPricingSettings,
+  useGeneralSettings,
+  useReceiptSettings,
+  useBarcodeScannerSettings,
+  useDeliverySettings,
+  useSearchFilterSettings,
+  useUserPermissionsSettings,
+  useLoyaltyCustomerSettings,
+  useAnalyticsReportingSettings,
+  useNotificationSettings,
+  useAdvancedSettings
+} from '../../../hooks/usePOSSettings';
+import { useDynamicDelivery } from '../hooks/useDynamicDelivery';
+
+// Helper function to convert old image format to new format
+const convertToProductImages = (imageUrls: string[]): ProductImage[] => {
+  if (!imageUrls || imageUrls.length === 0) return [];
+  
+  return imageUrls.map((imageUrl, index) => ({
+    id: `temp-${index}`,
+    url: imageUrl,
+    thumbnailUrl: imageUrl,
+    fileName: `product-image-${index + 1}`,
+    fileSize: 0,
+    isPrimary: index === 0,
+    uploadedAt: new Date().toISOString()
+  }));
+};
 
 // Performance optimization constants
 const PRODUCTS_PER_PAGE = 20;
@@ -325,6 +357,21 @@ const POSPage: React.FC = () => {
   // Get real customers from CustomersContext
   const { customers } = useCustomers();
 
+  // All POS settings hooks
+  const { settings: generalSettings } = useGeneralSettings();
+  const { settings: dynamicPricingSettings } = useDynamicPricingSettings();
+  const { settings: receiptSettings } = useReceiptSettings();
+  const { settings: barcodeScannerSettings } = useBarcodeScannerSettings();
+  const { settings: deliverySettings } = useDeliverySettings();
+  const dynamicDelivery = useDynamicDelivery(deliverySettings);
+  const [selectedDeliveryArea, setSelectedDeliveryArea] = useState<string>('');
+  const { settings: searchFilterSettings } = useSearchFilterSettings();
+  const { settings: userPermissionsSettings } = useUserPermissionsSettings();
+  const { settings: loyaltyCustomerSettings } = useLoyaltyCustomerSettings();
+  const { settings: analyticsReportingSettings } = useAnalyticsReportingSettings();
+  const { settings: notificationSettings } = useNotificationSettings();
+  const { settings: advancedSettings } = useAdvancedSettings();
+
   // Global loading system - not used in this component
   
   // Database state management
@@ -344,17 +391,96 @@ const POSPage: React.FC = () => {
     loadSales
   } = useInventoryStore();
 
-  // Performance optimization: Cache data loading state
+  // Performance optimization: Cache data loading state - only enable if caching is enabled
   const [dataLoaded, setDataLoaded] = useState(false);
   const [lastLoadTime, setLastLoadTime] = useState(0);
+  const isCachingEnabled = advancedSettings?.enable_caching;
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
-  // Debounced search for better performance
+  // Debounced search for better performance - use settings for debounce time
   const [searchQuery, setSearchQuery] = useState('');
-  const debouncedSearchQuery = useDebounce(searchQuery, SEARCH_DEBOUNCE_MS);
+  const debounceTime = searchFilterSettings?.search_debounce_time || SEARCH_DEBOUNCE_MS;
+  const debouncedSearchQuery = useDebounce(searchQuery, debounceTime);
+
+  // Function to save current active tab settings
+  const saveCurrentTabSettings = async () => {
+    console.log('🔧 saveCurrentTabSettings called');
+    console.log('📊 Current active tab:', activeSettingsTab);
+    
+    setIsSavingSettings(true);
+    
+    try {
+      let success = false;
+      
+      // Get the current settings ref based on active tab
+      let currentSettingsRef = null;
+      
+      switch (activeSettingsTab) {
+        case 'general':
+          currentSettingsRef = generalSettingsRef.current;
+          break;
+        case 'pricing':
+          currentSettingsRef = dynamicPricingSettingsRef.current;
+          break;
+        case 'receipt':
+          currentSettingsRef = receiptSettingsRef.current;
+          break;
+        case 'scanner':
+          currentSettingsRef = barcodeScannerSettingsRef.current;
+          break;
+        case 'delivery':
+          currentSettingsRef = deliverySettingsRef.current;
+          break;
+        case 'search':
+          currentSettingsRef = searchFilterSettingsRef.current;
+          break;
+        case 'permissions':
+          currentSettingsRef = userPermissionsSettingsRef.current;
+          break;
+        case 'loyalty':
+          currentSettingsRef = loyaltyCustomerSettingsRef.current;
+          break;
+        case 'analytics':
+          currentSettingsRef = analyticsReportingSettingsRef.current;
+          break;
+        case 'notifications':
+          currentSettingsRef = notificationSettingsRef.current;
+          break;
+        case 'advanced':
+          currentSettingsRef = advancedSettingsRef.current;
+          break;
+        default:
+          console.error('❌ Unknown active tab:', activeSettingsTab);
+          throw new Error(`Unknown settings tab: ${activeSettingsTab}`);
+      }
+      
+      if (currentSettingsRef && typeof currentSettingsRef.saveSettings === 'function') {
+        console.log(`💾 Saving ${activeSettingsTab} settings...`);
+        success = await currentSettingsRef.saveSettings();
+      } else {
+        console.error(`❌ No save function found for ${activeSettingsTab} settings`);
+        throw new Error(`No save function available for ${activeSettingsTab} settings`);
+      }
+      
+      if (success) {
+        console.log(`✅ ${activeSettingsTab} settings saved successfully`);
+        toast.success(`${activeSettingsTab.charAt(0).toUpperCase() + activeSettingsTab.slice(1)} settings saved successfully`);
+        return true;
+      } else {
+        console.error(`❌ Failed to save ${activeSettingsTab} settings`);
+        throw new Error(`Failed to save ${activeSettingsTab} settings`);
+      }
+    } catch (error) {
+      console.error('💥 Error saving settings:', error);
+      toast.error(`Failed to save ${activeSettingsTab} settings. Please try again.`);
+      return false;
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
 
   // Add state for enhanced search and filtering - moved to top to avoid temporal dead zone
   const [selectedCategory, setSelectedCategory] = useState<string>('');
@@ -364,6 +490,22 @@ const POSPage: React.FC = () => {
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [sortBy, setSortBy] = useState<'name' | 'price' | 'stock' | 'recent' | 'sales'>('sales');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  // Settings refs to access current settings from tabs
+  const generalSettingsRef = useRef<any>(null);
+  const dynamicPricingSettingsRef = useRef<any>(null);
+  const receiptSettingsRef = useRef<any>(null);
+  const barcodeScannerSettingsRef = useRef<any>(null);
+  const deliverySettingsRef = useRef<any>(null);
+  const searchFilterSettingsRef = useRef<any>(null);
+  const userPermissionsSettingsRef = useRef<any>(null);
+  const loyaltyCustomerSettingsRef = useRef<any>(null);
+  const analyticsReportingSettingsRef = useRef<any>(null);
+  const notificationSettingsRef = useRef<any>(null);
+  const advancedSettingsRef = useRef<any>(null);
+
+  // Settings save state
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   // Use database products instead of demo data and transform them to include required properties
   const products = useMemo(() => {
@@ -657,18 +799,19 @@ const POSPage: React.FC = () => {
 
 
 
-  // Add state for barcode scanner functionality
+  // Add state for barcode scanner functionality - only enable if barcode scanner is enabled in settings
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
   const [scannerError, setScannerError] = useState<string>('');
   const [isScanning, setIsScanning] = useState(false);
   const [scannedBarcodes, setScannedBarcodes] = useState<string[]>([]);
+  const isBarcodeScannerEnabled = barcodeScannerSettings?.enable_barcode_scanner;
 
-  // Add state for receipt management
+  // Add state for receipt management - use settings for default values
   const [receiptTemplate, setReceiptTemplate] = useState({
-    showLogo: true,
-    showTax: true,
-    showDiscount: true,
-    showCustomerInfo: true,
+    showLogo: receiptSettings?.receipt_template === 'detailed',
+    showTax: receiptSettings?.receipt_template !== 'minimal',
+    showDiscount: receiptSettings?.receipt_template !== 'minimal',
+    showCustomerInfo: receiptSettings?.receipt_template === 'detailed',
     footerText: 'Thank you for your purchase!'
   });
   const [receiptHistory, setReceiptHistory] = useState<Receipt[]>([]);
@@ -717,6 +860,16 @@ const POSPage: React.FC = () => {
   // Add state for settings and configuration
   const [showSettings, setShowSettings] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState('general');
+
+  // Debug: Log when settings modal state changes
+  useEffect(() => {
+    if (showSettings) {
+      console.log('🔧 Settings modal opened');
+      console.log('📊 Active tab:', activeSettingsTab);
+    } else {
+      console.log('🔧 Settings modal closed');
+    }
+  }, [showSettings, activeSettingsTab]);
   const [posSettings, setPosSettings] = useState({
     taxRate: 16,
     currency: 'TZS',
@@ -728,7 +881,7 @@ const POSPage: React.FC = () => {
     defaultPaymentMethod: 'cash'
   });
   const [showNotificationSettings, setShowNotificationSettings] = useState(false);
-  const [notificationSettings, setNotificationSettings] = useState({
+  const [localNotificationSettings, setLocalNotificationSettings] = useState({
     lowStockAlerts: true,
     salesNotifications: true,
     customerAlerts: true,
@@ -746,10 +899,10 @@ const POSPage: React.FC = () => {
   });
   
 
-  const [deliverySettings, setDeliverySettings] = useState({
+  const [localDeliverySettings, setLocalDeliverySettings] = useState({
     enabled: false,
-    deliveryFee: 2000,
-    freeDeliveryThreshold: 50000,
+    default_delivery_fee: 2000,
+    free_delivery_threshold: 50000,
     deliveryAreas: ['Dar es Salaam', 'Arusha', 'Mwanza', 'Dodoma']
   });
 
@@ -794,18 +947,45 @@ const POSPage: React.FC = () => {
   const subtotal = cartItems.reduce((sum, item) => sum + item.totalPrice, 0);
   const tax = subtotal * 0.16; // 16% tax
   
-  // Dynamic pricing calculation with smart discounts
+  // Dynamic pricing calculation with smart discounts - only apply if enabled
   const { finalPrice, appliedDiscounts } = useMemo(() => {
     if (cartItems.length === 0) {
       return { finalPrice: subtotal, appliedDiscounts: [] };
+    }
+
+    // If dynamic pricing is disabled, return base price with only manual discount
+    if (!dynamicPricingSettings?.enable_dynamic_pricing) {
+      let finalTotal = subtotal;
+      if (manualDiscount > 0) {
+        if (discountType === 'percentage') {
+          finalTotal -= subtotal * (manualDiscount / 100);
+        } else {
+          finalTotal -= manualDiscount;
+        }
+      }
+      return {
+        finalPrice: Math.max(0, finalTotal),
+        appliedDiscounts: []
+      };
     }
 
     // Calculate dynamic pricing for each item
     let totalFinalPrice = 0;
     const allAppliedDiscounts: any[] = [];
 
-    cartItems.forEach(item => {
-      const basePrice = item.price;
+    console.log('🔧 POS Dynamic Pricing: Processing', cartItems.length, 'cart items');
+    console.log('🔧 POS Dynamic Pricing: Cart items:', cartItems);
+
+    cartItems.forEach((item, index) => {
+      const basePrice = item.unitPrice;
+      console.log(`🔧 POS Dynamic Pricing: Item ${index + 1}:`, {
+        name: item.productName,
+        basePrice,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        totalPrice: item.totalPrice
+      });
+      
       const context = {
         customer: selectedCustomer,
         quantity: item.quantity,
@@ -816,12 +996,22 @@ const POSPage: React.FC = () => {
         dayOfWeek: new Date().getDay()
       };
 
+      console.log(`🔧 POS Dynamic Pricing: Context for item ${index + 1}:`, context);
+
       const { finalPrice: itemFinalPrice, appliedDiscounts: itemDiscounts } = 
         dynamicPricingService.calculatePrice(basePrice, context);
+
+      console.log(`🔧 POS Dynamic Pricing: Result for item ${index + 1}:`, {
+        itemFinalPrice,
+        itemDiscounts,
+        calculatedTotal: itemFinalPrice * item.quantity
+      });
 
       totalFinalPrice += itemFinalPrice * item.quantity;
       allAppliedDiscounts.push(...itemDiscounts);
     });
+
+    console.log('🔧 POS Dynamic Pricing: Total final price before manual discount:', totalFinalPrice);
 
     // Apply manual discount on top
     let finalTotal = totalFinalPrice;
@@ -833,11 +1023,15 @@ const POSPage: React.FC = () => {
       }
     }
 
-    return {
+    const result = {
       finalPrice: Math.max(0, finalTotal),
       appliedDiscounts: allAppliedDiscounts
     };
-  }, [cartItems, selectedCustomer, subtotal, manualDiscount, discountType]);
+    
+    console.log('🔧 POS Dynamic Pricing: Final result:', result);
+    
+    return result;
+  }, [cartItems, selectedCustomer, subtotal, manualDiscount, discountType, dynamicPricingSettings?.enable_dynamic_pricing]);
 
   const discount = subtotal - finalPrice;
   
@@ -900,6 +1094,12 @@ const POSPage: React.FC = () => {
     if (quantity > currentStock) {
       alert(`Cannot add ${quantity} units. Only ${currentStock} units available in stock for ${product.name} - ${selectedVariant.name}.`);
       return;
+    }
+
+    // Play sound effect if enabled
+    if (generalSettings?.enable_sound_effects) {
+      // In a real app, you would play a sound here
+      // playSound('add-to-cart');
     }
     
     setCartItems(prevItems => {
@@ -993,9 +1193,10 @@ const POSPage: React.FC = () => {
     }
   }, [location.state, handleAddToCart, navigate]);
 
-  // Smart search with AI-powered suggestions
+  // Smart search with AI-powered suggestions - only enable if smart search is enabled
   const [searchSuggestions, setSearchSuggestions] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const isSmartSearchEnabled = searchFilterSettings?.enable_smart_search;
 
   // Consolidated unified search handler with smart search
   const handleUnifiedSearch = useCallback(async (query: string) => {
@@ -1016,13 +1217,17 @@ const POSPage: React.FC = () => {
     // Check if input looks like a barcode (long numeric/alphanumeric string)
     const isBarcodeLike = trimmedQuery.length >= 8 && /^[A-Za-z0-9]+$/.test(trimmedQuery);
     
-      // Use smart search service for better results
-      const searchResults = await smartSearchService.searchProducts(trimmedQuery, 20);
+      // Use smart search service for better results if enabled
+      const searchResults = isSmartSearchEnabled 
+        ? await smartSearchService.searchProducts(trimmedQuery, 20)
+        : [];
       
-      if (searchResults.length > 0) {
-        // Get suggestions for better UX
-        const suggestions = await smartSearchService.getSearchSuggestions(trimmedQuery, 5);
-        setSearchSuggestions(suggestions);
+              if (searchResults.length > 0) {
+          // Get suggestions for better UX if enabled
+          if (searchFilterSettings?.show_search_suggestions) {
+            const suggestions = await smartSearchService.getSearchSuggestions(trimmedQuery, 5);
+            setSearchSuggestions(suggestions);
+          }
         
         // Check for exact matches first
         const exactMatches = searchResults.filter(result => result.relevance === 1.0);
@@ -1143,7 +1348,7 @@ const POSPage: React.FC = () => {
           return {
             ...item,
             quantity: newQuantity,
-            totalPrice: newQuantity * item.price
+            totalPrice: newQuantity * item.unitPrice
           };
         }
         return item;
@@ -1423,7 +1628,7 @@ const POSPage: React.FC = () => {
               variant_id: null, // External products don't have a variant_id in inventory
               external_product_id: externalProductId, // Link to external product record
               quantity: item.quantity,
-              unit_price: item.price,
+              unit_price: item.unitPrice,
               total_price: item.totalPrice,
               product_name: item.name, // Store product name for external products
               variant_name: item.variantName || 'External Product',
@@ -1448,7 +1653,7 @@ const POSPage: React.FC = () => {
               product: item.name,
               variant: item.variantName || 'External Product',
               quantity: item.quantity,
-              unit_price: item.price,
+              unit_price: item.unitPrice,
               total_price: item.totalPrice,
               supplier: item.metadata?.supplierName,
               purchase_date: item.metadata?.purchaseDate,
@@ -1474,7 +1679,7 @@ const POSPage: React.FC = () => {
               product_id: item.productId,
               variant_id: variant.id,
               quantity: item.quantity,
-              unit_price: item.price,
+              unit_price: item.unitPrice,
               total_price: item.totalPrice
             };
             
@@ -1483,7 +1688,7 @@ const POSPage: React.FC = () => {
               variant: variant.name,
               variant_id: variant.id,
               quantity: item.quantity,
-              unit_price: item.price,
+              unit_price: item.unitPrice,
               total_price: item.totalPrice
             });
             
@@ -1554,8 +1759,8 @@ const POSPage: React.FC = () => {
         // Reload products to get updated stock levels
         await loadProducts({ page: 1, limit: 50 });
         
-        // Calculate loyalty points earned (1 point per 100 TZS)
-        const pointsEarned = Math.floor(total / 100);
+        // Calculate loyalty points earned (1 point per 100 TZS) - only if dynamic pricing is enabled
+        const pointsEarned = dynamicPricingSettings?.enable_dynamic_pricing ? Math.floor(total / 100) : 0;
         
         // Clear cart after successful payment
         setCartItems([]);
@@ -1563,16 +1768,18 @@ const POSPage: React.FC = () => {
         setSelectedPaymentMethod(null);
         setShowPaymentModal(false);
         
-        // Show success message
+        // Show success message - only show notifications if enabled
         const customerInfo = selectedCustomer 
-          ? `\nCustomer: ${selectedCustomer.name}\nLoyalty Points Earned: ${pointsEarned}`
+          ? `\nCustomer: ${selectedCustomer.name}${dynamicPricingSettings?.enable_dynamic_pricing ? `\nLoyalty Points Earned: ${pointsEarned}` : ''}`
           : '\nWalk-in Customer';
         
         const stockInfo = failedDeductions.length > 0 
           ? `\n⚠️ ${failedDeductions.length} stock deduction(s) failed`
           : '\n✅ Stock updated successfully';
         
-        alert(`Payment completed successfully!\nTotal: ${formatMoney(total)}${customerInfo}${stockInfo}`);
+        if (notificationSettings?.enable_notifications) {
+          alert(`Payment completed successfully!\nTotal: ${formatMoney(total)}${customerInfo}${stockInfo}`);
+        }
         
       } catch (error) {
         console.error('❌ Error saving sale:', error);
@@ -1695,7 +1902,7 @@ const POSPage: React.FC = () => {
       Items:
       ${receipt.items.map(item => 
         `${item.name}${item.variantName ? ` (${item.variantName})` : ''}
-         ${item.quantity} x ${formatMoney(item.price)} = ${formatMoney(item.totalPrice)}`
+         ${item.quantity} x ${formatMoney(item.unitPrice)} = ${formatMoney(item.totalPrice)}`
       ).join('\n')}
       
       ========================================
@@ -1820,14 +2027,17 @@ const POSPage: React.FC = () => {
 
   // Customer management functions
   const calculateLoyaltyPoints = useCallback((customerId: string, amount: number) => {
-    // Calculate points earned (1 point per 100 TZS)
+    // Calculate points earned (1 point per 100 TZS) - only if dynamic pricing is enabled
+    if (!dynamicPricingSettings?.enable_dynamic_pricing) {
+      return 0;
+    }
     const pointsEarned = Math.floor(amount / 100);
     setCustomerLoyaltyPoints(prev => ({
       ...prev,
       [customerId]: (prev[customerId] || 0) + pointsEarned
     }));
     return pointsEarned;
-  }, []);
+  }, [dynamicPricingSettings?.enable_dynamic_pricing]);
 
   const addCustomerNote = useCallback((customerId: string, note: string) => {
     setCustomerNotes(prev => ({
@@ -1847,25 +2057,30 @@ const POSPage: React.FC = () => {
   }, [sales]);
 
   const sendCustomerWhatsApp = useCallback((customer: Customer) => {
-    const message = `Hello ${customer.name}! Thank you for your recent purchase. Your loyalty points: ${customerLoyaltyPoints[customer.id] || customer.points}`;
+    const loyaltyInfo = dynamicPricingSettings?.enable_dynamic_pricing 
+      ? ` Your loyalty points: ${customerLoyaltyPoints[customer.id] || customer.points}`
+      : '';
+    const message = `Hello ${customer.name}! Thank you for your recent purchase.${loyaltyInfo}`;
     const whatsappUrl = `https://wa.me/${customer.phone.replace('+', '')}?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, '_blank');
-  }, [customerLoyaltyPoints]);
+  }, [customerLoyaltyPoints, dynamicPricingSettings?.enable_dynamic_pricing]);
 
   const sendCustomerSMS = useCallback((customer: Customer) => {
-    const message = `Hello ${customer.name}! Thank you for your recent purchase. Your loyalty points: ${customerLoyaltyPoints[customer.id] || customer.points}`;
+    const loyaltyInfo = dynamicPricingSettings?.enable_dynamic_pricing 
+      ? ` Your loyalty points: ${customerLoyaltyPoints[customer.id] || customer.points}`
+      : '';
+    const message = `Hello ${customer.name}! Thank you for your recent purchase.${loyaltyInfo}`;
     const smsUrl = `sms:${customer.phone}?body=${encodeURIComponent(message)}`;
     window.open(smsUrl, '_blank');
-  }, [customerLoyaltyPoints]);
+  }, [customerLoyaltyPoints, dynamicPricingSettings?.enable_dynamic_pricing]);
 
 
 
-  // Delivery management functions
-  const calculateDeliveryFee = useCallback((subtotal: number) => {
-    if (!deliverySettings.enabled) return 0;
-    if (subtotal >= deliverySettings.freeDeliveryThreshold) return 0;
-    return deliverySettings.deliveryFee;
-  }, [deliverySettings]);
+  // Dynamic delivery fee calculation
+  const calculateDeliveryFee = useCallback((subtotal: number, selectedArea?: string) => {
+    const calculation = dynamicDelivery.calculateDeliveryFee(subtotal, selectedArea);
+    return calculation.finalFee;
+  }, [dynamicDelivery]);
 
 
 
@@ -1892,22 +2107,22 @@ const POSPage: React.FC = () => {
             setShowSearchResults(false);
           }
         }}
-        onScanBarcode={startBarcodeScanner}
+        onScanBarcode={isBarcodeScannerEnabled ? startBarcodeScanner : undefined}
         onAddCustomer={() => {
           // TODO: Navigate to add customer page or open modal
           navigate('/customers');
         }}
-        onAddProduct={() => {
+        onAddProduct={userPermissionsSettings?.enable_product_creation ? () => {
           // TODO: Navigate to add product page
           navigate('/lats/inventory/products/new');
-        }}
+        } : undefined}
         onViewReceipts={() => {
           // TODO: Navigate to receipts page
           alert('Receipts view coming soon!');
         }}
-        onViewSales={() => {
+        onViewSales={analyticsReportingSettings?.enable_analytics ? () => {
           setShowSalesAnalytics(true);
-        }}
+        } : undefined}
         onOpenPaymentTracking={() => {
           console.log('🔍 POS: Opening Payment Tracking modal from POSTopBar');
           setShowPaymentTracking(true);
@@ -1919,7 +2134,6 @@ const POSPage: React.FC = () => {
       />
 
       <div className="p-4 sm:p-6 pb-20 max-w-full mx-auto space-y-6">
-
 
         <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-200px)]">
         {/* Product Search Section */}
@@ -1977,8 +2191,8 @@ const POSPage: React.FC = () => {
                   </button>
                 </div>
                 
-                {/* Smart Search Suggestions */}
-                {searchSuggestions.length > 0 && searchQuery.trim() && (
+                {/* Smart Search Suggestions - Only show if enabled */}
+                {searchSuggestions.length > 0 && searchQuery.trim() && searchFilterSettings?.show_search_suggestions && (
                   <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto">
                     <div className="p-3 border-b border-gray-100">
                       <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -2424,27 +2638,29 @@ const POSPage: React.FC = () => {
                 </div>
               ) : (
                 <>
-                  {/* Dynamic Pricing Display */}
-                  <DynamicPricingDisplay
-                    appliedDiscounts={appliedDiscounts}
-                    totalDiscount={discount}
-                    discountPercentage={subtotal > 0 ? (discount / subtotal) * 100 : 0}
-                    basePrice={subtotal}
-                    finalPrice={finalPrice}
-                    loyaltyPoints={selectedCustomer ? dynamicPricingService.calculateLoyaltyPoints(finalPrice, selectedCustomer) : 0}
-                    manualDiscount={manualDiscount}
-                    discountType={discountType}
-                    selectedCustomer={selectedCustomer}
-                    onClearManualDiscount={handleClearManualDiscount}
-                    onApplyManualDiscount={(amount, type) => {
-                      setManualDiscount(amount);
-                      setDiscountType(type);
-                    }}
-                    onOpenSettings={() => {
-           setShowSettings(true);
-           setActiveSettingsTab('pricing');
-         }}
-                  />
+                  {/* Dynamic Pricing Display - Only show if dynamic pricing is enabled */}
+                  {dynamicPricingSettings?.enable_dynamic_pricing && (
+                    <DynamicPricingDisplay
+                      appliedDiscounts={appliedDiscounts}
+                      totalDiscount={discount}
+                      discountPercentage={subtotal > 0 ? (discount / subtotal) * 100 : 0}
+                      basePrice={subtotal}
+                      finalPrice={finalPrice}
+                      loyaltyPoints={selectedCustomer && dynamicPricingSettings?.enable_dynamic_pricing ? dynamicPricingService.calculateLoyaltyPoints(finalPrice, selectedCustomer) : 0}
+                      manualDiscount={manualDiscount}
+                      discountType={discountType}
+                      selectedCustomer={selectedCustomer}
+                      onClearManualDiscount={handleClearManualDiscount}
+                      onApplyManualDiscount={(amount, type) => {
+                        setManualDiscount(amount);
+                        setDiscountType(type);
+                      }}
+                      onOpenSettings={() => {
+             setShowSettings(true);
+             setActiveSettingsTab('pricing');
+           }}
+                    />
+                  )}
                   
                                     {/* Cart Items */}
                   <div className="space-y-4 mb-6">
@@ -2464,7 +2680,7 @@ const POSPage: React.FC = () => {
                       const isExternalProduct = item.variantId === 'external';
                       
                       return (
-                        <div key={item.id} className={`bg-white border-2 rounded-xl transition-all duration-300 ${
+                        <div key={item.id} className={`bg-white border-2 rounded-xl ${generalSettings?.enable_animations ? 'transition-all duration-300' : ''} ${
                           isExternalProduct 
                             ? 'border-orange-300 bg-orange-50' 
                             : isExpanded 
@@ -2487,16 +2703,20 @@ const POSPage: React.FC = () => {
                                         <Package className="w-3 h-3 text-white" />
                                       </div>
                                     </div>
-                                  ) : (
-                                    // Regular product - show actual image
-                                    <ProductImageDisplay
-                                      images={product?.images || []}
+                                  ) : generalSettings?.show_product_images ? (
+                                    // Regular product - show actual image if enabled
+                                    <SimpleImageDisplay
+                                      images={convertToProductImages(product?.images || [])}
                                       productName={item.name}
                                       size="lg"
                                       className="w-full h-full"
                                     />
+                                  ) : (
+                                    // Show letter with product color if images disabled
+                                    <div className={`w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-lg font-bold text-white`}>
+                                      {item.name.charAt(0).toUpperCase()}
+                                    </div>
                                   )}
-
                                 </div>
                                                                  <div className="flex-1 min-w-0">
                                    <div className="font-medium text-gray-800 truncate text-xl leading-tight flex items-center gap-2">
@@ -2507,9 +2727,11 @@ const POSPage: React.FC = () => {
                                        </span>
                                      )}
                                    </div>
-                                   <div className="text-2xl text-gray-700 mt-1 font-bold">
-                                     TZS {item.totalPrice.toLocaleString()}
-                                   </div>
+                                   {generalSettings?.show_prices && (
+                                     <div className="text-2xl text-gray-700 mt-1 font-bold">
+                                       TZS {item.totalPrice.toLocaleString()}
+                                     </div>
+                                   )}
                                  </div>
                               </div>
                               <div className="flex items-center gap-4">
@@ -2636,7 +2858,7 @@ const POSPage: React.FC = () => {
               <div className="mb-3">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="font-medium text-gray-900">Delivery</h3>
-                  {deliverySettings.enabled && (
+                  {deliverySettings.enable_delivery && (
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                       <span className="text-sm text-green-600">Active</span>
@@ -2644,30 +2866,32 @@ const POSPage: React.FC = () => {
                   )}
                 </div>
                 
-                                 <button
-                   onClick={() => setShowDeliverySection(true)}
-                   className="w-full p-4 bg-gradient-to-br from-blue-200 via-blue-300 to-blue-400 rounded-xl hover:from-blue-300 hover:via-blue-400 hover:to-blue-500 transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02]"
-                 >
-                   <div className="flex items-center justify-between">
-                     <div className="flex items-center gap-3">
-                       <div className="w-12 h-12 bg-white/80 rounded-full flex items-center justify-center shadow-sm">
-                         <Truck className="w-6 h-6 text-blue-700" />
-                       </div>
-                       <div className="text-left">
-                         <div className="font-medium text-white">
-                           {deliverySettings.enabled ? 'Delivery configured' : 'Set up delivery'}
-                         </div>
-                         <div className="text-sm text-white/90">
-                           {deliverySettings.enabled 
-                             ? `${formatMoney(deliverySettings.deliveryFee)} fee` 
-                             : 'Add address and instructions'
-                           }
-                         </div>
-                       </div>
-                     </div>
-                     <ArrowRight className="w-4 h-4 text-white/80" />
-                   </div>
-                 </button>
+                                 {deliverySettings?.enable_delivery && (
+                                   <button
+                                     onClick={() => setShowDeliverySection(true)}
+                                     className="w-full p-4 bg-gradient-to-br from-blue-200 via-blue-300 to-blue-400 rounded-xl hover:from-blue-300 hover:via-blue-400 hover:to-blue-500 transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02]"
+                                   >
+                                     <div className="flex items-center justify-between">
+                                       <div className="flex items-center gap-3">
+                                         <div className="w-12 h-12 bg-white/80 rounded-full flex items-center justify-center shadow-sm">
+                                           <Truck className="w-6 h-6 text-blue-700" />
+                                         </div>
+                                         <div className="text-left">
+                                           <div className="font-medium text-white">
+                                             {deliverySettings.enable_delivery ? 'Delivery configured' : 'Set up delivery'}
+                                           </div>
+                                           <div className="text-sm text-white/90">
+                                             {deliverySettings.enabled 
+                                               ? `${formatMoney(deliverySettings.default_delivery_fee)} fee` 
+                                               : 'Add address and instructions'
+                                             }
+                                           </div>
+                                         </div>
+                                       </div>
+                                       <ArrowRight className="w-4 h-4 text-white/80" />
+                                     </div>
+                                   </button>
+                                 )}
               </div>
             )}
 
@@ -2684,17 +2908,17 @@ const POSPage: React.FC = () => {
                   <span className="font-semibold text-gray-900">{formatMoney(tax)}</span>
                 </div>
                 
-                {/* Delivery Fee Display */}
-                {deliverySettings.enabled && (
+                {/* Delivery Fee Display - Only show if delivery is enabled */}
+                {deliverySettings?.enable_delivery && (
                   <div className="flex justify-between items-center">
                     <div className="flex items-center gap-2">
                       <span className="text-gray-600 font-medium">Delivery Fee</span>
                       <span className="px-2 py-1 rounded-full bg-gradient-to-r from-orange-100 to-red-100 text-orange-700 text-xs font-semibold border border-orange-200">
-                        {subtotal >= deliverySettings.freeDeliveryThreshold ? 'FREE' : 'Standard'}
+                        {subtotal >= deliverySettings.free_delivery_threshold ? 'FREE' : 'Standard'}
                       </span>
                     </div>
                     <span className="font-semibold text-orange-600">
-                      {subtotal >= deliverySettings.freeDeliveryThreshold ? 'FREE' : formatMoney(deliverySettings.deliveryFee)}
+                      {subtotal >= deliverySettings.free_delivery_threshold ? 'FREE' : formatMoney(calculateDeliveryFee(subtotal, selectedDeliveryArea))}
                     </span>
                   </div>
                 )}
@@ -2705,14 +2929,14 @@ const POSPage: React.FC = () => {
                   <div className="flex justify-between items-center">
                     <span className="text-lg font-bold text-gray-900">Total Amount</span>
                     <span className="text-xl font-bold text-green-600">
-                      {formatMoney(deliverySettings.enabled ? total + calculateDeliveryFee(subtotal) : total)}
+                      {formatMoney(deliverySettings?.enable_delivery ? total + calculateDeliveryFee(subtotal) : total)}
                     </span>
                   </div>
-                  {deliverySettings.enabled && (
+                  {deliverySettings?.enable_delivery && (
                     <div className="text-xs text-gray-500 mt-1 text-center">
-                      {subtotal >= deliverySettings.freeDeliveryThreshold 
+                                              {subtotal >= deliverySettings.free_delivery_threshold 
                         ? 'Free delivery applied' 
-                        : `+ ${formatMoney(deliverySettings.deliveryFee)} delivery fee`
+                        : `+ ${formatMoney(deliverySettings.default_delivery_fee)} delivery fee`
                       }
                     </div>
                   )}
@@ -2829,7 +3053,7 @@ const POSPage: React.FC = () => {
                       {selectedCustomer.email && (
                         <div className="text-xs">{selectedCustomer.email}</div>
                       )}
-                      {selectedCustomer.loyaltyLevel && (
+                      {selectedCustomer.loyaltyLevel && dynamicPricingSettings?.enable_dynamic_pricing && (
                         <div className="text-xs mt-2">
                           <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full">
                             {selectedCustomer.loyaltyLevel} Member
@@ -3168,8 +3392,8 @@ const POSPage: React.FC = () => {
 
       {/* QuickCash modal removed - not using this functionality */}
 
-      {/* Delivery Section */}
-      {showDeliverySection && (
+      {/* Delivery Section - Only show if delivery is enabled */}
+      {showDeliverySection && deliverySettings?.enable_delivery && (
         <DeliverySection
           isOpen={showDeliverySection}
           onClose={() => setShowDeliverySection(false)}
@@ -3180,6 +3404,8 @@ const POSPage: React.FC = () => {
             setShowDeliverySection(false);
           }}
           selectedCustomer={selectedCustomer}
+          deliverySettings={deliverySettings}
+          subtotal={cartItems.reduce((sum, item) => sum + item.totalPrice, 0)}
         />
       )}
 
@@ -3242,14 +3468,18 @@ const POSPage: React.FC = () => {
                           <div className="font-semibold text-lg text-gray-900 truncate">{customer.name}</div>
                           <div className="text-base text-gray-600">{customer.phone}</div>
                           <div className="flex items-center gap-3 mt-2">
-                            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                              customer.colorTag === 'vip' || customer.loyaltyLevel === 'platinum' || customer.loyaltyLevel === 'gold'
-                                ? 'bg-purple-100 text-purple-700' 
-                                : 'bg-green-100 text-green-700'
-                            }`}>
-                              {customer.colorTag === 'vip' || customer.loyaltyLevel === 'platinum' || customer.loyaltyLevel === 'gold' ? 'VIP' : 'Active'}
-                            </span>
-                            <span className="text-sm text-gray-500 font-medium">{customer.points} points</span>
+                            {dynamicPricingSettings?.enable_dynamic_pricing && (
+                              <>
+                                <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                                  customer.colorTag === 'vip' || customer.loyaltyLevel === 'platinum' || customer.loyaltyLevel === 'gold'
+                                    ? 'bg-purple-100 text-purple-700' 
+                                    : 'bg-green-100 text-green-700'
+                                }`}>
+                                  {customer.colorTag === 'vip' || customer.loyaltyLevel === 'platinum' || customer.loyaltyLevel === 'gold' ? 'VIP' : 'Active'}
+                                </span>
+                                <span className="text-sm text-gray-500 font-medium">{customer.points} points</span>
+                              </>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -3300,8 +3530,8 @@ const POSPage: React.FC = () => {
         </div>
       )}
 
-      {/* Barcode Scanner Modal */}
-      {showBarcodeScanner && (
+      {/* Barcode Scanner Modal - Only show if barcode scanner is enabled */}
+      {showBarcodeScanner && isBarcodeScannerEnabled && (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
           <GlassCard className="max-w-2xl w-full p-8">
             <div className="flex items-center gap-4 mb-8">
@@ -3782,13 +4012,15 @@ const POSPage: React.FC = () => {
                       </div>
                     </div>
                     
-                    <div className="grid grid-cols-2 gap-4 pt-4">
-                      <div className="text-center p-3 bg-white rounded-lg">
-                        <div className="text-2xl font-bold text-blue-600">
-                          {customerLoyaltyPoints[selectedCustomerForDetails.id] || selectedCustomerForDetails.points}
+                    <div className={`grid gap-4 pt-4 ${dynamicPricingSettings?.enable_dynamic_pricing ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                      {dynamicPricingSettings?.enable_dynamic_pricing && (
+                        <div className="text-center p-3 bg-white rounded-lg">
+                          <div className="text-2xl font-bold text-blue-600">
+                            {customerLoyaltyPoints[selectedCustomerForDetails.id] || selectedCustomerForDetails.points}
+                          </div>
+                          <div className="text-sm text-gray-600">Loyalty Points</div>
                         </div>
-                        <div className="text-sm text-gray-600">Loyalty Points</div>
-                      </div>
+                      )}
                       <div className="text-center p-3 bg-white rounded-lg">
                         <div className="text-2xl font-bold text-green-600">
                           {formatMoney(selectedCustomerForDetails.totalSpent)}
@@ -3889,22 +4121,24 @@ const POSPage: React.FC = () => {
               >
                 Close
               </GlassButton>
-              <GlassButton
-                onClick={() => {
-                  setShowLoyaltyPoints(true);
-                  setShowCustomerDetails(false);
-                }}
-                className="flex-1 py-4 text-lg font-semibold bg-gradient-to-r from-blue-500 to-purple-600 text-white"
-              >
-                Manage Loyalty Points
-              </GlassButton>
+              {dynamicPricingSettings?.enable_dynamic_pricing && (
+                <GlassButton
+                  onClick={() => {
+                    setShowLoyaltyPoints(true);
+                    setShowCustomerDetails(false);
+                  }}
+                  className="flex-1 py-4 text-lg font-semibold bg-gradient-to-r from-blue-500 to-purple-600 text-white"
+                >
+                  Manage Loyalty Points
+                </GlassButton>
+              )}
             </div>
           </GlassCard>
         </div>
       )}
 
-      {/* Loyalty Points Modal */}
-      {showLoyaltyPoints && selectedCustomerForDetails && (
+      {/* Loyalty Points Modal - Only show if dynamic pricing is enabled */}
+      {showLoyaltyPoints && selectedCustomerForDetails && dynamicPricingSettings?.enable_dynamic_pricing && (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
           <GlassCard className="max-w-md w-full p-8">
             <div className="flex items-center gap-4 mb-8">
@@ -3988,11 +4222,13 @@ const POSPage: React.FC = () => {
         </div>
       )}
 
-      {/* Sales Analytics Modal */}
-      <SalesAnalyticsModal 
-        isOpen={showSalesAnalytics}
-        onClose={() => setShowSalesAnalytics(false)}
-      />
+            {/* Sales Analytics Modal - Only show if analytics is enabled */}
+      {analyticsReportingSettings?.enable_analytics && (
+        <SalesAnalyticsModal
+          isOpen={showSalesAnalytics}
+          onClose={() => setShowSalesAnalytics(false)}
+        />
+      )}
 
       {/* ZenoPay Payment Modal */}
       <ZenoPayPaymentModal
@@ -4030,7 +4266,7 @@ const POSPage: React.FC = () => {
           variantName: item.variantName || '',
           sku: item.sku,
           quantity: item.quantity,
-          unitPrice: item.price,
+          unitPrice: item.unitPrice,
           totalPrice: item.totalPrice,
           availableQuantity: item.availableQuantity || 0
         }))}
@@ -4175,58 +4411,58 @@ const POSPage: React.FC = () => {
             <div className="mb-8">
               {/* General Settings Tab */}
               {activeSettingsTab === 'general' && (
-                <GeneralSettingsTab />
+                <GeneralSettingsTab ref={generalSettingsRef} />
               )}
 
               {/* Dynamic Pricing Settings Tab */}
               {activeSettingsTab === 'pricing' && (
-                <DynamicPricingSettingsTab />
+                <DynamicPricingSettingsTab ref={dynamicPricingSettingsRef} />
               )}
 
               {/* Receipt Settings Tab */}
               {activeSettingsTab === 'receipt' && (
-                <ReceiptSettingsTab />
+                <ReceiptSettingsTab ref={receiptSettingsRef} />
               )}
 
               {/* Barcode Scanner Settings Tab */}
               {activeSettingsTab === 'scanner' && (
-                <BarcodeScannerSettingsTab />
+                <BarcodeScannerSettingsTab ref={barcodeScannerSettingsRef} />
               )}
 
               {/* Delivery Settings Tab */}
               {activeSettingsTab === 'delivery' && (
-                <DeliverySettingsTab />
+                <DeliverySettingsTab ref={deliverySettingsRef} />
               )}
 
               {/* Search & Filter Settings Tab */}
               {activeSettingsTab === 'search' && (
-                <SearchFilterSettingsTab />
+                <SearchFilterSettingsTab ref={searchFilterSettingsRef} />
               )}
 
               {/* User Permissions Settings Tab */}
               {activeSettingsTab === 'permissions' && (
-                <UserPermissionsSettingsTab />
+                <UserPermissionsSettingsTab ref={userPermissionsSettingsRef} />
               )}
 
               {/* Loyalty & Customer Settings Tab */}
               {activeSettingsTab === 'loyalty' && (
-                <LoyaltyCustomerSettingsTab />
+                <LoyaltyCustomerSettingsTab ref={loyaltyCustomerSettingsRef} />
               )}
 
               {/* Analytics & Reporting Settings Tab */}
               {activeSettingsTab === 'analytics' && (
-                <AnalyticsReportingSettingsTab />
+                <AnalyticsReportingSettingsTab ref={analyticsReportingSettingsRef} />
               )}
 
               {/* Advanced Notification Settings Tab */}
               {activeSettingsTab === 'notifications' && (
-                <AdvancedNotificationSettingsTab />
+                <AdvancedNotificationSettingsTab ref={notificationSettingsRef} />
               )}
 
               {/* Advanced Settings Tab */}
-                                    {activeSettingsTab === 'advanced' && (
-                        <AdvancedSettingsTab />
-                      )}
+              {activeSettingsTab === 'advanced' && (
+                <AdvancedSettingsTab ref={advancedSettingsRef} />
+              )}
             </div>
 
             <div className="flex gap-4">
@@ -4238,14 +4474,35 @@ const POSPage: React.FC = () => {
                 Cancel
               </GlassButton>
               <GlassButton
-                onClick={() => {
-                  // Save settings
-                  alert('Settings saved successfully!');
-                  setShowSettings(false);
+                onClick={async () => {
+                  console.log('🔧 POS Settings Save Button Clicked');
+                  console.log('📊 Current active tab:', activeSettingsTab);
+                  
+                  try {
+                    console.log('🚀 Starting settings save process...');
+                    
+                    const success = await saveCurrentTabSettings();
+                    
+                    if (success) {
+                      console.log('🎉 Settings saved successfully!');
+                      setShowSettings(false);
+                    } else {
+                      console.error('❌ Settings save failed');
+                    }
+                  } catch (error) {
+                    console.error('💥 Error saving settings:', error);
+                    console.error('🔍 Error details:', {
+                      message: error.message,
+                      stack: error.stack,
+                      name: error.name
+                    });
+                    toast.error('Failed to save settings. Please try again.');
+                  }
                 }}
-                className="flex-1 py-4 text-lg font-semibold bg-gradient-to-r from-blue-500 to-indigo-600 text-white"
+                disabled={isSavingSettings}
+                className="flex-1 py-4 text-lg font-semibold bg-gradient-to-r from-blue-500 to-indigo-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Save Settings
+                {isSavingSettings ? 'Saving...' : 'Save Settings'}
               </GlassButton>
             </div>
           </GlassCard>
@@ -4366,8 +4623,8 @@ const POSPage: React.FC = () => {
                 </div>
               )}
 
-              {/* Current Loyalty Discount Info */}
-              {selectedCustomer && (
+              {/* Current Loyalty Discount Info - Only show if dynamic pricing is enabled */}
+              {selectedCustomer && dynamicPricingSettings?.enable_dynamic_pricing && (
                 <div className="p-5 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200">
                   <div className="text-base text-blue-700">
                     <div className="font-semibold mb-3 text-lg">Customer Loyalty Discount:</div>
@@ -4456,11 +4713,13 @@ const POSPage: React.FC = () => {
         onClose={() => setShowPaymentTracking(false)}
       />
 
-      {/* Customer Loyalty Modal */}
-      <CustomerLoyaltyModal
-        isOpen={showCustomerLoyalty}
-        onClose={() => setShowCustomerLoyalty(false)}
-      />
+      {/* Customer Loyalty Modal - Only show if dynamic pricing is enabled */}
+      {dynamicPricingSettings?.enable_dynamic_pricing && (
+        <CustomerLoyaltyModal
+          isOpen={showCustomerLoyalty}
+          onClose={() => setShowCustomerLoyalty(false)}
+        />
+      )}
 
       {/* Draft Management Modal */}
       <DraftManagementModal
@@ -4502,7 +4761,7 @@ const POSPage: React.FC = () => {
         onCustomers={() => navigate('/lats/customers')}
         onInventory={() => navigate('/lats/unified-inventory')}
         onReports={() => navigate('/lats/sales-reports')}
-        onLoyalty={() => setShowCustomerLoyalty(true)}
+        onLoyalty={dynamicPricingSettings?.enable_dynamic_pricing ? () => setShowCustomerLoyalty(true) : undefined}
       />
 
 

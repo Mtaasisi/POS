@@ -20,6 +20,11 @@ import { latsEventBus, LatsEventType } from '../lib/data/eventBus';
 import { latsAnalyticsService as latsAnalytics } from '../lib/analytics';
 import { supabase } from '../../../lib/supabaseClient';
 import { processLatsData, validateDataIntegrity, emergencyDataCleanup } from '../lib/dataProcessor';
+import { 
+  getActiveSuppliers as getActiveSuppliersApi, 
+  createSupplier as createSupplierApi, 
+  updateSupplier as updateSupplierApi 
+} from '../../../lib/supplierApi';
 
 interface InventoryState {
   // Loading states
@@ -31,6 +36,8 @@ interface InventoryState {
   // Prevent multiple simultaneous loads
   isDataLoading: boolean;
   lastDataLoadTime: number;
+  // Supplier-specific loading to avoid global guard skipping
+  isSuppliersLoading?: boolean;
 
   // Cache management
   dataCache: {
@@ -171,6 +178,7 @@ export const useInventoryStore = create<InventoryState>()(
       isUpdating: false,
       isDeleting: false,
       isDataLoading: false,
+      isSuppliersLoading: false,
       lastDataLoadTime: 0,
 
       // Cache management
@@ -311,6 +319,16 @@ export const useInventoryStore = create<InventoryState>()(
         }
       },
 
+      invalidateCache: (dataType: keyof InventoryState['dataCache']) => {
+        const state = get();
+        set({
+          dataCache: {
+            ...state.dataCache,
+            [dataType]: null
+          }
+        });
+      },
+
       // Categories
       loadCategories: async () => {
         const state = get();
@@ -367,8 +385,8 @@ export const useInventoryStore = create<InventoryState>()(
           const provider = getLatsProvider();
           const response = await provider.createCategory(category);
           if (response.ok) {
-            // Reload categories to get the updated list
-            await get().loadCategories();
+            // Invalidate cache instead of reloading to prevent infinite loops
+            get().invalidateCache('categories');
             latsAnalytics.track('category_created', { categoryId: response.data?.id });
           }
           return response;
@@ -388,8 +406,8 @@ export const useInventoryStore = create<InventoryState>()(
           const provider = getLatsProvider();
           const response = await provider.updateCategory(id, category);
           if (response.ok) {
-            // Reload categories to get the updated list
-            await get().loadCategories();
+            // Invalidate cache instead of reloading to prevent infinite loops
+            get().invalidateCache('categories');
             latsAnalytics.track('category_updated', { categoryId: id });
           }
           return response;
@@ -538,62 +556,67 @@ export const useInventoryStore = create<InventoryState>()(
       loadSuppliers: async () => {
         const state = get();
         
-        // Check cache first
+        // Check cache first with shorter cache duration for suppliers
         if (state.isCacheValid('suppliers')) {
           console.log('📋 Using cached suppliers');
           set({ suppliers: state.dataCache.suppliers || [] });
           return;
         }
 
-        // Prevent multiple simultaneous loads
-        if (state.isDataLoading) {
+        // Use a supplier-specific loading flag to avoid conflicts with other loads
+        if (state.isSuppliersLoading) {
           console.log('⏳ Suppliers loading already in progress, skipping...');
           return;
         }
 
-        set({ isLoading: true, isDataLoading: true, error: null });
+        set({ isSuppliersLoading: true, error: null });
+        
+        // Use Promise.race for timeout protection with shorter timeout
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Supplier fetch timeout')), 5000)
+        );
+
         try {
-          console.log('🔧 Loading suppliers from LATS provider...');
-          const provider = getLatsProvider();
-          const response = await provider.getSuppliers();
+          console.log('🔧 Loading suppliers from new supplier API...');
           
-          if (response.ok) {
-            const rawSuppliers = response.data || [];
-            console.log('🏢 Raw suppliers loaded:', rawSuppliers.length);
-            
-            // Validate and process suppliers
-            validateDataIntegrity(rawSuppliers, 'Suppliers');
-            const processedSuppliers = processLatsData({ suppliers: rawSuppliers }).suppliers;
-            
-            set({ 
-              suppliers: processedSuppliers, 
-              lastDataLoadTime: Date.now() 
-            });
-            get().updateCache('suppliers', processedSuppliers);
-            latsAnalytics.track('suppliers_loaded', { count: processedSuppliers.length });
-            console.log('✅ Suppliers processed and loaded:', processedSuppliers.length);
-          } else {
-            console.error('❌ Suppliers error:', response.message);
-            set({ error: response.message || 'Failed to load suppliers' });
-          }
+          // Race between actual fetch and timeout
+          const suppliers = await Promise.race([
+            getActiveSuppliersApi(),
+            timeoutPromise
+          ]);
+          
+          console.log('🏢 Raw suppliers loaded:', suppliers.length);
+          
+          // Optimized processing - minimal validation for suppliers
+          const processedSuppliers = suppliers.map(supplier => ({
+            ...supplier,
+            name: supplier.name || 'Unnamed Supplier'
+          }));
+          
+          set({ 
+            suppliers: processedSuppliers, 
+            lastDataLoadTime: Date.now() 
+          });
+          
+          // Update cache with longer duration for suppliers (5 minutes)
+          get().updateCache('suppliers', processedSuppliers);
+          latsAnalytics.track('suppliers_loaded', { count: processedSuppliers.length });
+          console.log('✅ Suppliers processed and loaded:', processedSuppliers.length);
         } catch (error) {
           console.error('💥 Suppliers exception:', error);
           set({ error: 'Failed to load suppliers' });
         } finally {
-          set({ isLoading: false, isDataLoading: false });
+          set({ isSuppliersLoading: false });
         }
       },
 
       createSupplier: async (supplier) => {
         set({ isCreating: true, error: null });
         try {
-          const provider = getLatsProvider();
-          const response = await provider.createSupplier(supplier);
-          if (response.ok) {
-            await get().loadSuppliers();
-            latsAnalytics.track('supplier_created', { supplierId: response.data?.id });
-          }
-          return response;
+          const createdSupplier = await createSupplierApi(supplier);
+          await get().loadSuppliers();
+          latsAnalytics.track('supplier_created', { supplierId: createdSupplier.id });
+          return { ok: true, data: createdSupplier };
         } catch (error) {
           const errorMsg = 'Failed to create supplier';
           set({ error: errorMsg });
@@ -607,13 +630,10 @@ export const useInventoryStore = create<InventoryState>()(
       updateSupplier: async (id, supplier) => {
         set({ isUpdating: true, error: null });
         try {
-          const provider = getLatsProvider();
-          const response = await provider.updateSupplier(id, supplier);
-          if (response.ok) {
-            await get().loadSuppliers();
-            latsAnalytics.track('supplier_updated', { supplierId: id });
-          }
-          return response;
+          const updatedSupplier = await updateSupplierApi(id, supplier);
+          await get().loadSuppliers();
+          latsAnalytics.track('supplier_updated', { supplierId: id });
+          return { ok: true, data: updatedSupplier };
         } catch (error) {
           const errorMsg = 'Failed to update supplier';
           set({ error: errorMsg });
@@ -1344,34 +1364,57 @@ export const useInventoryStore = create<InventoryState>()(
 latsEventBus.subscribeToAll((event) => {
   const store = useInventoryStore.getState();
   
+  // Prevent infinite loops by checking if data is already loading
+  if (store.isDataLoading) {
+    console.log('⏳ Skipping event handling - data already loading:', event.type);
+    return;
+  }
+  
   switch (event.type) {
     case 'lats:category.created':
     case 'lats:category.updated':
     case 'lats:category.deleted':
-      store.loadCategories();
+      // Only reload if not already loading and cache is stale
+      if (!store.isCacheValid('categories')) {
+        store.loadCategories();
+      }
       break;
       
     case 'lats:brand.created':
     case 'lats:brand.updated':
     case 'lats:brand.deleted':
-      store.loadBrands();
+      // Only reload if not already loading and cache is stale
+      if (!store.isCacheValid('brands')) {
+        store.loadBrands();
+      }
       break;
       
     case 'lats:supplier.created':
     case 'lats:supplier.updated':
     case 'lats:supplier.deleted':
-      store.loadSuppliers();
+      // Only reload if not already loading and cache is stale
+      if (!store.isCacheValid('suppliers')) {
+        store.loadSuppliers();
+      }
       break;
       
     case 'lats:product.created':
     case 'lats:product.updated':
     case 'lats:product.deleted':
-      store.loadProducts();
+      // Only reload if not already loading and cache is stale
+      if (!store.isCacheValid('products')) {
+        store.loadProducts();
+      }
       break;
       
     case 'lats:stock.updated':
-      store.loadProducts();
-      store.loadStockMovements();
+      // Only reload if not already loading and cache is stale
+      if (!store.isCacheValid('products')) {
+        store.loadProducts();
+      }
+      if (!store.isCacheValid('stockMovements')) {
+        store.loadStockMovements();
+      }
       break;
       
     case 'lats:purchase-order.created':
@@ -1387,12 +1430,20 @@ latsEventBus.subscribeToAll((event) => {
     case 'lats:spare-part.created':
     case 'lats:spare-part.updated':
     case 'lats:spare-part.deleted':
-      store.loadSpareParts();
+      // Only reload if not already loading and cache is stale
+      if (!store.isCacheValid('spareParts')) {
+        store.loadSpareParts();
+      }
       break;
       
     case 'lats:spare-part.used':
-      store.loadSpareParts();
-      store.loadSparePartUsage();
+      // Only reload if not already loading and cache is stale
+      if (!store.isCacheValid('spareParts')) {
+        store.loadSpareParts();
+      }
+      if (!store.isCacheValid('sparePartUsage')) {
+        store.loadSparePartUsage();
+      }
       break;
   }
 });
