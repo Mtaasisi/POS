@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { X, Save, Package, AlertTriangle, Upload, Trash2 } from 'lucide-react';
+import { X, Save, Package, AlertTriangle, Upload, Trash2, MapPin, Layers } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import GlassCard from '../../../shared/components/ui/GlassCard';
 import GlassInput from '../../../shared/components/ui/GlassInput';
@@ -14,6 +14,10 @@ import { LATS_CLASSES } from '../../tokens';
 import { t } from '../../lib/i18n/t';
 import { format } from '../../lib/format';
 import { Product, Category, Brand, Supplier, ProductImage } from '../../types/inventory';
+import { StoreLocation } from '../../../settings/types/storeLocation';
+import { StoreShelf } from '../../../settings/types/storeShelf';
+import { storeLocationApi } from '../../../settings/utils/storeLocationApi';
+import { storeShelfApi } from '../../../settings/utils/storeShelfApi';
 
 // Validation schema for product editing
 const editProductSchema = z.object({
@@ -25,6 +29,7 @@ const editProductSchema = z.object({
   brandId: z.string().optional(),
   supplierId: z.string().optional(),
   condition: z.string().min(1, 'Condition is required'),
+  storeLocationId: z.string().optional(),
   storeShelf: z.string().max(100, 'Store shelf must be less than 100 characters').optional(),
   price: z.number().min(0, 'Price must be 0 or greater'),
   costPrice: z.number().min(0, 'Cost price must be 0 or greater'),
@@ -59,6 +64,10 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
 }) => {
   const [tagInput, setTagInput] = useState('');
   const [currentTags, setCurrentTags] = useState<string[]>([]);
+  const [storeLocations, setStoreLocations] = useState<StoreLocation[]>([]);
+  const [shelves, setShelves] = useState<StoreShelf[]>([]);
+  const [loadingLocations, setLoadingLocations] = useState(false);
+  const [loadingShelves, setLoadingShelves] = useState(false);
 
   const {
     control,
@@ -78,6 +87,7 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
       brandId: '',
       supplierId: '',
       condition: 'new',
+      storeLocationId: '',
       storeShelf: '',
       price: 0,
       costPrice: 0,
@@ -87,6 +97,51 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
       tags: []
     }
   });
+
+  const selectedLocationId = watch('storeLocationId');
+
+  // Load store locations and shelves
+  useEffect(() => {
+    const loadStoreData = async () => {
+      try {
+        setLoadingLocations(true);
+        const locations = await storeLocationApi.getAll();
+        setStoreLocations(locations);
+      } catch (error) {
+        console.error('Error loading store locations:', error);
+        toast.error('Failed to load store locations');
+      } finally {
+        setLoadingLocations(false);
+      }
+    };
+
+    if (isOpen) {
+      loadStoreData();
+    }
+  }, [isOpen]);
+
+  // Load shelves when location changes
+  useEffect(() => {
+    const loadShelves = async () => {
+      if (!selectedLocationId) {
+        setShelves([]);
+        return;
+      }
+
+      try {
+        setLoadingShelves(true);
+        const locationShelves = await storeShelfApi.getShelvesByLocation(selectedLocationId);
+        setShelves(locationShelves);
+      } catch (error) {
+        console.error('Error loading shelves:', error);
+        toast.error('Failed to load shelves');
+      } finally {
+        setLoadingShelves(false);
+      }
+    };
+
+    loadShelves();
+  }, [selectedLocationId]);
 
   // Load product data when product changes
   useEffect(() => {
@@ -99,38 +154,51 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
         categoryId: product.categoryId,
         brandId: product.brandId || '',
         supplierId: product.supplierId || '',
-        condition: product.condition,
+        condition: product.condition || 'new',
+        storeLocationId: '', // Will be set based on shelf lookup
         storeShelf: product.storeShelf || '',
-        price: product.price,
-        costPrice: product.costPrice,
-        stockQuantity: product.stockQuantity,
-        minStockLevel: product.minStockLevel,
+        price: product.price || 0,
+        costPrice: product.costPrice || 0,
+        stockQuantity: product.stockQuantity || 0,
+        minStockLevel: product.minStockLevel || 0,
         weight: product.weight || 0,
-        tags: product.tags
+        tags: product.tags || []
       });
+
       setCurrentTags(product.tags || []);
+
+      // If product has a shelf, find the location
+      if (product.storeShelf) {
+        findLocationForShelf(product.storeShelf);
+      }
     }
   }, [product, isOpen, reset]);
 
-  // Handle form submission
-  const handleFormSubmit = async (data: EditProductFormData) => {
+  // Find location for existing shelf
+  const findLocationForShelf = async (shelfCode: string) => {
     try {
-      await onSubmit({
-        ...data,
-        tags: currentTags
-      });
-      toast.success(t('Product updated successfully'));
-      onClose();
+      const allShelves = await storeShelfApi.getAll();
+      const shelf = allShelves.find(s => s.code === shelfCode);
+      if (shelf) {
+        setValue('storeLocationId', shelf.store_location_id);
+      }
     } catch (error) {
-      console.error('Error updating product:', error);
-      toast.error(t('Failed to update product'));
+      console.error('Error finding location for shelf:', error);
     }
   };
 
-  // Handle tag operations
+  // Handle tag input
+  const handleTagInputKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addTag();
+    }
+  };
+
   const addTag = () => {
-    if (tagInput.trim() && !currentTags.includes(tagInput.trim())) {
-      const newTags = [...currentTags, tagInput.trim()];
+    const tag = tagInput.trim();
+    if (tag && !currentTags.includes(tag)) {
+      const newTags = [...currentTags, tag];
       setCurrentTags(newTags);
       setValue('tags', newTags);
       setTagInput('');
@@ -143,47 +211,41 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
     setValue('tags', newTags);
   };
 
-  const handleTagInputKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      addTag();
-    }
-  };
-
   const handleClose = () => {
     reset();
     setCurrentTags([]);
     setTagInput('');
+    setStoreLocations([]);
+    setShelves([]);
     onClose();
   };
 
-  if (!isOpen || !product) return null;
-
-  const conditionOptions = [
-    { value: 'new', label: t('New') },
-    { value: 'used', label: t('Used') },
-    { value: 'refurbished', label: t('Refurbished') },
-    { value: 'damaged', label: t('Damaged') }
-  ];
+  const handleFormSubmit = async (data: EditProductFormData) => {
+    try {
+      await onSubmit(data);
+      handleClose();
+    } catch (error) {
+      console.error('Error submitting form:', error);
+    }
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-        <GlassCard className={`${LATS_CLASSES.card} p-6`}>
-          {/* Header */}
+    <div className={`fixed inset-0 z-50 flex items-center justify-center ${isOpen ? '' : 'hidden'}`}>
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={handleClose} />
+      <div className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+        <GlassCard className="p-6">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center space-x-3">
               <Package className="w-6 h-6 text-blue-600" />
-              <h2 className="text-2xl font-bold text-gray-800">
-                {t('Edit Product')}
+              <h2 className="text-2xl font-bold text-gray-900">
+                {product ? t('Edit Product') : t('Add Product')}
               </h2>
             </div>
             <button
               onClick={handleClose}
-              disabled={isSubmitting || loading}
-              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
             >
-              <X className="w-5 h-5 text-gray-500" />
+              <X className="w-5 h-5" />
             </button>
           </div>
 
@@ -199,7 +261,6 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
                     label={t('Product Name')}
                     placeholder={t('Enter product name')}
                     error={errors.name?.message}
-                    required
                   />
                 )}
               />
@@ -213,63 +274,26 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
                     label={t('SKU')}
                     placeholder={t('Enter SKU')}
                     error={errors.sku?.message}
-                    required
-                  />
-                )}
-              />
-
-              <Controller
-                name="barcode"
-                control={control}
-                render={({ field }) => (
-                  <GlassInput
-                    {...field}
-                    label={t('Barcode')}
-                    placeholder={t('Enter barcode')}
-                    error={errors.barcode?.message}
-                  />
-                )}
-              />
-
-              <Controller
-                name="condition"
-                control={control}
-                render={({ field }) => (
-                  <GlassSelect
-                    {...field}
-                    label={t('Condition')}
-                    options={conditionOptions}
-                    error={errors.condition?.message}
-                    required
                   />
                 )}
               />
             </div>
 
-            {/* Description */}
             <Controller
               name="description"
               control={control}
               render={({ field }) => (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    {t('Description')}
-                  </label>
-                  <textarea
-                    {...field}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                    placeholder={t('Enter product description')}
-                  />
-                  {errors.description && (
-                    <p className="mt-1 text-sm text-red-600">{errors.description.message}</p>
-                  )}
-                </div>
+                <GlassInput
+                  {...field}
+                  label={t('Description')}
+                  placeholder={t('Enter product description')}
+                  error={errors.description?.message}
+                />
               )}
             />
 
-            {/* Categories and Relationships */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Category and Brand */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Controller
                 name="categoryId"
                 control={control}
@@ -277,13 +301,15 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
                   <GlassSelect
                     {...field}
                     label={t('Category')}
-                    options={[
-                      { value: '', label: t('Select Category') },
-                      ...categories.map(cat => ({ value: cat.id, label: cat.name }))
-                    ]}
                     error={errors.categoryId?.message}
-                    required
-                  />
+                  >
+                    <option value="">{t('Select Category')}</option>
+                    {categories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </GlassSelect>
                 )}
               />
 
@@ -294,34 +320,106 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
                   <GlassSelect
                     {...field}
                     label={t('Brand')}
-                    options={[
-                      { value: '', label: t('Select Brand') },
-                      ...brands.map(brand => ({ value: brand.id, label: brand.name }))
-                    ]}
                     error={errors.brandId?.message}
-                  />
-                )}
-              />
-
-              <Controller
-                name="supplierId"
-                control={control}
-                render={({ field }) => (
-                  <GlassSelect
-                    {...field}
-                    label={t('Supplier')}
-                    options={[
-                      { value: '', label: t('Select Supplier') },
-                      ...suppliers.map(supplier => ({ value: supplier.id, label: supplier.name }))
-                    ]}
-                    error={errors.supplierId?.message}
-                  />
+                  >
+                    <option value="">{t('Select Brand')}</option>
+                    {brands.map((brand) => (
+                      <option key={brand.id} value={brand.id}>
+                        {brand.name}
+                      </option>
+                    ))}
+                  </GlassSelect>
                 )}
               />
             </div>
 
-            {/* Pricing */}
+            {/* Store Location and Shelf Selection */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Controller
+                name="storeLocationId"
+                control={control}
+                render={({ field }) => (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <MapPin className="w-4 h-4 inline mr-2" />
+                      {t('Store Location')}
+                    </label>
+                    <GlassSelect
+                      {...field}
+                      disabled={loadingLocations}
+                      error={errors.storeLocationId?.message}
+                    >
+                      <option value="">{loadingLocations ? t('Loading...') : t('Select Store Location')}</option>
+                      {storeLocations.map((location) => (
+                        <option key={location.id} value={location.id}>
+                          {location.name} ({location.city})
+                        </option>
+                      ))}
+                    </GlassSelect>
+                  </div>
+                )}
+              />
+
+              <Controller
+                name="storeShelf"
+                control={control}
+                render={({ field }) => (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <Layers className="w-4 h-4 inline mr-2" />
+                      {t('Shelf')}
+                    </label>
+                    <GlassSelect
+                      {...field}
+                      disabled={!selectedLocationId || loadingShelves}
+                      error={errors.storeShelf?.message}
+                    >
+                      <option value="">
+                        {!selectedLocationId 
+                          ? t('Select Location First') 
+                          : loadingShelves 
+                            ? t('Loading...') 
+                            : t('Select Shelf')
+                        }
+                      </option>
+                      {shelves.map((shelf) => (
+                        <option key={shelf.id} value={shelf.code}>
+                          {shelf.name} ({shelf.code}) - {shelf.current_capacity}/{shelf.max_capacity || '∞'}
+                        </option>
+                      ))}
+                    </GlassSelect>
+                    {selectedLocationId && shelves.length === 0 && !loadingShelves && (
+                      <p className="text-sm text-gray-500 mt-1">
+                        No shelves found for this location. 
+                        <button
+                          type="button"
+                          onClick={() => window.open('/shelf-management', '_blank')}
+                          className="text-blue-600 hover:text-blue-800 ml-1 underline"
+                        >
+                          Create shelves
+                        </button>
+                      </p>
+                    )}
+                  </div>
+                )}
+              />
+            </div>
+
+            {/* Pricing and Stock */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Controller
+                name="price"
+                control={control}
+                render={({ field }) => (
+                  <PriceInput
+                    {...field}
+                    label={t('Price')}
+                    placeholder={t('0.00')}
+                    error={errors.price?.message}
+                  />
+                )}
+              />
+
               <Controller
                 name="costPrice"
                 control={control}
@@ -329,26 +427,14 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
                   <PriceInput
                     {...field}
                     label={t('Cost Price')}
+                    placeholder={t('0.00')}
                     error={errors.costPrice?.message}
-                  />
-                )}
-              />
-
-              <Controller
-                name="price"
-                control={control}
-                render={({ field }) => (
-                  <PriceInput
-                    {...field}
-                    label={t('Selling Price')}
-                    error={errors.price?.message}
                   />
                 )}
               />
             </div>
 
-            {/* Stock Management */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Controller
                 name="stockQuantity"
                 control={control}
@@ -356,12 +442,9 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
                   <GlassInput
                     {...field}
                     type="number"
-                    min="0"
-                    step="1"
-                    label={t('Current Stock')}
-                    placeholder="0"
+                    label={t('Stock Quantity')}
+                    placeholder={t('0')}
                     error={errors.stockQuantity?.message}
-                    onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
                   />
                 )}
               />
@@ -373,47 +456,55 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
                   <GlassInput
                     {...field}
                     type="number"
-                    min="0"
-                    step="1"
-                    label={t('Min Stock Level')}
-                    placeholder="0"
+                    label={t('Minimum Stock Level')}
+                    placeholder={t('0')}
                     error={errors.minStockLevel?.message}
-                    onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
-                  />
-                )}
-              />
-
-              <Controller
-                name="weight"
-                control={control}
-                render={({ field }) => (
-                  <GlassInput
-                    {...field}
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    label={t('Weight (kg)')}
-                    placeholder="0"
-                    error={errors.weight?.message}
-                    onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
                   />
                 )}
               />
             </div>
 
-            {/* Store Location */}
-            <Controller
-              name="storeShelf"
-              control={control}
-              render={({ field }) => (
-                <GlassInput
-                  {...field}
-                  label={t('Store Shelf/Location')}
-                  placeholder={t('e.g., Aisle A, Shelf B1')}
-                  error={errors.storeShelf?.message}
-                />
-              )}
-            />
+            {/* Condition and Supplier */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Controller
+                name="condition"
+                control={control}
+                render={({ field }) => (
+                  <GlassSelect
+                    {...field}
+                    label={t('Condition')}
+                    error={errors.condition?.message}
+                  >
+                    <option value="">{t('Select Condition')}</option>
+                    <option value="new">{t('New')}</option>
+                    <option value="like-new">{t('Like New')}</option>
+                    <option value="good">{t('Good')}</option>
+                    <option value="fair">{t('Fair')}</option>
+                    <option value="poor">{t('Poor')}</option>
+                    <option value="refurbished">{t('Refurbished')}</option>
+                  </GlassSelect>
+                )}
+              />
+
+              <Controller
+                name="supplierId"
+                control={control}
+                render={({ field }) => (
+                  <GlassSelect
+                    {...field}
+                    label={t('Supplier')}
+                    error={errors.supplierId?.message}
+                  >
+                    <option value="">{t('Select Supplier')}</option>
+                    {suppliers.map((supplier) => (
+                      <option key={supplier.id} value={supplier.id}>
+                        {supplier.name}
+                      </option>
+                    ))}
+                  </GlassSelect>
+                )}
+              />
+            </div>
 
             {/* Tags */}
             <div>

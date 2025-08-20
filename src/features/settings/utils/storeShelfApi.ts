@@ -35,18 +35,6 @@ export class StoreShelfApi {
       if (filters.zone) {
         query = query.eq('zone', filters.zone);
       }
-      if (filters.aisle) {
-        query = query.eq('aisle', filters.aisle);
-      }
-      if (filters.row_number !== undefined) {
-        query = query.eq('row_number', filters.row_number);
-      }
-      if (filters.column_number !== undefined) {
-        query = query.eq('column_number', filters.column_number);
-      }
-      if (filters.floor_level !== undefined) {
-        query = query.eq('floor_level', filters.floor_level);
-      }
       if (filters.is_active !== undefined) {
         query = query.eq('is_active', filters.is_active);
       }

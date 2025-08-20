@@ -158,6 +158,15 @@ const QUICK_ACTIONS: QuickAction[] = [
     path: '/lats/payment-analytics',
     color: 'from-purple-500 to-purple-600',
     category: 'analytics'
+  },
+  {
+    id: 'beem-test',
+    name: 'Beem Test',
+    description: 'Test Beem Africa payment integration',
+    icon: CreditCard,
+    path: '/lats/beem-test',
+    color: 'from-blue-500 to-blue-600',
+    category: 'sales'
   }
 ];
 

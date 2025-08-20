@@ -26,6 +26,12 @@ import { supabase } from '../../../lib/supabaseClient';
 import { useAuth } from '../../../context/AuthContext';
 import { retryWithBackoff } from '../../../lib/supabaseClient';
 import { getActiveBrands, Brand } from '../../../lib/brandApi';
+import { getActiveCategories, Category } from '../../../lib/categoryApi';
+import { getActiveSuppliers, Supplier } from '../../../lib/supplierApi';
+import { StoreLocation } from '../../settings/types/storeLocation';
+import { StoreShelf } from '../../settings/types/storeShelf';
+import { storeLocationApi } from '../../settings/utils/storeLocationApi';
+import { storeShelfApi } from '../../settings/utils/storeShelfApi';
 
 // ProductImage interface for form validation
 const ProductImageSchema = z.object({
@@ -76,10 +82,40 @@ type ProductImage = z.infer<typeof ProductImageSchema>;
 
 const AddProductPage: React.FC = () => {
   const navigate = useNavigate();
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [brands, setBrands] = useState<Brand[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [storeLocations, setStoreLocations] = useState<StoreLocation[]>([]);
+  const [shelves, setShelves] = useState<StoreShelf[]>([]);
+  const [loadingLocations, setLoadingLocations] = useState(false);
+  const [loadingShelves, setLoadingShelves] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [hasSubmitted, setHasSubmitted] = useState(false);
+  const [currentErrors, setCurrentErrors] = useState<Record<string, string>>({});
+
+  // Initial form data
+  const [formData, setFormData] = useState({
+    name: '',
+    sku: '',
+    barcode: '',
+    categoryId: '',
+    brandId: '',
+    supplierId: '',
+    condition: '',
+    storeLocationId: '',
+    storeShelf: '',
+    price: 0,
+    costPrice: 0,
+    stockQuantity: 0,
+    minStockLevel: 5,
+    internalNotes: '',
+    images: [] as any[],
+    metadata: {} as Record<string, any>,
+    // product-level attributes when not using variants
+    attributes: {} as Record<string, any>
+  });
+
   const { 
-    categories, 
-    brands: storeBrands, 
-    suppliers,
     createProduct,
     loadCategories,
     loadBrands,
@@ -112,7 +148,6 @@ const AddProductPage: React.FC = () => {
   // Additional state variables like NewDevicePage
   const [isLoading, setIsLoading] = useState(false);
   const [showBrandSuggestions, setShowBrandSuggestions] = useState(false);
-  const [hasSubmitted, setHasSubmitted] = useState(false);
   const [customAttributeInput, setCustomAttributeInput] = useState('');
   const [showCustomInput, setShowCustomInput] = useState<number | null>(null);
   // Product-level specifications (for non-variant mode)
@@ -127,38 +162,6 @@ const AddProductPage: React.FC = () => {
   // Variant specifications modal visibility
   const [showVariantSpecificationsModal, setShowVariantSpecificationsModal] = useState(false);
   const [currentVariantIndex, setCurrentVariantIndex] = useState<number | null>(null);
-
-  // Initial form data
-  const [formData, setFormData] = useState({
-    name: '',
-    sku: '',
-    barcode: '',
-    categoryId: '',
-    brand: '',
-    supplierId: '',
-    condition: '',
-    storeShelf: '',
-    price: 0,
-    costPrice: 0,
-    stockQuantity: 0,
-    minStockLevel: 5,
-    internalNotes: '',
-
-    images: [] as any[],
-    metadata: {} as Record<string, any>,
-    // product-level attributes when not using variants
-    attributes: {} as Record<string, any>
-  });
-
-  // Watch specific form values for completion calculation
-  const name = formData.name;
-  const sku = formData.sku;
-  const categoryId = formData.categoryId;
-  const condition = formData.condition;
-  const price = formData.price;
-  const costPrice = formData.costPrice;
-  const stockQuantity = formData.stockQuantity;
-  const minStockLevel = formData.minStockLevel;
 
   // Load data on mount
   useEffect(() => {
@@ -215,15 +218,15 @@ const AddProductPage: React.FC = () => {
   // Debounced name checking
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      if (name && name.trim().length >= 3) {
-        checkDuplicateName(name);
+      if (formData.name && formData.name.trim().length >= 3) {
+        checkDuplicateName(formData.name);
       } else {
         setNameExists(false);
       }
     }, 500);
 
     return () => clearTimeout(timeoutId);
-  }, [name]);
+  }, [formData.name]);
 
   // Utility function to safely insert image records
   const insertImageRecordSafely = async (image: any, productId: string) => {
@@ -512,7 +515,7 @@ const AddProductPage: React.FC = () => {
   }, [validateForm]);
 
   // Get current validation errors for display - only show after submission
-  const currentErrors = React.useMemo(() => {
+  const validationErrors = React.useMemo(() => {
     if (!hasSubmitted) return {};
     const { errors } = validateForm();
     return errors;
@@ -521,14 +524,14 @@ const AddProductPage: React.FC = () => {
   // Calculate form completion percentage
   const calculateCompletion = () => {
     const fields = [
-      name,
-      sku,
-      categoryId,
-      condition,
-      price,
-      costPrice,
-      stockQuantity,
-      minStockLevel
+      formData.name,
+      formData.sku,
+      formData.categoryId,
+      formData.condition,
+      formData.price,
+      formData.costPrice,
+      formData.stockQuantity,
+      formData.minStockLevel
     ];
     
     const filledFields = fields.filter(field => {
@@ -812,6 +815,47 @@ const AddProductPage: React.FC = () => {
     }
   };
 
+  // Load store locations and shelves
+  useEffect(() => {
+    const loadStoreData = async () => {
+      try {
+        setLoadingLocations(true);
+        const locations = await storeLocationApi.getAll();
+        setStoreLocations(locations);
+      } catch (error) {
+        console.error('Error loading store locations:', error);
+        toast.error('Failed to load store locations');
+      } finally {
+        setLoadingLocations(false);
+      }
+    };
+
+    loadStoreData();
+  }, []);
+
+  // Load shelves when location changes
+  useEffect(() => {
+    const loadShelves = async () => {
+      if (!formData.storeLocationId) {
+        setShelves([]);
+        return;
+      }
+
+      try {
+        setLoadingShelves(true);
+        const locationShelves = await storeShelfApi.getShelvesByLocation(formData.storeLocationId);
+        setShelves(locationShelves);
+      } catch (error) {
+        console.error('Error loading shelves:', error);
+        toast.error('Failed to load shelves');
+      } finally {
+        setLoadingShelves(false);
+      }
+    };
+
+    loadShelves();
+  }, [formData.storeLocationId]);
+
   return (
     <div className="p-4 sm:p-6 h-full overflow-y-auto pt-8">
       <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6">
@@ -1013,22 +1057,79 @@ const AddProductPage: React.FC = () => {
                   
 
                   
-                  {/* Storage Location */}
-                  <div>
-                    <label htmlFor="store-shelf" className="block mb-2 font-medium text-gray-700">
-                      Storage Location
-                    </label>
-                    <input
-                      id="store-shelf"
-                      type="text"
-                      className="w-full py-3 px-3 bg-white/30 backdrop-blur-md border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none transition-colors"
-                      placeholder="Storage location"
-                      value={formData.storeShelf}
-                      onChange={e => setFormData(prev => ({ ...prev, storeShelf: e.target.value }))}
-                      autoComplete="off"
-                      autoCorrect="off"
-                      spellCheck={false}
-                    />
+                  {/* Store Location and Shelf Selection */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Store Location */}
+                    <div>
+                      <label 
+                        htmlFor="store-location-select" 
+                        className="block mb-2 font-medium text-gray-700"
+                      >
+                        <MapPin className="w-4 h-4 inline mr-2" />
+                        Store Location
+                      </label>
+                      <select
+                        id="store-location-select"
+                        className="w-full py-3 px-3 bg-white/30 backdrop-blur-md border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none transition-colors"
+                        value={formData.storeLocationId || ''}
+                        onChange={e => setFormData(prev => ({ 
+                          ...prev, 
+                          storeLocationId: e.target.value,
+                          storeShelf: '' // Reset shelf when location changes
+                        }))}
+                      >
+                        <option value="">Select Store Location</option>
+                        {storeLocations.map((location) => (
+                          <option key={location.id} value={location.id}>
+                            {location.name} ({location.city})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Shelf Selection */}
+                    <div>
+                      <label 
+                        htmlFor="store-shelf-select" 
+                        className="block mb-2 font-medium text-gray-700"
+                      >
+                        <Layers className="w-4 h-4 inline mr-2" />
+                        Shelf
+                      </label>
+                      <select
+                        id="store-shelf-select"
+                        className="w-full py-3 px-3 bg-white/30 backdrop-blur-md border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none transition-colors"
+                        value={formData.storeShelf}
+                        onChange={e => setFormData(prev => ({ ...prev, storeShelf: e.target.value }))}
+                        disabled={!formData.storeLocationId}
+                      >
+                        <option value="">
+                          {!formData.storeLocationId 
+                            ? 'Select Location First' 
+                            : 'Select Shelf'
+                          }
+                        </option>
+                        {shelves.map((shelf) => (
+                          <option key={shelf.id} value={shelf.code}>
+                            {shelf.name} ({shelf.code}) - {shelf.current_capacity}/{shelf.max_capacity || '∞'}
+                          </option>
+                        ))}
+                      </select>
+                      {formData.storeLocationId && shelves.length === 0 && (
+                        <div className="mt-2 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                          <div className="text-sm text-yellow-800">
+                            No shelves found for this location. 
+                            <button
+                              type="button"
+                              onClick={() => window.open('/shelf-management', '_blank')}
+                              className="text-blue-600 hover:text-blue-800 ml-1 underline"
+                            >
+                              Create shelves
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                   
                   {/* Supplier */}

@@ -416,64 +416,6 @@ export const ShelfManagementPage: React.FC = () => {
             </div>
           </div>
         )}
-
-        {showFilters && (
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Aisle</label>
-              <GlassInput
-                value={filters.aisle || ''}
-                onChange={(e) => setFilters(prev => ({ 
-                  ...prev, 
-                  aisle: e.target.value || undefined 
-                }))}
-                placeholder="Filter by aisle (A, B, C, etc.)"
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium mb-1">Row Number</label>
-              <GlassInput
-                type="number"
-                value={filters.row_number || ''}
-                onChange={(e) => setFilters(prev => ({ 
-                  ...prev, 
-                  row_number: e.target.value ? Number(e.target.value) : undefined 
-                }))}
-                placeholder="Filter by row number"
-                min="1"
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium mb-1">Column Number</label>
-              <GlassInput
-                type="number"
-                value={filters.column_number || ''}
-                onChange={(e) => setFilters(prev => ({ 
-                  ...prev, 
-                  column_number: e.target.value ? Number(e.target.value) : undefined 
-                }))}
-                placeholder="Filter by column number"
-                min="1"
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium mb-1">Floor Level</label>
-              <GlassInput
-                type="number"
-                value={filters.floor_level || ''}
-                onChange={(e) => setFilters(prev => ({ 
-                  ...prev, 
-                  floor_level: e.target.value ? Number(e.target.value) : undefined 
-                }))}
-                placeholder="Filter by floor level"
-                min="1"
-              />
-            </div>
-          </div>
-        )}
       </GlassCard>
 
       {/* Shelves Grid */}
@@ -534,18 +476,6 @@ export const ShelfManagementPage: React.FC = () => {
                   </GlassBadge>
                 )}
               </div>
-
-              {/* Row & Column Information */}
-              {(shelf.row_number || shelf.column_number || shelf.aisle) && (
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  {shelf.aisle && <span>Aisle: {shelf.aisle}</span>}
-                  {shelf.row_number && <span>Row: {shelf.row_number}</span>}
-                  {shelf.column_number && <span>Col: {shelf.column_number}</span>}
-                  {shelf.floor_level && shelf.floor_level > 1 && (
-                    <span>Floor: {shelf.floor_level}</span>
-                  )}
-                </div>
-              )}
 
               {shelf.description && (
                 <p className="text-sm text-gray-600">{shelf.description}</p>
@@ -688,59 +618,6 @@ export const ShelfManagementPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Aisle</label>
-              <GlassInput
-                value={formData.aisle || ''}
-                onChange={(e) => setFormData(prev => ({ ...prev, aisle: e.target.value }))}
-                placeholder="A, B, C, etc."
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium mb-1">Row Number</label>
-              <GlassInput
-                type="number"
-                value={formData.row_number || ''}
-                onChange={(e) => setFormData(prev => ({ 
-                  ...prev, 
-                  row_number: e.target.value ? Number(e.target.value) : undefined 
-                }))}
-                placeholder="1, 2, 3, etc."
-                min="1"
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium mb-1">Column Number</label>
-              <GlassInput
-                type="number"
-                value={formData.column_number || ''}
-                onChange={(e) => setFormData(prev => ({ 
-                  ...prev, 
-                  column_number: e.target.value ? Number(e.target.value) : undefined 
-                }))}
-                placeholder="1, 2, 3, etc."
-                min="1"
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium mb-1">Floor Level</label>
-              <GlassInput
-                type="number"
-                value={formData.floor_level || 1}
-                onChange={(e) => setFormData(prev => ({ 
-                  ...prev, 
-                  floor_level: Number(e.target.value) 
-                }))}
-                placeholder="1, 2, 3, etc."
-                min="1"
-              />
-            </div>
-          </div>
-
           <div>
             <label className="block text-sm font-medium mb-1">Description</label>
             <GlassInput
@@ -826,18 +703,6 @@ export const ShelfManagementPage: React.FC = () => {
               </div>
               <div>
                 <span className="font-medium">Zone:</span> {selectedShelf.zone ? getZoneLabel(selectedShelf.zone) : 'N/A'}
-              </div>
-              <div>
-                <span className="font-medium">Aisle:</span> {selectedShelf.aisle || 'N/A'}
-              </div>
-              <div>
-                <span className="font-medium">Row:</span> {selectedShelf.row_number || 'N/A'}
-              </div>
-              <div>
-                <span className="font-medium">Column:</span> {selectedShelf.column_number || 'N/A'}
-              </div>
-              <div>
-                <span className="font-medium">Floor Level:</span> {selectedShelf.floor_level || 1}
               </div>
               <div>
                 <span className="font-medium">Capacity:</span> {selectedShelf.current_capacity}/{selectedShelf.max_capacity || '∞'}

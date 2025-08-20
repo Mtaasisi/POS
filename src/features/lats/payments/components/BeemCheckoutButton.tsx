@@ -33,7 +33,8 @@ export const BeemCheckoutButton: React.FC<BeemCheckoutButtonProps> = ({
     try {
       // Get Beem Africa credentials
       const credentials = {
-        ...getBeemCredentials(),
+        apiKey: '6d829f20896bd90e',
+        secretKey: 'NTg0ZjY5Mzc3MGFkMjU5Y2M2ZjY2NjFlNGEzNGRiZjZlNDQ5ZTlkM2YzNmEyMzE0ZmI3YzFjM2ZhYmMxYjk0Yw==',
         webhookUrl: `${window.location.origin}/api/beem-webhook`
       };
 

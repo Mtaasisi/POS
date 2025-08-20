@@ -1,6 +1,6 @@
 export const BEEM_CONFIG = {
   // API Configuration
-  API_BASE_URL: 'https://api.beem.africa',
+  API_BASE_URL: typeof window !== 'undefined' ? 'https://beem.africa/api' : (process.env.NEXT_PUBLIC_BEEM_API_URL || 'https://beem.africa/api'),
   API_VERSION: 'v1',
   
   // Default Credentials (for development)
@@ -75,8 +75,25 @@ export interface BeemPaymentStatus {
 
 // Helper function to get credentials
 export function getBeemCredentials(): BeemCredentials {
+  // Check if we're in browser environment
+  if (typeof window !== 'undefined') {
+    return {
+      apiKey: BEEM_CONFIG.DEFAULT_API_KEY,
+      secretKey: BEEM_CONFIG.DEFAULT_SECRET_KEY
+    };
+  }
+  
+  // Node.js environment - only access process.env if it exists
+  if (typeof process !== 'undefined' && process.env) {
+    return {
+      apiKey: process.env.NEXT_PUBLIC_BEEM_API_KEY || BEEM_CONFIG.DEFAULT_API_KEY,
+      secretKey: process.env.NEXT_PUBLIC_BEEM_SECRET_KEY || BEEM_CONFIG.DEFAULT_SECRET_KEY
+    };
+  }
+  
+  // Fallback to default credentials
   return {
-    apiKey: process.env.NEXT_PUBLIC_BEEM_API_KEY || BEEM_CONFIG.DEFAULT_API_KEY,
-    secretKey: process.env.NEXT_PUBLIC_BEEM_SECRET_KEY || BEEM_CONFIG.DEFAULT_SECRET_KEY
+    apiKey: BEEM_CONFIG.DEFAULT_API_KEY,
+    secretKey: BEEM_CONFIG.DEFAULT_SECRET_KEY
   };
 }

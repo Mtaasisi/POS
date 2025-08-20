@@ -1068,22 +1068,73 @@ const EditProductPage: React.FC = () => {
                 />
               </div>
 
-              {/* Storage Location */}
-              <div>
-                <label htmlFor="store-shelf" className="block text-sm font-medium text-gray-700 mb-2">
-                  Storage Location
-                </label>
-                <input
-                  id="store-shelf"
-                  type="text"
-                  className="w-full px-4 py-3 text-lg border-2 border-gray-300 rounded-lg bg-white/30 backdrop-blur-md focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
-                  placeholder="Storage location"
-                  value={formData.storeShelf}
-                  onChange={(e) => setFormData(prev => ({ ...prev, storeShelf: e.target.value }))}
-                  autoComplete="off"
-                  autoCorrect="off"
-                  spellCheck={false}
-                />
+              {/* Store Location and Shelf Selection */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Store Location */}
+                <div>
+                  <label htmlFor="store-location-select" className="block text-sm font-medium text-gray-700 mb-2">
+                    <MapPin className="w-4 h-4 inline mr-2" />
+                    Store Location
+                  </label>
+                  <select
+                    id="store-location-select"
+                    className="w-full px-4 py-3 text-lg border-2 border-gray-300 rounded-lg bg-white/30 backdrop-blur-md focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                    value={formData.storeLocationId || ''}
+                    onChange={(e) => setFormData(prev => ({ 
+                      ...prev, 
+                      storeLocationId: e.target.value,
+                      storeShelf: '' // Reset shelf when location changes
+                    }))}
+                  >
+                    <option value="">Select Store Location</option>
+                    {storeLocations.map((location) => (
+                      <option key={location.id} value={location.id}>
+                        {location.name} ({location.city})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Shelf Selection */}
+                <div>
+                  <label htmlFor="store-shelf-select" className="block text-sm font-medium text-gray-700 mb-2">
+                    <Layers className="w-4 h-4 inline mr-2" />
+                    Shelf
+                  </label>
+                  <select
+                    id="store-shelf-select"
+                    className="w-full px-4 py-3 text-lg border-2 border-gray-300 rounded-lg bg-white/30 backdrop-blur-md focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                    value={formData.storeShelf}
+                    onChange={(e) => setFormData(prev => ({ ...prev, storeShelf: e.target.value }))}
+                    disabled={!formData.storeLocationId}
+                  >
+                    <option value="">
+                      {!formData.storeLocationId 
+                        ? 'Select Location First' 
+                        : 'Select Shelf'
+                      }
+                    </option>
+                    {shelves.map((shelf) => (
+                      <option key={shelf.id} value={shelf.code}>
+                        {shelf.name} ({shelf.code}) - {shelf.current_capacity}/{shelf.max_capacity || '∞'}
+                      </option>
+                    ))}
+                  </select>
+                  {formData.storeLocationId && shelves.length === 0 && (
+                    <div className="mt-2 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                      <div className="text-sm text-yellow-800">
+                        No shelves found for this location. 
+                        <button
+                          type="button"
+                          onClick={() => window.open('/shelf-management', '_blank')}
+                          className="text-blue-600 hover:text-blue-800 ml-1 underline"
+                        >
+                          Create shelves
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Supplier */}

@@ -94,10 +94,6 @@ export interface StoreShelfFilters {
   shelf_type?: string;
   section?: string;
   zone?: string;
-  aisle?: string;
-  row_number?: number;
-  column_number?: number;
-  floor_level?: number;
   is_active?: boolean;
   is_accessible?: boolean;
   is_refrigerated?: boolean;

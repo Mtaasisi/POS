@@ -1,14 +1,17 @@
 import { PaymentProvider, OrderData, OrderResult, StatusResult, PaymentCredentials } from '../types';
-import { getBeemCredentials } from '../config/beem';
+import { BEEM_CONFIG } from '../config/beem';
 
 export class BeemPaymentProvider implements PaymentProvider {
   id = 'beem' as const;
   
-  private baseUrl = 'https://api.beem.africa';
+  private baseUrl = BEEM_CONFIG.API_BASE_URL;
   private credentials: PaymentCredentials;
 
   constructor(credentials?: PaymentCredentials) {
-    this.credentials = credentials || getBeemCredentials();
+    this.credentials = credentials || {
+      apiKey: '6d829f20896bd90e',
+      secretKey: 'NTg0ZjY5Mzc3MGFkMjU5Y2M2ZjY2NjFlNGEzNGRiZjZlNDQ5ZTlkM2YzNmEyMzE0ZmI3YzFjM2ZhYmMxYjk0Yw=='
+    };
   }
 
   async createOrder(data: OrderData, credentials?: PaymentCredentials): Promise<OrderResult> {
@@ -38,6 +41,17 @@ export class BeemPaymentProvider implements PaymentProvider {
         metadata: data.metadata
       };
 
+      console.log('🔍 Beem API Request:', {
+        url: `${this.baseUrl}/v1/checkout/sessions`,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+          'X-Secret-Key': secretKey
+        },
+        body: checkoutData
+      });
+
       const response = await fetch(`${this.baseUrl}/v1/checkout/sessions`, {
         method: 'POST',
         headers: {
@@ -48,7 +62,14 @@ export class BeemPaymentProvider implements PaymentProvider {
         body: JSON.stringify(checkoutData)
       });
 
+      console.log('🔍 Beem API Response:', {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries())
+      });
+
       const result = await response.json();
+      console.log('🔍 Beem API Result:', result);
 
       if (response.ok && result.success) {
         return {
@@ -65,6 +86,17 @@ export class BeemPaymentProvider implements PaymentProvider {
         };
       }
     } catch (error) {
+      console.error('❌ Beem API Error:', error);
+      
+      // If it's a network error (like DNS resolution), provide a helpful message
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        return {
+          success: false,
+          message: 'Beem Africa API is currently unavailable. Please check your internet connection or try again later.',
+          raw: error
+        };
+      }
+      
       return {
         success: false,
         message: `Error creating Beem Africa checkout: ${error instanceof Error ? error.message : 'Unknown error'}`,
