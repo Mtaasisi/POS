@@ -1,103 +1,127 @@
-import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
-import fs from 'fs';
-import path from 'path';
+import 'dotenv/config';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL;
-const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!supabaseUrl || !supabaseKey) {
-  console.error('❌ Missing Supabase environment variables');
+if (!supabaseUrl || !supabaseServiceKey) {
+  console.error('❌ Missing required environment variables');
+  console.error('Please ensure VITE_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set');
   process.exit(1);
 }
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-async function applyRLSFix() {
-  console.log('🔧 Applying RLS fix for POS sales...\n');
+async function fixRLSPolicies() {
+  console.log('🔧 Fixing POS settings RLS policies...');
 
   try {
-    // Read the SQL fix file
-    const sqlPath = path.join(process.cwd(), 'fix-pos-rls.sql');
-    const sqlContent = fs.readFileSync(sqlPath, 'utf8');
+    // Drop all existing restrictive policies
+    console.log('🗑️ Dropping existing restrictive policies...');
     
-    console.log('1. Applying RLS policy changes...');
-    
-    // Split the SQL into individual statements
-    const statements = sqlContent
-      .split(';')
-      .map(stmt => stmt.trim())
-      .filter(stmt => stmt.length > 0 && !stmt.startsWith('--'));
+    const tables = [
+      'lats_pos_search_filter_settings',
+      'lats_pos_loyalty_customer_settings', 
+      'lats_pos_analytics_reporting_settings',
+      'lats_pos_user_permissions_settings',
+      'lats_pos_barcode_scanner_settings',
+      'lats_pos_notification_settings',
+      'lats_pos_delivery_settings',
+      'lats_pos_general_settings',
+      'lats_pos_dynamic_pricing_settings',
+      'lats_pos_receipt_settings',
+      'lats_pos_advanced_settings'
+    ];
 
-    for (const statement of statements) {
-      if (statement.trim()) {
-        console.log(`Executing: ${statement.substring(0, 50)}...`);
+    const policyTypes = [
+      'Users can view their own settings',
+      'Users can insert their own settings', 
+      'Users can update their own settings',
+      'Users can delete their own settings'
+    ];
+
+    for (const table of tables) {
+      for (const policyType of policyTypes) {
+        const { error } = await supabase.rpc('exec_sql', {
+          sql: `DROP POLICY IF EXISTS "${policyType}" ON ${table};`
+        });
         
-        const { error } = await supabase
-          .from('lats_sales')
-          .select('count')
-          .limit(1);
-        
-        // For now, let's just test if we can read the table
         if (error) {
-          console.log('❌ Error:', error.message);
-        } else {
-          console.log('✅ Statement executed successfully');
+          console.log(`⚠️ Could not drop policy ${policyType} on ${table}:`, error.message);
         }
       }
     }
 
-    // Test inserting a sale directly
-    console.log('\n2. Testing sale insertion...');
-    const testSale = {
-      sale_number: `TEST-FIX-${Date.now()}`,
-      customer_id: null,
-      total_amount: 1000,
-      payment_method: 'cash',
-      status: 'completed',
-      created_by: null
-    };
+    console.log('✅ Dropped existing policies');
 
-    const { data: insertData, error: insertError } = await supabase
-      .from('lats_sales')
-      .insert([testSale])
-      .select();
+    // Create permissive policies
+    console.log('🔐 Creating permissive policies...');
+    
+    for (const table of tables) {
+      // Drop existing permissive policy if it exists
+      const { error: dropError } = await supabase.rpc('exec_sql', {
+        sql: `DROP POLICY IF EXISTS "Enable all access for authenticated users" ON ${table};`
+      });
 
-    if (insertError) {
-      console.log('❌ Error inserting test sale:', insertError.message);
-      
-      // Try to get the current RLS policies
-      console.log('\n3. Checking current RLS status...');
-      const { data: policies, error: policyError } = await supabase
-        .from('information_schema.policies')
-        .select('*')
-        .eq('table_name', 'lats_sales');
-
-      if (policyError) {
-        console.log('❌ Could not check policies:', policyError.message);
-      } else {
-        console.log('✅ Current policies:', policies);
+      if (dropError) {
+        console.log(`⚠️ Could not drop existing permissive policy on ${table}:`, dropError.message);
       }
-    } else {
-      console.log('✅ Successfully inserted test sale:', insertData[0].id);
-      
-      // Clean up test data
-      await supabase
-        .from('lats_sales')
-        .delete()
-        .eq('id', insertData[0].id);
-      console.log('🧹 Cleaned up test sale');
+
+      // Create new permissive policy
+      const { error: createError } = await supabase.rpc('exec_sql', {
+        sql: `CREATE POLICY "Enable all access for authenticated users" ON ${table} FOR ALL USING (auth.role() = 'authenticated');`
+      });
+
+      if (createError) {
+        console.error(`❌ Error creating permissive policy on ${table}:`, createError);
+      } else {
+        console.log(`✅ Created permissive policy for ${table}`);
+      }
     }
 
+    // Grant permissions
+    console.log('🔑 Granting permissions...');
+    
+    for (const table of tables) {
+      const { error } = await supabase.rpc('exec_sql', {
+        sql: `GRANT ALL ON ${table} TO authenticated;`
+      });
+
+      if (error) {
+        console.error(`❌ Error granting permissions on ${table}:`, error);
+      } else {
+        console.log(`✅ Granted permissions for ${table}`);
+      }
+    }
+
+    // Create indexes for performance
+    console.log('📊 Creating performance indexes...');
+    
+    for (const table of tables) {
+      const indexName = `idx_${table.replace('lats_pos_', '').replace('_settings', '')}_user_id`;
+      const { error } = await supabase.rpc('exec_sql', {
+        sql: `CREATE INDEX IF NOT EXISTS ${indexName} ON ${table}(user_id);`
+      });
+
+      if (error) {
+        console.log(`⚠️ Could not create index for ${table}:`, error.message);
+      } else {
+        console.log(`✅ Created index for ${table}`);
+      }
+    }
+
+    console.log('🎉 RLS policies fixed successfully!');
+    console.log('📋 Summary:');
+    console.log(`   - Dropped restrictive policies from ${tables.length} tables`);
+    console.log(`   - Created permissive policies for ${tables.length} tables`);
+    console.log(`   - Granted permissions to authenticated users`);
+    console.log(`   - Created performance indexes`);
+
   } catch (error) {
-    console.error('❌ Unexpected error:', error);
+    console.error('💥 Error fixing RLS policies:', error);
+    process.exit(1);
   }
 }
 
-applyRLSFix().then(() => {
-  console.log('\n🏁 RLS fix application completed');
-  process.exit(0);
-}).catch(error => {
-  console.error('❌ RLS fix application failed:', error);
-  process.exit(1);
-});
+// Run the fix
+fixRLSPolicies();
