@@ -92,6 +92,7 @@ import ProductDetailPage from './features/lats/pages/ProductDetailPage';
 import POSPage from './features/lats/pages/POSPage';
 import GeneralSettingsTestPage from './features/lats/pages/GeneralSettingsTestPage';
 import InventoryManagementPage from './features/lats/pages/InventoryManagementPage';
+import BeemTestPage from './features/lats/pages/BeemTestPage';
 
 import { initializeDatabaseCheck } from './lib/databaseUtils';
 import { supabase } from './lib/supabaseClient';
@@ -342,6 +343,7 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
           {/* Payment routes */}
           <Route path="/lats/payment-history" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><PaymentHistoryPage /></RoleProtectedRoute>} />
           <Route path="/lats/payment-analytics" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><PaymentAnalyticsPage /></RoleProtectedRoute>} />
+          <Route path="/lats/beem-test" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><BeemTestPage /></RoleProtectedRoute>} />
           
           {/* Global Search Route */}
           <Route path="/search" element={<GlobalSearchPage />} />

@@ -173,6 +173,12 @@ const AppLayout: React.FC = () => {
         icon: <Package size={20} />,
         roles: ['admin', 'technician']
       },
+      {
+        path: '/lats/beem-test',
+        label: 'Beem Test',
+        icon: <CreditCard size={20} />,
+        roles: ['admin', 'customer-care']
+      },
 
       // Customer Management
       {
