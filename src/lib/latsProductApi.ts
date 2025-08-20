@@ -16,11 +16,6 @@ export interface LatsProduct {
   brandId?: string;
   supplierId?: string;
   images?: string[];
-  tags?: string[];
-  isFeatured: boolean;
-  isDigital: boolean;
-  requiresShipping: boolean;
-  taxRate: number;
   totalQuantity: number;
   totalValue: number;
   createdAt: string;
@@ -39,12 +34,6 @@ export interface LatsProductVariant {
   quantity: number;
   minQuantity: number;
   barcode?: string;
-  weight?: number;
-  dimensions?: {
-    length?: number;
-    width?: number;
-    height?: number;
-  };
   createdAt: string;
   updatedAt: string;
 }
@@ -58,11 +47,6 @@ export interface CreateProductData {
   categoryId: string;
   brandId?: string;
   supplierId?: string;
-  tags?: string[];
-  isFeatured?: boolean;
-  isDigital?: boolean;
-  requiresShipping?: boolean;
-  taxRate?: number;
   variants: Array<{
     sku: string;
     name: string;
@@ -71,12 +55,6 @@ export interface CreateProductData {
     costPrice: number;
     quantity: number;
     minQuantity: number;
-    weight?: number;
-    dimensions?: {
-      length?: number;
-      width?: number;
-      height?: number;
-    };
     attributes?: Record<string, any>;
   }>;
   images?: Array<{
@@ -103,7 +81,6 @@ export async function createProduct(
       name: productWithoutImages.name,
       description: productWithoutImages.description,
       category_id: productWithoutImages.categoryId,
-      tags: productWithoutImages.tags || [],
       is_active: productWithoutImages.isActive ?? true,
       total_quantity: 0,
       total_value: 0
@@ -195,12 +172,7 @@ export async function createProduct(
       categoryId: product.category_id,
       brandId: product.brand_id,
       supplierId: product.supplier_id,
-      tags: product.tags,
       isActive: product.is_active,
-      isFeatured: productWithoutImages.isFeatured ?? false,
-      isDigital: productWithoutImages.isDigital ?? false,
-      requiresShipping: productWithoutImages.requiresShipping ?? true,
-      taxRate: productWithoutImages.taxRate ?? 0,
       totalQuantity: product.total_quantity,
       totalValue: product.total_value,
       createdAt: product.created_at,
@@ -239,12 +211,7 @@ export async function getProduct(productId: string): Promise<LatsProduct & { ima
     categoryId: product.category_id,
     brandId: product.brand_id,
     supplierId: product.supplier_id,
-    tags: product.tags,
     isActive: product.is_active,
-    isFeatured: product.is_featured,
-    isDigital: product.is_digital,
-    requiresShipping: product.requires_shipping,
-    taxRate: product.tax_rate,
     totalQuantity: product.total_quantity,
     totalValue: product.total_value,
     createdAt: product.created_at,
@@ -329,12 +296,7 @@ export async function getProducts(): Promise<LatsProduct[]> {
       categoryId: product.category_id,
       brandId: product.brand_id,
       supplierId: product.supplier_id,
-      tags: product.tags,
       isActive: product.is_active,
-      isFeatured: product.is_featured,
-      isDigital: product.is_digital,
-      requiresShipping: product.requires_shipping,
-      taxRate: product.tax_rate,
       totalQuantity: product.total_quantity,
       totalValue: product.total_value,
       createdAt: product.created_at,

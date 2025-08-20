@@ -28,7 +28,8 @@ import SettingsPage from './features/settings/pages/SettingsPage';
 import AdminSettingsPage from './features/admin/pages/AdminSettingsPage';
 import AdminManagementPage from './features/admin/pages/AdminManagementPage';
 import UserManagementPage from './features/users/pages/UserManagementPage';
-import SupplierManagementPage from './features/lats/pages/SupplierManagementPage';
+import SupplierManagementPage from './features/settings/pages/SupplierManagementPage';
+import { SuppliersProvider } from './context/SuppliersContext';
 import SMSControlCenterPage from './features/reports/pages/SMSControlCenterPage';
 import PointsManagementPage from './features/finance/pages/PointsManagementPage';
 import PaymentsReportPage from './features/finance/pages/PaymentsReportPage';
@@ -42,6 +43,7 @@ import CustomerAnalyticsPage from './features/customers/pages/CustomerAnalyticsP
 import BirthdayManagementPage from './features/customers/pages/BirthdayManagementPage';
 import WhatsAppWebPage from './features/whatsapp/pages/WhatsAppWebPage';
 import WhatsAppTemplatesPage from './features/whatsapp/pages/WhatsAppTemplatesPage';
+import ChromeExtensionPage from './features/whatsapp/pages/ChromeExtensionPage';
 import NotificationSettingsPage from './features/notifications/pages/NotificationSettingsPage';
 import NotificationsPage from './features/notifications/pages/NotificationsPage';
 import ServiceManagementPage from './features/services/pages/ServiceManagementPage';
@@ -54,6 +56,8 @@ import GlobalSearchPage from './features/shared/pages/GlobalSearchPage';
 import LoadingDemoPage from './features/shared/pages/LoadingDemoPage';
 import BrandManagementPage from './features/settings/pages/BrandManagementPage';
 import CategoryManagementPage from './features/settings/pages/CategoryManagementPage';
+import { StoreLocationManagementPage } from './features/settings/pages/StoreLocationManagementPage';
+import { ShelfManagementPage } from './features/settings/pages/ShelfManagementPage';
 import DatabaseSetupPage from './features/admin/pages/DatabaseSetupPage';
 import BackupManagementPage from './features/backup/pages/BackupManagementPage';
 import ExcelImportPage from './features/reports/pages/ExcelImportPage';
@@ -82,10 +86,12 @@ import InventoryPage from './features/lats/pages/InventoryPage';
 import ProductCatalogPage from './features/lats/pages/ProductCatalogPage';
 import UnifiedInventoryPage from './features/lats/pages/UnifiedInventoryPage';
 import AddProductPage from './features/lats/pages/AddProductPage';
+import EditProductPage from './features/lats/pages/EditProductPage';
 
 import ProductDetailPage from './features/lats/pages/ProductDetailPage';
 import POSPage from './features/lats/pages/POSPage';
 import GeneralSettingsTestPage from './features/lats/pages/GeneralSettingsTestPage';
+import InventoryManagementPage from './features/lats/pages/InventoryManagementPage';
 
 import { initializeDatabaseCheck } from './lib/databaseUtils';
 import { supabase } from './lib/supabaseClient';
@@ -93,6 +99,10 @@ import { reminderService } from './lib/reminderService';
 import { initializeCache } from './lib/offlineCache';
 import { getPendingActions, clearPendingActions } from './lib/offlineSync';
 import HeaderSizeDiagnostic from './components/HeaderSizeDiagnostic';
+import BackgroundDataLoader from './components/BackgroundDataLoader';
+import { POSSettingsDatabaseSetup } from './components/POSSettingsDatabaseSetup';
+import DebugPanel from './components/DebugPanel';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
 
 // LoadingProgressWrapper component that can access the loading context
@@ -113,6 +123,9 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
   const { addCustomer } = useCustomers();
   const { assignToTechnician, updateDeviceStatus } = useDevices();
   const [showHeaderDiagnostic, setShowHeaderDiagnostic] = useState(false);
+  
+  // Enable keyboard shortcuts (moved here to have access to router context)
+  useKeyboardShortcuts();
 
   // Initialize database check on app startup
   useEffect(() => {
@@ -225,7 +238,9 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
 
         <Route path="/brand-management" element={<RoleProtectedRoute allowedRoles={['admin']}><BrandManagementPage /></RoleProtectedRoute>} />
         <Route path="/category-management" element={<RoleProtectedRoute allowedRoles={['admin']}><CategoryManagementPage /></RoleProtectedRoute>} />
-
+        <Route path="/supplier-management" element={<RoleProtectedRoute allowedRoles={['admin']}><SupplierManagementPage /></RoleProtectedRoute>} />
+        <Route path="/store-locations" element={<RoleProtectedRoute allowedRoles={['admin']}><StoreLocationManagementPage /></RoleProtectedRoute>} />
+        <Route path="/shelf-management" element={<RoleProtectedRoute allowedRoles={['admin']}><ShelfManagementPage /></RoleProtectedRoute>} />
         <Route path="/database-setup" element={<RoleProtectedRoute allowedRoles={['admin']}><DatabaseSetupPage /></RoleProtectedRoute>} />
         <Route path="/backup-management" element={<RoleProtectedRoute allowedRoles={['admin']}><BackupManagementPage /></RoleProtectedRoute>} />
         <Route path="/customers/import" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><ExcelImportPage /></RoleProtectedRoute>} />
@@ -275,6 +290,8 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
           <Route path="/whatsapp" element={<RoleProtectedRoute allowedRoles={['admin']}><WhatsAppWebPage /></RoleProtectedRoute>} />
           <Route path="/whatsapp-manager" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><WhatsAppWebPage /></RoleProtectedRoute>} />
           <Route path="/whatsapp-web" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><WhatsAppWebPage /></RoleProtectedRoute>} />
+          <Route path="/whatsapp/chrome-extension" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><ChromeExtensionPage /></RoleProtectedRoute>} />
+          <Route path="/chrome-extension" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><ChromeExtensionPage /></RoleProtectedRoute>} />
           
           {/* Diagnostics Routes */}
           <Route path="/diagnostics/new" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><NewDiagnosticRequestPage /></RoleProtectedRoute>} />
@@ -296,6 +313,9 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
           {/* Primary Unified Inventory Route */}
           <Route path="/lats/unified-inventory" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><UnifiedInventoryPage /></RoleProtectedRoute>} />
           
+          {/* Inventory Management Route */}
+          <Route path="/lats/inventory-management" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><InventoryManagementPage /></RoleProtectedRoute>} />
+          
           {/* Redirect old inventory routes to unified inventory */}
           <Route path="/lats/inventory" element={<Navigate to="/lats/unified-inventory" replace />} />
           <Route path="/lats/products" element={<Navigate to="/lats/unified-inventory" replace />} />
@@ -305,6 +325,9 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
           
           {/* Add Product Route */}
           <Route path="/lats/add-product" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><AddProductPage /></RoleProtectedRoute>} />
+          
+          {/* Edit Product Route */}
+          <Route path="/lats/products/:productId/edit" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><EditProductPage /></RoleProtectedRoute>} />
 
           <Route path="/lats/sales-reports" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><SalesReportsPage /></RoleProtectedRoute>} />
           <Route path="/lats/loyalty" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><CustomerLoyaltyPage /></RoleProtectedRoute>} />
@@ -400,6 +423,7 @@ function clearAllIndexedDB() {
 function App() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
 
   // --- Global scroll position persistence ---
   useEffect(() => {
@@ -436,6 +460,18 @@ function App() {
     initializeCache();
   }, []);
 
+  // Debug panel keyboard shortcut (Ctrl+Shift+D)
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.ctrlKey && event.shiftKey && event.key === 'D') {
+        setShowDebugPanel(prev => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   useEffect(() => {
     function handleOnline() {
       setIsOnline(true);
@@ -467,11 +503,16 @@ function App() {
                     <LoadingProvider>
                       <GeneralSettingsProvider>
                         <BrandsProvider>
-                          <AppContent 
-                            isOnline={isOnline} 
-                            isSyncing={isSyncing} 
-                          />
-                          <LoadingProgressWrapper />
+                          <SuppliersProvider>
+                            <POSSettingsDatabaseSetup>
+                              <AppContent 
+                                isOnline={isOnline} 
+                                isSyncing={isSyncing} 
+                              />
+                              <LoadingProgressWrapper />
+                              <BackgroundDataLoader />
+                            </POSSettingsDatabaseSetup>
+                          </SuppliersProvider>
                         </BrandsProvider>
                       </GeneralSettingsProvider>
                     </LoadingProvider>
@@ -506,6 +547,12 @@ function App() {
           },
         }}
       />
+      {import.meta.env.DEV && (
+        <DebugPanel 
+          isVisible={showDebugPanel} 
+          onToggle={() => setShowDebugPanel(prev => !prev)} 
+        />
+      )}
     </ErrorBoundary>
   );
 }

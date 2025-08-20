@@ -49,6 +49,34 @@ export interface UserSettings {
     warrantyPeriod: number;
     warrantyUnit: 'days' | 'weeks' | 'months' | 'years';
   };
+  delivery?: {
+    enable_delivery: boolean;
+    default_delivery_fee: number;
+    free_delivery_threshold: number;
+    max_delivery_distance: number;
+    enable_delivery_areas: boolean;
+    delivery_areas: string[];
+    area_delivery_fees: Record<string, number>;
+    area_delivery_times: Record<string, number>;
+    enable_delivery_hours: boolean;
+    delivery_start_time: string;
+    delivery_end_time: string;
+    enable_same_day_delivery: boolean;
+    enable_next_day_delivery: boolean;
+    delivery_time_slots: string[];
+    notify_customer_on_delivery: boolean;
+    notify_driver_on_assignment: boolean;
+    enable_sms_notifications: boolean;
+    enable_email_notifications: boolean;
+    enable_driver_assignment: boolean;
+    driver_commission: number;
+    require_signature: boolean;
+    enable_driver_tracking: boolean;
+    enable_scheduled_delivery: boolean;
+    enable_partial_delivery: boolean;
+    require_advance_payment: boolean;
+    advance_payment_percent: number;
+  };
 }
 
 /**

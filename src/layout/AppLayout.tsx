@@ -46,6 +46,12 @@ import {
   Clock,
   Upload,
   Download,
+  Home, 
+  BarChart3, 
+  Shield, 
+  Database,
+  MapPin,
+  Layers
 } from 'lucide-react';
 import GlassButton from '../features/shared/components/ui/GlassButton';
 
@@ -161,6 +167,12 @@ const AppLayout: React.FC = () => {
         icon: <Plus size={20} />,
         roles: ['admin', 'customer-care']
       },
+      {
+        path: '/lats/spare-parts',
+        label: 'Spare Parts',
+        icon: <Package size={20} />,
+        roles: ['admin', 'technician']
+      },
 
       // Customer Management
       {
@@ -233,6 +245,20 @@ const AppLayout: React.FC = () => {
         roles: ['admin']
       },
 
+      // Communication & Integration
+      {
+        path: '/whatsapp/chrome-extension',
+        label: 'Chrome Extension',
+        icon: <MessageSquare size={20} />,
+        roles: ['admin', 'customer-care']
+      },
+      {
+        path: '/chrome-extension',
+        label: 'Chrome Extension (Alt)',
+        icon: <MessageSquare size={20} />,
+        roles: ['admin', 'customer-care']
+      },
+
       // Diagnostics (Role-specific)
       {
         path: '/diagnostics/assigned',
@@ -245,6 +271,18 @@ const AppLayout: React.FC = () => {
         label: 'Diagnostic Reports',
         icon: <Stethoscope size={20} />,
         roles: ['admin']
+      },
+      {
+        path: '/store-locations',
+        label: 'Store Locations',
+        icon: <MapPin size={20} />,
+        roles: ['admin', 'customer-care']
+      },
+      {
+        path: '/shelf-management',
+        label: 'Shelf Management',
+        icon: <Layers size={20} />,
+        roles: ['admin', 'customer-care']
       }
     ];
     

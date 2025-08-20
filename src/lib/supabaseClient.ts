@@ -74,14 +74,16 @@ export const supabase = (() => {
         // Storage interface (only use localStorage in browser)
         storage: isBrowser ? window.localStorage : undefined,
       },
-      // Enable real-time subscriptions
+      // Enable real-time subscriptions with improved configuration
       realtime: {
         params: {
-          eventsPerSecond: 5, // Reduced to prevent overload
+          eventsPerSecond: 10, // Increased for better responsiveness
         },
-        // Add better real-time configuration
-        heartbeatIntervalMs: 30000,
-        reconnectAfterMs: (tries) => Math.min(tries * 2000, 30000), // Slower reconnection
+        // Improved real-time configuration for better stability
+        heartbeatIntervalMs: 15000, // More frequent heartbeats
+        reconnectAfterMs: (tries) => Math.min(tries * 1000, 15000), // Faster reconnection
+        timeoutMs: 20000, // Connection timeout
+        retryAttempts: 5, // Number of retry attempts
       },
       // Global headers - don't set Content-Type globally to avoid conflicts with file uploads
       global: {

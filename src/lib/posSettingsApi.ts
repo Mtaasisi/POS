@@ -133,6 +133,16 @@ export interface BarcodeScannerSettings {
   max_scan_history: number;
 }
 
+export interface DeliveryMethod {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  estimatedTime: string;
+  isDefault: boolean;
+  enabled: boolean;
+}
+
 export interface DeliverySettings {
   id?: string;
   user_id?: string;
@@ -404,15 +414,187 @@ export const SETTINGS_TABLES = {
 
 export type SettingsTableKey = keyof typeof SETTINGS_TABLES;
 
+// Enhanced cache for current user to prevent excessive auth calls
+let currentUserCache: { user: any; timestamp: number } | null = null;
+const USER_CACHE_DURATION = 10 * 60 * 1000; // 10 minutes (increased from 5)
+let cacheRefreshPromise: Promise<any> | null = null; // Prevent multiple simultaneous auth calls
+
 // API Functions for POS Settings
 export class POSSettingsAPI {
-  // Generic function to get current user
+  // Enhanced function to get current user with improved caching and deduplication
   private static async getCurrentUser() {
-    const { data: { user } } = await supabase.auth.getUser();
+    // Check cache first
+    if (currentUserCache && (Date.now() - currentUserCache.timestamp) < USER_CACHE_DURATION) {
+      // Only log cached user access occasionally to reduce spam
+      if (Math.random() < 0.01) { // 1% chance to log
+        console.log(`🔐 Using cached user:`, { id: currentUserCache.user.id, email: currentUserCache.user.email });
+      }
+      return currentUserCache.user;
+    }
+    
+    // If there's already a refresh in progress, wait for it
+    if (cacheRefreshPromise) {
+      console.log(`⏳ Waiting for existing auth refresh...`);
+      return await cacheRefreshPromise;
+    }
+    
+    // Start a new refresh
+    cacheRefreshPromise = this.performAuthRefresh();
+    try {
+      const user = await cacheRefreshPromise;
+      return user;
+    } finally {
+      cacheRefreshPromise = null;
+    }
+  }
+
+  // Separate method for actual auth refresh
+  private static async performAuthRefresh() {
+    console.log(`🔐 Getting current user from Supabase auth...`);
+    
+    // Get current session first
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    
+    if (sessionError) {
+      console.error(`❌ Session error:`, sessionError);
+    }
+    
+    if (!session) {
+      console.log(`⚠️ No active session found, trying to get user...`);
+    }
+    
+    const { data: { user }, error } = await supabase.auth.getUser();
+    
+    if (error) {
+      console.error(`❌ Auth error:`, error);
+    }
+    
+    console.log(`👤 Auth response:`, { user: user ? { id: user.id, email: user.email } : null, error });
+    
     if (!user) {
+      console.error(`❌ User not authenticated`);
       throw new Error('User not authenticated');
     }
+    
+    console.log(`✅ User authenticated:`, { id: user.id, email: user.email });
+    
+    // Cache the user
+    currentUserCache = { user, timestamp: Date.now() };
     return user;
+  }
+
+  // Clear user cache (call this on logout or when needed)
+  static clearUserCache() {
+    currentUserCache = null;
+    console.log(`🧹 User cache cleared`);
+  }
+
+  // Get default settings for a specific table
+  private static getDefaultSettings(tableKey: SettingsTableKey, userId: string): any {
+    const baseRecord = {
+      user_id: userId,
+      business_id: null
+    };
+
+    switch (tableKey) {
+      case 'general':
+        return {
+          ...baseRecord,
+          theme: 'light',
+          language: 'en',
+          currency: 'TZS',
+          timezone: 'Africa/Dar_es_Salaam',
+          date_format: 'DD/MM/YYYY',
+          time_format: '24',
+          show_product_images: true,
+          show_stock_levels: true,
+          show_prices: true,
+          show_barcodes: true,
+          products_per_page: 20,
+          auto_complete_search: true,
+          confirm_delete: true,
+          show_confirmations: true,
+          enable_sound_effects: true,
+          enable_animations: true,
+          enable_caching: true,
+          cache_duration: 300,
+          enable_lazy_loading: true,
+          max_search_results: 50
+        };
+      
+      case 'pricing':
+        return {
+          ...baseRecord,
+          enable_dynamic_pricing: true,
+          enable_loyalty_pricing: true,
+          enable_bulk_pricing: true,
+          enable_time_based_pricing: false,
+          enable_customer_pricing: false,
+          enable_special_events: false,
+          loyalty_discount_percent: 5.00,
+          loyalty_points_threshold: 1000,
+          loyalty_max_discount: 20.00,
+          bulk_discount_enabled: true,
+          bulk_discount_threshold: 10,
+          bulk_discount_percent: 10.00,
+          time_based_discount_enabled: false,
+          time_based_start_time: '18:00',
+          time_based_end_time: '22:00',
+          time_based_discount_percent: 15.00,
+          customer_pricing_enabled: false,
+          vip_customer_discount: 10.00,
+          regular_customer_discount: 5.00,
+          special_events_enabled: false,
+          special_event_discount_percent: 20.00
+        };
+      
+      case 'receipt':
+        return {
+          ...baseRecord,
+          receipt_template: 'standard',
+          receipt_width: 80,
+          receipt_font_size: 12,
+          show_business_logo: true,
+          show_business_name: true,
+          show_business_address: true,
+          show_business_phone: true,
+          show_business_email: false,
+          show_business_website: false,
+          show_transaction_id: true,
+          show_date_time: true,
+          show_cashier_name: true,
+          show_customer_name: true,
+          show_customer_phone: false,
+          show_product_names: true,
+          show_product_skus: false,
+          show_product_barcodes: false,
+          show_quantities: true,
+          show_unit_prices: true,
+          show_discounts: true,
+          show_subtotal: true,
+          show_tax: true,
+          show_discount_total: true,
+          show_grand_total: true,
+          show_payment_method: true,
+          show_change_amount: true,
+          auto_print_receipt: false,
+          print_duplicate_receipt: false,
+          enable_email_receipt: false,
+          enable_sms_receipt: false,
+          enable_receipt_numbering: true,
+          receipt_number_prefix: 'RCP',
+          receipt_number_start: 1,
+          receipt_number_format: 'RCP-{YEAR}-{NUMBER}',
+          show_footer_message: true,
+          footer_message: 'Thank you for your business!',
+          show_return_policy: false,
+          return_policy_text: 'Returns accepted within 7 days with receipt'
+        };
+      
+      default:
+        // Return base record for other settings types
+        return baseRecord;
+    }
   }
 
   // Generic function to load settings
@@ -423,21 +605,69 @@ export class POSSettingsAPI {
       const user = await this.getCurrentUser();
       const tableName = SETTINGS_TABLES[tableKey];
       
-      const { data, error } = await supabase
+      console.log(`🔍 Loading ${tableKey} settings for user ${user.id} from table ${tableName}`);
+      
+      // First, try to get existing records
+      const { data: existingData, error: existingError } = await supabase
         .from(tableName)
         .select('*')
-        .eq('user_id', user.id)
-        .single();
+        .eq('user_id', user.id);
 
-      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
-        console.error(`Error loading ${tableKey} settings:`, error);
-        throw error;
+      if (existingError) {
+        console.log(`⚠️ Error checking existing ${tableKey} settings:`, existingError);
+        
+        // Handle 406 Not Acceptable errors (RLS policy issues)
+        if (existingError.code === '406' || existingError.message?.includes('Not Acceptable')) {
+          console.log(`⚠️ 406 error for ${tableKey} settings - RLS policy issue, returning default settings`);
+          return this.getDefaultSettings(tableKey, user.id) as T;
+        }
+        
+        // Handle other errors
+        console.error(`❌ Error loading ${tableKey} settings:`, existingError);
+        return this.getDefaultSettings(tableKey, user.id) as T;
       }
 
-      return data as T;
+      // Check if we have existing records
+      if (existingData && existingData.length > 0) {
+        if (existingData.length === 1) {
+          console.log(`✅ Successfully loaded ${tableKey} settings:`, existingData[0]);
+          return existingData[0] as T;
+        } else {
+          console.log(`⚠️ Multiple ${tableKey} settings found (${existingData.length} records), using the first one`);
+          // Return the first record and let the migration clean up duplicates
+          return existingData[0] as T;
+        }
+      }
+
+      // No existing records found, create a default one
+      console.log(`📝 No existing ${tableKey} settings found, creating default record`);
+      
+      const defaultRecord = this.getDefaultSettings(tableKey, user.id);
+      
+      const { data: insertData, error: insertError } = await supabase
+        .from(tableName)
+        .insert(defaultRecord)
+        .select()
+        .single();
+      
+      if (insertError) {
+        console.error(`❌ Failed to create default record for ${tableKey}:`, insertError);
+        // Return default settings even if insert fails
+        return defaultRecord as T;
+      } else {
+        console.log(`✅ Created default record for ${tableKey}:`, insertData);
+        return insertData as T;
+      }
     } catch (error) {
-      console.error(`Error loading ${tableKey} settings:`, error);
-      return null;
+      console.error(`❌ Exception loading ${tableKey} settings:`, error);
+      // Return default settings instead of null
+      try {
+        const user = await this.getCurrentUser();
+        return this.getDefaultSettings(tableKey, user.id) as T;
+      } catch (userError) {
+        console.error(`❌ Could not get user for default settings:`, userError);
+        return null;
+      }
     }
   }
 
@@ -446,38 +676,111 @@ export class POSSettingsAPI {
     tableKey: SettingsTableKey,
     settings: Omit<T, 'id' | 'user_id' | 'created_at' | 'updated_at'>
   ): Promise<T | null> {
+    console.log(`🔧 POSSettingsAPI.saveSettings called for ${tableKey}`);
+    console.log(`📊 Settings data:`, settings);
+    
     try {
+      console.log(`👤 Getting current user...`);
       const user = await this.getCurrentUser();
+      console.log(`👤 Current user:`, user);
+      
       const tableName = SETTINGS_TABLES[tableKey];
+      console.log(`🗃️ Table name: ${tableName}`);
+      
+      // Note: Table existence check removed as information_schema is not accessible via REST API
+      console.log(`🔍 Proceeding with settings operation for table: ${tableName}`);
       
       // Check if settings already exist
-      const { data: existing } = await supabase
+      console.log(`🔍 Checking for existing settings for user ${user.id}...`);
+      const { data: existing, error: checkError } = await supabase
         .from(tableName)
         .select('id')
         .eq('user_id', user.id)
         .single();
 
+      if (checkError && checkError.code !== 'PGRST116') {
+        console.error(`❌ Error checking existing settings:`, checkError);
+      }
+
+      console.log(`📋 Existing settings:`, existing);
+
       if (existing) {
         // Update existing settings
+        console.log(`🔄 Updating existing settings...`);
+        // Remove id field from update data to avoid conflicts
+        const { id, ...updateData } = settings;
+        console.log(`📝 Update data:`, {
+          ...updateData,
+          user_id: user.id
+        });
         const { data, error } = await supabase
           .from(tableName)
           .update({
-            ...settings,
-            user_id: user.id,
-            updated_at: new Date().toISOString()
+            ...updateData,
+            user_id: user.id
           })
           .eq('user_id', user.id)
           .select()
           .single();
 
+        console.log(`🗃️ Database update response:`, { data, error });
+
         if (error) {
-          console.error(`Error updating ${tableKey} settings:`, error);
+          console.error(`❌ Error updating ${tableKey} settings:`, error);
+          console.error(`🔍 Database error details:`, {
+            code: error.code,
+            message: error.message,
+            details: error.details,
+            hint: error.hint
+          });
+          console.error(`🔍 Data that caused the error:`, {
+            ...updateData,
+            user_id: user.id
+          });
           throw error;
         }
 
+        console.log(`✅ Settings updated successfully in database:`, data);
+        console.log(`📊 Updated record ID:`, data.id);
+        console.log(`🕒 Updated at:`, data.updated_at);
+        
+        // Verify the data was actually updated by reading it back
+        console.log(`🔍 Verifying data was updated in database...`);
+        const { data: verifyData, error: verifyError } = await supabase
+          .from(tableName)
+          .select('*')
+          .eq('id', data.id)
+          .single();
+          
+        if (verifyError) {
+          console.error(`❌ Verification failed:`, verifyError);
+        } else {
+          console.log(`✅ Data verification successful:`, verifyData);
+          console.log(`📊 Verified record updated in database with ID:`, verifyData.id);
+          console.log(`🕒 Last updated:`, verifyData.updated_at);
+        }
+        
+        // Show total count of records in the table
+        console.log(`📊 Getting total record count...`);
+        const { count, error: countError } = await supabase
+          .from(tableName)
+          .select('*', { count: 'exact', head: true });
+        
+        if (countError) {
+          console.error(`❌ Error getting count:`, countError);
+        } else {
+          console.log(`📈 Total records in ${tableName}: ${count}`);
+        }
+        
         return data as T;
       } else {
         // Insert new settings
+        console.log(`➕ Inserting new settings...`);
+        console.log(`📝 Insert data:`, {
+          ...settings,
+          user_id: user.id
+        });
+        
         const { data, error } = await supabase
           .from(tableName)
           .insert({
@@ -487,15 +790,68 @@ export class POSSettingsAPI {
           .select()
           .single();
 
+        console.log(`🗃️ Database insert response:`, { data, error });
+
         if (error) {
-          console.error(`Error creating ${tableKey} settings:`, error);
+          console.error(`❌ Error creating ${tableKey} settings:`, error);
+          console.error(`🔍 Database error details:`, {
+            code: error.code,
+            message: error.message,
+            details: error.details,
+            hint: error.hint
+          });
+          console.error(`🔍 Data that caused the error:`, {
+            ...settings,
+            user_id: user.id
+          });
           throw error;
         }
 
+        console.log(`✅ Settings created successfully in database:`, data);
+        console.log(`📊 New record ID:`, data.id);
+        console.log(`🕒 Created at:`, data.created_at);
+        
+        // Verify the data was actually saved by reading it back
+        console.log(`🔍 Verifying data was saved to database...`);
+        const { data: verifyData, error: verifyError } = await supabase
+          .from(tableName)
+          .select('*')
+          .eq('id', data.id)
+          .single();
+          
+        if (verifyError) {
+          console.error(`❌ Verification failed:`, verifyError);
+        } else {
+          console.log(`✅ Data verification successful:`, verifyData);
+          console.log(`📊 Verified record exists in database with ID:`, verifyData.id);
+        }
+        
+        // Show total count of records in the table
+        console.log(`📊 Getting total record count...`);
+        const { count, error: countError } = await supabase
+          .from(tableName)
+          .select('*', { count: 'exact', head: true });
+        
+        if (countError) {
+          console.error(`❌ Error getting count:`, countError);
+        } else {
+          console.log(`📈 Total records in ${tableName}: ${count}`);
+        }
+        
+        console.log(`🎉 SAVE OPERATION COMPLETED SUCCESSFULLY`);
+        console.log(`📊 Final result:`, data);
+        console.log(`🕒 Operation completed at:`, new Date().toISOString());
         return data as T;
       }
     } catch (error) {
-      console.error(`Error saving ${tableKey} settings:`, error);
+      console.error(`💥 Error saving ${tableKey} settings:`, error);
+      console.error(`🔍 Error details:`, {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint
+      });
+      console.error(`❌ SAVE OPERATION FAILED`);
       return null;
     }
   }
@@ -668,8 +1024,11 @@ export class POSSettingsAPI {
 export const POSSettingsService = {
   // General Settings
   loadGeneralSettings: () => POSSettingsAPI.loadSettings<GeneralSettings>('general'),
-  saveGeneralSettings: (settings: Omit<GeneralSettings, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => 
-    POSSettingsAPI.saveSettings('general', settings),
+  saveGeneralSettings: (settings: Omit<GeneralSettings, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => {
+    console.log(`🔧 POSSettingsService.saveGeneralSettings called`);
+    console.log(`📊 Settings:`, settings);
+    return POSSettingsAPI.saveSettings('general', settings);
+  },
   updateGeneralSettings: (updates: Partial<GeneralSettings>) => 
     POSSettingsAPI.updateSettings('general', updates),
 

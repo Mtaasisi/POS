@@ -34,9 +34,11 @@ export const useGeneralSettingsUI = () => {
     loading: context.loading,
     error: context.error,
     
+    // Refresh function
+    refreshSettings: context.refreshSettings,
+    
     // Utility functions
     getProductImageClass: () => context.showProductImages ? 'product-image' : 'hidden-by-setting',
-    getStockLevelClass: () => context.showStockLevels ? 'stock-level' : 'hidden-by-setting',
     getPriceClass: () => context.showPrices ? 'price price-display' : 'hidden-by-setting',
     getBarcodeClass: () => context.showBarcodes ? 'barcode barcode-display' : 'hidden-by-setting',
     

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '../context/AuthContext';
 import { toast } from 'react-hot-toast';
 import {
   POSSettingsService,
@@ -356,7 +357,7 @@ const defaultAdvancedSettings: AdvancedSettings = {
 };
 
 // Hook for managing POS settings
-export function usePOSSettings<T extends any>(
+export function usePOSSettings<T>(
   settingsType: SettingsTableKey,
   defaultSettings: T
 ) {
@@ -364,6 +365,7 @@ export function usePOSSettings<T extends any>(
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { isAuthenticated } = useAuth();
 
   // Load settings from database
   const loadSettings = useCallback(async () => {
@@ -371,12 +373,57 @@ export function usePOSSettings<T extends any>(
       setLoading(true);
       setError(null);
       
-      const loadedSettings = await POSSettingsService[`load${settingsType.charAt(0).toUpperCase() + settingsType.slice(1)}Settings` as keyof typeof POSSettingsService]();
+      // Map settings type to the correct method name
+      const methodMap: Record<SettingsTableKey, keyof typeof POSSettingsService> = {
+        general: 'loadGeneralSettings',
+        pricing: 'loadDynamicPricingSettings',
+        receipt: 'loadReceiptSettings',
+        scanner: 'loadBarcodeScannerSettings',
+        delivery: 'loadDeliverySettings',
+        search: 'loadSearchFilterSettings',
+        permissions: 'loadUserPermissionsSettings',
+        loyalty: 'loadLoyaltyCustomerSettings',
+        analytics: 'loadAnalyticsReportingSettings',
+        notifications: 'loadNotificationSettings',
+        advanced: 'loadAdvancedSettings'
+      };
+      
+      const methodName = methodMap[settingsType];
+      
+      // Add retry mechanism for authentication issues
+      let retryCount = 0;
+      const maxRetries = 3;
+      let loadedSettings = null;
+      
+      while (retryCount < maxRetries) {
+        try {
+          loadedSettings = await POSSettingsService[methodName]();
+          break; // Success, exit retry loop
+        } catch (err: any) {
+          retryCount++;
+          console.log(`⚠️ Attempt ${retryCount} failed for ${settingsType} settings:`, err.message);
+          
+          // If it's an authentication error and we haven't exhausted retries, wait and try again
+          if ((err.message?.includes('not authenticated') || err.message?.includes('Auth session missing')) && retryCount < maxRetries) {
+            console.log(`⏳ Waiting 1 second before retry ${retryCount + 1}...`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            continue;
+          }
+          
+          // For other errors or max retries reached, throw the error
+          throw err;
+        }
+      }
       
       if (loadedSettings) {
+        // Only log occasionally to reduce spam
+        if (Math.random() < 0.1) { // 10% chance to log
+          console.log(`✅ Loaded ${settingsType} settings:`, loadedSettings);
+        }
         setSettings(loadedSettings as T);
       } else {
         // Use default settings if none found
+        console.log(`⚠️ No ${settingsType} settings found, using defaults:`, defaultSettings);
         setSettings(defaultSettings);
       }
     } catch (err) {
@@ -390,28 +437,64 @@ export function usePOSSettings<T extends any>(
 
   // Save settings to database
   const saveSettings = useCallback(async (newSettings: T) => {
+    console.log(`🔧 usePOSSettings.saveSettings called for ${settingsType}`);
+    console.log(`📊 New settings to save:`, newSettings);
+    
     try {
       setSaving(true);
       setError(null);
       
-      const savedSettings = await POSSettingsService[`save${settingsType.charAt(0).toUpperCase() + settingsType.slice(1)}Settings` as keyof typeof POSSettingsService](newSettings);
+      // Map settings type to the correct method name
+      const methodMap: Record<SettingsTableKey, keyof typeof POSSettingsService> = {
+        general: 'saveGeneralSettings',
+        pricing: 'saveDynamicPricingSettings',
+        receipt: 'saveReceiptSettings',
+        scanner: 'saveBarcodeScannerSettings',
+        delivery: 'saveDeliverySettings',
+        search: 'saveSearchFilterSettings',
+        permissions: 'saveUserPermissionsSettings',
+        loyalty: 'saveLoyaltyCustomerSettings',
+        analytics: 'saveAnalyticsReportingSettings',
+        notifications: 'saveNotificationSettings',
+        advanced: 'saveAdvancedSettings'
+      };
+      
+      const methodName = methodMap[settingsType];
+      console.log(`🔧 Calling POSSettingsService.${methodName}...`);
+      
+      const savedSettings = await POSSettingsService[methodName](newSettings);
+      
+      console.log(`✅ Save result:`, savedSettings);
       
       if (savedSettings) {
+        // Update local state with the saved data from database
         setSettings(savedSettings as T);
+        console.log(`🎉 Settings saved successfully for ${settingsType}`);
         toast.success(`${settingsType.charAt(0).toUpperCase() + settingsType.slice(1)} settings saved successfully`);
+        
+        // Refresh data from database to ensure consistency
+        console.log(`🔄 Refreshing settings from database...`);
+        await loadSettings();
+        
         return true;
       } else {
+        console.error(`❌ Save returned null/undefined for ${settingsType}`);
         throw new Error('Failed to save settings');
       }
     } catch (err) {
-      console.error(`Error saving ${settingsType} settings:`, err);
+      console.error(`💥 Error saving ${settingsType} settings:`, err);
+      console.error(`🔍 Error details:`, {
+        message: err.message,
+        stack: err.stack,
+        name: err.name
+      });
       setError(`Failed to save ${settingsType} settings`);
       toast.error(`Failed to save ${settingsType} settings`);
       return false;
     } finally {
       setSaving(false);
     }
-  }, [settingsType]);
+  }, [settingsType, loadSettings]);
 
   // Update specific settings
   const updateSettings = useCallback(async (updates: Partial<T>) => {
@@ -419,11 +502,32 @@ export function usePOSSettings<T extends any>(
       setSaving(true);
       setError(null);
       
-      const updatedSettings = await POSSettingsService[`update${settingsType.charAt(0).toUpperCase() + settingsType.slice(1)}Settings` as keyof typeof POSSettingsService](updates);
+      // Map settings type to the correct method name
+      const methodMap: Record<SettingsTableKey, keyof typeof POSSettingsService> = {
+        general: 'updateGeneralSettings',
+        pricing: 'updateDynamicPricingSettings',
+        receipt: 'updateReceiptSettings',
+        scanner: 'updateBarcodeScannerSettings',
+        delivery: 'updateDeliverySettings',
+        search: 'updateSearchFilterSettings',
+        permissions: 'updateUserPermissionsSettings',
+        loyalty: 'updateLoyaltyCustomerSettings',
+        analytics: 'updateAnalyticsReportingSettings',
+        notifications: 'updateNotificationSettings',
+        advanced: 'updateAdvancedSettings'
+      };
+      
+      const methodName = methodMap[settingsType];
+      const updatedSettings = await POSSettingsService[methodName](updates);
       
       if (updatedSettings) {
         setSettings(updatedSettings as T);
         toast.success(`${settingsType.charAt(0).toUpperCase() + settingsType.slice(1)} settings updated successfully`);
+        
+        // Refresh data from database to ensure consistency
+        console.log(`🔄 Refreshing settings from database after update...`);
+        await loadSettings();
+        
         return true;
       } else {
         throw new Error('Failed to update settings');
@@ -436,7 +540,7 @@ export function usePOSSettings<T extends any>(
     } finally {
       setSaving(false);
     }
-  }, [settingsType]);
+  }, [settingsType, loadSettings]);
 
   // Reset settings to defaults
   const resetSettings = useCallback(async () => {
@@ -444,15 +548,10 @@ export function usePOSSettings<T extends any>(
       setSaving(true);
       setError(null);
       
-      const success = await POSSettingsService[`reset${settingsType.charAt(0).toUpperCase() + settingsType.slice(1)}Settings` as keyof typeof POSSettingsService]();
-      
-      if (success) {
-        setSettings(defaultSettings);
-        toast.success(`${settingsType.charAt(0).toUpperCase() + settingsType.slice(1)} settings reset to defaults`);
-        return true;
-      } else {
-        throw new Error('Failed to reset settings');
-      }
+      // Reset to default settings locally
+      setSettings(defaultSettings);
+      toast.success(`${settingsType.charAt(0).toUpperCase() + settingsType.slice(1)} settings reset to defaults`);
+      return true;
     } catch (err) {
       console.error(`Error resetting ${settingsType} settings:`, err);
       setError(`Failed to reset ${settingsType} settings`);
@@ -463,10 +562,16 @@ export function usePOSSettings<T extends any>(
     }
   }, [settingsType, defaultSettings]);
 
-  // Load settings on mount
+  // Load settings only after authentication is established
   useEffect(() => {
-    loadSettings();
-  }, [loadSettings]);
+    if (isAuthenticated) {
+      loadSettings();
+    } else {
+      // When not authenticated, ensure defaults are shown and loading is false
+      setSettings(defaultSettings);
+      setLoading(false);
+    }
+  }, [isAuthenticated, loadSettings, defaultSettings]);
 
   return {
     settings,
@@ -477,7 +582,8 @@ export function usePOSSettings<T extends any>(
     loadSettings,
     saveSettings,
     updateSettings,
-    resetSettings
+    resetSettings,
+    refreshSettings: loadSettings
   };
 }
 
