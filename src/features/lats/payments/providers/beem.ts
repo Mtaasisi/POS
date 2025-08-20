@@ -26,50 +26,29 @@ export class BeemPaymentProvider implements PaymentProvider {
         };
       }
 
-      // Create checkout session with Beem Africa
-      const checkoutData = {
-        amount: data.amount,
-        currency: data.currency || 'TZS',
-        reference: data.orderId,
-        customer_email: data.buyerEmail,
-        customer_name: data.buyerName,
-        customer_phone: data.buyerPhone,
-        description: `Order ${data.orderId}`,
-        callback_url: creds.webhookUrl || `${window.location.origin}/api/beem-webhook`,
-        return_url: `${window.location.origin}/payments/success`,
-        cancel_url: `${window.location.origin}/payments/cancel`,
-        metadata: data.metadata
-      };
-
-      console.log('🔍 Beem API Request:', {
-        url: `${this.baseUrl}/v1/checkout/sessions`,
+      // Use our backend API to avoid CORS issues
+      const response = await fetch('/api/beem-payment', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-          'X-Secret-Key': secretKey
+          'Content-Type': 'application/json'
         },
-        body: checkoutData
-      });
-
-      const response = await fetch(`${this.baseUrl}/v1/checkout/sessions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-          'X-Secret-Key': secretKey
-        },
-        body: JSON.stringify(checkoutData)
-      });
-
-      console.log('🔍 Beem API Response:', {
-        status: response.status,
-        statusText: response.statusText,
-        headers: Object.fromEntries(response.headers.entries())
+        body: JSON.stringify({
+          action: 'createOrder',
+          data: {
+            amount: data.amount,
+            currency: data.currency || 'TZS',
+            reference: data.orderId,
+            customerEmail: data.buyerEmail,
+            customerName: data.buyerName,
+            customerPhone: data.buyerPhone,
+            description: `Order ${data.orderId}`,
+            metadata: data.metadata
+          }
+        })
       });
 
       const result = await response.json();
-      console.log('🔍 Beem API Result:', result);
+      console.log('🔍 Beem API Result (via backend):', result);
 
       if (response.ok && result.success) {
         return {
@@ -87,15 +66,6 @@ export class BeemPaymentProvider implements PaymentProvider {
       }
     } catch (error) {
       console.error('❌ Beem API Error:', error);
-      
-      // If it's a network error (like DNS resolution), provide a helpful message
-      if (error instanceof TypeError && error.message.includes('fetch')) {
-        return {
-          success: false,
-          message: 'Beem Africa API is currently unavailable. Please check your internet connection or try again later.',
-          raw: error
-        };
-      }
       
       return {
         success: false,
@@ -117,12 +87,16 @@ export class BeemPaymentProvider implements PaymentProvider {
         };
       }
 
-      const response = await fetch(`${this.baseUrl}/v1/checkout/sessions/${orderId}`, {
-        method: 'GET',
+      // Use our backend API to avoid CORS issues
+      const response = await fetch('/api/beem-payment', {
+        method: 'POST',
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'X-Secret-Key': secretKey
-        }
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          action: 'checkStatus',
+          data: { orderId }
+        })
       });
 
       const result = await response.json();
@@ -130,20 +104,9 @@ export class BeemPaymentProvider implements PaymentProvider {
       if (response.ok && result.success) {
         return {
           success: true,
-          result: result.data.status === 'completed' ? 'SUCCESS' : 'FAIL',
-          orders: [{
-            order_id: orderId,
-            payment_status: this.mapBeemStatus(result.data.status),
-            amount: result.data.amount,
-            reference: result.data.reference,
-            buyer_email: result.data.customer_email,
-            buyer_name: result.data.customer_name,
-            buyer_phone: result.data.customer_phone,
-            created_at: result.data.created_at,
-            updated_at: result.data.updated_at,
-            metadata: result.data.metadata
-          }],
-          count: 1,
+          result: result.result,
+          orders: result.orders,
+          count: result.count,
           raw: result
         };
       } else {
