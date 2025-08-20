@@ -5,6 +5,7 @@ import GlassButton from '../../../shared/components/ui/GlassButton';
 import GlassBadge from '../../../shared/components/ui/GlassBadge';
 import { CartItem, Sale } from '../../types/pos';
 import { ZENOPAY_CONFIG, UssdPopupService, USSD_CONFIG } from '../../config/zenopay';
+import { useAuth } from '../../../../context/AuthContext';
 
 interface ZenoPayPaymentModalProps {
   isOpen: boolean;
@@ -48,6 +49,9 @@ const ZenoPayPaymentModal: React.FC<ZenoPayPaymentModalProps> = ({
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [ussdStatus, setUssdStatus] = useState<string>('idle');
   const [ussdPollingInterval, setUssdPollingInterval] = useState<NodeJS.Timeout | null>(null);
+
+  // Auth context
+  const { currentUser } = useAuth();
 
   // Validate customer data - only phone is required for mobile money
   const isCustomerValid = customer && customer.phone;
@@ -288,13 +292,13 @@ const ZenoPayPaymentModal: React.FC<ZenoPayPaymentModalProps> = ({
           quantity: item.quantity,
           unitPrice: item.unitPrice,
           totalPrice: item.totalPrice,
-          costPrice: 0, // TODO: Get from product data
-          profit: item.totalPrice // TODO: Calculate actual profit
+                        costPrice: 0, // Will be calculated by sale processing service
+              profit: 0 // Will be calculated by sale processing service
         })),
-        subtotal: cartItems.reduce((sum, item) => sum + item.totalPrice, 0),
-        tax: 0, // TODO: Calculate tax
-        discount: 0,
-        total: total,
+                    subtotal: cartItems.reduce((sum, item) => sum + item.totalPrice, 0),
+                        tax: cartItems.reduce((sum, item) => sum + item.totalPrice, 0) * 0.16, // 16% VAT
+            discount: 0,
+            total: total + (cartItems.reduce((sum, item) => sum + item.totalPrice, 0) * 0.16),
         paymentMethod: {
           type: 'mobile_money',
           details: {
@@ -308,7 +312,7 @@ const ZenoPayPaymentModal: React.FC<ZenoPayPaymentModalProps> = ({
         customerId: customer?.id,
         customerName: customer?.name,
         customerPhone: customer?.phone,
-        soldBy: 'POS User', // TODO: Get from auth context
+        soldBy: currentUser?.name || currentUser?.email || 'POS User',
         soldAt: new Date().toISOString(),
         createdAt: new Date().toISOString()
       };
@@ -555,7 +559,7 @@ const ZenoPayPaymentModal: React.FC<ZenoPayPaymentModalProps> = ({
         </div>
 
         {/* Debug Information (only in development) */}
-        {process.env.NODE_ENV === 'development' && (
+        {import.meta.env.MODE === 'development' && (
           <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
             <div className="text-xs text-yellow-800">
               <div className="font-medium mb-1">Debug Info:</div>

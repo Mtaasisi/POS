@@ -5,7 +5,8 @@ import GlassCard from '../ui/GlassCard';
 import GlassButton from '../ui/GlassButton';
 import GlassBadge from '../ui/GlassBadge';
 import GlassInput from '../ui/GlassInput';
-import ProductImageDisplay from '../inventory/ProductImageDisplay';
+import { SimpleImageDisplay } from '../../../../components/SimpleImageDisplay';
+import { ProductImage } from '../../../../lib/robustImageService';
 import { t } from '../../lib/i18n/t';
 import { format } from '../../lib/format';
 
@@ -18,7 +19,7 @@ interface ProductVariant {
   costPrice: number;
   stockQuantity: number;
   minStockLevel: number;
-  weight?: number;
+
   attributes: Record<string, any>;
 }
 
@@ -46,6 +47,21 @@ interface CartItemProps {
   variant?: 'default' | 'compact' | 'minimal';
   className?: string;
 }
+
+// Helper function to convert old image format to new format
+const convertToProductImages = (imageUrls: string[]): ProductImage[] => {
+  if (!imageUrls || imageUrls.length === 0) return [];
+  
+  return imageUrls.map((imageUrl, index) => ({
+    id: `temp-${index}`,
+    url: imageUrl,
+    thumbnailUrl: imageUrl,
+    fileName: `product-image-${index + 1}`,
+    fileSize: 0,
+    isPrimary: index === 0,
+    uploadedAt: new Date().toISOString()
+  }));
+};
 
 const CartItem: React.FC<CartItemProps> = ({
   product,
@@ -133,8 +149,8 @@ const CartItem: React.FC<CartItemProps> = ({
         <div className="flex items-center gap-3">
           {/* Product Image */}
           <div className="flex-shrink-0">
-            <ProductImageDisplay
-              images={product.images}
+            <SimpleImageDisplay
+              images={convertToProductImages(product.images)}
               productName={product.name}
               size="sm"
               className="flex-shrink-0"
@@ -215,8 +231,8 @@ const CartItem: React.FC<CartItemProps> = ({
         <div className="flex items-center gap-3">
           {/* Product Image */}
           <div className="flex-shrink-0">
-            <ProductImageDisplay
-              images={product.images}
+            <SimpleImageDisplay
+              images={convertToProductImages(product.images)}
               productName={product.name}
               size="md"
               className="flex-shrink-0"
@@ -325,8 +341,8 @@ const CartItem: React.FC<CartItemProps> = ({
       <div className="flex items-start gap-4">
         {/* Product Image */}
         <div className="flex-shrink-0">
-          <ProductImageDisplay
-            images={product.images}
+          <SimpleImageDisplay
+            images={convertToProductImages(product.images)}
             productName={product.name}
             size="lg"
             className="flex-shrink-0"

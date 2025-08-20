@@ -143,15 +143,11 @@ const BulkImportModal: React.FC<{
               costPrice: parseFloat(row.cost_price) || data.defaultCost || 0,
               stockQuantity: parseInt(row.stock_quantity) || data.defaultStock || 0,
               minStockLevel: parseInt(row.min_stock) || 5,
-              weight: parseFloat(row.weight) || 0,
+      
               attributes: {}
             }],
             isActive: true,
-            isFeatured: false,
-            isDigital: false,
-            requiresShipping: true,
-            taxRate: 0,
-            tags: row.tags ? row.tags.split(',').map((tag: string) => tag.trim()) : [],
+            
             metadata: {}
           };
 
@@ -198,12 +194,12 @@ const BulkImportModal: React.FC<{
     const template = `Product Import Template - LATS System
 Instructions:
 1. Fill in the required fields (marked with *)
-2. Use commas to separate multiple tags
+
 3. Prices should be numbers only (no currency symbols)
 4. Stock quantities should be whole numbers
 5. Category, Brand, and Supplier IDs can be left empty if not available
 
-Required Fields (*),name*,sku*,barcode,description,price,cost_price,stock_quantity,min_stock,max_stock,category_id,brand_id,supplier_id,tags,variant_name
+Required Fields (*),name*,sku*,barcode,description,price,cost_price,stock_quantity,min_stock,max_stock,category_id,brand_id,supplier_id,variant_name
 Sample Product 1,iPhone 14 Pro,IPH14P-128,1234567890123,Latest iPhone model with A16 chip,159999,120000,15,5,50,,,smartphone,apple,Default Variant
 Sample Product 2,Samsung Galaxy S23,SAMS23-256,1234567890124,Flagship Android phone with Snapdragon,129999,100000,12,5,50,,,smartphone,samsung,Default Variant
 Sample Product 3,MacBook Air M2,MBA-M2-256,1234567890125,13-inch laptop with Apple M2 chip,899999,750000,8,3,25,,,laptop,apple,Default Variant
@@ -223,7 +219,7 @@ max_stock - Maximum stock level
 category_id - Category UUID (optional)
 brand_id - Brand UUID (optional)
 supplier_id - Supplier UUID (optional)
-tags - Comma-separated tags (optional)
+
 variant_name - Product variant name (optional)`;
 
     // Add BOM for Excel compatibility

@@ -16,7 +16,7 @@ interface ProductVariant {
   costPrice: number;
   stockQuantity: number;
   minStockLevel: number;
-  weight?: number;
+
   attributes: Record<string, any>;
 }
 
@@ -34,12 +34,8 @@ interface Product {
   brandName?: string;
   brandLogo?: string;
   images?: string[];
-  tags?: string[];
-  isActive: boolean;
-  isFeatured: boolean;
-  isDigital: boolean;
-  requiresShipping: boolean;
-  taxRate: number;
+
+      isActive: boolean;
   variants: ProductVariant[];
   createdAt: string;
   updatedAt: string;
@@ -111,7 +107,9 @@ const ProductCard: React.FC<ProductCardProps> = ({
   };
 
   // Handle actions
-  const handleEdit = () => onEdit?.(product);
+  const handleEdit = () => {
+    window.location.href = `/lats/products/${product.id}/edit`;
+  };
   const handleView = () => onView?.(product);
   const handleAdjustStock = () => primaryVariant && onAdjustStock?.(primaryVariant);
   const handleToggleActive = () => onToggleActive?.(product);
@@ -289,20 +287,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
               </GlassBadge>
             )}
           </div>
-          {product.tags && product.tags.length > 0 && (
-            <div className="flex items-center gap-1">
-              {product.tags.slice(0, 2).map((tag, index) => (
-                <GlassBadge key={index} variant="ghost" size="xs">
-                  {tag}
-                </GlassBadge>
-              ))}
-              {product.tags.length > 2 && (
-                <span className="text-xs text-lats-text-secondary">
-                  +{product.tags.length - 2} more
-                </span>
-              )}
-            </div>
-          )}
+
         </div>
 
         {/* Actions */}
@@ -366,9 +351,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
           {!product.isActive && (
             <GlassBadge variant="error" size="sm">Inactive</GlassBadge>
           )}
-          {product.isFeatured && (
-            <GlassBadge variant="warning" size="sm">Featured</GlassBadge>
-          )}
+
         </div>
 
         {/* Stock Status */}

@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
-import { Package, ChevronDown, ChevronUp, Tag, Hash, Plus, Minus, Search, AlertCircle, Image, X, Bug } from 'lucide-react';
+import { Package, ChevronDown, ChevronUp, Tag, Hash, Plus, Minus, Search, AlertCircle, Image } from 'lucide-react';
 import GlassCard from '../ui/GlassCard';
 import GlassButton from '../ui/GlassButton';
 import GlassBadge from '../ui/GlassBadge';
@@ -17,6 +17,10 @@ import {
   getBestVariant 
 } from '../../lib/productUtils';
 import VariantSelectionPage from '../../pages/VariantSelectionPage';
+import { SimpleImageDisplay } from '../../../../components/SimpleImageDisplay';
+import { ProductImage } from '../../../../lib/robustImageService';
+import { ImagePopupModal } from '../../../../components/ImagePopupModal';
+import { useGeneralSettingsUI } from '../../../../hooks/useGeneralSettingsUI';
 
 interface VariantProductCardProps {
   product: ProductSearchResult;
@@ -39,80 +43,18 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
   showBrand = true,
   className = ''
 }) => {
+  // Get general settings
+  const {
+    showProductImages,
+    showStockLevels,
+    showPrices,
+    showBarcodes
+  } = useGeneralSettingsUI();
+
   const navigate = useNavigate();
   const [selectedVariant, setSelectedVariant] = useState<ProductSearchVariant | null>(null);
   const [showVariantModal, setShowVariantModal] = useState(false);
-  const [debugInfo, setDebugInfo] = useState<any>(null);
-  const [showDebug, setShowDebug] = useState(false);
-
-  // Debug data fetching and validation
-  useEffect(() => {
-    const debugData = {
-      timestamp: new Date().toISOString(),
-      productId: product?.id,
-      productName: product?.name,
-      hasProduct: !!product,
-      variantsCount: product?.variants?.length || 0,
-      hasVariants: !!product?.variants && product.variants.length > 0,
-      variantsData: product?.variants?.map(v => ({
-        id: v.id,
-        sku: v.sku,
-        name: v.name,
-        sellingPrice: v.sellingPrice,
-        quantity: v.quantity,
-        hasBarcode: !!v.barcode,
-        attributes: v.attributes
-      })) || [],
-      hasImages: !!product?.images && product.images.length > 0,
-      imagesCount: product?.images?.length || 0,
-      hasCategory: !!product?.categoryName,
-      categoryName: product?.categoryName,
-      hasBrand: !!product?.brandName,
-      brandName: product?.brandName,
-      hasTags: !!product?.tags && product.tags.length > 0,
-      tagsCount: product?.tags?.length || 0,
-      primaryVariant: getPrimaryVariant(product),
-      stockStatus: getProductStockStatus(product),
-      totalStock: getProductTotalStock(product),
-      isSingleVariant: isSingleVariantProduct(product),
-      isMultiVariant: isMultiVariantProduct(product),
-      bestVariant: getBestVariant(product),
-      priceRange: product?.variants ? {
-        min: Math.min(...product.variants.map(v => v.sellingPrice).filter(p => p > 0)),
-        max: Math.max(...product.variants.map(v => v.sellingPrice).filter(p => p > 0))
-      } : null,
-      dataIntegrity: {
-        hasValidId: !!product?.id,
-        hasValidName: !!product?.name,
-        hasValidVariants: product?.variants?.every(v => v.id && v.sku && v.sellingPrice >= 0),
-        hasValidPrices: product?.variants?.every(v => v.sellingPrice > 0),
-        hasValidStock: product?.variants?.every(v => v.quantity >= 0)
-      }
-    };
-
-    setDebugInfo(debugData);
-    
-    // Log debugging information
-    console.log('🔍 VariantProductCard Debug Info:', debugData);
-    
-    // Check for data issues
-    if (!product) {
-      console.error('❌ VariantProductCard: No product data provided');
-    }
-    
-    if (!product?.variants || product.variants.length === 0) {
-      console.warn('⚠️ VariantProductCard: Product has no variants', product);
-    }
-    
-    if (product?.variants?.some(v => v.sellingPrice <= 0)) {
-      console.warn('⚠️ VariantProductCard: Some variants have invalid prices', product.variants);
-    }
-    
-    if (product?.variants?.some(v => v.quantity < 0)) {
-      console.warn('⚠️ VariantProductCard: Some variants have negative stock', product.variants);
-    }
-    
-  }, [product]);
+  const [isImagePopupOpen, setIsImagePopupOpen] = useState(false);
 
   // Get primary variant using utility function
   const primaryVariant = getPrimaryVariant(product);
@@ -193,31 +135,22 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
   // Check if product has multiple variants using utility function
   const hasMultipleVariants = isMultiVariantProduct(product);
 
-  // Get product thumbnail
-  const getProductThumbnail = () => {
-    // Check if product has images
-    if (product.images && product.images.length > 0) {
-      return product.images[0];
-    }
-    return null;
+  // Convert product images to new format
+  const convertToProductImages = (): ProductImage[] => {
+    if (!product.images || product.images.length === 0) return [];
+    
+    return product.images.map((imageUrl, index) => ({
+      id: `temp-${product.id}-${index}`,
+      url: imageUrl,
+      thumbnailUrl: imageUrl,
+      fileName: `product-image-${index + 1}`,
+      fileSize: 0,
+      isPrimary: index === 0,
+      uploadedAt: new Date().toISOString()
+    }));
   };
 
-  const thumbnail = getProductThumbnail();
-
-  // Debug panel component
-  const DebugPanel = () => (
-    <div className="fixed top-4 right-4 z-50 bg-black bg-opacity-90 text-white p-4 rounded-lg max-w-md max-h-96 overflow-auto text-xs">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="font-bold">🔍 Debug Info</h3>
-        <button onClick={() => setShowDebug(false)} className="text-white hover:text-red-400">
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-      <pre className="whitespace-pre-wrap">
-        {JSON.stringify(debugInfo, null, 2)}
-      </pre>
-    </div>
-  );
+  const productImages = convertToProductImages();
 
   // Compact variant with subtle colors
   if (variant === 'compact') {
@@ -234,41 +167,23 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
           style={{ minHeight: '60px' }}
           title={hasNoVariants ? 'This product has no variants and cannot be added to cart. Please add variants in the inventory management.' : ''}
         >
-          {/* Debug button for compact variant */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowDebug(!showDebug);
-            }}
-            className="absolute top-1 right-1 p-1 bg-blue-500 text-white rounded-full opacity-50 hover:opacity-100 transition-opacity"
-            title="Debug Info"
-          >
-            <Bug className="w-3 h-3" />
-          </button>
+          
 
           <div className="flex items-center gap-2">
             {/* Product Image */}
             <div className="flex-shrink-0">
-              {thumbnail ? (
-                <div className="w-10 h-10 bg-blue-50 rounded-lg overflow-hidden border border-blue-100">
-                  <img 
-                    src={thumbnail} 
-                    alt={product.name}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
-                      e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                    }}
-                  />
-                  <div className="w-full h-full bg-blue-100 rounded-lg flex items-center justify-center hidden">
-                    <Package className="w-4 h-4 text-blue-600" />
-                  </div>
-                </div>
-              ) : (
-                <div className="w-10 h-10 bg-blue-50 rounded-lg border border-blue-100 flex items-center justify-center">
-                  <Package className="w-4 h-4 text-blue-600" />
-                </div>
-              )}
+              <SimpleImageDisplay
+                images={productImages}
+                productName={product.name}
+                size="sm"
+                className="w-10 h-10 cursor-pointer hover:opacity-90 transition-opacity"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (productImages.length > 0) {
+                    setIsImagePopupOpen(true);
+                  }
+                }}
+              />
             </div>
 
             {/* Product Info */}
@@ -278,17 +193,54 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
                 {getStockStatusBadge()}
               </div>
               <p className="text-xs text-gray-500 font-mono">{primaryVariant?.sku || 'N/A'}</p>
+              
+              {/* Compact Specifications Display */}
+              {primaryVariant && primaryVariant.attributes && Object.keys(primaryVariant.attributes).length > 0 && (
+                <div className="mt-1">
+                  <div className="flex flex-wrap gap-1">
+                    {Object.entries(primaryVariant.attributes).slice(0, 2).map(([key, value]) => {
+                      // Get color based on specification type
+                      const getSpecColor = (specKey: string) => {
+                        const spec = specKey.toLowerCase();
+                        if (spec.includes('ram')) return 'bg-green-100 text-green-700';
+                        if (spec.includes('storage') || spec.includes('memory')) return 'bg-blue-100 text-blue-700';
+                        if (spec.includes('processor') || spec.includes('cpu')) return 'bg-purple-100 text-purple-700';
+                        if (spec.includes('screen') || spec.includes('display')) return 'bg-orange-100 text-orange-700';
+                        if (spec.includes('battery')) return 'bg-teal-100 text-teal-700';
+                        if (spec.includes('camera')) return 'bg-pink-100 text-pink-700';
+                        if (spec.includes('color')) return 'bg-red-100 text-red-700';
+                        if (spec.includes('size')) return 'bg-gray-100 text-gray-700';
+                        return 'bg-indigo-100 text-indigo-700';
+                      };
+                      
+                      return (
+                        <span key={key} className={`px-1 py-0.5 rounded text-xs font-medium ${getSpecColor(key)}`}>
+                          {key.replace(/_/g, ' ')}: {value}
+                        </span>
+                      );
+                    })}
+                    {Object.keys(primaryVariant.attributes).length > 2 && (
+                      <span className="px-1 py-0.5 rounded bg-gray-100 text-gray-600 text-xs font-medium">
+                        +{Object.keys(primaryVariant.attributes).length - 2}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Price */}
             <div className="text-right">
-              <div className={`font-semibold text-sm ${hasNoVariants ? 'text-gray-500' : 'text-blue-900'}`}>{getPriceDisplay()}</div>
-              <div className="text-xs text-gray-500">Stock: {getTotalStock()}</div>
+              {showPrices && (
+                <div className={`font-semibold text-sm ${hasNoVariants ? 'text-gray-500' : 'text-blue-900'}`}>{getPriceDisplay()}</div>
+              )}
+              {showStockLevels && (
+                <div className="text-xs text-gray-500">Stock: {getTotalStock()}</div>
+              )}
             </div>
           </div>
         </div>
 
-        {showDebug && <DebugPanel />}
       </>
     );
   }
@@ -306,24 +258,16 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
         onClick={handleCardClick}
         title={hasNoVariants ? 'This product has no variants and cannot be added to cart. Please add variants in the inventory management.' : ''}
       >
-        {/* Debug button for detailed variant */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            setShowDebug(!showDebug);
-          }}
-          className="absolute top-2 right-2 p-2 bg-blue-500 text-white rounded-full opacity-50 hover:opacity-100 transition-opacity z-20"
-          title="Debug Info"
-        >
-          <Bug className="w-4 h-4" />
-        </button>
+        
         
         {/* Stock Count Badge - Card Corner */}
-        {showStockInfo && getTotalStock() > 0 && (
-          <div className={`absolute -top-2 -right-2 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full border-2 border-white shadow-lg flex items-center justify-center z-10 ${
-            getTotalStock() >= 1000 ? 'w-12 h-8 px-3' : getTotalStock() >= 100 ? 'w-10 h-8 px-3' : 'w-8 h-8'
+        {showStockLevels && showStockInfo && getTotalStock() > 0 && (
+          <div className={`absolute top-2 right-2 p-2 rounded-full border-2 border-white shadow-lg flex items-center justify-center z-20 w-10 h-10 ${
+            getTotalStock() <= 5 ? 'bg-gradient-to-r from-red-500 to-red-600' :
+            getTotalStock() <= 10 ? 'bg-gradient-to-r from-orange-500 to-orange-600' :
+            'bg-gradient-to-r from-green-500 to-emerald-500'
           }`}>
-            <span className="text-base font-bold text-white">
+            <span className="text-sm font-bold text-white">
               {getTotalStock() >= 1000 ? `${(getTotalStock() / 1000).toFixed(1)}K` : getTotalStock()}
             </span>
           </div>
@@ -333,20 +277,20 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4 flex-1 min-w-0">
               {/* Product Icon */}
-              <div className="relative w-20 h-20 rounded-xl flex items-center justify-center text-lg font-bold bg-gradient-to-br from-blue-100 to-indigo-100 text-blue-600">
-                {thumbnail ? (
-                  <img 
-                    src={thumbnail} 
-                    alt={product.name}
-                    className="w-full h-full object-cover rounded-xl"
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
-                      e.currentTarget.nextElementSibling?.classList.remove('hidden');
+              {showProductImages && (
+                <div className="relative w-20 h-20 rounded-xl flex items-center justify-center text-lg font-bold text-blue-600">
+                  <SimpleImageDisplay
+                    images={productImages}
+                    productName={product.name}
+                    size="lg"
+                    className="w-full h-full rounded-xl cursor-pointer hover:opacity-90 transition-opacity"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (productImages.length > 0) {
+                        setIsImagePopupOpen(true);
+                      }
                     }}
                   />
-                ) : (
-                  <Package className="w-8 h-8" />
-                )}
                 
                 {/* Variant Count Badge */}
                 {product.variants && product.variants.length > 1 && (
@@ -356,7 +300,8 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
                     </span>
                   </div>
                 )}
-              </div>
+                </div>
+              )}
 
               {/* Product Info */}
               <div className="flex-1 min-w-0">
@@ -371,6 +316,41 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
 
 
           </div>
+
+          {/* Primary Variant Specifications */}
+          {primaryVariant && primaryVariant.attributes && Object.keys(primaryVariant.attributes).length > 0 && (
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <div className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Specifications:</div>
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(primaryVariant.attributes).slice(0, 4).map(([key, value]) => {
+                  // Get color based on specification type
+                  const getSpecColor = (specKey: string) => {
+                    const spec = specKey.toLowerCase();
+                    if (spec.includes('ram')) return 'bg-green-100 text-green-700 border-green-200';
+                    if (spec.includes('storage') || spec.includes('memory')) return 'bg-blue-100 text-blue-700 border-blue-200';
+                    if (spec.includes('processor') || spec.includes('cpu')) return 'bg-purple-100 text-purple-700 border-purple-200';
+                    if (spec.includes('screen') || spec.includes('display')) return 'bg-orange-100 text-orange-700 border-orange-200';
+                    if (spec.includes('battery')) return 'bg-teal-100 text-teal-700 border-teal-200';
+                    if (spec.includes('camera')) return 'bg-pink-100 text-pink-700 border-pink-200';
+                    if (spec.includes('color')) return 'bg-red-100 text-red-700 border-red-200';
+                    if (spec.includes('size')) return 'bg-gray-100 text-gray-700 border-gray-200';
+                    return 'bg-indigo-100 text-indigo-700 border-indigo-200';
+                  };
+                  
+                  return (
+                    <span key={key} className={`px-2 py-1 rounded-md border text-xs font-medium ${getSpecColor(key)}`}>
+                      {key.replace(/_/g, ' ')}: {value}
+                    </span>
+                  );
+                })}
+                {Object.keys(primaryVariant.attributes).length > 4 && (
+                  <span className="px-2 py-1 rounded-md border border-gray-200 bg-gray-50 text-gray-600 text-xs font-medium">
+                    +{Object.keys(primaryVariant.attributes).length - 4} more
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Additional Info */}
           <div className="mt-4 pt-4 border-t border-gray-100">
@@ -396,7 +376,7 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
           </div>
 
           {/* Stock Warning */}
-          {primaryVariant && primaryVariant.quantity <= 5 && primaryVariant.quantity > 0 && (
+          {/* {primaryVariant && primaryVariant.quantity <= 5 && primaryVariant.quantity > 0 && (
             <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
               <div className="flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 text-amber-600" />
@@ -406,7 +386,7 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
                 </div>
               </div>
             </div>
-          )}
+          )} */}
         </div>
       </div>
 
@@ -421,7 +401,15 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
         document.body
       )}
 
-      {showDebug && <DebugPanel />}
+      {/* Image Popup Modal */}
+      {productImages.length > 0 && (
+        <ImagePopupModal
+          images={productImages}
+          productName={product.name}
+          isOpen={isImagePopupOpen}
+          onClose={() => setIsImagePopupOpen(false)}
+        />
+      )}
     </>
   );
 };

@@ -1,11 +1,17 @@
 // User Permissions Settings Tab Component
-import React from 'react';
+import React, { forwardRef, useImperativeHandle } from 'react';
 import { Shield, Users, CreditCard, Package, Settings, BarChart3, FileText } from 'lucide-react';
 import UniversalSettingsTab from './UniversalSettingsTab';
 import { ToggleSwitch, NumberInput, TextInput, Select } from './UniversalFormComponents';
 import { useUserPermissionsSettings } from '../../../../hooks/usePOSSettings';
 
-const UserPermissionsSettingsTab: React.FC = () => {
+
+export interface UserPermissionsSettingsTabRef {
+  saveSettings: () => Promise<boolean>;
+  resetSettings: () => Promise<boolean>;
+}
+
+const UserPermissionsSettingsTab = forwardRef<UserPermissionsSettingsTabRef>((props, ref) => {
   const {
     settings,
     setSettings,
@@ -22,6 +28,7 @@ const UserPermissionsSettingsTab: React.FC = () => {
     if (success) {
       // Settings saved successfully
     }
+    return success;
   };
 
   const handleReset = async () => {
@@ -37,6 +44,11 @@ const UserPermissionsSettingsTab: React.FC = () => {
       [key]: value
     }));
   };
+  // Expose save and reset functions through ref
+  useImperativeHandle(ref, () => ({
+    saveSettings: handleSave,
+    resetSettings: handleReset
+  }));
 
   if (isLoading) {
     return (
@@ -284,6 +296,6 @@ const UserPermissionsSettingsTab: React.FC = () => {
       </div>
     </UniversalSettingsTab>
   );
-};
+});
 
 export default UserPermissionsSettingsTab;

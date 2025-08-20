@@ -1,11 +1,20 @@
 // Delivery Settings Tab Component
-import React from 'react';
-import { Truck, MapPin, Clock, Bell, Users, Settings } from 'lucide-react';
+import React, { forwardRef, useImperativeHandle } from 'react';
+import { Truck, MapPin, Clock, Bell, Users, Settings, DollarSign } from 'lucide-react';
 import UniversalSettingsTab from './UniversalSettingsTab';
 import { ToggleSwitch, NumberInput, TextInput, Select, TimeInput } from './UniversalFormComponents';
-import { useDeliverySettings } from '../../../../hooks/usePOSSettings';
 
-const DeliverySettingsTab: React.FC = () => {
+import { useDeliverySettings } from '../../../../hooks/usePOSSettings';
+import { useDynamicDelivery } from '../../hooks/useDynamicDelivery';
+import DynamicDeliveryCalculator from './DynamicDeliveryCalculator';
+
+
+export interface DeliverySettingsTabRef {
+  saveSettings: () => Promise<boolean>;
+  resetSettings: () => Promise<boolean>;
+}
+
+const DeliverySettingsTab = forwardRef<DeliverySettingsTabRef>((props, ref) => {
   const {
     settings,
     setSettings,
@@ -17,11 +26,18 @@ const DeliverySettingsTab: React.FC = () => {
     resetSettings
   } = useDeliverySettings();
 
+  // Initialize dynamic delivery hook
+  const dynamicDelivery = useDynamicDelivery(settings);
+
+  // State for demo subtotal
+  const [demoSubtotal, setDemoSubtotal] = React.useState(15000);
+
   const handleSave = async () => {
     const success = await saveSettings(settings);
     if (success) {
       // Settings saved successfully
     }
+    return success;
   };
 
   const handleReset = async () => {
@@ -37,6 +53,13 @@ const DeliverySettingsTab: React.FC = () => {
       [key]: value
     }));
   };
+
+
+  // Expose save and reset functions through ref
+  useImperativeHandle(ref, () => ({
+    saveSettings: handleSave,
+    resetSettings: handleReset
+  }));
 
   if (isLoading) {
     return (
@@ -105,6 +128,8 @@ const DeliverySettingsTab: React.FC = () => {
         </div>
       </div>
 
+
+
       {/* Delivery Areas */}
       <div className="mb-8">
         <div className="flex items-center mb-4">
@@ -124,6 +149,34 @@ const DeliverySettingsTab: React.FC = () => {
             placeholder="City Center, Suburbs, Outskirts"
           />
         </div>
+        
+        {/* Area-based Delivery Fees */}
+        {settings.enable_delivery_areas && settings.delivery_areas.length > 0 && (
+          <div className="mt-4">
+            <h4 className="text-md font-medium text-gray-800 mb-3">Area-based Delivery Fees</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {settings.delivery_areas.map((area, index) => (
+                <div key={index} className="flex items-center gap-3">
+                  <span className="text-sm font-medium text-gray-700 min-w-[100px]">{area}:</span>
+                  <input
+                    type="number"
+                    value={settings.area_delivery_fees[area] || 0}
+                    onChange={(e) => {
+                      const newFees = { ...settings.area_delivery_fees };
+                      newFees[area] = Number(e.target.value);
+                      handleSettingChange('area_delivery_fees', newFees);
+                    }}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    min="0"
+                    step="100"
+                    placeholder="Fee"
+                  />
+                  <span className="text-sm text-gray-600">TZS</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Time Settings */}
@@ -165,6 +218,41 @@ const DeliverySettingsTab: React.FC = () => {
             placeholder="Morning, Afternoon, Evening"
           />
         </div>
+      </div>
+
+      {/* Dynamic Delivery Fee Calculator */}
+      <div className="mb-8">
+        <div className="flex items-center mb-4">
+          <Settings className="w-5 h-5 text-indigo-600 mr-2" />
+          <h3 className="text-lg font-semibold text-gray-900">Dynamic Delivery Fee Calculator</h3>
+        </div>
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+          <p className="text-sm text-blue-800 mb-3">
+            Test how delivery fees will be calculated based on your current settings. 
+            Adjust the demo order value to see how fees change.
+          </p>
+          <div className="flex items-center gap-4 mb-4">
+            <label className="text-sm font-medium text-gray-700">Demo Order Value:</label>
+            <input
+              type="number"
+              value={demoSubtotal}
+              onChange={(e) => setDemoSubtotal(Number(e.target.value))}
+              className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              min="0"
+              step="1000"
+            />
+            <span className="text-sm text-gray-600">TZS</span>
+          </div>
+        </div>
+        
+        <DynamicDeliveryCalculator
+          subtotal={demoSubtotal}
+          deliverySettings={settings}
+          onDeliveryFeeChange={(fee) => {
+            // This will be called when the delivery fee changes
+            console.log('Dynamic delivery fee calculated:', fee);
+          }}
+        />
       </div>
 
       {/* Notification Settings */}
@@ -264,6 +352,6 @@ const DeliverySettingsTab: React.FC = () => {
       </div>
     </UniversalSettingsTab>
   );
-};
+});
 
 export default DeliverySettingsTab;

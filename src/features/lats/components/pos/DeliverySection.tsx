@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import GlassCard from '../../../shared/components/ui/GlassCard';
 import GlassButton from '../../../shared/components/ui/GlassButton';
 import { X, MapPin, Clock, User, Phone, Truck, CheckCircle } from 'lucide-react';
+import DynamicDeliveryCalculator from './DynamicDeliveryCalculator';
 
 interface DeliveryFormData {
   customerName: string;
@@ -13,6 +14,8 @@ interface DeliveryFormData {
   deliveryNotes: string;
   deliveryFee: number;
   deliveryMethod: 'standard' | 'express' | 'same-day';
+  deliveryArea?: string;
+  deliveryDistance?: number;
 }
 
 interface DeliverySectionProps {
@@ -23,13 +26,17 @@ interface DeliverySectionProps {
     name: string;
     phone: string;
   } | null;
+  deliverySettings?: any;
+  subtotal?: number;
 }
 
 const DeliverySection: React.FC<DeliverySectionProps> = ({
   isOpen,
   onClose,
   onDeliverySet,
-  selectedCustomer
+  selectedCustomer,
+  deliverySettings,
+  subtotal = 0
 }) => {
   const [formData, setFormData] = useState<DeliveryFormData>({
     customerName: selectedCustomer?.name || '',
@@ -39,7 +46,9 @@ const DeliverySection: React.FC<DeliverySectionProps> = ({
     deliveryTime: '',
     deliveryNotes: '',
     deliveryFee: 0,
-    deliveryMethod: 'standard'
+    deliveryMethod: 'standard',
+    deliveryArea: '',
+    deliveryDistance: 0
   });
 
   // Update form data when selectedCustomer changes
@@ -178,6 +187,23 @@ const DeliverySection: React.FC<DeliverySectionProps> = ({
                 />
               </div>
             </div>
+
+            {/* Dynamic Delivery Calculator */}
+            {deliverySettings && (
+              <div className="space-y-4">
+                <h3 className="text-lg font-medium text-gray-900 flex items-center gap-2">
+                  <Truck className="w-4 h-4" />
+                  Delivery Fee Calculator
+                </h3>
+                <DynamicDeliveryCalculator
+                  subtotal={subtotal}
+                  deliverySettings={deliverySettings}
+                  onDeliveryFeeChange={(fee) => {
+                    handleInputChange('deliveryFee', fee);
+                  }}
+                />
+              </div>
+            )}
 
             {/* Delivery Method */}
             <div className="space-y-4">

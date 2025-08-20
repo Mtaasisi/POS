@@ -590,13 +590,9 @@ const ReceiptSettings: React.FC = () => {
             </label>
           </div>
           <div className="flex items-center gap-3">
-            <GlassButton
-              type="submit"
-              disabled={!isDirty || isSaving}
-              loading={isSaving}
-            >
-              {isSaving ? 'Saving...' : 'Save Settings'}
-            </GlassButton>
+            <div className="text-sm text-gray-500 italic">
+              Settings will be saved using the unified save button
+            </div>
           </div>
         </div>
       </form>

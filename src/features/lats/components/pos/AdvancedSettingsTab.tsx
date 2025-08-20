@@ -1,11 +1,17 @@
 // Advanced Settings Tab Component
-import React from 'react';
+import React, { forwardRef, useImperativeHandle } from 'react';
 import { Settings, Database, Shield, Zap, Globe, Cpu } from 'lucide-react';
 import UniversalSettingsTab from './UniversalSettingsTab';
 import { ToggleSwitch, NumberInput, TextInput, Select, TimeInput } from './UniversalFormComponents';
 import { useAdvancedSettings } from '../../../../hooks/usePOSSettings';
 
-const AdvancedSettingsTab: React.FC = () => {
+
+export interface AdvancedSettingsTabRef {
+  saveSettings: () => Promise<boolean>;
+  resetSettings: () => Promise<boolean>;
+}
+
+const AdvancedSettingsTab = forwardRef<AdvancedSettingsTabRef>((props, ref) => {
   const {
     settings,
     setSettings,
@@ -22,6 +28,7 @@ const AdvancedSettingsTab: React.FC = () => {
     if (success) {
       // Settings saved successfully
     }
+    return success;
   };
 
   const handleReset = async () => {
@@ -37,6 +44,11 @@ const AdvancedSettingsTab: React.FC = () => {
       [key]: value
     }));
   };
+  // Expose save and reset functions through ref
+  useImperativeHandle(ref, () => ({
+    saveSettings: handleSave,
+    resetSettings: handleReset
+  }));
 
   if (isLoading) {
     return (
@@ -300,6 +312,6 @@ const AdvancedSettingsTab: React.FC = () => {
       </div>
     </UniversalSettingsTab>
   );
-};
+});
 
 export default AdvancedSettingsTab;

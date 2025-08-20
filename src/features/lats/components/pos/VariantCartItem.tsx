@@ -5,7 +5,8 @@ import GlassButton from '../ui/GlassButton';
 import GlassBadge from '../ui/GlassBadge';
 import { format } from '../../lib/format';
 import { CartItem } from '../../types/pos';
-import ProductImageDisplay from '../inventory/ProductImageDisplay';
+import { SimpleImageDisplay } from '../../../../components/SimpleImageDisplay';
+import { ProductImage } from '../../../../lib/robustImageService';
 
 interface VariantCartItemProps {
   item: CartItem;
@@ -24,6 +25,21 @@ interface VariantCartItemProps {
   variant?: 'default' | 'compact';
   className?: string;
 }
+
+// Helper function to convert old image format to new format
+const convertToProductImages = (imageUrls: string[]): ProductImage[] => {
+  if (!imageUrls || imageUrls.length === 0) return [];
+  
+  return imageUrls.map((imageUrl, index) => ({
+    id: `temp-${index}`,
+    url: imageUrl,
+    thumbnailUrl: imageUrl,
+    fileName: `product-image-${index + 1}`,
+    fileSize: 0,
+    isPrimary: index === 0,
+    uploadedAt: new Date().toISOString()
+  }));
+};
 
 const VariantCartItem: React.FC<VariantCartItemProps> = ({
   item,
@@ -115,8 +131,8 @@ const VariantCartItem: React.FC<VariantCartItemProps> = ({
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3 flex-1 min-w-0">
             {/* Product Thumbnail */}
-            <ProductImageDisplay
-              images={thumbnail ? [thumbnail] : []}
+            <SimpleImageDisplay
+              images={convertToProductImages(thumbnail ? [thumbnail] : [])}
               productName={item.productName}
               size="sm"
               className="flex-shrink-0"
@@ -165,11 +181,11 @@ const VariantCartItem: React.FC<VariantCartItemProps> = ({
           {/* Product Thumbnail */}
           <div className="w-10 h-10 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden">
             {thumbnail ? (
-              <ImageDisplay 
-                imageUrl={thumbnail} 
-                alt={item.productName}
-                className="w-full h-full object-cover"
-                fallbackIcon={true}
+              <SimpleImageDisplay
+                images={convertToProductImages([thumbnail])}
+                productName={item.productName}
+                size="sm"
+                className="w-full h-full"
               />
             ) : (
               <Package className="w-5 h-5 text-blue-600" />
@@ -186,6 +202,35 @@ const VariantCartItem: React.FC<VariantCartItemProps> = ({
                 </>
               )}
             </div>
+            {/* Show specifications if available */}
+            {item.attributes && Object.keys(item.attributes).length > 0 && (
+              <div className="mt-2">
+                <div className="flex flex-wrap gap-1">
+                  {Object.entries(item.attributes).map(([key, value]) => {
+                    // Get color based on specification type
+                    const getSpecColor = (specKey: string) => {
+                      const spec = specKey.toLowerCase();
+                      if (spec.includes('ram')) return 'bg-green-100 text-green-700';
+                      if (spec.includes('storage') || spec.includes('memory')) return 'bg-blue-100 text-blue-700';
+                      if (spec.includes('processor') || spec.includes('cpu')) return 'bg-purple-100 text-purple-700';
+                      if (spec.includes('screen') || spec.includes('display')) return 'bg-orange-100 text-orange-700';
+                      if (spec.includes('battery')) return 'bg-teal-100 text-teal-700';
+                      if (spec.includes('camera')) return 'bg-pink-100 text-pink-700';
+                      if (spec.includes('color')) return 'bg-red-100 text-red-700';
+                      if (spec.includes('size')) return 'bg-gray-100 text-gray-700';
+                      return 'bg-indigo-100 text-indigo-700';
+                    };
+                    
+                    return (
+                      <span key={key} className={`px-2 py-1 rounded text-xs font-medium ${getSpecColor(key)}`}>
+                        {key.replace(/_/g, ' ')}: {value}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            
             {hasVariantAttributes && (
               <div className="text-xs text-gray-500 flex items-center gap-1 mt-1">
                 <Tag className="w-3 h-3" />
@@ -248,12 +293,36 @@ const VariantCartItem: React.FC<VariantCartItemProps> = ({
                       <div className="font-medium text-sm">{variant.name}</div>
                       <div className="text-xs text-gray-600 flex items-center gap-2">
                         <span className="font-mono">{variant.sku}</span>
-                        {Object.entries(variant.attributes).map(([key, value]) => (
-                          <span key={key} className="text-blue-600">
-                            {key}: {value}
-                          </span>
-                        ))}
                       </div>
+                      
+                      {/* Enhanced Specifications Display in Cart */}
+                      {Object.entries(variant.attributes).length > 0 && (
+                        <div className="mt-2">
+                          <div className="flex flex-wrap gap-1">
+                            {Object.entries(variant.attributes).map(([key, value]) => {
+                              // Get color based on specification type
+                              const getSpecColor = (specKey: string) => {
+                                const spec = specKey.toLowerCase();
+                                if (spec.includes('ram')) return 'bg-green-100 text-green-700';
+                                if (spec.includes('storage') || spec.includes('memory')) return 'bg-blue-100 text-blue-700';
+                                if (spec.includes('processor') || spec.includes('cpu')) return 'bg-purple-100 text-purple-700';
+                                if (spec.includes('screen') || spec.includes('display')) return 'bg-orange-100 text-orange-700';
+                                if (spec.includes('battery')) return 'bg-teal-100 text-teal-700';
+                                if (spec.includes('camera')) return 'bg-pink-100 text-pink-700';
+                                if (spec.includes('color')) return 'bg-red-100 text-red-700';
+                                if (spec.includes('size')) return 'bg-gray-100 text-gray-700';
+                                return 'bg-indigo-100 text-indigo-700';
+                              };
+                              
+                              return (
+                                <span key={key} className={`px-2 py-1 rounded text-xs font-medium ${getSpecColor(key)}`}>
+                                  {key.replace(/_/g, ' ')}: {value}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <div className="text-right">
                       <div className="font-bold text-sm">{format.money(variant.sellingPrice)}</div>

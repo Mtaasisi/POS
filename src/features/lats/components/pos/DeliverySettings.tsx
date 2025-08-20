@@ -3,8 +3,19 @@ import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import GlassCard from '../../../shared/components/ui/GlassCard';
 import GlassButton from '../../../shared/components/ui/GlassButton';
+import DeliveryMethodsManager from './DeliveryMethodsManager';
 import { Truck, MapPin, Clock, DollarSign, Settings, Save, RefreshCw, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+
+interface DeliveryMethod {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  estimatedTime: string;
+  isDefault: boolean;
+  enabled: boolean;
+}
 
 interface DeliverySettings {
   // General Settings
@@ -12,6 +23,9 @@ interface DeliverySettings {
   deliveryFee: number;
   freeDeliveryThreshold: number;
   maxDeliveryDistance: number;
+  
+  // Delivery Methods
+  deliveryMethods: DeliveryMethod[];
   
   // Delivery Areas
   deliveryAreas: Array<{
@@ -73,6 +87,11 @@ const DeliverySettings: React.FC = () => {
       deliveryFee: 2000,
       freeDeliveryThreshold: 50000,
       maxDeliveryDistance: 50,
+      deliveryMethods: [
+        { id: '1', name: 'Standard Delivery', description: '2-3 business days', price: 500, estimatedTime: '2-3 days', isDefault: true, enabled: true },
+        { id: '2', name: 'Express Delivery', description: '1-2 business days', price: 1000, estimatedTime: '1-2 days', isDefault: false, enabled: true },
+        { id: '3', name: 'Same Day Delivery', description: 'Same day', price: 2000, estimatedTime: 'Same day', isDefault: false, enabled: true }
+      ],
       deliveryAreas: [
         { id: '1', name: 'Dar es Salaam', fee: 2000, estimatedTime: '2-3 hours', enabled: true },
         { id: '2', name: 'Arusha', fee: 3000, estimatedTime: '3-4 hours', enabled: true },
@@ -187,6 +206,11 @@ const DeliverySettings: React.FC = () => {
     setValue('deliveryTimeSlots', updatedSlots);
   };
 
+  // Handle delivery methods change
+  const handleDeliveryMethodsChange = (methods: DeliveryMethod[]) => {
+    setValue('deliveryMethods', methods);
+  };
+
   // Reset to defaults
   const handleReset = () => {
     reset({
@@ -194,6 +218,11 @@ const DeliverySettings: React.FC = () => {
       deliveryFee: 2000,
       freeDeliveryThreshold: 50000,
       maxDeliveryDistance: 50,
+      deliveryMethods: [
+        { id: '1', name: 'Standard Delivery', description: '2-3 business days', price: 500, estimatedTime: '2-3 days', isDefault: true, enabled: true },
+        { id: '2', name: 'Express Delivery', description: '1-2 business days', price: 1000, estimatedTime: '1-2 days', isDefault: false, enabled: true },
+        { id: '3', name: 'Same Day Delivery', description: 'Same day', price: 2000, estimatedTime: 'Same day', isDefault: false, enabled: true }
+      ],
       deliveryAreas: [
         { id: '1', name: 'Dar es Salaam', fee: 2000, estimatedTime: '2-3 hours', enabled: true },
         { id: '2', name: 'Arusha', fee: 3000, estimatedTime: '3-4 hours', enabled: true },
@@ -304,6 +333,19 @@ const DeliverySettings: React.FC = () => {
               />
             </div>
           </div>
+        </div>
+
+        {/* Delivery Methods */}
+        <div className="space-y-4">
+          <h3 className="text-lg font-medium text-gray-900 flex items-center gap-2">
+            <DollarSign className="w-5 h-5" />
+            Delivery Methods
+          </h3>
+          
+          <DeliveryMethodsManager
+            methods={watchedValues.deliveryMethods}
+            onMethodsChange={handleDeliveryMethodsChange}
+          />
         </div>
 
         {/* Delivery Areas */}
@@ -652,7 +694,7 @@ const DeliverySettings: React.FC = () => {
           </div>
         </div>
 
-        {/* Actions */}
+        {/* Actions - Save button removed, will use unified save button */}
         <div className="flex items-center justify-between pt-6 border-t border-gray-200">
           <div className="flex items-center gap-3">
             <GlassButton
@@ -664,13 +706,9 @@ const DeliverySettings: React.FC = () => {
             </GlassButton>
           </div>
           <div className="flex items-center gap-3">
-            <GlassButton
-              type="submit"
-              disabled={!isDirty || isSaving}
-              loading={isSaving}
-            >
-              {isSaving ? 'Saving...' : 'Save Settings'}
-            </GlassButton>
+            <div className="text-sm text-gray-500 italic">
+              Settings will be saved using the unified save button
+            </div>
           </div>
         </div>
       </form>

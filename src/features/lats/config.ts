@@ -32,6 +32,7 @@ export const LATS_ROUTES = {
   products: '/lats/products',
   productDetail: (id: string) => `/lats/products/${id}`,
   productEdit: (id: string) => `/lats/products/${id}/edit`,
+  addProduct: '/lats/add-product',
   salesReports: '/lats/sales-reports',
   loyalty: '/lats/loyalty',
   payments: '/lats/payments',

@@ -55,7 +55,7 @@ const UniversalSettingsTab: React.FC<UniversalSettingsTabProps> = ({
         {children}
       </div>
 
-      {/* Actions */}
+      {/* Actions - Save button removed, will use unified save button */}
       <div className="flex items-center justify-between pt-6 border-t border-gray-200">
         <div className="flex items-center gap-3">
           <GlassButton
@@ -77,15 +77,6 @@ const UniversalSettingsTab: React.FC<UniversalSettingsTabProps> = ({
           >
             <X className="w-4 h-4 mr-2" />
             Cancel
-          </GlassButton>
-          <GlassButton
-            type="button"
-            onClick={onSave}
-            disabled={!isDirty || isSaving}
-            loading={isSaving}
-          >
-            <Save className="w-4 h-4 mr-2" />
-            {isSaving ? 'Saving...' : 'Save Settings'}
           </GlassButton>
         </div>
       </div>

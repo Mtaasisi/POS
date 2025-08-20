@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { ShoppingCart, DollarSign, CreditCard, Receipt, Trash2, Package, Search, Bug, X } from 'lucide-react';
+import { ShoppingCart, DollarSign, CreditCard, Receipt, Trash2, Package, Search, Bug, X, User, UserPlus, Percent } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import { useInventoryStore } from '../../stores/useInventoryStore';
 import { usePOSStore } from '../../stores/usePOSStore';
 import GlassCard from '../ui/GlassCard';
@@ -7,8 +8,11 @@ import GlassButton from '../ui/GlassButton';
 import VariantProductSearch from './VariantProductSearch';
 import VariantCartItem from './VariantCartItem';
 import ZenoPayPaymentButton from './ZenoPayPaymentButton';
+import CustomerSelectionModal from './CustomerSelectionModal';
 import { format } from '../../lib/format';
 import { ProductSearchResult, ProductSearchVariant, CartItem, Sale } from '../../types/pos';
+import { Customer } from '../../../customers/types';
+import { useAuth } from '../../../../context/AuthContext';
 
 const EnhancedPOSComponent: React.FC = () => {
   // Store hooks
@@ -28,6 +32,9 @@ const EnhancedPOSComponent: React.FC = () => {
     clearSearchResults
   } = usePOSStore();
 
+  // Auth context
+  const { currentUser } = useAuth();
+
   // Local state
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -36,6 +43,8 @@ const EnhancedPOSComponent: React.FC = () => {
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [showCustomerSelection, setShowCustomerSelection] = useState(false);
   const [debugInfo, setDebugInfo] = useState<any>(null);
   const [showDebug, setShowDebug] = useState(false);
 
@@ -195,47 +204,146 @@ const EnhancedPOSComponent: React.FC = () => {
   // Clear cart
   const handleClearCart = () => {
     setCartItems([]);
+    // Clear discount when cart is cleared
+    setDiscountValue('');
+    setDiscountDescription('');
   };
 
-  // Calculate cart totals
+  // Customer selection handlers
+  const handleCustomerSelect = (customer: Customer) => {
+    setSelectedCustomer(customer);
+    setCustomerName(customer.name);
+    setCustomerPhone(customer.phone || '');
+    setCustomerEmail(customer.email || '');
+  };
+
+  const handleRemoveCustomer = () => {
+    setSelectedCustomer(null);
+    setCustomerName('');
+    setCustomerPhone('');
+    setCustomerEmail('');
+  };
+
+  // Discount state
+  const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>('percentage');
+  const [discountValue, setDiscountValue] = useState('');
+  const [discountDescription, setDiscountDescription] = useState('');
+
+  // Calculate cart totals with discount
   const cartTotals = useMemo(() => {
     const subtotal = cartItems.reduce((sum, item) => sum + item.totalPrice, 0);
-    const tax = subtotal * 0.16; // 16% VAT
-    const total = subtotal + tax;
+    
+    // Calculate discount
+    let discountAmount = 0;
+    if (discountValue && !isNaN(parseFloat(discountValue))) {
+      const value = parseFloat(discountValue);
+      if (discountType === 'percentage') {
+        discountAmount = Math.min((subtotal * value) / 100, subtotal);
+      } else {
+        discountAmount = Math.min(value, subtotal);
+      }
+    }
+    
+    const discountedSubtotal = subtotal - discountAmount;
+    const tax = discountedSubtotal * 0.16; // 16% VAT
+    const total = discountedSubtotal + tax;
     
     return {
       subtotal,
+      discountAmount,
+      discountPercentage: subtotal > 0 ? (discountAmount / subtotal) * 100 : 0,
+      discountedSubtotal,
       tax,
       total,
       itemCount: cartItems.length
     };
-  }, [cartItems]);
+  }, [cartItems, discountType, discountValue]);
 
   // Process sale
   const handleProcessSale = async () => {
     if (cartItems.length === 0) {
-      alert('Cart is empty');
+      toast.error('Cart is empty');
       return;
     }
 
     // Check for insufficient stock
     const insufficientStockItems = cartItems.filter(item => item.quantity > item.availableQuantity);
     if (insufficientStockItems.length > 0) {
-      alert(`Insufficient stock for some items. Please check quantities.`);
+      toast.error(`Insufficient stock for some items. Please check quantities.`);
       return;
     }
 
-    // TODO: Implement actual sale processing
-    console.log('Processing sale:', {
-      items: cartItems,
-      totals: cartTotals,
-      paymentMethod: selectedPaymentMethod,
-      customer: { name: customerName, phone: customerPhone }
-    });
+    if (!selectedPaymentMethod) {
+      toast.error('Please select a payment method');
+      return;
+    }
 
-    // Clear cart after successful sale
-    handleClearCart();
-    alert('Sale completed successfully!');
+    try {
+      // Import the sale processing service
+      const { saleProcessingService } = await import('../../../../lib/saleProcessingService');
+      
+      // Prepare sale data
+      const saleData = {
+        customerId: selectedCustomer?.id,
+        customerName: selectedCustomer?.name || customerName || 'Walk-in Customer',
+        customerPhone: selectedCustomer?.phone || customerPhone || undefined,
+        customerEmail: selectedCustomer?.email || customerEmail || undefined,
+        items: cartItems.map(item => ({
+          id: item.id,
+          productId: item.productId,
+          variantId: item.variantId,
+          productName: item.productName,
+          variantName: item.variantName,
+          sku: item.sku,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          totalPrice: item.totalPrice,
+          costPrice: 0, // Will be calculated by the service
+          profit: 0 // Will be calculated by the service
+        })),
+        subtotal: cartTotals.subtotal,
+        tax: cartTotals.tax,
+        discount: cartTotals.discountAmount,
+        total: cartTotals.total,
+        paymentMethod: {
+          type: selectedPaymentMethod,
+          details: {},
+          amount: cartTotals.total
+        },
+        paymentStatus: 'completed' as const,
+        soldBy: currentUser?.name || currentUser?.email || 'POS User',
+        soldAt: new Date().toISOString(),
+        notes: cartTotals.discountAmount > 0 
+          ? `Discount: ${format.money(cartTotals.discountAmount)} (${cartTotals.discountPercentage.toFixed(1)}%)${discountDescription ? ` - ${discountDescription}` : ''}`
+          : undefined
+      };
+
+      // Process the sale
+      const result = await saleProcessingService.processSale(saleData);
+      
+      if (result.success) {
+        // Clear cart after successful sale
+        handleClearCart();
+        
+        // Clear customer information
+        setCustomerName('');
+        setCustomerPhone('');
+        setCustomerEmail('');
+        
+        // Show success message
+        toast.success(`Sale completed! Sale #${result.sale?.saleNumber}`);
+        
+        // Reload products to update stock
+        await loadProducts();
+        
+      } else {
+        toast.error(result.error || 'Failed to process sale');
+      }
+      
+    } catch (error) {
+      console.error('Error processing sale:', error);
+      toast.error('Failed to process sale. Please try again.');
+    }
   };
 
   // Handle ZenoPay payment completion
@@ -243,22 +351,61 @@ const EnhancedPOSComponent: React.FC = () => {
     try {
       console.log('ZenoPay payment completed:', sale);
       
-      // TODO: Save sale to database
-      // TODO: Update inventory
-      // TODO: Send receipt
+      // Import the sale processing service
+      const { saleProcessingService } = await import('../../../../lib/saleProcessingService');
       
-      // Clear cart after successful payment
-      handleClearCart();
+      // Process the sale using the service
+      const result = await saleProcessingService.processSale({
+        customerId: sale.customerId,
+        customerName: sale.customerName || 'Walk-in Customer',
+        customerPhone: sale.customerPhone || undefined,
+        customerEmail: sale.customerEmail || undefined,
+        items: sale.items.map(item => ({
+          id: item.id,
+          productId: item.productId,
+          variantId: item.variantId,
+          productName: item.productName,
+          variantName: item.variantName,
+          sku: item.sku,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          totalPrice: item.totalPrice,
+          costPrice: item.costPrice || 0,
+          profit: item.profit || 0
+        })),
+        subtotal: sale.subtotal,
+        tax: sale.tax || 0,
+        discount: sale.discount || 0,
+        total: sale.total,
+        paymentMethod: sale.paymentMethod,
+        paymentStatus: 'completed' as const,
+        soldBy: sale.soldBy || 'POS User',
+        soldAt: sale.soldAt,
+        notes: sale.notes
+      });
       
-      // Clear customer information
-      setCustomerName('');
-      setCustomerPhone('');
-      setCustomerEmail('');
+      if (result.success) {
+        // Clear cart after successful payment
+        handleClearCart();
+        
+        // Clear customer information
+        setCustomerName('');
+        setCustomerPhone('');
+        setCustomerEmail('');
+        
+        // Show success message
+        toast.success(`Payment completed! Sale #${result.sale?.saleNumber}`);
+        
+        // Reload products to update stock
+        await loadProducts();
+        
+      } else {
+        toast.error(result.error || 'Failed to process payment');
+      }
       
-      alert('Payment completed successfully! Sale ID: ' + sale.saleNumber);
     } catch (error) {
       console.error('Error completing payment:', error);
-      alert('Error completing payment. Please try again.');
+      toast.error('Error completing payment. Please try again.');
     }
   };
 
@@ -381,6 +528,12 @@ const EnhancedPOSComponent: React.FC = () => {
                 <span>Subtotal ({cartTotals.itemCount} items):</span>
                 <span>{format.money(cartTotals.subtotal)}</span>
               </div>
+              {cartTotals.discountAmount > 0 && (
+                <div className="flex justify-between text-sm text-green-600">
+                  <span>Discount:</span>
+                  <span>-{format.money(cartTotals.discountAmount)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-sm">
                 <span>VAT (16%):</span>
                 <span>{format.money(cartTotals.tax)}</span>
@@ -393,6 +546,50 @@ const EnhancedPOSComponent: React.FC = () => {
 
             {/* Customer Information */}
             <div className="space-y-3 mb-4">
+              <div className="flex items-center justify-between">
+                <label className="block text-sm font-medium text-gray-700">
+                  Customer Information
+                </label>
+                <GlassButton
+                  onClick={() => setShowCustomerSelection(true)}
+                  size="sm"
+                  className="inline-flex items-center gap-2"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  Select Customer
+                </GlassButton>
+              </div>
+              
+              {selectedCustomer ? (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-sm">
+                        {selectedCustomer.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-gray-900 text-sm">{selectedCustomer.name}</h4>
+                        <p className="text-xs text-gray-600">
+                          {selectedCustomer.phone && `${selectedCustomer.phone} • `}
+                          {selectedCustomer.loyaltyLevel} • {format.money(selectedCustomer.totalSpent || 0)}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleRemoveCustomer}
+                      className="p-1 hover:bg-red-100 rounded transition-colors"
+                    >
+                      <X className="w-3 h-3 text-red-500" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-3 border-2 border-dashed border-gray-300 rounded-lg">
+                  <User className="w-6 h-6 text-gray-400 mx-auto mb-1" />
+                  <p className="text-sm text-gray-600">No customer selected</p>
+                </div>
+              )}
+              
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Customer Name
@@ -429,6 +626,80 @@ const EnhancedPOSComponent: React.FC = () => {
                   placeholder="Enter email address"
                 />
               </div>
+            </div>
+
+            {/* Discount Section */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                <Percent className="w-4 h-4 text-green-600" />
+                Discount
+              </label>
+              <div className="grid grid-cols-3 gap-2 mb-2">
+                <button
+                  onClick={() => setDiscountType('percentage')}
+                  className={`p-2 border rounded-lg text-sm transition-colors ${
+                    discountType === 'percentage'
+                      ? 'border-green-500 bg-green-50 text-green-700'
+                      : 'border-gray-300 hover:border-gray-400'
+                  }`}
+                >
+                  <Percent className="w-3 h-3 mx-auto mb-1" />
+                  Percentage
+                </button>
+                <button
+                  onClick={() => setDiscountType('fixed')}
+                  className={`p-2 border rounded-lg text-sm transition-colors ${
+                    discountType === 'fixed'
+                      ? 'border-green-500 bg-green-50 text-green-700'
+                      : 'border-gray-300 hover:border-gray-400'
+                  }`}
+                >
+                  <DollarSign className="w-3 h-3 mx-auto mb-1" />
+                  Fixed Amount
+                </button>
+                <button
+                  onClick={() => {
+                    setDiscountValue('');
+                    setDiscountDescription('');
+                  }}
+                  className="p-2 border border-gray-300 rounded-lg text-sm hover:bg-red-50 hover:border-red-300 transition-colors"
+                >
+                  <X className="w-3 h-3 mx-auto mb-1" />
+                  Clear
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="number"
+                  value={discountValue}
+                  onChange={(e) => setDiscountValue(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  placeholder={discountType === 'percentage' ? 'Enter %' : 'Enter amount'}
+                  min="0"
+                  max={discountType === 'percentage' ? '100' : undefined}
+                  step={discountType === 'percentage' ? '0.1' : '1'}
+                />
+                <input
+                  type="text"
+                  value={discountDescription}
+                  onChange={(e) => setDiscountDescription(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  placeholder="Discount reason"
+                />
+              </div>
+              {cartTotals.discountAmount > 0 && (
+                <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="text-sm text-green-700">
+                    <strong>Discount Applied:</strong> {format.money(cartTotals.discountAmount)} 
+                    ({cartTotals.discountPercentage.toFixed(1)}%)
+                  </div>
+                  {discountDescription && (
+                    <div className="text-xs text-green-600 mt-1">
+                      Reason: {discountDescription}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Payment Method */}
@@ -497,6 +768,14 @@ const EnhancedPOSComponent: React.FC = () => {
             </div>
           </GlassCard>
         )}
+
+        {/* Customer Selection Modal */}
+        <CustomerSelectionModal
+          isOpen={showCustomerSelection}
+          onClose={() => setShowCustomerSelection(false)}
+          onCustomerSelect={handleCustomerSelect}
+          selectedCustomer={selectedCustomer}
+        />
       </div>
     </div>
   );

@@ -1,11 +1,17 @@
 // Receipt Settings Tab Component
-import React from 'react';
+import React, { forwardRef, useImperativeHandle } from 'react';
 import { Receipt, Printer, FileText, Settings, Image, Calendar } from 'lucide-react';
 import UniversalSettingsTab from './UniversalSettingsTab';
 import { ToggleSwitch, NumberInput, TextInput, Select } from './UniversalFormComponents';
 import { useReceiptSettings } from '../../../../hooks/usePOSSettings';
 
-const ReceiptSettingsTab: React.FC = () => {
+
+export interface ReceiptSettingsTabRef {
+  saveSettings: () => Promise<boolean>;
+  resetSettings: () => Promise<boolean>;
+}
+
+const ReceiptSettingsTab = forwardRef<ReceiptSettingsTabRef>((props, ref) => {
   const {
     settings,
     setSettings,
@@ -22,6 +28,7 @@ const ReceiptSettingsTab: React.FC = () => {
     if (success) {
       // Settings saved successfully
     }
+    return success;
   };
 
   const handleReset = async () => {
@@ -37,6 +44,11 @@ const ReceiptSettingsTab: React.FC = () => {
       [key]: value
     }));
   };
+  // Expose save and reset functions through ref
+  useImperativeHandle(ref, () => ({
+    saveSettings: handleSave,
+    resetSettings: handleReset
+  }));
 
   if (isLoading) {
     return (
@@ -356,6 +368,6 @@ const ReceiptSettingsTab: React.FC = () => {
       </div>
     </UniversalSettingsTab>
   );
-};
+});
 
 export default ReceiptSettingsTab;

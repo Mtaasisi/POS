@@ -1,11 +1,17 @@
 // Search & Filter Settings Tab Component
-import React from 'react';
+import React, { forwardRef, useImperativeHandle } from 'react';
 import { Search, Filter, Zap, Eye, Clock, Settings } from 'lucide-react';
 import UniversalSettingsTab from './UniversalSettingsTab';
 import { ToggleSwitch, NumberInput, TextInput, Select } from './UniversalFormComponents';
 import { useSearchFilterSettings } from '../../../../hooks/usePOSSettings';
 
-const SearchFilterSettingsTab: React.FC = () => {
+
+export interface SearchFilterSettingsTabRef {
+  saveSettings: () => Promise<boolean>;
+  resetSettings: () => Promise<boolean>;
+}
+
+const SearchFilterSettingsTab = forwardRef<SearchFilterSettingsTabRef>((props, ref) => {
   const {
     settings,
     setSettings,
@@ -22,6 +28,7 @@ const SearchFilterSettingsTab: React.FC = () => {
     if (success) {
       // Settings saved successfully
     }
+    return success;
   };
 
   const handleReset = async () => {
@@ -37,6 +44,11 @@ const SearchFilterSettingsTab: React.FC = () => {
       [key]: value
     }));
   };
+  // Expose save and reset functions through ref
+  useImperativeHandle(ref, () => ({
+    saveSettings: handleSave,
+    resetSettings: handleReset
+  }));
 
   if (isLoading) {
     return (
@@ -277,6 +289,6 @@ const SearchFilterSettingsTab: React.FC = () => {
       </div>
     </UniversalSettingsTab>
   );
-};
+});
 
 export default SearchFilterSettingsTab;

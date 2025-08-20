@@ -1,11 +1,17 @@
 // Analytics & Reporting Settings Tab Component
-import React from 'react';
+import React, { forwardRef, useImperativeHandle } from 'react';
 import { BarChart3, TrendingUp, FileText, PieChart, Settings, Calendar, Download, Share2 } from 'lucide-react';
 import UniversalSettingsTab from './UniversalSettingsTab';
 import { ToggleSwitch, NumberInput, TextInput, Select, TimeInput } from './UniversalFormComponents';
 import { useAnalyticsReportingSettings } from '../../../../hooks/usePOSSettings';
 
-const AnalyticsReportingSettingsTab: React.FC = () => {
+
+export interface AnalyticsReportingSettingsTabRef {
+  saveSettings: () => Promise<boolean>;
+  resetSettings: () => Promise<boolean>;
+}
+
+const AnalyticsReportingSettingsTab = forwardRef<AnalyticsReportingSettingsTabRef>((props, ref) => {
   const {
     settings,
     setSettings,
@@ -22,6 +28,7 @@ const AnalyticsReportingSettingsTab: React.FC = () => {
     if (success) {
       // Settings saved successfully
     }
+    return success;
   };
 
   const handleReset = async () => {
@@ -37,6 +44,11 @@ const AnalyticsReportingSettingsTab: React.FC = () => {
       [key]: value
     }));
   };
+  // Expose save and reset functions through ref
+  useImperativeHandle(ref, () => ({
+    saveSettings: handleSave,
+    resetSettings: handleReset
+  }));
 
   if (isLoading) {
     return (
@@ -277,6 +289,6 @@ const AnalyticsReportingSettingsTab: React.FC = () => {
       </div>
     </UniversalSettingsTab>
   );
-};
+});
 
 export default AnalyticsReportingSettingsTab;

@@ -1,11 +1,17 @@
 // Loyalty & Customer Settings Tab Component
-import React from 'react';
+import React, { forwardRef, useImperativeHandle } from 'react';
 import { Gift, Users, MessageCircle, Calendar, Star, CreditCard, Bell, BarChart3 } from 'lucide-react';
 import UniversalSettingsTab from './UniversalSettingsTab';
 import { ToggleSwitch, NumberInput, TextInput, Select } from './UniversalFormComponents';
 import { useLoyaltyCustomerSettings } from '../../../../hooks/usePOSSettings';
 
-const LoyaltyCustomerSettingsTab: React.FC = () => {
+
+export interface LoyaltyCustomerSettingsTabRef {
+  saveSettings: () => Promise<boolean>;
+  resetSettings: () => Promise<boolean>;
+}
+
+const LoyaltyCustomerSettingsTab = forwardRef<LoyaltyCustomerSettingsTabRef>((props, ref) => {
   const {
     settings,
     setSettings,
@@ -22,6 +28,7 @@ const LoyaltyCustomerSettingsTab: React.FC = () => {
     if (success) {
       // Settings saved successfully
     }
+    return success;
   };
 
   const handleReset = async () => {
@@ -37,6 +44,11 @@ const LoyaltyCustomerSettingsTab: React.FC = () => {
       [key]: value
     }));
   };
+  // Expose save and reset functions through ref
+  useImperativeHandle(ref, () => ({
+    saveSettings: handleSave,
+    resetSettings: handleReset
+  }));
 
   if (isLoading) {
     return (
@@ -249,6 +261,6 @@ const LoyaltyCustomerSettingsTab: React.FC = () => {
       </div>
     </UniversalSettingsTab>
   );
-};
+});
 
 export default LoyaltyCustomerSettingsTab;

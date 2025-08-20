@@ -1,12 +1,17 @@
 // General Settings Tab Component
-import React from 'react';
+import React, { forwardRef, useImperativeHandle } from 'react';
 import { Settings, Monitor, Eye, Zap, Database } from 'lucide-react';
 import UniversalSettingsTab from './UniversalSettingsTab';
 import { SettingsSection } from './UniversalFormComponents';
 import { ToggleSwitch, NumberInput, TextInput, Select } from './UniversalFormComponents';
 import { useGeneralSettings } from '../../../../hooks/usePOSSettings';
 
-const GeneralSettingsTab: React.FC = () => {
+export interface GeneralSettingsTabRef {
+  saveSettings: () => Promise<boolean>;
+  resetSettings: () => Promise<boolean>;
+}
+
+const GeneralSettingsTab = forwardRef<GeneralSettingsTabRef>((props, ref) => {
   const {
     settings,
     setSettings,
@@ -19,10 +24,21 @@ const GeneralSettingsTab: React.FC = () => {
   } = useGeneralSettings();
 
   const handleSave = async () => {
+    console.log(`🔧 GeneralSettingsTab.handleSave called`);
+    console.log(`📊 Current settings:`, settings);
+    
     const success = await saveSettings(settings);
+    console.log(`✅ Save result:`, success);
+    
     if (success) {
-      // Settings saved successfully
+      console.log(`🎉 General settings saved successfully`);
+      // Force refresh the context after saving
+      window.dispatchEvent(new CustomEvent('settingsUpdated', { detail: { type: 'general' } }));
+    } else {
+      console.error(`❌ General settings save failed`);
     }
+    
+    return success;
   };
 
   const handleReset = async () => {
@@ -38,6 +54,12 @@ const GeneralSettingsTab: React.FC = () => {
       [key]: value
     }));
   };
+
+  // Expose save and reset functions through ref
+  useImperativeHandle(ref, () => ({
+    saveSettings: handleSave,
+    resetSettings: handleReset
+  }));
 
   if (isLoading) {
     return (
@@ -248,8 +270,8 @@ const GeneralSettingsTab: React.FC = () => {
           />
         </div>
       </SettingsSection>
-    </UniversalSettingsTab>
-  );
-};
-
-export default GeneralSettingsTab;
+          </UniversalSettingsTab>
+    );
+  });
+  
+  export default GeneralSettingsTab;

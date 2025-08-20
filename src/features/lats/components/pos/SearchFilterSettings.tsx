@@ -31,7 +31,7 @@ interface SearchFilterSettings {
   searchInDescription: boolean;
   searchInSKU: boolean;
   searchInBarcode: boolean;
-  searchInTags: boolean;
+
   fuzzySearch: boolean;
   exactMatchPriority: boolean;
   
@@ -370,20 +370,7 @@ const SearchFilterSettings: React.FC = () => {
               </label>
             </div>
 
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-medium text-gray-900">Search in Tags</div>
-                <div className="text-sm text-gray-600">Include product tags in search</div>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  {...register('searchInTags')}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-              </label>
-            </div>
+
 
             <div className="flex items-center justify-between">
               <div>
@@ -560,7 +547,7 @@ const SearchFilterSettings: React.FC = () => {
           </div>
         </div>
 
-        {/* Actions */}
+        {/* Actions - Save button removed, will use unified save button */}
         <div className="flex items-center justify-between pt-6 border-t border-gray-200">
           <div className="flex items-center gap-3">
             <GlassButton
@@ -572,13 +559,9 @@ const SearchFilterSettings: React.FC = () => {
             </GlassButton>
           </div>
           <div className="flex items-center gap-3">
-            <GlassButton
-              type="submit"
-              disabled={!isDirty || isSaving}
-              loading={isSaving}
-            >
-              {isSaving ? 'Saving...' : 'Save Settings'}
-            </GlassButton>
+            <div className="text-sm text-gray-500 italic">
+              Settings will be saved using the unified save button
+            </div>
           </div>
         </div>
       </form>

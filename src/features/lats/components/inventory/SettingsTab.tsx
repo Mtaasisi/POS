@@ -24,8 +24,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             <Package className="w-4 h-4 text-purple-600" />
           </div>
           <div>
-            <h3 className="font-medium text-purple-900">Product Catalog Management</h3>
-            <p className="text-sm text-purple-600">Add and manage products, brands, categories, and suppliers</p>
+            <h3 className="font-medium text-purple-900">Product Inventory Management</h3>
+            <p className="text-sm text-purple-600">Add and manage products, inventory, and stock levels</p>
           </div>
         </div>
         

@@ -1,0 +1,345 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { Search, User, Phone, Mail, X, Plus, Star } from 'lucide-react';
+import { toast } from 'react-hot-toast';
+import GlassCard from '../ui/GlassCard';
+import GlassButton from '../ui/GlassButton';
+import { Customer } from '../../../customers/types';
+import { searchCustomersFast } from '../../../../lib/customerApi';
+import CreateCustomerModal from './CreateCustomerModal';
+
+interface CustomerSelectionModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onCustomerSelect: (customer: Customer) => void;
+  selectedCustomer?: Customer | null;
+}
+
+const CustomerSelectionModal: React.FC<CustomerSelectionModalProps> = ({
+  isOpen,
+  onClose,
+  onCustomerSelect,
+  selectedCustomer
+}) => {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [recentCustomers, setRecentCustomers] = useState<Customer[]>([]);
+  const [showCreateCustomer, setShowCreateCustomer] = useState(false);
+
+  // Load recent customers on mount
+  useEffect(() => {
+    if (isOpen) {
+      loadRecentCustomers();
+    }
+  }, [isOpen]);
+
+  // Search customers when query changes
+  useEffect(() => {
+    if (searchQuery.trim()) {
+      searchCustomers(searchQuery);
+    } else {
+      setCustomers([]);
+    }
+  }, [searchQuery]);
+
+  const loadRecentCustomers = async () => {
+    try {
+      setLoading(true);
+      const result = await searchCustomersFast('', 1, 10);
+      if (result.ok && result.data) {
+        setRecentCustomers(result.data);
+      }
+    } catch (error) {
+      console.error('Error loading recent customers:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const searchCustomers = async (query: string) => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const result = await searchCustomersFast(query, 1, 20);
+      
+      if (result.ok && result.data) {
+        setCustomers(result.data);
+      } else {
+        setError(result.message || 'Failed to search customers');
+      }
+    } catch (error) {
+      console.error('Error searching customers:', error);
+      setError('Failed to search customers');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCustomerSelect = (customer: Customer) => {
+    onCustomerSelect(customer);
+    onClose();
+    toast.success(`Selected customer: ${customer.name}`);
+  };
+
+  const handleCreateNewCustomer = () => {
+    setShowCreateCustomer(true);
+  };
+
+  const handleCustomerCreated = (newCustomer: Customer) => {
+    // Add the new customer to the recent customers list
+    setRecentCustomers(prev => [newCustomer, ...prev.slice(0, 4)]);
+    // Select the newly created customer
+    onCustomerSelect(newCustomer);
+  };
+
+  const getLoyaltyIcon = (loyaltyLevel: string) => {
+    switch (loyaltyLevel?.toLowerCase()) {
+      case 'platinum':
+        return <Star className="w-4 h-4 text-purple-500 fill-current" />;
+      case 'gold':
+        return <Star className="w-4 h-4 text-yellow-500 fill-current" />;
+      case 'silver':
+        return <Star className="w-4 h-4 text-gray-400 fill-current" />;
+      case 'bronze':
+        return <Star className="w-4 h-4 text-orange-500 fill-current" />;
+      default:
+        return null;
+    }
+  };
+
+  const formatMoney = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'TZS',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount || 0);
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <GlassCard className="w-full max-w-4xl max-h-[90vh] overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-white/20">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Select Customer</h2>
+            <p className="text-gray-600 mt-1">Search and select a customer for this sale</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <X className="w-6 h-6 text-gray-500" />
+          </button>
+        </div>
+
+        {/* Search Bar */}
+        <div className="p-6 border-b border-white/20">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <input
+              type="text"
+              placeholder="Search customers by name, phone, or email..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              autoFocus
+            />
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {loading && (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+              <span className="ml-2 text-gray-600">Searching customers...</span>
+            </div>
+          )}
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+              <p className="text-red-600">{error}</p>
+            </div>
+          )}
+
+          {/* Search Results */}
+          {searchQuery && customers.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                Search Results ({customers.length})
+              </h3>
+              <div className="grid gap-3">
+                {customers.map((customer) => (
+                  <CustomerCard
+                    key={customer.id}
+                    customer={customer}
+                    onSelect={handleCustomerSelect}
+                    isSelected={selectedCustomer?.id === customer.id}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Recent Customers */}
+          {!searchQuery && recentCustomers.length > 0 && (
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Customers</h3>
+              <div className="grid gap-3">
+                {recentCustomers.map((customer) => (
+                  <CustomerCard
+                    key={customer.id}
+                    customer={customer}
+                    onSelect={handleCustomerSelect}
+                    isSelected={selectedCustomer?.id === customer.id}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* No Results */}
+          {searchQuery && !loading && customers.length === 0 && (
+            <div className="text-center py-8">
+              <User className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No customers found</h3>
+              <p className="text-gray-600 mb-4">
+                No customers match your search for "{searchQuery}"
+              </p>
+              <GlassButton
+                onClick={handleCreateNewCustomer}
+                className="inline-flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Create New Customer
+              </GlassButton>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-6 border-t border-white/20 bg-gray-50/50">
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-gray-600">
+              {selectedCustomer ? (
+                <span>Selected: <strong>{selectedCustomer.name}</strong></span>
+              ) : (
+                <span>No customer selected</span>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <GlassButton variant="outline" onClick={onClose}>
+                Cancel
+              </GlassButton>
+              <GlassButton
+                onClick={handleCreateNewCustomer}
+                className="inline-flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                New Customer
+              </GlassButton>
+            </div>
+          </div>
+        </div>
+      </GlassCard>
+
+      {/* Create Customer Modal */}
+      <CreateCustomerModal
+        isOpen={showCreateCustomer}
+        onClose={() => setShowCreateCustomer(false)}
+        onCustomerCreated={handleCustomerCreated}
+      />
+    </div>
+  );
+};
+
+// Customer Card Component
+interface CustomerCardProps {
+  customer: Customer;
+  onSelect: (customer: Customer) => void;
+  isSelected?: boolean;
+}
+
+const CustomerCard: React.FC<CustomerCardProps> = ({ customer, onSelect, isSelected }) => {
+  const formatMoney = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'TZS',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount || 0);
+  };
+
+  const getLoyaltyIcon = (loyaltyLevel: string) => {
+    switch (loyaltyLevel?.toLowerCase()) {
+      case 'platinum':
+        return <Star className="w-4 h-4 text-purple-500 fill-current" />;
+      case 'gold':
+        return <Star className="w-4 h-4 text-yellow-500 fill-current" />;
+      case 'silver':
+        return <Star className="w-4 h-4 text-gray-400 fill-current" />;
+      case 'bronze':
+        return <Star className="w-4 h-4 text-orange-500 fill-current" />;
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div
+      onClick={() => onSelect(customer)}
+      className={`p-4 bg-white rounded-lg border-2 cursor-pointer transition-all duration-200 hover:shadow-lg hover:scale-[1.02] ${
+        isSelected 
+          ? 'border-blue-500 bg-blue-50' 
+          : 'border-gray-200 hover:border-blue-300'
+      }`}
+    >
+      <div className="flex items-center gap-4">
+        {/* Avatar */}
+        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-lg">
+          {customer.name.charAt(0).toUpperCase()}
+        </div>
+
+        {/* Customer Info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <h4 className="font-semibold text-gray-900 truncate">{customer.name}</h4>
+            {getLoyaltyIcon(customer.loyaltyLevel)}
+          </div>
+          
+          <div className="flex items-center gap-4 text-sm text-gray-600">
+            {customer.phone && (
+              <div className="flex items-center gap-1">
+                <Phone className="w-3 h-3" />
+                <span>{customer.phone}</span>
+              </div>
+            )}
+            {customer.email && (
+              <div className="flex items-center gap-1">
+                <Mail className="w-3 h-3" />
+                <span className="truncate">{customer.email}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div className="text-right">
+          <div className="text-sm font-medium text-gray-900">
+            {formatMoney(customer.totalSpent || 0)}
+          </div>
+          <div className="text-xs text-gray-500">
+            {customer.points || 0} points
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default CustomerSelectionModal;

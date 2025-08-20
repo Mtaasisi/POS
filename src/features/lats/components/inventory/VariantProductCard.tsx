@@ -341,7 +341,7 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        onEdit(product);
+                        window.location.href = `/lats/products/${product.id}/edit`;
                       }}
                       className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 transition-all duration-200 rounded-lg"
                       title="Edit Product"

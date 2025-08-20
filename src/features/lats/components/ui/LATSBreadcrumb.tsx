@@ -52,6 +52,11 @@ const LATS_BREADCRUMB_MAP: Record<string, BreadcrumbItem[]> = {
     { path: '/lats/unified-inventory', name: 'Unified Inventory Management' },
     { path: '/lats/add-product', name: 'Add Product' }
   ],
+  '/lats/products/:productId/edit': [
+    { path: '/dashboard', name: 'Dashboard', icon: Home },
+    { path: '/lats/unified-inventory', name: 'Unified Inventory Management' },
+    { path: '/lats/products/:productId/edit', name: 'Edit Product' }
+  ],
   '/lats/inventory/new': [
     { path: '/dashboard', name: 'Dashboard', icon: Home },
     { path: '/lats/unified-inventory', name: 'Unified Inventory Management' },

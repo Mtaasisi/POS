@@ -10,7 +10,7 @@ interface POSBottomBarProps {
   onCustomers: () => void;
   onInventory: () => void;
   onReports: () => void;
-  onLoyalty: () => void;
+  onLoyalty?: () => void;
   className?: string;
 }
 
@@ -94,13 +94,15 @@ const POSBottomBar: React.FC<POSBottomBarProps> = ({
               <FileText size={18} />
             </button>
             
-            <button
-              onClick={onLoyalty}
-              className="p-2 text-gray-600 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors duration-200"
-              title="Loyalty Program"
-            >
-              <Crown size={18} />
-            </button>
+            {onLoyalty && (
+              <button
+                onClick={onLoyalty}
+                className="p-2 text-gray-600 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors duration-200"
+                title="Loyalty Program"
+              >
+                <Crown size={18} />
+              </button>
+            )}
             
             <button
               onClick={onSettings}

@@ -1,11 +1,17 @@
 // Advanced Notification Settings Tab Component
-import React from 'react';
+import React, { forwardRef, useImperativeHandle } from 'react';
 import { Bell, Volume2, Mail, MessageSquare, Smartphone, Monitor, Settings } from 'lucide-react';
 import UniversalSettingsTab from './UniversalSettingsTab';
 import { ToggleSwitch, NumberInput, TextInput, Select, TimeInput } from './UniversalFormComponents';
 import { useNotificationSettings } from '../../../../hooks/usePOSSettings';
 
-const AdvancedNotificationSettingsTab: React.FC = () => {
+
+export interface AdvancedNotificationSettingsTabRef {
+  saveSettings: () => Promise<boolean>;
+  resetSettings: () => Promise<boolean>;
+}
+
+const AdvancedNotificationSettingsTab = forwardRef<AdvancedNotificationSettingsTabRef>((props, ref) => {
   const {
     settings,
     setSettings,
@@ -22,6 +28,7 @@ const AdvancedNotificationSettingsTab: React.FC = () => {
     if (success) {
       // Settings saved successfully
     }
+    return success;
   };
 
   const handleReset = async () => {
@@ -37,6 +44,11 @@ const AdvancedNotificationSettingsTab: React.FC = () => {
       [key]: value
     }));
   };
+  // Expose save and reset functions through ref
+  useImperativeHandle(ref, () => ({
+    saveSettings: handleSave,
+    resetSettings: handleReset
+  }));
 
   if (isLoading) {
     return (
@@ -318,6 +330,6 @@ const AdvancedNotificationSettingsTab: React.FC = () => {
       </div>
     </UniversalSettingsTab>
   );
-};
+});
 
 export default AdvancedNotificationSettingsTab;

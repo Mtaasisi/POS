@@ -545,12 +545,9 @@ const AnalyticsReportingSettings: React.FC = () => {
           >
             Reset Defaults
           </GlassButton>
-          <GlassButton
-            type="submit"
-            disabled={isSaving || isLoading}
-          >
-            {isSaving ? 'Saving...' : 'Save Settings'}
-          </GlassButton>
+          <div className="text-sm text-gray-500 italic flex items-center">
+            Settings will be saved using the unified save button
+          </div>
         </div>
       </form>
     </GlassCard>

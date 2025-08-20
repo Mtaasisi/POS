@@ -17,12 +17,7 @@ interface ProductExportData {
   brandId?: string;
   supplierId?: string;
   images?: string[];
-  tags: string[];
   isActive: boolean;
-  isFeatured: boolean;
-  isDigital: boolean;
-  requiresShipping: boolean;
-  taxRate: number;
   totalQuantity: number;
   totalValue: number;
   condition?: string;
@@ -167,12 +162,7 @@ const ProductExcelExport: React.FC = () => {
             brandId: product.brand_id,
             supplierId: product.supplier_id,
             images: product.images || [],
-            tags: product.tags || [],
             isActive: product.is_active,
-            isFeatured: product.is_featured,
-            isDigital: product.is_digital,
-            requiresShipping: product.requires_shipping,
-            taxRate: product.tax_rate || 0,
             totalQuantity: product.total_quantity || 0,
             totalValue: product.total_value || 0,
             condition: product.condition,
@@ -237,12 +227,7 @@ const ProductExcelExport: React.FC = () => {
               brandId: product.brand_id,
               supplierId: product.supplier_id,
               images: product.images || [],
-              tags: product.tags || [],
               isActive: product.is_active,
-              isFeatured: product.is_featured,
-              isDigital: product.is_digital,
-              requiresShipping: product.requires_shipping,
-              taxRate: product.tax_rate || 0,
               totalQuantity: product.total_quantity || 0,
               totalValue: product.total_value || 0,
               condition: product.condition,
@@ -322,7 +307,7 @@ const ProductExcelExport: React.FC = () => {
         'Category ID', 'Category Name', 'Category Description', 'Category Color',
         'Brand ID', 'Brand Name', 'Brand Description', 'Brand Logo', 'Brand Website',
         'Supplier ID', 'Supplier Name', 'Supplier Contact Person', 'Supplier Email', 'Supplier Phone', 'Supplier Address', 'Supplier Website', 'Supplier Notes',
-        'Images', 'Tags', 'Active', 'Featured', 'Digital', 'Requires Shipping',
+        'Images', 'Active',
         'Tax Rate (%)', 'Total Quantity', 'Total Value', 'Condition', 'Store Shelf',
         'Debut Date', 'Debut Notes', 'Debut Features', 'Metadata',
         
@@ -369,12 +354,7 @@ const ProductExcelExport: React.FC = () => {
           `"${(product.supplier?.website || '').replace(/"/g, '""')}"`,
           `"${(product.supplier?.notes || '').replace(/"/g, '""')}"`,
           `"${(product.images || []).join(', ').replace(/"/g, '""')}"`,
-          `"${(product.tags || []).join(', ').replace(/"/g, '""')}"`,
           product.isActive ? 'Yes' : 'No',
-          product.isFeatured ? 'Yes' : 'No',
-          product.isDigital ? 'Yes' : 'No',
-          product.requiresShipping ? 'Yes' : 'No',
-          product.taxRate,
           product.totalQuantity,
           product.totalValue,
           `"${(product.condition || '').replace(/"/g, '""')}"`,
@@ -469,7 +449,7 @@ const ProductExcelExport: React.FC = () => {
                 <li>• Complete category, brand, and supplier information</li>
                 <li>• All variant details (price, stock, dimensions, attributes)</li>
                 <li>• Product status, metadata, and debut information</li>
-                <li>• Images, tags, and configuration settings</li>
+                <li>• Images and configuration settings</li>
                 <li>• Stock movement history and tracking</li>
                 <li>• One row per variant for complete data coverage</li>
                 <li>• All timestamps and audit information</li>

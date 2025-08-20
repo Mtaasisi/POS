@@ -1,11 +1,16 @@
 // Dynamic Pricing Settings Tab Component
-import React from 'react';
+import React, { forwardRef, useImperativeHandle } from 'react';
 import { TrendingUp, Percent, Clock, Users, Gift, Target } from 'lucide-react';
 import UniversalSettingsTab from './UniversalSettingsTab';
 import { ToggleSwitch, NumberInput, TextInput, Select, TimeInput } from './UniversalFormComponents';
 import { useDynamicPricingSettings } from '../../../../hooks/usePOSSettings';
 
-const DynamicPricingSettingsTab: React.FC = () => {
+export interface DynamicPricingSettingsTabRef {
+  saveSettings: () => Promise<boolean>;
+  resetSettings: () => Promise<boolean>;
+}
+
+const DynamicPricingSettingsTab = forwardRef<DynamicPricingSettingsTabRef>((props, ref) => {
   const {
     settings,
     setSettings,
@@ -22,6 +27,7 @@ const DynamicPricingSettingsTab: React.FC = () => {
     if (success) {
       // Settings saved successfully
     }
+    return success;
   };
 
   const handleReset = async () => {
@@ -37,6 +43,12 @@ const DynamicPricingSettingsTab: React.FC = () => {
       [key]: value
     }));
   };
+
+  // Expose save and reset functions through ref
+  useImperativeHandle(ref, () => ({
+    saveSettings: handleSave,
+    resetSettings: handleReset
+  }));
 
   if (isLoading) {
     return (
@@ -257,8 +269,8 @@ const DynamicPricingSettingsTab: React.FC = () => {
           />
         </div>
       </div>
-    </UniversalSettingsTab>
-  );
-};
-
-export default DynamicPricingSettingsTab;
+          </UniversalSettingsTab>
+    );
+  });
+  
+  export default DynamicPricingSettingsTab;

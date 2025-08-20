@@ -4,7 +4,8 @@ import GlassButton from '../../../shared/components/ui/GlassButton';
 import SearchBar from '../../../shared/components/ui/SearchBar';
 import GlassSelect from '../../../shared/components/ui/GlassSelect';
 import VariantProductCard from './VariantProductCard';
-import ProductImageDisplay from './ProductImageDisplay';
+import { SimpleImageDisplay } from '../../../../components/SimpleImageDisplay';
+import { ProductImage } from '../../../../lib/robustImageService';
 import { 
   Package, Grid, List, Star, CheckCircle, XCircle, 
   Download, Upload, Edit, Eye, Trash2, DollarSign, TrendingUp,
@@ -48,6 +49,21 @@ interface EnhancedInventoryTabProps {
   deleteProduct: (productId: string) => Promise<void>;
 }
 
+// Helper function to convert old image format to new format
+const convertToProductImages = (imageUrls: string[]): ProductImage[] => {
+  if (!imageUrls || imageUrls.length === 0) return [];
+  
+  return imageUrls.map((imageUrl, index) => ({
+    id: `temp-${index}`,
+    url: imageUrl,
+    thumbnailUrl: imageUrl,
+    fileName: `product-image-${index + 1}`,
+    fileSize: 0,
+    isPrimary: index === 0,
+    uploadedAt: new Date().toISOString()
+  }));
+};
+
 const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
   products,
   metrics,
@@ -85,7 +101,7 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
   deleteProduct
 }) => {
   // Debug logging (reduced to prevent console spam)
-  if (process.env.NODE_ENV === 'development' && false) { // Disabled debug logging
+  if (import.meta.env.MODE === 'development' && false) { // Disabled debug logging
     console.log('🔍 EnhancedInventoryTab Debug:', {
       categoriesCount: categories?.length || 0,
       brandsCount: brands?.length || 0,
@@ -396,8 +412,8 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
                       </td>
                       <td className="py-4 px-4">
                         <div className="flex items-center space-x-3">
-                          <ProductImageDisplay
-                            images={product.images}
+                          <SimpleImageDisplay
+                            images={convertToProductImages(product.images)}
                             productName={product.name}
                             size="sm"
                             className="flex-shrink-0"
@@ -444,7 +460,7 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
                       <td className="py-4 px-4 text-center">
                         <div className="flex items-center justify-center space-x-2">
                           <button
-                            onClick={(e) => { e.stopPropagation(); productModals.openEditModal(product); }}
+                            onClick={(e) => { e.stopPropagation(); navigate(`/lats/products/${product.id}/edit`); }}
                             className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
                             title="Edit Product"
                           >
@@ -498,7 +514,7 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
                 }}
                 onView={(product) => navigate(`/lats/products/${product.id}`)}
                 onEdit={(product) => {
-                  productModals.openEditModal(product.id);
+                  navigate(`/lats/products/${product.id}/edit`);
                 }}
                 onDelete={(product) => {
                   if (confirm('Are you sure you want to delete this product?')) {
@@ -521,7 +537,7 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
           <p className="text-gray-600 mb-4">Try adjusting your search or filter criteria</p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <GlassButton
-              onClick={productModals.openAddModal}
+              onClick={() => navigate('/lats/add-product')}
               icon={<Package size={18} />}
             >
               Add Your First Product

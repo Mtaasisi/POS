@@ -201,7 +201,7 @@ const ReceiptGenerator: React.FC<ReceiptGeneratorProps> = ({
                 </div>
                 <div className="text-right ml-2">
                   <div className="text-lats-text">
-                    {item.quantity} × {format.money(item.price)}
+                    {item.quantity} × {format.money(item.unitPrice)}
                   </div>
                   <div className="text-lats-text font-bold">
                     {format.money(item.subtotal)}

@@ -290,15 +290,11 @@ const POSPricingSettings: React.FC<POSPricingSettingsProps> = ({
           </GlassCard>
         </div>
 
-        {/* Actions */}
+        {/* Actions - Save button removed, will use unified save button */}
         <div className="flex gap-3 pt-4">
-          <GlassButton 
-            type="submit" 
-            disabled={isSubmitting} 
-            className="flex-1 bg-gradient-to-r from-blue-500 to-indigo-600 text-white"
-          >
-            {isSubmitting ? 'Saving Settings...' : 'Save Settings'}
-          </GlassButton>
+          <div className="text-sm text-gray-500 italic">
+            Settings will be saved using the unified save button
+          </div>
         </div>
       </form>
     </div>

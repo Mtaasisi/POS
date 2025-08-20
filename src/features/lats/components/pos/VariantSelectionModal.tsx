@@ -116,12 +116,38 @@ const VariantSelectionModal: React.FC<VariantSelectionModalProps> = ({
                           <div className="font-semibold text-lg text-gray-900 mb-2">{variant.name}</div>
                           <div className="text-sm text-gray-600 flex items-center gap-2 mb-3">
                             <span className="font-mono bg-gray-100 px-3 py-1 rounded-lg text-xs">{variant.sku}</span>
-                            {Object.entries(variant.attributes).map(([key, value]) => (
-                              <span key={key} className="text-blue-600 bg-blue-100 px-3 py-1 rounded-lg text-xs">
-                                {key}: {value}
-                              </span>
-                            ))}
                           </div>
+                          
+                          {/* Enhanced Specifications Display */}
+                          {Object.entries(variant.attributes).length > 0 && (
+                            <div className="mb-3">
+                              <div className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Specifications:</div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {Object.entries(variant.attributes).map(([key, value]) => {
+                                  // Get color based on specification type
+                                  const getSpecColor = (specKey: string) => {
+                                    const spec = specKey.toLowerCase();
+                                    if (spec.includes('ram')) return 'bg-green-100 text-green-700 border-green-200';
+                                    if (spec.includes('storage') || spec.includes('memory')) return 'bg-blue-100 text-blue-700 border-blue-200';
+                                    if (spec.includes('processor') || spec.includes('cpu')) return 'bg-purple-100 text-purple-700 border-purple-200';
+                                    if (spec.includes('screen') || spec.includes('display')) return 'bg-orange-100 text-orange-700 border-orange-200';
+                                    if (spec.includes('battery')) return 'bg-teal-100 text-teal-700 border-teal-200';
+                                    if (spec.includes('camera')) return 'bg-pink-100 text-pink-700 border-pink-200';
+                                    if (spec.includes('color')) return 'bg-red-100 text-red-700 border-red-200';
+                                    if (spec.includes('size')) return 'bg-gray-100 text-gray-700 border-gray-200';
+                                    return 'bg-indigo-100 text-indigo-700 border-indigo-200';
+                                  };
+                                  
+                                  return (
+                                    <div key={key} className={`px-3 py-2 rounded-lg border text-xs font-medium ${getSpecColor(key)}`}>
+                                      <div className="font-semibold capitalize">{key.replace(/_/g, ' ')}</div>
+                                      <div className="text-xs opacity-90">{value}</div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
                           <div className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
                             variantStockStatus === 'out-of-stock' ? 'bg-red-100 text-red-700' :
                             variantStockStatus === 'low' ? 'bg-orange-100 text-orange-700' : 

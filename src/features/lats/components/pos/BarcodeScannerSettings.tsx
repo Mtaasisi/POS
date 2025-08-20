@@ -678,7 +678,7 @@ const BarcodeScannerSettings: React.FC = () => {
           </div>
         </div>
 
-        {/* Actions */}
+        {/* Actions - Save button removed, will use unified save button */}
         <div className="flex items-center justify-between pt-6 border-t border-gray-200">
           <div className="flex items-center gap-3">
             <GlassButton
@@ -690,13 +690,9 @@ const BarcodeScannerSettings: React.FC = () => {
             </GlassButton>
           </div>
           <div className="flex items-center gap-3">
-            <GlassButton
-              type="submit"
-              disabled={!isDirty || isSaving}
-              loading={isSaving}
-            >
-              {isSaving ? 'Saving...' : 'Save Settings'}
-            </GlassButton>
+            <div className="text-sm text-gray-500 italic">
+              Settings will be saved using the unified save button
+            </div>
           </div>
         </div>
       </form>

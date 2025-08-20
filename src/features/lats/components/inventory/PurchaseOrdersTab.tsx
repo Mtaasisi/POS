@@ -41,9 +41,9 @@ const PurchaseOrdersTab: React.FC<PurchaseOrdersTabProps> = ({
 
   // Load purchase orders on component mount
   useEffect(() => {
-    // Temporarily disable purchase orders loading to prevent 400 errors
-    // TODO: Re-enable when purchase orders tables are properly set up
-    console.log('📝 PurchaseOrdersTab: Purchase orders loading temporarily disabled');
+    // Temporarily disabled to prevent 400 errors while fixing foreign key relationships
+    // TODO: Re-enable when purchase orders are properly set up
+    console.log('📝 Purchase orders loading temporarily disabled');
     // loadPurchaseOrders();
   }, [loadPurchaseOrders]);
 
@@ -68,7 +68,7 @@ const PurchaseOrdersTab: React.FC<PurchaseOrdersTabProps> = ({
             <div>
               <p className="text-sm font-medium text-yellow-600">Draft Orders</p>
               <p className="text-2xl font-bold text-yellow-900">
-                {purchaseOrders?.filter(order => order.status === 'draft').length || 0}
+                {purchaseOrders?.filter((order: any) => order.status === 'draft').length || 0}
               </p>
             </div>
             <div className="p-3 bg-yellow-50/20 rounded-full">
@@ -82,7 +82,7 @@ const PurchaseOrdersTab: React.FC<PurchaseOrdersTabProps> = ({
             <div>
               <p className="text-sm font-medium text-purple-600">Sent Orders</p>
               <p className="text-2xl font-bold text-purple-900">
-                {purchaseOrders?.filter(order => order.status === 'sent').length || 0}
+                {purchaseOrders?.filter((order: any) => order.status === 'sent').length || 0}
               </p>
             </div>
             <div className="p-3 bg-purple-50/20 rounded-full">
@@ -96,7 +96,7 @@ const PurchaseOrdersTab: React.FC<PurchaseOrdersTabProps> = ({
             <div>
               <p className="text-sm font-medium text-green-600">Received Orders</p>
               <p className="text-2xl font-bold text-green-900">
-                {purchaseOrders?.filter(order => order.status === 'received').length || 0}
+                {purchaseOrders?.filter((order: any) => order.status === 'received').length || 0}
               </p>
             </div>
             <div className="p-3 bg-green-50/20 rounded-full">

@@ -1,11 +1,17 @@
 // Barcode Scanner Settings Tab Component
-import React from 'react';
+import React, { forwardRef, useImperativeHandle } from 'react';
 import { Scan, Settings, Volume2, Smartphone, Wifi, Zap } from 'lucide-react';
 import UniversalSettingsTab from './UniversalSettingsTab';
 import { ToggleSwitch, NumberInput, TextInput, Select } from './UniversalFormComponents';
 import { useBarcodeScannerSettings } from '../../../../hooks/usePOSSettings';
 
-const BarcodeScannerSettingsTab: React.FC = () => {
+
+export interface BarcodeScannerSettingsTabRef {
+  saveSettings: () => Promise<boolean>;
+  resetSettings: () => Promise<boolean>;
+}
+
+const BarcodeScannerSettingsTab = forwardRef<BarcodeScannerSettingsTabRef>((props, ref) => {
   const {
     settings,
     setSettings,
@@ -22,6 +28,7 @@ const BarcodeScannerSettingsTab: React.FC = () => {
     if (success) {
       // Settings saved successfully
     }
+    return success;
   };
 
   const handleReset = async () => {
@@ -37,6 +44,11 @@ const BarcodeScannerSettingsTab: React.FC = () => {
       [key]: value
     }));
   };
+  // Expose save and reset functions through ref
+  useImperativeHandle(ref, () => ({
+    saveSettings: handleSave,
+    resetSettings: handleReset
+  }));
 
   if (isLoading) {
     return (
@@ -290,6 +302,6 @@ const BarcodeScannerSettingsTab: React.FC = () => {
       </div>
     </UniversalSettingsTab>
   );
-};
+});
 
 export default BarcodeScannerSettingsTab;

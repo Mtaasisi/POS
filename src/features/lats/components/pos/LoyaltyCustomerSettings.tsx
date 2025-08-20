@@ -315,13 +315,9 @@ const LoyaltyCustomerSettings: React.FC = () => {
           >
             Reset
           </GlassButton>
-          <GlassButton
-            type="submit"
-            variant="primary"
-            disabled={isSaving}
-          >
-            {isSaving ? 'Saving...' : 'Save Settings'}
-          </GlassButton>
+          <div className="text-sm text-gray-500 italic flex items-center">
+            Settings will be saved using the unified save button
+          </div>
         </div>
       </form>
     </GlassCard>
