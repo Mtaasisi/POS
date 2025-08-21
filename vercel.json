@@ -41,5 +41,24 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "installCommand": "npm install",
-  "framework": "vite"
+  "framework": "vite",
+  "version": 2,
+  "functions": {
+    "api/whatsapp-webhook.js": {
+      "maxDuration": 30
+    },
+    "api/test-webhook.js": {
+      "maxDuration": 10
+    }
+  },
+  "routes": [
+    {
+      "src": "/api/whatsapp-webhook",
+      "dest": "/api/whatsapp-webhook.js"
+    },
+    {
+      "src": "/api/test-webhook",
+      "dest": "/api/test-webhook.js"
+    }
+  ]
 }
