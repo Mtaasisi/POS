@@ -5,8 +5,6 @@
  * Deploy this to Netlify Functions for automatic auto-reply processing
  */
 
-import fetch from 'node-fetch';
-
 // WhatsApp credentials
 const WHATSAPP_CREDENTIALS = {
   instanceId: '7105284900',
