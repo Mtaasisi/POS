@@ -90,12 +90,22 @@ async function handleIncomingMessage(webhookData) {
   console.log('📨 Processing incoming message...');
   
   try {
+    // Validate webhook data
+    if (!webhookData || typeof webhookData !== 'object') {
+      throw new Error('Invalid webhook data format');
+    }
+    
     // Extract message data from webhook
     const { body, senderId, timestamp, type } = webhookData;
     
-    console.log(`📱 Message from ${senderId}: "${body}"`);
-    console.log(`⏰ Time: ${new Date(timestamp * 1000).toLocaleString()}`);
-    console.log(`📝 Type: ${type}`);
+    // Validate required fields
+    if (!senderId) {
+      throw new Error('Missing senderId in webhook data');
+    }
+    
+    console.log(`📱 Message from ${senderId}: "${body || 'No body'}"`);
+    console.log(`⏰ Time: ${timestamp ? new Date(timestamp * 1000).toLocaleString() : 'No timestamp'}`);
+    console.log(`📝 Type: ${type || 'Unknown'}`);
     
     // Only process text messages
     if (type !== 'textMessage' && type !== 'extendedTextMessage') {
@@ -175,8 +185,32 @@ export default async function handler(event, context) {
   try {
     console.log('📨 Webhook received:', new Date().toISOString());
     
+    // Validate request body
+    if (!event.body) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ 
+          error: 'Bad request',
+          message: 'Request body is required'
+        })
+      };
+    }
+    
     // Parse the webhook data from the request body
-    const webhookData = JSON.parse(event.body);
+    let webhookData;
+    try {
+      webhookData = JSON.parse(event.body);
+    } catch (parseError) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ 
+          error: 'Invalid JSON',
+          message: 'Request body must be valid JSON'
+        })
+      };
+    }
     
     // Log the incoming data for debugging
     console.log('📋 Webhook data:', {

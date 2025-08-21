@@ -1,11 +1,9 @@
-// Simple test webhook for debugging
+// Health check function for deployment verification
 export default async function handler(event, context) {
-  console.log('Test webhook received:', JSON.stringify(event.body, null, 2));
-  
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS'
+    'Access-Control-Allow-Methods': 'GET, OPTIONS'
   };
 
   // Handle preflight requests
@@ -18,26 +16,16 @@ export default async function handler(event, context) {
   }
 
   try {
-    let receivedData = null;
-    
-    if (event.body) {
-      try {
-        receivedData = JSON.parse(event.body);
-      } catch (parseError) {
-        receivedData = { rawBody: event.body, parseError: parseError.message };
-      }
-    }
-    
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify({
-        success: true,
-        message: 'Test webhook working!',
+        status: 'healthy',
         timestamp: new Date().toISOString(),
-        method: event.httpMethod,
-        receivedData: receivedData,
-        headers: event.headers
+        environment: process.env.NODE_ENV || 'development',
+        nodeVersion: process.version,
+        functionName: 'health-check',
+        message: 'Netlify functions are working correctly!'
       })
     };
   } catch (error) {
@@ -45,7 +33,7 @@ export default async function handler(event, context) {
       statusCode: 500,
       headers,
       body: JSON.stringify({
-        success: false,
+        status: 'unhealthy',
         error: error.message,
         timestamp: new Date().toISOString()
       })
