@@ -1,28 +1,18 @@
 [build]
-  # Build command for your app
   command = "npm run build"
-  
-  # Publish directory (adjust based on your build output)
   publish = "dist"
-  
-  # Functions directory
   functions = "netlify/functions"
 
 [functions]
-  # Node.js version for functions
   node_bundler = "esbuild"
-  
-  # Function timeout (in seconds)
   timeout = 30
 
-# Redirects for the webhook
 [[redirects]]
   from = "/api/whatsapp-webhook"
   to = "/.netlify/functions/whatsapp-webhook"
   status = 200
   force = true
 
-# Headers for the webhook endpoint
 [[headers]]
   for = "/.netlify/functions/whatsapp-webhook"
   [headers.values]
@@ -30,7 +20,6 @@
     Access-Control-Allow-Headers = "Content-Type"
     Access-Control-Allow-Methods = "POST, OPTIONS"
 
-# Environment variables (optional - you can set these in Netlify dashboard)
 [context.production.environment]
   NODE_ENV = "production"
 
