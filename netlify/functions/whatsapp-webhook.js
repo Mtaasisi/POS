@@ -85,77 +85,14 @@ async function sendAutoReply(chatId, replyText) {
   }
 }
 
-// Main function to handle incoming messages
-async function handleIncomingMessage(webhookData) {
-  console.log('📨 Processing incoming message...');
-  
-  try {
-    // Validate webhook data
-    if (!webhookData || typeof webhookData !== 'object') {
-      throw new Error('Invalid webhook data format');
-    }
-    
-    // Extract message data from webhook
-    const { body, senderId, timestamp, type } = webhookData;
-    
-    // Validate required fields
-    if (!senderId) {
-      throw new Error('Missing senderId in webhook data');
-    }
-    
-    console.log(`📱 Message from ${senderId}: "${body || 'No body'}"`);
-    console.log(`⏰ Time: ${timestamp ? new Date(timestamp * 1000).toLocaleString() : 'No timestamp'}`);
-    console.log(`📝 Type: ${type || 'Unknown'}`);
-    
-    // Only process text messages
-    if (type !== 'textMessage' && type !== 'extendedTextMessage') {
-      console.log('ℹ️  Skipping non-text message');
-      return { processed: false, reason: 'non-text-message' };
-    }
-    
-    // Check if sender is in allowed numbers
-    if (!ALLOWED_NUMBERS.includes(senderId)) {
-      console.log(`⚠️  Sender ${senderId} not in allowed numbers`);
-      return { processed: false, reason: 'not-allowed-number' };
-    }
-    
-    // Check if message should trigger auto-reply
-    const autoReply = shouldAutoReply(body);
-    
-    if (autoReply) {
-      console.log(`🤖 Auto-reply triggered: "${autoReply}"`);
-      
-      // Send the auto-reply
-      const result = await sendAutoReply(senderId, autoReply);
-      
-      if (result) {
-        console.log('✅ Auto-reply sent successfully');
-        return { 
-          processed: true, 
-          autoReply: true, 
-          replyText: autoReply,
-          messageId: result.idMessage,
-          timestamp: new Date().toISOString()
-        };
-      } else {
-        console.log('❌ Failed to send auto-reply');
-        return { processed: false, reason: 'send-failed' };
-      }
-    } else {
-      console.log('ℹ️  No auto-reply triggered for this message');
-      return { processed: true, autoReply: false };
-    }
-    
-  } catch (error) {
-    console.error('❌ Error processing message:', error.message);
-    return { processed: false, reason: 'error', error: error.message };
-  }
-}
-
 // Netlify function handler
 export default async function handler(event, context) {
-  // Set CORS headers
+  console.log('📨 Webhook received:', new Date().toISOString());
+  console.log('📋 Event method:', event.httpMethod);
+  console.log('📋 Event body:', event.body);
+  
   const headers = {
+    'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Allow-Methods': 'POST, OPTIONS'
@@ -183,10 +120,9 @@ export default async function handler(event, context) {
   }
 
   try {
-    console.log('📨 Webhook received:', new Date().toISOString());
-    
     // Validate request body
     if (!event.body) {
+      console.log('❌ No request body received');
       return {
         statusCode: 400,
         headers,
@@ -201,7 +137,9 @@ export default async function handler(event, context) {
     let webhookData;
     try {
       webhookData = JSON.parse(event.body);
+      console.log('📋 Parsed webhook data:', webhookData);
     } catch (parseError) {
+      console.log('❌ JSON parse error:', parseError.message);
       return {
         statusCode: 400,
         headers,
@@ -212,43 +150,92 @@ export default async function handler(event, context) {
       };
     }
     
-    // Log the incoming data for debugging
-    console.log('📋 Webhook data:', {
-      type: webhookData.type,
-      senderId: webhookData.senderId,
-      body: webhookData.body?.substring(0, 50) + '...',
-      timestamp: webhookData.timestamp
-    });
+    // Extract message data from webhook
+    const { body, senderId, timestamp, type } = webhookData;
     
-    // Process the incoming message using our auto-reply system
-    const result = await handleIncomingMessage(webhookData);
+    console.log(`📱 Message from ${senderId}: "${body || 'No body'}"`);
+    console.log(`⏰ Time: ${timestamp ? new Date(timestamp * 1000).toLocaleString() : 'No timestamp'}`);
+    console.log(`📝 Type: ${type || 'Unknown'}`);
     
-    // Log the processing result
-    console.log('✅ Webhook processed:', {
-      processed: result.processed,
-      autoReply: result.autoReply,
-      replyText: result.replyText,
-      messageId: result.messageId
-    });
+    // Only process text messages
+    if (type !== 'textMessage' && type !== 'extendedTextMessage') {
+      console.log('ℹ️  Skipping non-text message');
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ 
+          success: true, 
+          processed: false, 
+          reason: 'non-text-message' 
+        })
+      };
+    }
     
-    // Return success response
-    return {
-      statusCode: 200,
-      headers,
-      body: JSON.stringify({ 
-        success: true, 
-        processed: result.processed,
-        autoReply: result.autoReply || false,
-        replyText: result.replyText || null,
-        messageId: result.messageId || null,
-        timestamp: new Date().toISOString()
-      })
-    };
+    // Check if sender is in allowed numbers
+    if (!ALLOWED_NUMBERS.includes(senderId)) {
+      console.log(`⚠️  Sender ${senderId} not in allowed numbers`);
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ 
+          success: true, 
+          processed: false, 
+          reason: 'not-allowed-number' 
+        })
+      };
+    }
+    
+    // Check if message should trigger auto-reply
+    const autoReply = shouldAutoReply(body);
+    
+    if (autoReply) {
+      console.log(`🤖 Auto-reply triggered: "${autoReply}"`);
+      
+      // Send the auto-reply
+      const result = await sendAutoReply(senderId, autoReply);
+      
+      if (result) {
+        console.log('✅ Auto-reply sent successfully');
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ 
+            success: true, 
+            processed: true,
+            autoReply: true, 
+            replyText: autoReply,
+            messageId: result.idMessage,
+            timestamp: new Date().toISOString()
+          })
+        };
+      } else {
+        console.log('❌ Failed to send auto-reply');
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ 
+            success: true, 
+            processed: false, 
+            reason: 'send-failed' 
+          })
+        };
+      }
+    } else {
+      console.log('ℹ️  No auto-reply triggered for this message');
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ 
+          success: true, 
+          processed: true, 
+          autoReply: false 
+        })
+      };
+    }
     
   } catch (error) {
     console.error('❌ Webhook error:', error);
     
-    // Return error response
     return {
       statusCode: 500,
       headers,
