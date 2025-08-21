@@ -51,7 +51,7 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({
       setDeleting(imageId);
       
       // Check if this is a temporary product
-      if (productId.startsWith('temp-product-') || productId.startsWith('test-product-')) {
+      if (productId.startsWith('temp-product-') || productId.startsWith('test-product-') || productId.startsWith('temp-sparepart-')) {
         console.log('📝 Deleting image for temporary product:', productId, 'imageId:', imageId);
         
         // Import the EnhancedImageUploadService to handle temporary products
@@ -88,7 +88,7 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({
   const handleSetPrimary = async (imageId: string) => {
     try {
       // Check if this is a temporary product
-      if (productId.startsWith('temp-product-') || productId.startsWith('test-product-')) {
+      if (productId.startsWith('temp-product-') || productId.startsWith('test-product-') || productId.startsWith('temp-sparepart-')) {
         console.log('📝 Setting primary image for temporary product:', productId, 'imageId:', imageId);
         
         // Import the EnhancedImageUploadService to handle temporary products

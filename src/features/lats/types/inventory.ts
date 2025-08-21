@@ -65,7 +65,6 @@ export interface Product {
   brandId?: string;
   supplierId?: string;
   condition: string;
-  storeShelf?: string;
   internalNotes?: string;
   price: number;
   costPrice: number;
@@ -157,7 +156,6 @@ export interface ProductFormData {
   categoryId: string;
   brandId?: string;
   supplierId?: string;
-  storeShelf?: string;
   internalNotes?: string;
   images?: Array<{
     image_url: string;

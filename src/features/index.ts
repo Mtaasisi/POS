@@ -6,7 +6,7 @@ export * as Admin from './admin';
 export * as Customers from './customers';
 export * as Devices from './devices';
 export * as Diagnostics from './diagnostics';
-export * as WhatsApp from './whatsapp';
+
 export * as Finance from './finance';
 export * as Backup from './backup';
 export * as Settings from './settings';
@@ -20,7 +20,7 @@ export * from './admin';
 export * from './customers';
 export * from './devices';
 export * from './diagnostics';
-export * from './whatsapp';
+
 export * from './finance';
 export * from './backup';
 export * from './settings';

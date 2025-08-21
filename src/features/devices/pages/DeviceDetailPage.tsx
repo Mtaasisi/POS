@@ -10,7 +10,7 @@ import GlassCard from '../../../features/shared/components/ui/GlassCard';
 import CountdownTimer from '../../../features/shared/components/ui/CountdownTimer';
 import StatusBadge from '../../../features/shared/components/ui/StatusBadge';
 import { ChevronDown, CheckCircle, XCircle, Smartphone, Barcode, Calendar, Loader2, Image as ImageIcon, FileText, File as FileIcon, CreditCard, DollarSign, AlertTriangle, Star, Award, Activity, Gift, MessageSquare, Clock, User, Upload, Trash2, ArrowLeft, Phone, Printer, Send, RefreshCw, ArrowRight, Key, Wrench, Hash, Settings, History, QrCode, Stethoscope } from 'lucide-react';
-import WhatsAppChatUI from '../../../features/whatsapp/components/WhatsAppChatUI';
+
 import DeviceDetailHeader from '../components/DeviceDetailHeader';
 import StatusUpdateForm from '../components/forms/StatusUpdateForm';
 
@@ -1871,18 +1871,7 @@ const DeviceDetailPage: React.FC = () => {
             </div>
           </GlassCard>
           
-          {/* Remarks Chat Section */}
-          <div className="h-96">
-            <WhatsAppChatUI
-              remarks={safeDevice.remarks || []}
-              activityEvents={getActivityEvents()}
-              onAddRemark={handleAddRemark}
-              currentUserId={currentUser?.id}
-              currentUserName={currentUser?.name || currentUser?.email}
-              isLoading={false}
-              disableAutoScroll={true}
-            />
-          </div>
+
         </div>
         
         {/* Right Column - Actions Panel */}

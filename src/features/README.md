@@ -73,41 +73,38 @@ feature-name/
 - **Pages:** AssignedDiagnosticsPage, NewDiagnosticRequestPage, DiagnosticReportsPage, DiagnosticDevicePage
 - **Components:** DiagnosticChecklist, DiagnosticDeviceCard
 
-### 6. WhatsApp (`features/whatsapp/`)
-**Purpose:** WhatsApp integration and management
-- **Pages:** WhatsAppManagerPage, WhatsAppWebPage, WhatsAppTemplatesPage
-- **Components:** WhatsAppChatUI, CommunicationHub
 
-### 7. Finance (`features/finance/`)
+
+### 6. Finance (`features/finance/`)
 **Purpose:** Financial management and reporting
 - **Pages:** FinanceManagementPage, FinancialTestPage, PaymentsReportPage, PaymentsAccountsPage, PointsManagementPage
 - **Components:** FinancialDashboard, PointsManagementModal
 
-### 8. Inventory (`features/inventory/`)
+### 7. Inventory (`features/inventory/`)
 **Purpose:** Inventory and product management
 - **Pages:** InventoryManagementPage, NewInventoryPage, ProductDetailPage, ProductEditPage, SparePartsPage
 - **Components:** InventoryDashboard, SparePartUsageModal
 
-### 9. Backup (`features/backup/`)
+### 8. Backup (`features/backup/`)
 **Purpose:** Backup and data management
 - **Pages:** BackupManagementPage
 - **Components:** AutomaticBackupSettings, BackupMonitoringDashboard, SqlBackupWidget
 
-### 10. Settings (`features/settings/`)
+### 9. Settings (`features/settings/`)
 **Purpose:** Application settings and configuration
 - **Pages:** SettingsPage, BrandManagementPage, CategoryManagementPage
 - **Components:** BackgroundSelector, IntegrationsManager
 
-### 11. Reports (`features/reports/`)
+### 10. Reports (`features/reports/`)
 **Purpose:** Reporting and analytics
 - **Pages:** SMSControlCenterPage, ExcelImportPage
 - **Components:** BulkFiltersPanel, BulkSMSModal, EnhancedExcelImportModal
 
-### 12. Forms (`features/forms/`)
+### 11. Forms (`features/forms/`)
 **Purpose:** Reusable form components
 - **Components:** CategorySelector, form components
 
-### 13. Shared (`features/shared/`)
+### 12. Shared (`features/shared/`)
 **Purpose:** Shared components and pages
 - **Pages:** DashboardPage, LoginPage
 - **Components:** TopBar, AdHeader, ErrorBoundary, UI components

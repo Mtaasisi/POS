@@ -16,7 +16,6 @@ export interface Supplier {
   email?: string;
   phone?: string;
   phone2?: string;
-  whatsapp?: string;
   instagram?: string;
   wechat_id?: string;
   address?: string;
@@ -41,7 +40,6 @@ export interface CreateSupplierData {
   email?: string;
   phone?: string;
   phone2?: string;
-  whatsapp?: string;
   instagram?: string;
   wechat_id?: string;
   address?: string;
@@ -64,7 +62,6 @@ export interface UpdateSupplierData {
   email?: string;
   phone?: string;
   phone2?: string;
-  whatsapp?: string;
   instagram?: string;
   wechat_id?: string;
   address?: string;

@@ -58,15 +58,5 @@ CREATE TRIGGER update_settings_updated_at
 
 -- Insert default settings
 INSERT INTO settings (key, value, description, category) VALUES
-('attendance', '{"enabled": true, "requireLocation": true, "requireWifi": true, "allowMobileData": true, "gpsAccuracy": 50, "checkInRadius": 100, "checkInTime": "08:00", "checkOutTime": "17:00", "gracePeriod": 15, "offices": [{"name": "Arusha Main Office", "lat": -3.359178, "lng": 36.661366, "radius": 100, "address": "Main Office, Arusha, Tanzania", "networks": [{"ssid": "Office_WiFi", "bssid": "00:11:22:33:44:55", "description": "Main office WiFi network"}, {"ssid": "Office_Guest", "description": "Guest WiFi network"}, {"ssid": "4G_Mobile", "description": "Mobile data connection"}]}]}', 'Attendance tracking settings', 'attendance'),
-('whatsapp_green_api_key', '', 'WhatsApp Green API Key', 'whatsapp'),
-('whatsapp_instance_id', '', 'WhatsApp Instance ID', 'whatsapp'),
-('whatsapp_api_url', '', 'WhatsApp API URL', 'whatsapp'),
-('whatsapp_media_url', '', 'WhatsApp Media URL', 'whatsapp'),
-('whatsapp_enable_bulk', 'true', 'Enable bulk WhatsApp messages', 'whatsapp'),
-('whatsapp_enable_auto', 'true', 'Enable automatic WhatsApp messages', 'whatsapp'),
-('whatsapp_log_retention_days', '365', 'WhatsApp log retention days', 'whatsapp'),
-('whatsapp_notification_email', '', 'WhatsApp notification email', 'whatsapp'),
-('whatsapp_webhook_url', '', 'WhatsApp webhook URL', 'whatsapp'),
-('whatsapp_enable_realtime', 'true', 'Enable real-time WhatsApp updates', 'whatsapp')
+('attendance', '{"enabled": true, "requireLocation": true, "requireWifi": true, "allowMobileData": true, "gpsAccuracy": 50, "checkInRadius": 100, "checkInTime": "08:00", "checkOutTime": "17:00", "gracePeriod": 15, "offices": [{"name": "Arusha Main Office", "lat": -3.359178, "lng": 36.661366, "radius": 100, "address": "Main Office, Arusha, Tanzania", "networks": [{"ssid": "Office_WiFi", "bssid": "00:11:22:33:44:55", "description": "Main office WiFi network"}, {"ssid": "Office_Guest", "description": "Guest WiFi network"}, {"ssid": "4G_Mobile", "description": "Mobile data connection"}]}]}', 'Attendance tracking settings', 'attendance')
 ON CONFLICT (key) DO NOTHING;

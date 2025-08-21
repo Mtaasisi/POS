@@ -1,13 +1,95 @@
 import { supabase } from '../../../lib/supabaseClient';
-import { 
-  StoreShelf, 
-  CreateStoreShelfData, 
-  UpdateStoreShelfData, 
-  StoreShelfFilters, 
-  StoreShelfStats,
-  ShelfWithProducts,
-  ShelfProduct
-} from '../types/storeShelf';
+
+export interface StoreShelf {
+  id: string;
+  store_location_id: string;
+  name: string;
+  code: string;
+  description?: string;
+  shelf_type: 'standard' | 'refrigerated' | 'display' | 'storage' | 'specialty';
+  section?: string;
+  aisle?: string;
+  row_number?: number;
+  column_number?: number;
+  width_cm?: number;
+  height_cm?: number;
+  depth_cm?: number;
+  max_weight_kg?: number;
+  max_capacity?: number;
+  current_capacity: number;
+  floor_level: number;
+  zone?: 'front' | 'back' | 'left' | 'right' | 'center';
+  coordinates?: any;
+  is_active: boolean;
+  is_accessible: boolean;
+  requires_ladder: boolean;
+  is_refrigerated: boolean;
+  temperature_range?: any;
+  priority_order: number;
+  color_code?: string;
+  barcode?: string;
+  notes?: string;
+  images: string[];
+  created_by?: string;
+  updated_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateStoreShelfData {
+  store_location_id: string;
+  name: string;
+  code: string;
+  description?: string;
+  shelf_type?: 'standard' | 'refrigerated' | 'display' | 'storage' | 'specialty';
+  section?: string;
+  aisle?: string;
+  row_number?: number;
+  column_number?: number;
+  width_cm?: number;
+  height_cm?: number;
+  depth_cm?: number;
+  max_weight_kg?: number;
+  max_capacity?: number;
+  floor_level?: number;
+  zone?: 'front' | 'back' | 'left' | 'right' | 'center';
+  coordinates?: any;
+  is_active?: boolean;
+  is_accessible?: boolean;
+  requires_ladder?: boolean;
+  is_refrigerated?: boolean;
+  temperature_range?: any;
+  priority_order?: number;
+  color_code?: string;
+  barcode?: string;
+  notes?: string;
+  images?: string[];
+}
+
+export interface UpdateStoreShelfData extends Partial<CreateStoreShelfData> {}
+
+export interface StoreShelfFilters {
+  search?: string;
+  store_location_id?: string;
+  shelf_type?: string;
+  section?: string;
+  zone?: string;
+  is_active?: boolean;
+  is_accessible?: boolean;
+  is_refrigerated?: boolean;
+  requires_ladder?: boolean;
+}
+
+export interface StoreShelfStats {
+  total_shelves: number;
+  active_shelves: number;
+  total_capacity: number;
+  used_capacity: number;
+  utilization_percentage: number;
+  refrigerated_shelves: number;
+  display_shelves: number;
+  storage_shelves: number;
+}
 
 export class StoreShelfApi {
   private tableName = 'lats_store_shelves';
@@ -17,12 +99,15 @@ export class StoreShelfApi {
       .from(this.tableName)
       .select(`
         *,
-        store_location:lats_store_locations(name, city)
+        store_location:lats_store_locations(name, code, city)
       `)
       .order('priority_order', { ascending: true })
       .order('name', { ascending: true });
 
     if (filters) {
+      if (filters.search) {
+        query = query.or(`name.ilike.%${filters.search}%,code.ilike.%${filters.search}%,section.ilike.%${filters.search}%`);
+      }
       if (filters.store_location_id) {
         query = query.eq('store_location_id', filters.store_location_id);
       }
@@ -47,16 +132,12 @@ export class StoreShelfApi {
       if (filters.requires_ladder !== undefined) {
         query = query.eq('requires_ladder', filters.requires_ladder);
       }
-      if (filters.search) {
-        query = query.or(`name.ilike.%${filters.search}%,code.ilike.%${filters.search}%,description.ilike.%${filters.search}%`);
-      }
     }
 
     const { data, error } = await query;
 
     if (error) {
-      console.error('Error fetching shelves:', error);
-      throw new Error('Failed to fetch shelves');
+      throw new Error(`Failed to fetch store shelves: ${error.message}`);
     }
 
     return data || [];
@@ -67,320 +148,183 @@ export class StoreShelfApi {
       .from(this.tableName)
       .select(`
         *,
-        store_location:lats_store_locations(name, city)
+        store_location:lats_store_locations(name, code, city)
       `)
       .eq('id', id)
       .single();
 
     if (error) {
-      console.error('Error fetching shelf:', error);
-      return null;
+      if (error.code === 'PGRST116') {
+        return null;
+      }
+      throw new Error(`Failed to fetch store shelf: ${error.message}`);
     }
 
     return data;
   }
 
-  async getByCode(code: string, storeLocationId?: string): Promise<StoreShelf | null> {
-    let query = supabase
+  async getByCode(code: string): Promise<StoreShelf | null> {
+    const { data, error } = await supabase
       .from(this.tableName)
       .select(`
         *,
-        store_location:lats_store_locations(name, city)
+        store_location:lats_store_locations(name, code, city)
       `)
-      .eq('code', code);
-
-    if (storeLocationId) {
-      query = query.eq('store_location_id', storeLocationId);
-    }
-
-    const { data, error } = await query.single();
+      .eq('code', code)
+      .single();
 
     if (error) {
-      console.error('Error fetching shelf by code:', error);
-      return null;
+      if (error.code === 'PGRST116') {
+        return null;
+      }
+      throw new Error(`Failed to fetch store shelf: ${error.message}`);
     }
 
     return data;
+  }
+
+  async getShelvesByLocation(locationId: string): Promise<StoreShelf[]> {
+    const { data, error } = await supabase
+      .from(this.tableName)
+      .select('*')
+      .eq('store_location_id', locationId)
+      .eq('is_active', true)
+      .order('priority_order', { ascending: true })
+      .order('name', { ascending: true });
+
+    if (error) {
+      throw new Error(`Failed to fetch shelves for location: ${error.message}`);
+    }
+
+    return data || [];
   }
 
   async create(data: CreateStoreShelfData): Promise<StoreShelf> {
-    // Check if code already exists for this store location
-    const existingShelf = await this.getByCode(data.code, data.store_location_id);
-    if (existingShelf) {
-      throw new Error(`Shelf with code ${data.code} already exists in this store location`);
-    }
-
-    const { data: newShelf, error } = await supabase
+    const { data: shelf, error } = await supabase
       .from(this.tableName)
-      .insert([data])
-      .select(`
-        *,
-        store_location:lats_store_locations(name, city)
-      `)
+      .insert([{
+        ...data,
+        created_by: (await supabase.auth.getUser()).data.user?.id,
+        updated_by: (await supabase.auth.getUser()).data.user?.id
+      }])
+      .select()
       .single();
 
     if (error) {
-      console.error('Error creating shelf:', error);
-      throw new Error('Failed to create shelf');
+      throw new Error(`Failed to create store shelf: ${error.message}`);
     }
 
-    return newShelf;
+    return shelf;
   }
 
   async update(id: string, data: UpdateStoreShelfData): Promise<StoreShelf> {
-    // Check if code already exists for this store location (if code is being updated)
-    if (data.code) {
-      const existingShelf = await this.getByCode(data.code, data.store_location_id);
-      if (existingShelf && existingShelf.id !== id) {
-        throw new Error(`Shelf with code ${data.code} already exists in this store location`);
-      }
-    }
-
-    const { data: updatedShelf, error } = await supabase
+    const { data: shelf, error } = await supabase
       .from(this.tableName)
-      .update(data)
+      .update({
+        ...data,
+        updated_by: (await supabase.auth.getUser()).data.user?.id
+      })
       .eq('id', id)
-      .select(`
-        *,
-        store_location:lats_store_locations(name, city)
-      `)
+      .select()
       .single();
 
     if (error) {
-      console.error('Error updating shelf:', error);
-      throw new Error('Failed to update shelf');
+      throw new Error(`Failed to update store shelf: ${error.message}`);
     }
 
-    return updatedShelf;
+    return shelf;
   }
 
   async delete(id: string): Promise<void> {
-    // Check if shelf has products
-    const products = await this.getShelfProducts(id);
-    if (products.length > 0) {
-      throw new Error('Cannot delete shelf that contains products. Please move or remove all products first.');
-    }
-
     const { error } = await supabase
       .from(this.tableName)
       .delete()
       .eq('id', id);
 
     if (error) {
-      console.error('Error deleting shelf:', error);
-      throw new Error('Failed to delete shelf');
+      throw new Error(`Failed to delete store shelf: ${error.message}`);
     }
   }
 
-  async getStats(storeLocationId?: string): Promise<StoreShelfStats> {
-    let query = supabase
+  async updateCapacity(id: string, currentCapacity: number): Promise<StoreShelf> {
+    const { data: shelf, error } = await supabase
       .from(this.tableName)
-      .select('*');
-
-    if (storeLocationId) {
-      query = query.eq('store_location_id', storeLocationId);
-    }
-
-    const { data: shelves, error } = await query;
+      .update({
+        current_capacity: currentCapacity,
+        updated_by: (await supabase.auth.getUser()).data.user?.id
+      })
+      .eq('id', id)
+      .select()
+      .single();
 
     if (error) {
-      console.error('Error fetching shelf stats:', error);
-      throw new Error('Failed to fetch shelf statistics');
+      throw new Error(`Failed to update shelf capacity: ${error.message}`);
     }
 
-    const totalShelves = shelves?.length || 0;
-    const activeShelves = shelves?.filter(s => s.is_active).length || 0;
-    const totalCapacity = shelves?.reduce((sum, s) => sum + (s.max_capacity || 0), 0) || 0;
-    const usedCapacity = shelves?.reduce((sum, s) => sum + s.current_capacity, 0) || 0;
-    const availableCapacity = totalCapacity - usedCapacity;
-    const utilizationRate = totalCapacity > 0 ? (usedCapacity / totalCapacity) * 100 : 0;
+    return shelf;
+  }
 
-    // Group by type
-    const shelvesByType: Record<string, number> = {};
-    shelves?.forEach(shelf => {
-      shelvesByType[shelf.shelf_type] = (shelvesByType[shelf.shelf_type] || 0) + 1;
-    });
+  async moveProductToShelf(productId: string, shelfCode: string): Promise<void> {
+    // First, get the shelf to check capacity
+    const shelf = await this.getByCode(shelfCode);
+    if (!shelf) {
+      throw new Error(`Shelf with code ${shelfCode} not found`);
+    }
 
-    // Group by section
-    const shelvesBySection: Record<string, number> = {};
-    shelves?.forEach(shelf => {
-      if (shelf.section) {
-        shelvesBySection[shelf.section] = (shelvesBySection[shelf.section] || 0) + 1;
-      }
-    });
+    // Update the product's shelf assignment
+    const { error: productError } = await supabase
+      .from('lats_products')
+      .update({ store_shelf: shelfCode })
+      .eq('id', productId);
 
-    // Group by zone
-    const shelvesByZone: Record<string, number> = {};
-    shelves?.forEach(shelf => {
-      if (shelf.zone) {
-        shelvesByZone[shelf.zone] = (shelvesByZone[shelf.zone] || 0) + 1;
-      }
-    });
+    if (productError) {
+      throw new Error(`Failed to move product to shelf: ${productError.message}`);
+    }
+
+    // Update shelf capacity (increment by 1)
+    await this.updateCapacity(shelf.id, shelf.current_capacity + 1);
+  }
+
+  async getStats(filters?: StoreShelfFilters): Promise<StoreShelfStats> {
+    const shelves = await this.getAll(filters);
+    
+    const totalShelves = shelves.length;
+    const activeShelves = shelves.filter(s => s.is_active).length;
+    const totalCapacity = shelves.reduce((sum, s) => sum + (s.max_capacity || 0), 0);
+    const usedCapacity = shelves.reduce((sum, s) => sum + s.current_capacity, 0);
+    const utilizationPercentage = totalCapacity > 0 ? (usedCapacity / totalCapacity) * 100 : 0;
+    const refrigeratedShelves = shelves.filter(s => s.is_refrigerated).length;
+    const displayShelves = shelves.filter(s => s.shelf_type === 'display').length;
+    const storageShelves = shelves.filter(s => s.shelf_type === 'storage').length;
 
     return {
       total_shelves: totalShelves,
       active_shelves: activeShelves,
       total_capacity: totalCapacity,
       used_capacity: usedCapacity,
-      available_capacity: availableCapacity,
-      utilization_rate: utilizationRate,
-      shelves_by_type: shelvesByType,
-      shelves_by_section: shelvesBySection,
-      shelves_by_zone: shelvesByZone
+      utilization_percentage: Math.round(utilizationPercentage * 100) / 100,
+      refrigerated_shelves: refrigeratedShelves,
+      display_shelves: displayShelves,
+      storage_shelves: storageShelves
     };
   }
 
-  async getShelfProducts(shelfId: string): Promise<ShelfProduct[]> {
-    const { data, error } = await supabase
-      .from('lats_products')
-      .select(`
-        id,
-        name,
-        sku,
-        barcode,
-        total_quantity,
-        total_value,
-        condition,
-        category:lats_categories(name),
-        brand:lats_brands(name),
-        images
-      `)
-      .eq('store_shelf', shelfId)
-      .order('name', { ascending: true });
-
-    if (error) {
-      console.error('Error fetching shelf products:', error);
-      return [];
+  async generateShelfCode(locationId: string, section?: string): Promise<string> {
+    const shelves = await this.getShelvesByLocation(locationId);
+    const sectionShelves = section ? shelves.filter(s => s.section === section) : shelves;
+    
+    const baseCode = section ? `${section.toUpperCase().substring(0, 3)}` : 'SHELF';
+    const existingCodes = sectionShelves.map(s => s.code);
+    
+    let counter = 1;
+    let newCode = `${baseCode}${counter.toString().padStart(3, '0')}`;
+    
+    while (existingCodes.includes(newCode)) {
+      counter++;
+      newCode = `${baseCode}${counter.toString().padStart(3, '0')}`;
     }
-
-    return (data || []).map(product => ({
-      id: product.id,
-      name: product.name,
-      sku: product.sku,
-      barcode: product.barcode,
-      stock_quantity: product.total_quantity,
-      price: product.total_value,
-      condition: product.condition,
-      category_name: product.category?.name,
-      brand_name: product.brand?.name,
-      image_url: product.images?.[0]
-    }));
-  }
-
-  async getShelfWithProducts(shelfId: string): Promise<ShelfWithProducts | null> {
-    const shelf = await this.getById(shelfId);
-    if (!shelf) return null;
-
-    const products = await this.getShelfProducts(shelfId);
-
-    return {
-      ...shelf,
-      products
-    };
-  }
-
-  async getShelvesByLocation(storeLocationId: string): Promise<StoreShelf[]> {
-    return this.getAll({ store_location_id: storeLocationId });
-  }
-
-  async getSections(storeLocationId?: string): Promise<string[]> {
-    let query = supabase
-      .from(this.tableName)
-      .select('section')
-      .not('section', 'is', null);
-
-    if (storeLocationId) {
-      query = query.eq('store_location_id', storeLocationId);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error('Error fetching sections:', error);
-      return [];
-    }
-
-    const sections = [...new Set(data?.map(s => s.section).filter(Boolean))];
-    return sections.sort();
-  }
-
-  async getZones(storeLocationId?: string): Promise<string[]> {
-    let query = supabase
-      .from(this.tableName)
-      .select('zone')
-      .not('zone', 'is', null);
-
-    if (storeLocationId) {
-      query = query.eq('store_location_id', storeLocationId);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error('Error fetching zones:', error);
-      return [];
-    }
-
-    const zones = [...new Set(data?.map(s => s.zone).filter(Boolean))];
-    return zones.sort();
-  }
-
-  async toggleActive(id: string): Promise<StoreShelf> {
-    const shelf = await this.getById(id);
-    if (!shelf) {
-      throw new Error('Shelf not found');
-    }
-
-    return this.update(id, { is_active: !shelf.is_active });
-  }
-
-  async toggleAccessible(id: string): Promise<StoreShelf> {
-    const shelf = await this.getById(id);
-    if (!shelf) {
-      throw new Error('Shelf not found');
-    }
-
-    return this.update(id, { is_accessible: !shelf.is_accessible });
-  }
-
-  async moveProductToShelf(productId: string, shelfCode: string): Promise<void> {
-    // Verify shelf exists
-    const shelf = await this.getByCode(shelfCode);
-    if (!shelf) {
-      throw new Error(`Shelf with code ${shelfCode} not found`);
-    }
-
-    if (!shelf.is_active) {
-      throw new Error(`Shelf ${shelfCode} is not active`);
-    }
-
-    // Check capacity
-    if (shelf.max_capacity && shelf.current_capacity >= shelf.max_capacity) {
-      throw new Error(`Shelf ${shelfCode} is at maximum capacity`);
-    }
-
-    // Update product shelf
-    const { error } = await supabase
-      .from('lats_products')
-      .update({ store_shelf: shelfCode })
-      .eq('id', productId);
-
-    if (error) {
-      console.error('Error moving product to shelf:', error);
-      throw new Error('Failed to move product to shelf');
-    }
-  }
-
-  async removeProductFromShelf(productId: string): Promise<void> {
-    const { error } = await supabase
-      .from('lats_products')
-      .update({ store_shelf: null })
-      .eq('id', productId);
-
-    if (error) {
-      console.error('Error removing product from shelf:', error);
-      throw new Error('Failed to remove product from shelf');
-    }
+    
+    return newCode;
   }
 }
 

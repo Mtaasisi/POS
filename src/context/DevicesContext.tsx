@@ -88,16 +88,31 @@ export const DevicesProvider: React.FC<{ children: React.ReactNode }> = React.me
     }
     
     setLoading(true);
-    fetchAllDevices()
-      .then(devices => {
-        setDevices(devices);
-      })
-      .catch(error => {
+    
+    // Use role-based device fetching
+    const fetchDevices = async () => {
+      try {
+        let devicesData: Device[];
+        
+        if (currentUser.role === 'technician') {
+          // For technicians, fetch only assigned devices
+          const { deviceServices } = await import('../lib/deviceServices');
+          devicesData = await deviceServices.getDevicesByTechnician(currentUser.id);
+        } else {
+          // For other roles, fetch all devices
+          devicesData = await fetchAllDevices();
+        }
+        
+        setDevices(devicesData);
+      } catch (error) {
         console.error('Error fetching devices:', error);
-      })
-      .finally(() => {
+        setDevices([]);
+      } finally {
         setLoading(false);
-      });
+      }
+    };
+    
+    fetchDevices();
   }, [currentUser]);
 
   // Persist device to DB
@@ -540,20 +555,12 @@ export const DevicesProvider: React.FC<{ children: React.ReactNode }> = React.me
   };
 
   const getDevicesByTechnician = (technicianId: string) => {
-    return devices.filter(device => 
-      device.assignedTo === technicianId && 
-      [
-        'assigned',
-        'diagnosis-started',
-        'awaiting-parts',
-        'in-repair',
-        'reassembled-testing',
-        'repair-complete',
-        'returned-to-customer-care',
-        'done',
-        'failed'
-      ].includes(device.status)
-    );
+    // For technicians, all devices are already filtered to be assigned to them
+    if (currentUser?.role === 'technician' && currentUser.id === technicianId) {
+      return devices;
+    }
+    // For other roles, filter by assigned technician
+    return devices.filter(device => device.assignedTo === technicianId);
   };
 
   const addRating = async (deviceId: string, technicianId: string, score: number, comment: string) => {

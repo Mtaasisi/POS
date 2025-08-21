@@ -266,7 +266,6 @@ export interface LoyaltyCustomerSettings {
   enable_referral_rewards: boolean;
   enable_email_communication: boolean;
   enable_sms_communication: boolean;
-  enable_whatsapp_communication: boolean;
   enable_push_notifications: boolean;
   enable_marketing_emails: boolean;
   enable_customer_analytics: boolean;
@@ -342,7 +341,6 @@ export interface NotificationSettings {
   notify_on_maintenance: boolean;
   enable_email_notifications: boolean;
   enable_sms_notifications: boolean;
-  enable_whatsapp_notifications: boolean;
   enable_in_app_notifications: boolean;
   enable_desktop_notifications: boolean;
 }

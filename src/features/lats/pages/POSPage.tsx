@@ -46,7 +46,7 @@ import AddCustomerModal from '../../../features/customers/components/forms/AddCu
 import SalesAnalyticsModal from '../components/pos/SalesAnalyticsModal';
 import ZenoPayPaymentModal from '../components/pos/ZenoPayPaymentModal';
 import PaymentTrackingModal from '../components/pos/PaymentTrackingModal';
-import CustomerLoyaltyModal from '../components/pos/CustomerLoyaltyModal';
+
 import POSBottomBar from '../components/pos/POSBottomBar';
 import DynamicPricingDisplay from '../components/pos/DynamicPricingDisplay';
 import POSPricingSettings from '../components/pos/POSPricingSettings';
@@ -852,7 +852,7 @@ const POSPage: React.FC = () => {
   const [showPaymentTracking, setShowPaymentTracking] = useState(false);
 
   // Add state for Customer Loyalty modal
-  const [showCustomerLoyalty, setShowCustomerLoyalty] = useState(false);
+
 
   // Add state for Smart Pricing Settings popup
 
@@ -4713,13 +4713,7 @@ const POSPage: React.FC = () => {
         onClose={() => setShowPaymentTracking(false)}
       />
 
-      {/* Customer Loyalty Modal - Only show if dynamic pricing is enabled */}
-      {dynamicPricingSettings?.enable_dynamic_pricing && (
-        <CustomerLoyaltyModal
-          isOpen={showCustomerLoyalty}
-          onClose={() => setShowCustomerLoyalty(false)}
-        />
-      )}
+
 
       {/* Draft Management Modal */}
       <DraftManagementModal
@@ -4761,7 +4755,7 @@ const POSPage: React.FC = () => {
         onCustomers={() => navigate('/lats/customers')}
         onInventory={() => navigate('/lats/unified-inventory')}
         onReports={() => navigate('/lats/sales-reports')}
-        onLoyalty={dynamicPricingSettings?.enable_dynamic_pricing ? () => setShowCustomerLoyalty(true) : undefined}
+
       />
 
 

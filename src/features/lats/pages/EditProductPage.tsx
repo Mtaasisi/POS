@@ -60,7 +60,7 @@ const productFormSchema = z.object({
   brandId: z.string().optional(),
   supplierId: z.string().optional(),
   condition: z.string().min(1, 'Product condition must be selected'),
-  storeShelf: z.string().optional(),
+
   price: z.number().min(0, 'Price must be 0 or greater'),
   costPrice: z.number().min(0, 'Cost price must be 0 or greater'),
   stockQuantity: z.number().min(0, 'Stock quantity must be 0 or greater'),
@@ -138,7 +138,7 @@ const EditProductPage: React.FC = () => {
     brand: '',
     supplierId: '',
     condition: '',
-    storeShelf: '',
+    
     price: 0,
     costPrice: 0,
     stockQuantity: 0,
@@ -149,8 +149,6 @@ const EditProductPage: React.FC = () => {
     // product-level attributes when not using variants
     attributes: {} as Record<string, any>
   });
-
-
 
   // Watch specific form values for completion calculation
   const name = formData.name;
@@ -268,7 +266,7 @@ const EditProductPage: React.FC = () => {
           brand: brandName,
           supplierId: product.supplierId || '',
           condition: product.condition || '',
-          storeShelf: product.storeShelf || '',
+          
           price: product.price || 0,
           costPrice: product.costPrice || 0,
           stockQuantity: product.stockQuantity || 0,
@@ -847,8 +845,6 @@ const EditProductPage: React.FC = () => {
     }
   };
 
-
-
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 p-4 sm:p-6">
@@ -890,8 +886,6 @@ const EditProductPage: React.FC = () => {
             </div>
           </div>
         </div>
-
-
 
         <form onSubmit={handleFormSubmit} className="space-y-6">
           {/* Basic Information */}
@@ -1083,7 +1077,7 @@ const EditProductPage: React.FC = () => {
                     onChange={(e) => setFormData(prev => ({ 
                       ...prev, 
                       storeLocationId: e.target.value,
-                      storeShelf: '' // Reset shelf when location changes
+                      
                     }))}
                   >
                     <option value="">Select Store Location</option>
@@ -1104,8 +1098,7 @@ const EditProductPage: React.FC = () => {
                   <select
                     id="store-shelf-select"
                     className="w-full px-4 py-3 text-lg border-2 border-gray-300 rounded-lg bg-white/30 backdrop-blur-md focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
-                    value={formData.storeShelf}
-                    onChange={(e) => setFormData(prev => ({ ...prev, storeShelf: e.target.value }))}
+
                     disabled={!formData.storeLocationId}
                   >
                     <option value="">
@@ -1126,11 +1119,11 @@ const EditProductPage: React.FC = () => {
                         No shelves found for this location. 
                         <button
                           type="button"
-                          onClick={() => window.open('/shelf-management', '_blank')}
+                          onClick={() => window.open('/lats/inventory-management?shelves', '_blank')}
                           className="text-blue-600 hover:text-blue-800 ml-1 underline"
-                        >
-                          Create shelves
-                        </button>
+                                                  >
+                            Manage shelves
+                          </button>
                       </div>
                     </div>
                   )}

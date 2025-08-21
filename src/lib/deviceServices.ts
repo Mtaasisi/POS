@@ -1,44 +1,52 @@
 import { supabase } from './supabaseClient';
 import { Database } from './database.types';
+import { toCamelCase, toSnakeCase } from './utils';
 
-// Helper function to convert snake_case to camelCase
-const toCamelCase = (obj: any): any => {
-  if (obj === null || typeof obj !== 'object') return obj;
-  
-  if (Array.isArray(obj)) {
-    return obj.map(toCamelCase);
-  }
-  
-  const camelCaseObj: any = {};
-  for (const [key, value] of Object.entries(obj)) {
-    // Keep assigned_to as snake_case for consistency
-    if (key === 'assigned_to') {
-      camelCaseObj[key] = toCamelCase(value);
-    } else if (key === 'diagnosis_required') {
-      camelCaseObj['diagnosisRequired'] = typeof value === 'boolean' ? value : value == null ? null : Boolean(value);
-    } else {
-    const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
-    camelCaseObj[camelKey] = toCamelCase(value);
+// Add request throttling utility
+class RequestThrottler {
+  private static instance: RequestThrottler;
+  private queue: Array<() => Promise<any>> = [];
+  private processing = false;
+  private maxConcurrent = 2; // Limit concurrent requests
+  private delayBetweenRequests = 500; // 500ms between requests
+
+  static getInstance(): RequestThrottler {
+    if (!RequestThrottler.instance) {
+      RequestThrottler.instance = new RequestThrottler();
     }
+    return RequestThrottler.instance;
   }
-  return camelCaseObj;
-};
 
-// Helper function to convert camelCase to snake_case
-const toSnakeCase = (obj: any): any => {
-  if (obj === null || typeof obj !== 'object') return obj;
-  
-  if (Array.isArray(obj)) {
-    return obj.map(toSnakeCase);
+  async execute<T>(request: () => Promise<T>): Promise<T> {
+    return new Promise((resolve, reject) => {
+      this.queue.push(async () => {
+        try {
+          // Add delay between requests
+          await new Promise(resolve => setTimeout(resolve, this.delayBetweenRequests));
+          const result = await request();
+          resolve(result);
+        } catch (error) {
+          reject(error);
+        }
+      });
+
+      this.processQueue();
+    });
   }
-  
-  const snakeCaseObj: any = {};
-  for (const [key, value] of Object.entries(obj)) {
-    const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
-    snakeCaseObj[snakeKey] = toSnakeCase(value);
+
+  private async processQueue() {
+    if (this.processing || this.queue.length === 0) return;
+    
+    this.processing = true;
+    
+    while (this.queue.length > 0) {
+      const batch = this.queue.splice(0, this.maxConcurrent);
+      await Promise.all(batch.map(request => request()));
+    }
+    
+    this.processing = false;
   }
-  return snakeCaseObj;
-};
+}
 
 // Device type with related data
 type Device = Database['public']['Tables']['devices']['Row'] & {
@@ -442,24 +450,30 @@ export const deviceServices = {
   // Get devices by customer
   async getDevicesByCustomer(customerId: string) {
     try {
-      const { data, error } = await supabase
-        .from('devices')
-        .select(`
-          *,
-          device_checklists(*),
-          device_remarks(*),
-          device_transitions(*),
-          device_ratings(*),
-          customers(*)
-        `)
-        .eq('customer_id', customerId)
-        .order('created_at', { ascending: false });
+      const throttler = RequestThrottler.getInstance();
+      
+      const result = await throttler.execute(async () => {
+        const { data, error } = await supabase
+          .from('devices')
+          .select(`
+            *,
+            device_checklists(*),
+            device_remarks(*),
+            device_transitions(*),
+            device_ratings(*),
+            customers(*)
+          `)
+          .eq('customer_id', customerId)
+          .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('Error fetching devices by customer:', error);
-        throw new Error(`Failed to fetch devices: ${error.message}`);
-      }
-      return toCamelCase(data || []);
+        if (error) {
+          console.error('Error fetching devices by customer:', error);
+          throw new Error(`Failed to fetch devices: ${error.message}`);
+        }
+        return toCamelCase(data || []);
+      });
+      
+      return result;
     } catch (error) {
       console.error('Network error fetching devices by customer:', error);
       throw new Error('Network error: Unable to connect to database');

@@ -61,6 +61,52 @@ function replacePlaceholderImages(images: string[]): string[] {
   });
 }
 
+// Add request throttling utility at the top of the file
+class RequestThrottler {
+  private static instance: RequestThrottler;
+  private queue: Array<() => Promise<any>> = [];
+  private processing = false;
+  private maxConcurrent = 2; // Limit concurrent requests
+  private delayBetweenRequests = 500; // 500ms between requests
+
+  static getInstance(): RequestThrottler {
+    if (!RequestThrottler.instance) {
+      RequestThrottler.instance = new RequestThrottler();
+    }
+    return RequestThrottler.instance;
+  }
+
+  async execute<T>(request: () => Promise<T>): Promise<T> {
+    return new Promise((resolve, reject) => {
+      this.queue.push(async () => {
+        try {
+          // Add delay between requests
+          await new Promise(resolve => setTimeout(resolve, this.delayBetweenRequests));
+          const result = await request();
+          resolve(result);
+        } catch (error) {
+          reject(error);
+        }
+      });
+
+      this.processQueue();
+    });
+  }
+
+  private async processQueue() {
+    if (this.processing || this.queue.length === 0) return;
+    
+    this.processing = true;
+    
+    while (this.queue.length > 0) {
+      const batch = this.queue.splice(0, this.maxConcurrent);
+      await Promise.all(batch.map(request => request()));
+    }
+    
+    this.processing = false;
+  }
+}
+
 // Supabase Data Provider
 class SupabaseDataProvider implements LatsDataProvider {
   
@@ -628,7 +674,6 @@ class SupabaseDataProvider implements LatsDataProvider {
             priceRange: '0',
             variants: [],
             condition: product.condition || 'new',
-            storeShelf: product.store_shelf,
             internalNotes: '',
             attributes: product.attributes || {},
             category: undefined,
@@ -670,74 +715,76 @@ class SupabaseDataProvider implements LatsDataProvider {
       if (limitedProductIds.length > 0) {
         console.log(`📦 Processing ${limitedProductIds.length} products (limited from ${productIds.length} total)`);
         try {
-                      // Fetch images in batches of 5 to avoid query size limits (reduced from 20 to 10, then to 5)
-            const batchSize = 5;
-            for (let i = 0; i < limitedProductIds.length; i += batchSize) {
-              const batch = limitedProductIds.slice(i, i + batchSize);
+          // Fetch images in batches of 10 to reduce number of requests (increased from 5)
+          const batchSize = 10;
+          const throttler = RequestThrottler.getInstance();
+          
+          for (let i = 0; i < limitedProductIds.length; i += batchSize) {
+            const batch = limitedProductIds.slice(i, i + batchSize);
             
             try {
-              // Fetch images
-              const { data: batchImages, error: batchError } = await supabase
-                .from('product_images')
-                .select('product_id, image_url, is_primary')
-                .in('product_id', batch)
-                .order('is_primary', { ascending: false })
-                .order('created_at', { ascending: true });
+              // Fetch images with throttling
+              const batchImages = await throttler.execute(async () => {
+                const { data: images, error: batchError } = await supabase
+                  .from('product_images')
+                  .select('product_id, image_url, is_primary')
+                  .in('product_id', batch)
+                  .order('is_primary', { ascending: false })
+                  .order('created_at', { ascending: true });
 
-              if (batchError) {
-                console.error('❌ Error fetching product images batch:', batchError);
-              } else {
-                productImages.push(...(batchImages || []));
-              }
+                if (batchError) {
+                  console.error('❌ Error fetching product images batch:', batchError);
+                  return [];
+                }
+                return images || [];
+              });
               
-              // Fetch variants (for price information) with smaller batch size and retry logic
-              let batchVariants: any[] = [];
-              let variantsError: any = null;
+              productImages.push(...batchImages);
               
-              // Retry logic for variant queries with simplified column selection
-              const maxRetries = 3;
-              for (let retry = 0; retry < maxRetries; retry++) {
-                try {
-                  const { data: variants, error: error } = await supabase
-                    .from('lats_product_variants')
-                    .select('id, product_id, name, sku, cost_price, selling_price, quantity')
-                    .in('product_id', batch)
-                    .order('selling_price', { ascending: true });
+              // Fetch variants (for price information) with throttling and retry logic
+              const batchVariants = await throttler.execute(async () => {
+                let variantsError: any = null;
+                const maxRetries = 3;
+                
+                for (let retry = 0; retry < maxRetries; retry++) {
+                  try {
+                    const { data: variants, error: error } = await supabase
+                      .from('lats_product_variants')
+                      .select('id, product_id, name, sku, cost_price, selling_price, quantity')
+                      .in('product_id', batch)
+                      .order('selling_price', { ascending: true });
 
-                  if (error) {
-                    variantsError = error;
-                    console.warn(`⚠️ Variant batch query attempt ${retry + 1} failed:`, error);
-                    console.warn(`⚠️ Error code: ${error.code}, Message: ${error.message}`);
+                    if (error) {
+                      variantsError = error;
+                      console.warn(`⚠️ Variant batch query attempt ${retry + 1} failed:`, error);
+                      console.warn(`⚠️ Error code: ${error.code}, Message: ${error.message}`);
+                      
+                      // If it's a resource error and we have more retries, wait before retrying
+                      if (retry < maxRetries - 1) {
+                        const delay = Math.pow(2, retry) * 2000; // Exponential backoff: 2s, 4s, 8s
+                        console.log(`⏳ Waiting ${delay}ms before retry...`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        continue;
+                      }
+                    } else {
+                      console.log(`✅ Variant batch query succeeded on attempt ${retry + 1}`);
+                      return variants || [];
+                    }
+                  } catch (retryError) {
+                    variantsError = retryError;
+                    console.error(`❌ Exception in variant batch query attempt ${retry + 1}:`, retryError);
                     
-                    // If it's a 400 error and we have more retries, wait before retrying
                     if (retry < maxRetries - 1) {
-                      const delay = Math.pow(2, retry) * 1000; // Exponential backoff: 1s, 2s, 4s
+                      const delay = Math.pow(2, retry) * 2000;
                       console.log(`⏳ Waiting ${delay}ms before retry...`);
                       await new Promise(resolve => setTimeout(resolve, delay));
-                      continue;
                     }
-                  } else {
-                    batchVariants = variants || [];
-                    variantsError = null;
-                    console.log(`✅ Variant batch query succeeded on attempt ${retry + 1}`);
-                    break; // Success, exit retry loop
-                  }
-                } catch (retryError) {
-                  variantsError = retryError;
-                  console.error(`❌ Exception in variant batch query attempt ${retry + 1}:`, retryError);
-                  
-                  if (retry < maxRetries - 1) {
-                    const delay = Math.pow(2, retry) * 1000;
-                    console.log(`⏳ Waiting ${delay}ms before retry...`);
-                    await new Promise(resolve => setTimeout(resolve, delay));
                   }
                 }
-              }
 
-              if (variantsError) {
-                console.error('❌ All variant batch query attempts failed, falling back to individual queries');
                 // If all batch queries fail, try individual queries as fallback
                 console.log('🔄 Attempting individual variant queries as fallback...');
+                const individualVariants: any[] = [];
                 for (const productId of batch) {
                   try {
                     const { data: singleVariants, error: singleError } = await supabase
@@ -747,15 +794,16 @@ class SupabaseDataProvider implements LatsDataProvider {
                       .order('selling_price', { ascending: true });
                     
                     if (!singleError && singleVariants) {
-                      productVariants.push(...singleVariants);
+                      individualVariants.push(...singleVariants);
                     }
                   } catch (singleQueryError) {
                     console.error(`❌ Error fetching variants for product ${productId}:`, singleQueryError);
                   }
                 }
-              } else {
-                productVariants.push(...batchVariants);
-              }
+                return individualVariants;
+              });
+              
+              productVariants.push(...batchVariants);
             } catch (batchError) {
               console.error('❌ Error in batch processing:', batchError);
             }
@@ -812,7 +860,6 @@ class SupabaseDataProvider implements LatsDataProvider {
             : 0,
           priceRange: priceRange,
           condition: product.condition || 'new',
-          storeShelf: product.store_shelf,
           internalNotes: '',
           attributes: product.attributes || {},
           category: product.lats_categories ? {
@@ -969,7 +1016,6 @@ class SupabaseDataProvider implements LatsDataProvider {
             })()
           : '0',
         condition: product.condition || 'new',
-        storeShelf: product.store_shelf,
         internalNotes: '',
         attributes: product.attributes || {},
         debutDate: product.debut_date,
@@ -1169,7 +1215,6 @@ class SupabaseDataProvider implements LatsDataProvider {
         images: data.images || [],
         // Add new fields from the migration
         condition: data.condition || 'new',
-        store_shelf: data.storeShelf || null,
         // Add internal notes field - removed as it doesn't exist in schema
         // Add attributes field for product-level specifications
         attributes: data.attributes || {}
@@ -1379,7 +1424,6 @@ class SupabaseDataProvider implements LatsDataProvider {
         is_active: Boolean(data.isActive),
         // Add new fields from the migration
         condition: data.condition || 'new',
-        store_shelf: data.storeShelf || null,
         // Add attributes field for product-level specifications
         attributes: data.attributes || {}
       };

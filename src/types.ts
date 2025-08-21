@@ -191,6 +191,7 @@ export interface Customer {
   name: string;
   email: string;
   phone: string;
+  whatsapp?: string;
   gender: 'male' | 'female' | 'other';
   city: string;
   notes: CustomerNote[];
@@ -209,7 +210,6 @@ export interface Customer {
   payments: Payment[];
   devices: Device[]; // Added devices property
   // Additional fields from CustomerForm (not in database schema)
-  whatsapp?: string;
   referralSource?: string;
   birthMonth?: string;
   birthDay?: string;
@@ -240,7 +240,7 @@ export interface PromoMessage {
   id: string;
   title: string;
   content: string;
-  sentVia: 'sms' | 'whatsapp' | 'email';
+  sentVia: 'sms' | 'email';
   sentAt: string;
   status: 'sent' | 'delivered' | 'failed';
 }
@@ -262,21 +262,9 @@ export interface Payment {
 
 
 
-// WhatsApp Bulk Messaging Types
-export interface Chat {
-  id: string;
-  customer_id: string;
-  tags?: string[];
-  unread_count?: number;
-  updated_at?: string;
-  archived?: boolean;
-  assigned_to?: string;
-}
-
 export interface Customer {
   id: string;
   name: string;
-  whatsapp?: string;
   profile_image?: string;
   email: string;
   phone: string;

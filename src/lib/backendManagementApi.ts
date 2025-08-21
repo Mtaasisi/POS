@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 export interface IntegrationConfig {
   id: string;
   name: string;
-  type: 'sms' | 'email' | 'ai' | 'analytics' | 'payment' | 'storage' | 'whatsapp';
+  type: 'sms' | 'email' | 'ai' | 'analytics' | 'payment' | 'storage';
   provider: string;
   config: Record<string, any>;
   isActive: boolean;

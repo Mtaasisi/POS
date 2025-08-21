@@ -235,6 +235,11 @@ export class LocalImageStorageService {
    */
   static async getProductImages(productId: string): Promise<LocalImageData[]> {
     try {
+      // Handle temporary products
+      if (productId.startsWith('temp-product-') || productId.startsWith('test-product-') || productId.startsWith('temp-sparepart-')) {
+        return [];
+      }
+
       const { data, error } = await supabase
         .from('product_images')
         .select('*')

@@ -1,24 +1,8 @@
-// Utility functions for the application
+import { type ClassValue, clsx } from "clsx"
+import { twMerge } from "tailwind-merge"
 
-/**
- * Combine class names with conditional logic
- * Similar to clsx or classnames libraries
- */
-export function cn(...classes: (string | undefined | null | false | Record<string, boolean>)[]): string {
-  return classes
-    .filter(Boolean)
-    .map(cls => {
-      if (typeof cls === 'string') return cls;
-      if (typeof cls === 'object' && cls !== null) {
-        return Object.entries(cls)
-          .filter(([, value]) => value)
-          .map(([key]) => key)
-          .join(' ');
-      }
-      return '';
-    })
-    .join(' ')
-    .trim();
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
 }
 
 /**
@@ -81,4 +65,43 @@ export function formatRelativeTime(dateString: string | Date): string {
 
   const diffInYears = Math.floor(diffInDays / 365);
   return `${diffInYears} year${diffInYears === 1 ? '' : 's'} ago`;
-} 
+}
+
+// Helper function to convert snake_case to camelCase
+export const toCamelCase = (obj: any): any => {
+  if (obj === null || typeof obj !== 'object') return obj;
+  
+  if (Array.isArray(obj)) {
+    return obj.map(toCamelCase);
+  }
+  
+  const camelCaseObj: any = {};
+  for (const [key, value] of Object.entries(obj)) {
+    // Keep assigned_to as snake_case for consistency
+    if (key === 'assigned_to') {
+      camelCaseObj[key] = toCamelCase(value);
+    } else if (key === 'diagnosis_required') {
+      camelCaseObj['diagnosisRequired'] = typeof value === 'boolean' ? value : value == null ? null : Boolean(value);
+    } else {
+      const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+      camelCaseObj[camelKey] = toCamelCase(value);
+    }
+  }
+  return camelCaseObj;
+};
+
+// Helper function to convert camelCase to snake_case
+export const toSnakeCase = (obj: any): any => {
+  if (obj === null || typeof obj !== 'object') return obj;
+  
+  if (Array.isArray(obj)) {
+    return obj.map(toSnakeCase);
+  }
+  
+  const snakeCaseObj: any = {};
+  for (const [key, value] of Object.entries(obj)) {
+    const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+    snakeCaseObj[snakeKey] = toSnakeCase(value);
+  }
+  return snakeCaseObj;
+}; 

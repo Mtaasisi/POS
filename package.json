@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "server": "node server.js",
+    "dev:full": "concurrently \"npm run server\" \"npm run dev\"",
     "build": "tsc && vite build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"
@@ -15,8 +17,14 @@
     "@capacitor/core": "^7.4.2",
     "@hookform/resolvers": "^5.2.1",
     "@modelcontextprotocol/sdk": "^0.4.0",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-select": "^2.2.6",
+    "@radix-ui/react-slot": "^1.2.3",
+    "@radix-ui/react-tabs": "^1.1.13",
     "@supabase/supabase-js": "^2.53.0",
     "@types/react-datepicker": "^6.2.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "cors": "^2.8.5",
     "dayjs": "^1.11.13",
     "dotenv": "^17.2.0",
@@ -36,6 +44,7 @@
     "react-router-dom": "^6.22.0",
     "react-signature-canvas": "^1.1.0-alpha.2",
     "recharts": "^3.1.0",
+    "tailwind-merge": "^3.3.1",
     "uuid": "^9.0.1",
     "xlsx": "^0.18.5",
     "zod": "^4.0.17",
@@ -58,6 +67,7 @@
     "postcss": "^8.4.33",
     "tailwindcss": "^3.4.1",
     "typescript": "^5.2.2",
+    "vercel": "^46.0.2",
     "vite": "^5.0.8",
     "vite-plugin-pwa": "^1.0.1"
   }

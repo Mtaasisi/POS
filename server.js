@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 /**
- * WhatsApp Business API Webhook Server
+ * LATS CHANCE API Server
  * 
- * This server handles WhatsApp Business API webhook requests
+ * This server handles API requests for the LATS CHANCE application
  */
 
 import express from 'express';
@@ -27,334 +27,293 @@ const supabase = createClient(
   process.env.VITE_SUPABASE_ANON_KEY
 );
 
-// WhatsApp Business API webhook endpoint
-app.get('/api/whatsapp-business-webhook', async (req, res) => {
-  console.log('🔍 WhatsApp Business webhook GET request received:', {
-    method: req.method,
-    url: req.url,
-    query: req.query,
-    headers: req.headers
-  });
 
-  const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = req.query;
 
-  console.log('🔍 Webhook verification request:', {
-    mode,
-    token: token ? '***' + token.slice(-4) : 'not provided',
-    challenge,
-    hasToken: !!token,
-    hasChallenge: !!challenge
-  });
 
-  if (mode && token && challenge) {
-    try {
-      // Get the stored webhook verify token from database
-      const { data: settings, error } = await supabase
-        .from('settings')
-        .select('value')
-        .eq('key', 'whatsapp_business_webhook_verify_token')
-        .single();
 
-      if (error) {
-        console.error('❌ Error fetching webhook token:', error);
-        return res.status(500).send('Internal Server Error');
-      }
 
-      const storedToken = settings?.value;
 
-      console.log('🔍 Token comparison:', {
-        provided: token ? '***' + token.slice(-4) : 'not provided',
-        stored: storedToken ? '***' + storedToken.slice(-4) : 'not stored',
-        match: token === storedToken
-      });
 
-      if (token === storedToken) {
-        console.log('✅ WhatsApp Business webhook verified successfully');
-        return res.status(200).send(challenge);
-      } else {
-        console.log('❌ WhatsApp Business webhook verification failed - invalid token');
-        return res.status(403).send('Forbidden - Invalid verify token');
-      }
-    } catch (error) {
-      console.error('❌ Error during webhook verification:', error);
-      return res.status(500).send('Internal Server Error during verification');
-    }
-  } else {
-    console.log('❌ Missing required parameters for webhook verification:', {
-      hasMode: !!mode,
-      hasToken: !!token,
-      hasChallenge: !!challenge
-    });
-    return res.status(400).send('Bad Request - Missing required parameters');
-  }
-});
 
-// Handle webhook POST requests (incoming messages and status updates)
-app.post('/api/whatsapp-business-webhook', async (req, res) => {
-  console.log('📨 WhatsApp Business webhook POST received:', JSON.stringify(req.body, null, 2));
 
-  try {
-    const body = req.body;
-    
-    // Process the webhook data
-    await processWebhookData(body);
-    
-    return res.status(200).send('OK');
-  } catch (error) {
-    console.error('❌ Error processing WhatsApp Business webhook:', error);
-    return res.status(500).send('Internal Server Error');
-  }
-});
 
-// Test endpoint
-app.get('/api/whatsapp-webhook-test', (req, res) => {
-  console.log('🧪 WhatsApp Webhook Test Endpoint Called');
-  console.log('Method:', req.method);
-  console.log('URL:', req.url);
-  console.log('Query:', req.query);
-  console.log('Headers:', req.headers);
 
-  const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = req.query;
-
-  console.log('Test verification parameters:', {
-    mode,
-    token: token ? '***' + token.slice(-4) : 'not provided',
-    challenge,
-    hasToken: !!token,
-    hasChallenge: !!challenge
-  });
-
-  // Simple verification - accept any token for testing
-  if (mode === 'subscribe' && token && challenge) {
-    console.log('✅ Test verification successful');
-    return res.status(200).send(challenge);
-  } else {
-    console.log('❌ Test verification failed - missing parameters');
-    return res.status(400).send('Missing required parameters');
-  }
-});
-
-app.post('/api/whatsapp-webhook-test', (req, res) => {
-  console.log('📨 Test webhook POST received');
-  console.log('Body:', JSON.stringify(req.body, null, 2));
-  return res.status(200).send('OK');
-});
-
-// Process webhook data
-async function processWebhookData(data) {
-  try {
-    const entry = data.entry?.[0];
-    if (!entry) return;
-
-    const changes = entry.changes?.[0];
-    if (!changes || changes.value?.messaging_product !== 'whatsapp') return;
-
-    const messages = changes.value.messages;
-    const statuses = changes.value.statuses;
-
-    // Process incoming messages
-    if (messages && Array.isArray(messages)) {
-      for (const message of messages) {
-        await processIncomingMessage(message);
-      }
-    }
-
-    // Process status updates
-    if (statuses && Array.isArray(statuses)) {
-      for (const status of statuses) {
-        await processStatusUpdate(status);
-      }
-    }
-  } catch (error) {
-    console.error('Error processing webhook data:', error);
-  }
-}
-
-// Process incoming message
-async function processIncomingMessage(message) {
-  try {
-    console.log('📨 Processing incoming WhatsApp Business message:', message);
-
-    // Extract message data
-    const messageData = {
-      id: message.id,
-      from: message.from,
-      to: message.to,
-      type: message.type,
-      timestamp: message.timestamp,
-      content: extractMessageContent(message),
-      media_url: extractMediaUrl(message),
-      media_name: extractMediaName(message),
-      media_size: extractMediaSize(message),
-      media_mime_type: extractMediaMimeType(message)
-    };
-
-    // Find or create chat
-    const chatId = await findOrCreateChat(messageData.from);
-
-    // Save message to database
-    const { error } = await supabase
-      .from('whatsapp_messages')
-      .insert({
-        message_id: messageData.id,
-        chat_id: chatId,
-        from_number: messageData.from,
-        to_number: messageData.to,
-        message_type: messageData.type,
-        content: messageData.content,
-        media_url: messageData.media_url,
-        media_name: messageData.media_name,
-        media_size: messageData.media_size,
-        media_mime_type: messageData.media_mime_type,
-        timestamp: new Date(parseInt(messageData.timestamp) * 1000).toISOString(),
-        direction: 'inbound',
-        status: 'received'
-      });
-
-    if (error) {
-      console.error('Error saving message:', error);
-    } else {
-      console.log('✅ Message saved to database');
-      await updateChatLastMessage(chatId, messageData.content, new Date(parseInt(messageData.timestamp) * 1000).toISOString());
-    }
-  } catch (error) {
-    console.error('Error processing incoming message:', error);
-  }
-}
-
-// Process status update
-async function processStatusUpdate(status) {
-  try {
-    console.log('📊 Processing status update:', status);
-
-    const { error } = await supabase
-      .from('whatsapp_messages')
-      .update({
-        status: status.status,
-        updated_at: new Date().toISOString()
-      })
-      .eq('message_id', status.id);
-
-    if (error) {
-      console.error('Error updating message status:', error);
-    } else {
-      console.log('✅ Status updated in database');
-    }
-  } catch (error) {
-    console.error('Error processing status update:', error);
-  }
-}
-
-// Helper functions
-function extractMessageContent(message) {
-  if (message.text) return message.text.body;
-  if (message.image) return `[Image: ${message.image.id}]`;
-  if (message.document) return `[Document: ${message.document.filename}]`;
-  if (message.audio) return '[Audio]';
-  if (message.video) return '[Video]';
-  if (message.location) return `[Location: ${message.location.latitude}, ${message.location.longitude}]`;
-  if (message.contact) return `[Contact: ${message.contact.name.formatted_name}]`;
-  if (message.sticker) return '[Sticker]';
-  return '[Unknown message type]';
-}
-
-function extractMediaUrl(message) {
-  if (message.image) return message.image.id;
-  if (message.document) return message.document.id;
-  if (message.audio) return message.audio.id;
-  if (message.video) return message.video.id;
-  if (message.sticker) return message.sticker.id;
-  return null;
-}
-
-function extractMediaName(message) {
-  if (message.document) return message.document.filename;
-  return null;
-}
-
-function extractMediaSize(message) {
-  // WhatsApp doesn't provide file size in webhook
-  return null;
-}
-
-function extractMediaMimeType(message) {
-  if (message.image) return message.image.mime_type;
-  if (message.document) return message.document.mime_type;
-  if (message.audio) return message.audio.mime_type;
-  if (message.video) return message.video.mime_type;
-  if (message.sticker) return message.sticker.mime_type;
-  return null;
-}
-
-async function findOrCreateChat(phoneNumber) {
-  try {
-    // Try to find existing chat
-    let { data: chat, error } = await supabase
-      .from('whatsapp_chats')
-      .select('id')
-      .eq('phone_number', phoneNumber)
-      .single();
-
-    if (error && error.code !== 'PGRST116') {
-      console.error('Error finding chat:', error);
-      return null;
-    }
-
-    if (!chat) {
-      // Create new chat
-      const { data: newChat, error: createError } = await supabase
-        .from('whatsapp_chats')
-        .insert({
-          phone_number: phoneNumber,
-          customer_name: `Customer ${phoneNumber.slice(-4)}`,
-          created_at: new Date().toISOString()
-        })
-        .select('id')
-        .single();
-
-      if (createError) {
-        console.error('Error creating chat:', createError);
-        return null;
-      }
-
-      chat = newChat;
-    }
-
-    return chat.id;
-  } catch (error) {
-    console.error('Error in findOrCreateChat:', error);
-    return null;
-  }
-}
-
-async function updateChatLastMessage(chatId, lastMessage, lastMessageTime) {
-  try {
-    const { error } = await supabase
-      .from('whatsapp_chats')
-      .update({
-        last_message: lastMessage,
-        last_message_time: lastMessageTime,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', chatId);
-
-    if (error) {
-      console.error('Error updating chat last message:', error);
-    }
-  } catch (error) {
-    console.error('Error in updateChatLastMessage:', error);
-  }
-}
 
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
+// Beem Payment API Routes
+app.post('/api/beem-payment', async (req, res) => {
+  console.log('🔍 Beem payment API request received:', req.body);
+  
+  try {
+    const { action, data } = req.body;
+
+    if (action === 'createOrder') {
+      return await handleCreateOrder(data, res);
+    } else if (action === 'checkStatus') {
+      return await handleCheckStatus(data, res);
+    } else {
+      return res.status(400).json({ error: 'Invalid action' });
+    }
+  } catch (error) {
+    console.error('Beem payment API error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Beem Webhook endpoint
+app.post('/api/beem-webhook', async (req, res) => {
+  console.log('🔍 Beem webhook received:', req.body);
+  
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  try {
+    const { signature } = req.headers;
+    const payload = req.body;
+
+    // Verify webhook signature (implement according to Beem Africa docs)
+    // const isValid = verifyWebhookSignature(payload, signature as string);
+    // if (!isValid) {
+    //   return res.status(401).json({ error: 'Invalid signature' });
+    // }
+
+    const {
+      order_id,
+      status,
+      amount,
+      currency,
+      reference,
+      customer_email,
+      customer_name,
+      customer_phone,
+      metadata
+    } = payload;
+
+    // Log the webhook
+    const { error: webhookError } = await supabase
+      .from('payment_webhooks')
+      .insert({
+        provider: 'beem',
+        event_type: 'payment.' + status,
+        payload: payload,
+        processed: false
+      });
+
+    if (webhookError) {
+      console.error('Error logging webhook:', webhookError);
+    }
+
+    // Update payment transaction
+    const { error: transactionError } = await supabase
+      .from('payment_transactions')
+      .upsert({
+        order_id,
+        provider: 'beem',
+        amount: parseFloat(amount),
+        currency: currency || 'TZS',
+        status: mapBeemStatus(status),
+        customer_email,
+        customer_name,
+        customer_phone,
+        reference,
+        metadata,
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'order_id'
+      });
+
+    if (transactionError) {
+      console.error('Error updating transaction:', transactionError);
+      return res.status(500).json({ error: 'Failed to update transaction' });
+    }
+
+    // If payment is successful, update order status
+    if (status === 'completed') {
+      const { error: orderError } = await supabase
+        .from('pos_sales')
+        .update({
+          payment_status: 'paid',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', order_id);
+
+      if (orderError) {
+        console.error('Error updating order:', orderError);
+      }
+    }
+
+    // Mark webhook as processed
+    await supabase
+      .from('payment_webhooks')
+      .update({
+        processed: true,
+        processed_at: new Date().toISOString()
+      })
+      .eq('provider', 'beem')
+      .eq('event_type', 'payment.' + status)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Beem webhook error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Helper functions for Beem payment API
+async function handleCreateOrder(data, res) {
+  try {
+    const {
+      amount,
+      currency,
+      reference,
+      customerEmail,
+      customerName,
+      customerPhone,
+      description,
+      metadata
+    } = data;
+
+    console.log('🔍 Creating order with data:', {
+      amount,
+      currency,
+      reference,
+      customerEmail,
+      customerName,
+      customerPhone
+    });
+
+    // For testing purposes, return a mock response
+    // In production, this would call the actual Beem API
+    const mockResponse = {
+      success: true,
+      data: {
+        checkout_url: `https://beem.africa/checkout/mock-${reference}`,
+        session_id: `session_${reference}_${Date.now()}`,
+        status: 'pending'
+      }
+    };
+
+    console.log('🔍 Mock Beem API Response:', mockResponse);
+
+    // Log the transaction
+    try {
+      await supabase
+        .from('payment_transactions')
+        .insert({
+          order_id: reference,
+          provider: 'beem',
+          amount: parseFloat(amount),
+          currency: currency || 'TZS',
+          status: 'PENDING',
+          customer_email: customerEmail,
+          customer_name: customerName,
+          customer_phone: customerPhone,
+          reference,
+          metadata,
+          created_at: new Date().toISOString()
+        });
+      console.log('✅ Transaction logged successfully');
+    } catch (dbError) {
+      console.error('❌ Error logging transaction:', dbError);
+      // Continue with the response even if DB logging fails
+    }
+
+    return res.status(200).json({
+      success: true,
+      orderId: reference,
+      message: 'Checkout session created successfully (MOCK)',
+      data: mockResponse.data
+    });
+  } catch (error) {
+    console.error('❌ Beem API Error (Server):', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+}
+
+async function handleCheckStatus(data, res) {
+  try {
+    const { orderId } = data;
+
+    const apiKey = '6d829f20896bd90e';
+    const secretKey = 'NTg0ZjY5Mzc3MGFkMjU5Y2M2ZjY2NjFlNGEzNGRiZjZlNDQ5ZTlkM2YzNmEyMzE0ZmI3YzFjM2ZhYmMxYjk0Yw==';
+    const baseUrl = 'https://beem.africa/api';
+
+    const response = await fetch(`${baseUrl}/v1/checkout/sessions/${orderId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'X-Secret-Key': secretKey
+      }
+    });
+
+    const result = await response.json();
+
+    if (response.ok && result.success) {
+      return res.status(200).json({
+        success: true,
+        result: result.data.status === 'completed' ? 'SUCCESS' : 'FAIL',
+        orders: [{
+          order_id: orderId,
+          payment_status: mapBeemStatus(result.data.status),
+          amount: result.data.amount,
+          reference: result.data.reference,
+          buyer_email: result.data.customer_email,
+          buyer_name: result.data.customer_name,
+          buyer_phone: result.data.customer_phone,
+          created_at: result.data.created_at,
+          updated_at: result.data.updated_at,
+          metadata: result.data.metadata
+        }],
+        count: 1,
+        data: result
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: result.message || 'Failed to check payment status',
+        data: result
+      });
+    }
+  } catch (error) {
+    console.error('❌ Beem Status Check Error (Server):', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error checking payment status',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+}
+
+function mapBeemStatus(beemStatus) {
+  switch (beemStatus) {
+    case 'completed':
+      return 'SUCCESS';
+    case 'failed':
+      return 'FAIL';
+    case 'cancelled':
+      return 'CANCELLED';
+    case 'pending':
+      return 'PENDING';
+    default:
+      return 'UNKNOWN';
+  }
+}
+
 // Start server
 app.listen(PORT, () => {
-  console.log(`🚀 WhatsApp Business API Webhook Server running on port ${PORT}`);
-  console.log(`📡 Webhook URL: http://localhost:${PORT}/api/whatsapp-business-webhook`);
-  console.log(`🧪 Test URL: http://localhost:${PORT}/api/whatsapp-webhook-test`);
+  console.log(`🚀 LATS CHANCE API Server running on port ${PORT}`);
+  console.log(`💳 Beem Payment API: http://localhost:${PORT}/api/beem-payment`);
+  console.log(`🔗 Beem Webhook: http://localhost:${PORT}/api/beem-webhook`);
   console.log(`❤️  Health check: http://localhost:${PORT}/health`);
 });

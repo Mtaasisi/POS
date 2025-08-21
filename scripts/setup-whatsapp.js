@@ -1,88 +1,55 @@
-import { createClient } from '@supabase/supabase-js';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import dotenv from 'dotenv';
+#!/usr/bin/env node
 
-// Load environment variables
-dotenv.config();
+const fs = require('fs');
+const path = require('path');
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+console.log('🚀 Setting up WhatsApp Green API Integration...\n');
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
+// Your Green API token
+const GREEN_API_TOKEN = 'b3cd0d668a7c471e8ab88c14fafab28f4a66d266172a4c6294';
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('❌ Missing required environment variables:');
-  console.error('   VITE_SUPABASE_URL:', supabaseUrl ? '✅' : '❌');
-  console.error('   VITE_SUPABASE_ANON_KEY:', supabaseAnonKey ? '✅' : '❌');
-  process.exit(1);
-}
+// Environment variables to add
+const envVars = `
+# WhatsApp Green API Configuration
+VITE_GREEN_API_TOKEN=${GREEN_API_TOKEN}
+VITE_WHATSAPP_WEBHOOK_URL=https://your-domain.com/api/whatsapp-webhook
+VITE_WHATSAPP_WEBHOOK_SECRET=your_webhook_secret_here
+`;
 
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Check if .env file exists
+const envPath = path.join(process.cwd(), '.env');
+const envExists = fs.existsSync(envPath);
 
-async function setupWhatsApp() {
-  try {
-    console.log('🚀 Setting up WhatsApp database tables...');
-    console.log('📋 This script will create the necessary tables for WhatsApp functionality.');
-    console.log('⚠️  Please run the SQL script in your Supabase dashboard if this fails.\n');
-    
-    // Check if tables already exist
-    console.log('🔍 Checking existing tables...');
-    
-    const { data: existingTables, error: checkError } = await supabase
-      .from('information_schema.tables')
-      .select('table_name')
-      .eq('table_schema', 'public')
-      .like('table_name', 'whatsapp_%');
-    
-    if (checkError) {
-      console.log('⚠️  Could not check existing tables, proceeding with setup...');
-    } else if (existingTables && existingTables.length > 0) {
-      console.log('✅ WhatsApp tables already exist:');
-      existingTables.forEach(table => {
-        console.log(`   - ${table.table_name}`);
-      });
-      console.log('\n🎉 Setup complete! You can now use WhatsApp features.');
-      return;
-    }
-    
-    console.log('📄 Please run the following SQL in your Supabase SQL Editor:');
-    console.log('   (Copy and paste the contents of whatsapp-tables-simple.sql)\n');
-    
-    // Read and display the SQL file
-    const sqlPath = path.join(__dirname, '..', 'whatsapp-tables-simple.sql');
-    if (fs.existsSync(sqlPath)) {
-      const sqlContent = fs.readFileSync(sqlPath, 'utf8');
-      console.log('📋 SQL Script Content:');
-      console.log('='.repeat(50));
-      console.log(sqlContent);
-      console.log('='.repeat(50));
-      console.log('\n📝 Instructions:');
-      console.log('1. Go to your Supabase dashboard');
-      console.log('2. Navigate to SQL Editor');
-      console.log('3. Copy and paste the SQL above');
-      console.log('4. Click "Run" to execute');
-      console.log('5. Return to the app and refresh the WhatsApp page');
-    } else {
-      console.log('❌ SQL file not found. Please create the tables manually.');
-    }
-    
-  } catch (error) {
-    console.error('❌ Error during setup:', error);
-    console.log('\n📝 Manual Setup Instructions:');
-    console.log('1. Go to your Supabase dashboard');
-    console.log('2. Navigate to SQL Editor');
-    console.log('3. Create the following tables:');
-    console.log('   - whatsapp_chats');
-    console.log('   - whatsapp_messages');
-    console.log('   - scheduled_whatsapp_messages');
-    console.log('   - whatsapp_templates');
-    console.log('   - whatsapp_autoresponders');
-    console.log('   - whatsapp_campaigns');
-    console.log('4. Enable RLS and create appropriate policies');
+if (envExists) {
+  console.log('📝 Found existing .env file');
+  
+  // Read existing content
+  const existingContent = fs.readFileSync(envPath, 'utf8');
+  
+  // Check if WhatsApp config already exists
+  if (existingContent.includes('VITE_GREEN_API_TOKEN')) {
+    console.log('⚠️  WhatsApp configuration already exists in .env file');
+    console.log('   Please update VITE_GREEN_API_TOKEN with your token if needed');
+  } else {
+    // Append new variables
+    fs.appendFileSync(envPath, envVars);
+    console.log('✅ Added WhatsApp configuration to existing .env file');
   }
+} else {
+  // Create new .env file
+  fs.writeFileSync(envPath, envVars);
+  console.log('✅ Created new .env file with WhatsApp configuration');
 }
 
-setupWhatsApp();
+console.log('\n📋 Next Steps:');
+console.log('1. Update VITE_WHATSAPP_WEBHOOK_URL with your actual webhook URL');
+console.log('2. Set a secure VITE_WHATSAPP_WEBHOOK_SECRET');
+console.log('3. Run: npx supabase db push');
+console.log('4. Configure webhook in Green API dashboard');
+console.log('5. Add WhatsApp page to your app routing');
+console.log('6. Create your first WhatsApp instance');
+
+console.log('\n🔗 Green API Dashboard: https://green-api.com');
+console.log('📚 Documentation: docs/WHATSAPP_INTEGRATION.md');
+
+console.log('\n🎉 Setup complete! Your token is configured.');

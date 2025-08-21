@@ -351,15 +351,7 @@ const ProductDetailPage: React.FC = () => {
 									</div>
 								)}
 								
-								{product.storeShelf && (
-									<div className="flex items-start gap-2">
-										<MapPin size={16} className="text-gray-400 mt-0.5" />
-										<div>
-											<span className="text-sm text-gray-500">Store Shelf</span>
-											<p className="text-sm">{product.storeShelf}</p>
-										</div>
-									</div>
-								)}
+
 
 								{product.debutDate && (
 									<div className="flex items-start gap-2">

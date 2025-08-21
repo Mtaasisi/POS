@@ -214,7 +214,6 @@ export const getDefaultSettings = (): SettingsData => ({
   contact_phone: '',
   background_theme: 'default',
   sms_notifications_enabled: false,
-  whatsapp_notifications_enabled: false,
   email_notifications_enabled: false,
   in_app_notifications_enabled: true,
   debug_mode: false,

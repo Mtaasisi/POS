@@ -3,6 +3,7 @@ class DebugUtils {
   private static isVerboseLogging = import.meta.env.DEV && localStorage.getItem('verbose_logging') === 'true';
   private static logCounts: Record<string, number> = {};
   private static lastLogTime: Record<string, number> = {};
+  private static sessionLogged: Record<string, boolean> = {};
 
   /**
    * Log only in development mode and respect verbose logging setting
@@ -26,6 +27,35 @@ class DebugUtils {
       console.log(message, ...args);
       this.lastLogTime[key] = now;
       this.logCounts[key] = (this.logCounts[key] || 0) + 1;
+    }
+  }
+
+  /**
+   * Log only once per session to prevent repeated messages
+   */
+  static sessionLog(key: string, message: string, ...args: any[]) {
+    if (!import.meta.env.DEV) return;
+    
+    if (!this.sessionLogged[key]) {
+      console.log(message, ...args);
+      this.sessionLogged[key] = true;
+    }
+  }
+
+  /**
+   * Log initialization messages with better control
+   */
+  static initLog(serviceName: string, message: string, ...args: any[]) {
+    if (!import.meta.env.DEV) return;
+    
+    const key = `${serviceName}_init`;
+    const now = Date.now();
+    const lastTime = this.lastLogTime[key] || 0;
+    
+    // Only log initialization messages once per 5 seconds to reduce spam
+    if (now - lastTime > 5000) {
+      console.log(`[${serviceName}] ${message}`, ...args);
+      this.lastLogTime[key] = now;
     }
   }
 
@@ -63,6 +93,34 @@ class DebugUtils {
   static clearLogCounts() {
     this.logCounts = {};
     this.lastLogTime = {};
+    this.sessionLogged = {};
+  }
+
+  /**
+   * Debug WhatsApp service initialization
+   */
+  static debugWhatsAppService() {
+    if (!import.meta.env.DEV) return;
+    
+    try {
+      // Import the service dynamically to avoid circular dependencies
+      import('../services/whatsappService').then(({ whatsappService }) => {
+        const status = whatsappService.getInitializationStatus();
+        console.log('🔍 WhatsApp Service Debug Info:', status);
+      }).catch(err => {
+        console.log('🔍 Could not access WhatsApp service:', err.message);
+      });
+    } catch (error) {
+      console.log('🔍 Error debugging WhatsApp service:', error);
+    }
+  }
+
+  /**
+   * Reset session logging for testing
+   */
+  static resetSessionLogging() {
+    this.sessionLogged = {};
+    console.log('🔄 Session logging reset');
   }
 }
 

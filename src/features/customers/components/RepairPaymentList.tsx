@@ -184,13 +184,13 @@ const RepairPaymentList: React.FC<RepairPaymentListProps> = ({
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
-                  {getPaymentMethodIcon(payment.payment_method)}
+                  {getPaymentMethodIcon(payment.method)}
                   <div>
                     <div className="font-medium text-gray-800">
                       {formatCurrency(payment.amount)}
                     </div>
                     <div className="text-sm text-gray-600">
-                      {payment.payment_method} • {payment.payment_account_name}
+                      {payment.method} • {payment.payment_account_name}
                     </div>
                   </div>
                 </div>

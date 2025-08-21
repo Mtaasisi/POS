@@ -133,7 +133,7 @@ export class RobustImageService {
       }
 
       // Handle temporary products
-      if (productId.startsWith('temp-product-') || productId.startsWith('test-product-')) {
+      if (productId.startsWith('temp-product-') || productId.startsWith('test-product-') || productId.startsWith('temp-sparepart-')) {
         return [];
       }
 
@@ -450,7 +450,7 @@ export class RobustImageService {
     mimeType: string;
   }): Promise<ProductImage> {
     // Handle temporary products - don't save to database
-    if (data.productId.startsWith('temp-product-') || data.productId.startsWith('test-product-')) {
+    if (data.productId.startsWith('temp-product-') || data.productId.startsWith('test-product-') || data.productId.startsWith('temp-sparepart-')) {
       console.log('📝 Creating temporary image record for product:', data.productId);
       return {
         id: `temp-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,

@@ -3,7 +3,7 @@ import GlassCard from '../../../features/shared/components/ui/GlassCard';
 import GlassButton from '../../../features/shared/components/ui/GlassButton';
 
 import { useNavigate } from 'react-router-dom';
-import { toast } from 'react-hot-toast';
+import { toast } from '../../../lib/toastUtils';
 import { SimpleBackButton as BackButton } from '../../../features/shared/components/ui/SimpleBackButton';
 import { ArrowLeft, User, Smartphone, Tag, Layers, Hash, FileText, DollarSign, Key, Phone, Mail, MapPin, Calendar, Clock, ChevronDown, Battery, Camera as CameraIcon, Wifi, Bluetooth, Plug, Volume2, Mic, Speaker, Vibrate, Cpu, HardDrive, Droplet, Shield, Wrench, AlertTriangle as AlertIcon, Eye, Edit, MessageCircle, Users, Star, UserPlus, Brain, Zap, Lightbulb, Search, Sparkles, Package, RefreshCw, WifiOff, Store } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
@@ -24,7 +24,7 @@ import { smsService } from '../../../services/smsService';
 import { SoundManager } from '../../../lib/soundUtils';
 import { useDraftForm } from '../../../lib/useDraftForm';
 import { saveActionOffline } from '../../../lib/offlineSync';
-import { whatsappService } from '../../../services/whatsappService';
+
 import geminiService from '../../../services/geminiService';
 import offlineAIService from '../../../services/offlineAIService';
 import StepIndicator from '../components/StepIndicator';
@@ -1987,8 +1987,7 @@ IMPORTANT INSTRUCTIONS:
                           .then(async (device) => {
                             if (device) {
                               toast.success('Device intake created successfully!');
-                              // Send WhatsApp message to your number
-                              whatsappService.sendMessage('255746605561@c.us', `New device created: ${device.model || ''} ${device.serialNumber || ''}`, 'text');
+
                               setIsSubmitting(false);
                               setIsLoading(false);
                               navigate(`/device/${device.id}`);

@@ -47,46 +47,7 @@ async function checkDatabaseStatus() {
       }
     }
 
-    console.log('\n📱 WhatsApp Tables Status:');
-    const whatsappTables = [
-      'whatsapp_chats',
-      'whatsapp_messages',
-      'whatsapp_templates'
-    ];
 
-    for (const table of whatsappTables) {
-      try {
-        const { data, error, count } = await supabase
-          .from(table)
-          .select('*', { count: 'exact', head: true });
-
-        if (error) {
-          console.log(`❌ ${table}: ${error.message}`);
-        } else {
-          console.log(`✅ ${table}: ${count || 0} records`);
-        }
-      } catch (err) {
-        console.log(`❌ ${table}: ${err.message}`);
-      }
-    }
-
-    // Check for specific WhatsApp messages error
-    console.log('\n🔍 Checking WhatsApp messages table structure...');
-    try {
-      const { data, error } = await supabase
-        .from('whatsapp_messages')
-        .select('*')
-        .limit(1);
-
-      if (error) {
-        console.log(`❌ WhatsApp messages error: ${error.message}`);
-        console.log(`📋 Error details:`, error);
-      } else {
-        console.log('✅ WhatsApp messages table accessible');
-      }
-    } catch (err) {
-      console.log(`❌ WhatsApp messages error: ${err.message}`);
-    }
 
   } catch (error) {
     console.error('❌ Database connection error:', error.message);

@@ -6,12 +6,14 @@ import GlassButton from '../../../features/shared/components/ui/GlassButton';
 import { BackButton } from '../../../features/shared/components/ui/BackButton';
 import LATSQuickActions from '../components/ui/LATSQuickActions';
 import LATSBreadcrumb from '../components/ui/LATSBreadcrumb';
+
 import { PageErrorBoundary } from '../../../features/shared/components/PageErrorBoundary';
 import { useErrorHandler } from '../../../hooks/useErrorHandler';
 import ErrorState from '../components/ui/ErrorState';
 import {
   ShoppingCart, Package, Users, BarChart3, TrendingUp, FileText, Crown, CreditCard,
-  DollarSign, Activity, Target, Award, Calendar, Clock, ArrowRight, Plus, Settings
+  DollarSign, Activity, Target, Award, Calendar, Clock, ArrowRight, Plus, Settings,
+  MessageSquare, Zap, Globe
 } from 'lucide-react';
 
 // Demo data for dashboard metrics
@@ -73,7 +75,8 @@ const DEMO_RECENT_ACTIVITIES = [
     time: '3 hours ago',
     icon: Package,
     color: 'text-red-600'
-  }
+  },
+
 ];
 
 const DEMO_QUICK_STATS = [
@@ -108,7 +111,8 @@ const DEMO_QUICK_STATS = [
     changeType: 'negative',
     icon: Activity,
     color: 'from-orange-500 to-orange-600'
-  }
+  },
+
 ];
 
 const LATSDashboardPage: React.FC = () => {
@@ -352,6 +356,10 @@ const LATSDashboardPage: React.FC = () => {
             })}
           </div>
         </GlassCard>
+
+
+
+
       </div>
     </PageErrorBoundary>
   );

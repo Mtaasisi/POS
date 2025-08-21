@@ -146,3 +146,4 @@ server-*.php
 *.md
 !README.md
 !docs/**/*.md
+.vercel

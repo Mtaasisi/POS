@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
 import GlassCard from '../../../features/shared/components/ui/GlassCard';
 import GlassButton from '../../../features/shared/components/ui/GlassButton';
@@ -11,14 +11,15 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
-// Import tab components (will create these next)
+// Import tab components
 import BrandsTab from '../components/inventory-management/BrandsTab';
 import CategoriesTab from '../components/inventory-management/CategoriesTab';
 import SuppliersTab from '../components/inventory-management/SuppliersTab';
 import StoreLocationsTab from '../components/inventory-management/StoreLocationsTab';
+import ShelvesTab from '../components/inventory-management/ShelvesTab';
 import SystemSettingsTab from '../components/inventory-management/SystemSettingsTab';
 
-type TabType = 'brands' | 'categories' | 'suppliers' | 'store-locations' | 'system-settings';
+type TabType = 'brands' | 'categories' | 'suppliers' | 'store-locations' | 'shelves' | 'system-settings';
 
 interface TabConfig {
   id: TabType;
@@ -58,6 +59,13 @@ const TAB_CONFIGS: TabConfig[] = [
     description: 'Manage store locations and branches'
   },
   {
+    id: 'shelves',
+    label: 'Shelves',
+    icon: Package,
+    color: 'indigo',
+    description: 'Manage storage shelves and capacity'
+  },
+  {
     id: 'system-settings',
     label: 'System Settings',
     icon: Settings,
@@ -69,10 +77,11 @@ const TAB_CONFIGS: TabConfig[] = [
 const InventoryManagementPage: React.FC = () => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<TabType>('brands');
   const [isLoading, setIsLoading] = useState(false);
 
-  // Check user permissions
+  // Check user permissions and handle URL parameters
   useEffect(() => {
     if (!currentUser) {
       navigate('/login');
@@ -85,7 +94,13 @@ const InventoryManagementPage: React.FC = () => {
       navigate('/dashboard');
       return;
     }
-  }, [currentUser, navigate]);
+
+    // Handle URL parameter for tab selection
+    const tabParam = searchParams.get('shelves');
+    if (tabParam) {
+      setActiveTab('shelves');
+    }
+  }, [currentUser, navigate, searchParams]);
 
   const handleTabChange = (tabId: TabType) => {
     setActiveTab(tabId);
@@ -101,6 +116,8 @@ const InventoryManagementPage: React.FC = () => {
         return <SuppliersTab />;
       case 'store-locations':
         return <StoreLocationsTab />;
+      case 'shelves':
+        return <ShelvesTab />;
       case 'system-settings':
         return <SystemSettingsTab />;
       default:

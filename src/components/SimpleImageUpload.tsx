@@ -30,7 +30,7 @@ export const SimpleImageUpload: React.FC<SimpleImageUploadProps> = ({
   // Load existing images on mount
   React.useEffect(() => {
     // Only load images if we have a real product ID
-    if (!productId.startsWith('temp-product-') && !productId.startsWith('test-product-')) {
+    if (!productId.startsWith('temp-product-') && !productId.startsWith('test-product-') && !productId.startsWith('temp-sparepart-')) {
       loadImages();
     }
   }, [productId]);
@@ -38,7 +38,7 @@ export const SimpleImageUpload: React.FC<SimpleImageUploadProps> = ({
   const loadImages = async () => {
     try {
       // For temporary products, load from local storage
-      if (productId.startsWith('temp-product-') || productId.startsWith('test-product-')) {
+      if (productId.startsWith('temp-product-') || productId.startsWith('test-product-') || productId.startsWith('temp-sparepart-')) {
         const tempProductImages = tempImages.get(productId) || [];
         setImages(tempProductImages);
         onImagesChange?.(tempProductImages);
@@ -74,7 +74,7 @@ export const SimpleImageUpload: React.FC<SimpleImageUploadProps> = ({
         if (result.success && result.image) {
           
           // Handle temporary products differently
-          if (productId.startsWith('temp-product-') || productId.startsWith('test-product-')) {
+          if (productId.startsWith('temp-product-') || productId.startsWith('test-product-') || productId.startsWith('temp-sparepart-')) {
             const currentTempImages = tempImages.get(productId) || [];
             const newTempImages = [...currentTempImages, result.image!];
             setTempImages(prev => new Map(prev).set(productId, newTempImages));
@@ -107,7 +107,7 @@ export const SimpleImageUpload: React.FC<SimpleImageUploadProps> = ({
               const result = await RobustImageService.deleteImage(imageId);
       if (result.success) {
         // Handle temporary products differently
-        if (productId.startsWith('temp-product-') || productId.startsWith('test-product-')) {
+        if (productId.startsWith('temp-product-') || productId.startsWith('test-product-') || productId.startsWith('temp-sparepart-')) {
           const newTempImages = (tempImages.get(productId) || []).filter(img => img.id !== imageId);
           setTempImages(prev => new Map(prev).set(productId, newTempImages));
           setImages(newTempImages);
@@ -132,7 +132,7 @@ export const SimpleImageUpload: React.FC<SimpleImageUploadProps> = ({
               const result = await RobustImageService.setPrimaryImage(imageId, productId);
       if (result.success) {
         // Handle temporary products differently
-        if (productId.startsWith('temp-product-') || productId.startsWith('test-product-')) {
+        if (productId.startsWith('temp-product-') || productId.startsWith('test-product-') || productId.startsWith('temp-sparepart-')) {
           const newTempImages = (tempImages.get(productId) || []).map(img => ({
             ...img,
             isPrimary: img.id === imageId

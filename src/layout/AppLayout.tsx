@@ -179,6 +179,12 @@ const AppLayout: React.FC = () => {
         icon: <CreditCard size={20} />,
         roles: ['admin', 'customer-care']
       },
+      {
+        path: '/whatsapp',
+        label: 'WhatsApp Testing',
+        icon: <MessageSquare size={20} />,
+        roles: ['admin', 'customer-care']
+      },
 
       // Customer Management
       {
@@ -251,19 +257,7 @@ const AppLayout: React.FC = () => {
         roles: ['admin']
       },
 
-      // Communication & Integration
-      {
-        path: '/whatsapp/chrome-extension',
-        label: 'Chrome Extension',
-        icon: <MessageSquare size={20} />,
-        roles: ['admin', 'customer-care']
-      },
-      {
-        path: '/chrome-extension',
-        label: 'Chrome Extension (Alt)',
-        icon: <MessageSquare size={20} />,
-        roles: ['admin', 'customer-care']
-      },
+
 
       // Diagnostics (Role-specific)
       {
@@ -285,8 +279,8 @@ const AppLayout: React.FC = () => {
         roles: ['admin', 'customer-care']
       },
       {
-        path: '/shelf-management',
-        label: 'Shelf Management',
+        path: '/lats/inventory-management?shelves',
+        label: 'Shelves Management',
         icon: <Layers size={20} />,
         roles: ['admin', 'customer-care']
       }

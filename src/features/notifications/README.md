@@ -118,7 +118,7 @@ A comprehensive documentation for the LATS CHANCE application covering all pages
 - **Authentication**: Supabase Auth
 - **File Storage**: Supabase Storage
 - **Payments**: M-Pesa API integration
-- **Communication**: WhatsApp Business API
+- **Communication**: SMS API
 
 ## 🎯 Product Variants Implementation
 
@@ -185,9 +185,9 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 VITE_MPESA_CONSUMER_KEY=your_mpesa_key
 VITE_MPESA_CONSUMER_SECRET=your_mpesa_secret
 
-# WhatsApp Configuration
-VITE_WHATSAPP_API_KEY=your_whatsapp_key
-VITE_WHATSAPP_PHONE_NUMBER=your_whatsapp_number
+# SMS Configuration
+VITE_SMS_API_KEY=your_sms_key
+VITE_SMS_PHONE_NUMBER=your_sms_number
 ```
 
 ### Database Migration

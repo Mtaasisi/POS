@@ -7,6 +7,7 @@ import {
   CheckCircle, XCircle, Phone, Mail, Globe, MapPin
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import SupplierForm from '../inventory/SupplierForm';
 
 interface Supplier {
   id: string;
@@ -49,41 +50,7 @@ const SuppliersTab: React.FC = () => {
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [formData, setFormData] = useState<SupplierFormData>({
-    name: '',
-    description: '',
-    contact_person: '',
-    email: '',
-    phone: '',
-    website: '',
-    address: '',
-    city: '',
-    country: '',
-    payment_terms: '',
-    credit_limit: ''
-  });
 
-  const countries = [
-    { value: 'Kenya', label: 'Kenya' },
-    { value: 'Tanzania', label: 'Tanzania' },
-    { value: 'Uganda', label: 'Uganda' },
-    { value: 'Rwanda', label: 'Rwanda' },
-    { value: 'Burundi', label: 'Burundi' },
-    { value: 'Ethiopia', label: 'Ethiopia' },
-    { value: 'Somalia', label: 'Somalia' },
-    { value: 'South Sudan', label: 'South Sudan' },
-    { value: 'DR Congo', label: 'DR Congo' },
-    { value: 'Other', label: 'Other' }
-  ];
-
-  const paymentTerms = [
-    { value: 'Net 30', label: 'Net 30' },
-    { value: 'Net 60', label: 'Net 60' },
-    { value: 'Net 90', label: 'Net 90' },
-    { value: 'Cash on Delivery', label: 'Cash on Delivery' },
-    { value: 'Advance Payment', label: 'Advance Payment' },
-    { value: 'Other', label: 'Other' }
-  ];
 
   // Load suppliers (mock data for now)
   useEffect(() => {
@@ -131,37 +98,11 @@ const SuppliersTab: React.FC = () => {
 
   const handleAddSupplier = () => {
     setEditingSupplier(null);
-    setFormData({
-      name: '',
-      description: '',
-      contact_person: '',
-      email: '',
-      phone: '',
-      website: '',
-      address: '',
-      city: '',
-      country: '',
-      payment_terms: '',
-      credit_limit: ''
-    });
     setShowSupplierForm(true);
   };
 
   const handleEditSupplier = (supplier: Supplier) => {
     setEditingSupplier(supplier);
-    setFormData({
-      name: supplier.name,
-      description: supplier.description || '',
-      contact_person: supplier.contact_person || '',
-      email: supplier.email || '',
-      phone: supplier.phone || '',
-      website: supplier.website || '',
-      address: supplier.address || '',
-      city: supplier.city || '',
-      country: supplier.country || '',
-      payment_terms: supplier.payment_terms || '',
-      credit_limit: supplier.credit_limit?.toString() || ''
-    });
     setShowSupplierForm(true);
   };
 
@@ -179,16 +120,13 @@ const SuppliersTab: React.FC = () => {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-
+  const handleSubmitSupplier = async (data: any) => {
     try {
       if (editingSupplier) {
         // TODO: Implement update supplier API call
         setSuppliers(prev => prev.map(s => 
           s.id === editingSupplier.id 
-            ? { ...s, ...formData, credit_limit: parseFloat(formData.credit_limit) || 0 }
+            ? { ...s, ...data }
             : s
         ));
         toast.success('Supplier updated successfully');
@@ -196,8 +134,7 @@ const SuppliersTab: React.FC = () => {
         // TODO: Implement create supplier API call
         const newSupplier: Supplier = {
           id: Date.now().toString(),
-          ...formData,
-          credit_limit: parseFloat(formData.credit_limit) || 0,
+          ...data,
           is_active: true,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
@@ -209,13 +146,7 @@ const SuppliersTab: React.FC = () => {
       setShowSupplierForm(false);
     } catch (error) {
       toast.error(editingSupplier ? 'Failed to update supplier' : 'Failed to create supplier');
-    } finally {
-      setIsSubmitting(false);
     }
-  };
-
-  const handleInputChange = (field: keyof SupplierFormData, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
   };
 
   return (
@@ -369,181 +300,13 @@ const SuppliersTab: React.FC = () => {
       {/* Supplier Form Modal */}
       {showSupplierForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                {editingSupplier ? 'Edit Supplier' : 'Add New Supplier'}
-              </h3>
-              
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Supplier Name *
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => handleInputChange('name', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Description
-                  </label>
-                  <textarea
-                    value={formData.description}
-                    onChange={(e) => handleInputChange('description', e.target.value)}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Contact Person
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.contact_person}
-                    onChange={(e) => handleInputChange('contact_person', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Email
-                  </label>
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => handleInputChange('email', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Phone
-                  </label>
-                  <input
-                    type="tel"
-                    value={formData.phone}
-                    onChange={(e) => handleInputChange('phone', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Website
-                  </label>
-                  <input
-                    type="url"
-                    value={formData.website}
-                    onChange={(e) => handleInputChange('website', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    placeholder="https://example.com"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Address
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.address}
-                    onChange={(e) => handleInputChange('address', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      City
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.city}
-                      onChange={(e) => handleInputChange('city', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Country
-                    </label>
-                    <select
-                      value={formData.country}
-                      onChange={(e) => handleInputChange('country', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    >
-                      <option value="">Select country</option>
-                      {countries.map(country => (
-                        <option key={country.value} value={country.value}>
-                          {country.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Payment Terms
-                    </label>
-                    <select
-                      value={formData.payment_terms}
-                      onChange={(e) => handleInputChange('payment_terms', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    >
-                      <option value="">Select terms</option>
-                      {paymentTerms.map(term => (
-                        <option key={term.value} value={term.value}>
-                          {term.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Credit Limit
-                    </label>
-                    <input
-                      type="number"
-                      value={formData.credit_limit}
-                      onChange={(e) => handleInputChange('credit_limit', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                      placeholder="0"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex gap-3 pt-4">
-                  <GlassButton
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="flex-1 bg-gradient-to-r from-purple-500 to-purple-600 text-white"
-                  >
-                    {isSubmitting ? 'Saving...' : (editingSupplier ? 'Update Supplier' : 'Add Supplier')}
-                  </GlassButton>
-                  <GlassButton
-                    type="button"
-                    onClick={() => setShowSupplierForm(false)}
-                    variant="secondary"
-                    className="flex-1"
-                  >
-                    Cancel
-                  </GlassButton>
-                </div>
-              </form>
-            </div>
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <SupplierForm
+              supplier={editingSupplier || undefined}
+              onSubmit={handleSubmitSupplier}
+              onCancel={() => setShowSupplierForm(false)}
+              loading={isSubmitting}
+            />
           </div>
         </div>
       )}

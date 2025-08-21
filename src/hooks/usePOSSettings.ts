@@ -248,7 +248,6 @@ const defaultLoyaltyCustomerSettings: LoyaltyCustomerSettings = {
   enable_referral_rewards: false,
   enable_email_communication: false,
   enable_sms_communication: true,
-  enable_whatsapp_communication: false,
   enable_push_notifications: false,
   enable_marketing_emails: false,
   enable_customer_analytics: true,
@@ -318,7 +317,6 @@ const defaultNotificationSettings: NotificationSettings = {
   notify_on_maintenance: true,
   enable_email_notifications: false,
   enable_sms_notifications: true,
-  enable_whatsapp_notifications: false,
   enable_in_app_notifications: true,
   enable_desktop_notifications: false
 };

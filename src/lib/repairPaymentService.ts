@@ -253,7 +253,7 @@ class RepairPaymentService {
       }, {} as Record<string, number>);
 
       const paymentsByMethod = payments.reduce((acc, payment) => {
-        const method = payment.payment_method || 'unknown';
+        const method = payment.method || 'unknown';
         acc[method] = (acc[method] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);

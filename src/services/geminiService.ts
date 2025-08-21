@@ -157,9 +157,9 @@ Keep response concise and professional.`;
     return this.chat([{ role: 'user', content: prompt }]);
   }
 
-  // SMS/WhatsApp response generation
+  // SMS response generation
   async generateSMSResponse(message: string, context?: string): Promise<GeminiResponse> {
-    const prompt = `Generate a professional SMS/WhatsApp response for a device repair business:
+    const prompt = `Generate a professional SMS response for a device repair business:
 
 Customer Message: "${message}"
 ${context ? `Context: ${context}` : ''}

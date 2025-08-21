@@ -21,7 +21,7 @@ interface ProductExportData {
   totalQuantity: number;
   totalValue: number;
   condition?: string;
-  storeShelf?: string;
+
   debutDate?: string;
   debutNotes?: string;
   debutFeatures?: string[];
@@ -166,7 +166,6 @@ const ProductExcelExport: React.FC = () => {
             totalQuantity: product.total_quantity || 0,
             totalValue: product.total_value || 0,
             condition: product.condition,
-            storeShelf: product.store_shelf,
             debutDate: product.debut_date,
             debutNotes: product.debut_notes,
             debutFeatures: product.debut_features,
@@ -231,7 +230,6 @@ const ProductExcelExport: React.FC = () => {
               totalQuantity: product.total_quantity || 0,
               totalValue: product.total_value || 0,
               condition: product.condition,
-              storeShelf: product.store_shelf,
               debutDate: product.debut_date,
               debutNotes: product.debut_notes,
               debutFeatures: product.debut_features,
@@ -358,7 +356,7 @@ const ProductExcelExport: React.FC = () => {
           product.totalQuantity,
           product.totalValue,
           `"${(product.condition || '').replace(/"/g, '""')}"`,
-          `"${(product.storeShelf || '').replace(/"/g, '""')}"`,
+      
           `"${(product.debutDate || '').replace(/"/g, '""')}"`,
           `"${(product.debutNotes || '').replace(/"/g, '""')}"`,
           `"${(product.debutFeatures || []).join(', ').replace(/"/g, '""')}"`,

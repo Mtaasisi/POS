@@ -27,6 +27,7 @@ import { ErrorBoundary } from './features/shared/components/ErrorBoundary';
 import SettingsPage from './features/settings/pages/SettingsPage';
 import AdminSettingsPage from './features/admin/pages/AdminSettingsPage';
 import AdminManagementPage from './features/admin/pages/AdminManagementPage';
+import IntegrationTestingPage from './features/admin/pages/IntegrationTestingPage';
 import UserManagementPage from './features/users/pages/UserManagementPage';
 import SupplierManagementPage from './features/settings/pages/SupplierManagementPage';
 import { SuppliersProvider } from './context/SuppliersContext';
@@ -41,9 +42,8 @@ import EmployeeAttendancePage from './features/employees/pages/EmployeeAttendanc
 import CustomerCareDiagnosticsPage from './features/customers/pages/CustomerCareDiagnosticsPage';
 import CustomerAnalyticsPage from './features/customers/pages/CustomerAnalyticsPage';
 import BirthdayManagementPage from './features/customers/pages/BirthdayManagementPage';
-import WhatsAppWebPage from './features/whatsapp/pages/WhatsAppWebPage';
-import WhatsAppTemplatesPage from './features/whatsapp/pages/WhatsAppTemplatesPage';
-import ChromeExtensionPage from './features/whatsapp/pages/ChromeExtensionPage';
+
+
 import NotificationSettingsPage from './features/notifications/pages/NotificationSettingsPage';
 import NotificationsPage from './features/notifications/pages/NotificationsPage';
 import ServiceManagementPage from './features/services/pages/ServiceManagementPage';
@@ -57,7 +57,6 @@ import LoadingDemoPage from './features/shared/pages/LoadingDemoPage';
 import BrandManagementPage from './features/settings/pages/BrandManagementPage';
 import CategoryManagementPage from './features/settings/pages/CategoryManagementPage';
 import { StoreLocationManagementPage } from './features/settings/pages/StoreLocationManagementPage';
-import { ShelfManagementPage } from './features/settings/pages/ShelfManagementPage';
 import DatabaseSetupPage from './features/admin/pages/DatabaseSetupPage';
 import BackupManagementPage from './features/backup/pages/BackupManagementPage';
 import ExcelImportPage from './features/reports/pages/ExcelImportPage';
@@ -91,8 +90,13 @@ import EditProductPage from './features/lats/pages/EditProductPage';
 import ProductDetailPage from './features/lats/pages/ProductDetailPage';
 import POSPage from './features/lats/pages/POSPage';
 import GeneralSettingsTestPage from './features/lats/pages/GeneralSettingsTestPage';
+import { CustomerQueryTest } from './components/CustomerQueryTest';
 import InventoryManagementPage from './features/lats/pages/InventoryManagementPage';
 import BeemTestPage from './features/lats/pages/BeemTestPage';
+import WhatsAppManagementPage from './features/whatsapp/pages/WhatsAppManagementPage';
+import WhatsAppTestPage from './pages/WhatsAppTestPage';
+import { WhatsAppDebugPanel } from './components/WhatsAppDebugPanel';
+import DebugPanel from './components/DebugPanel';
 
 import { initializeDatabaseCheck } from './lib/databaseUtils';
 import { supabase } from './lib/supabaseClient';
@@ -102,7 +106,6 @@ import { getPendingActions, clearPendingActions } from './lib/offlineSync';
 import HeaderSizeDiagnostic from './components/HeaderSizeDiagnostic';
 import BackgroundDataLoader from './components/BackgroundDataLoader';
 import { POSSettingsDatabaseSetup } from './components/POSSettingsDatabaseSetup';
-import DebugPanel from './components/DebugPanel';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
 
@@ -241,7 +244,6 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
         <Route path="/category-management" element={<RoleProtectedRoute allowedRoles={['admin']}><CategoryManagementPage /></RoleProtectedRoute>} />
         <Route path="/supplier-management" element={<RoleProtectedRoute allowedRoles={['admin']}><SupplierManagementPage /></RoleProtectedRoute>} />
         <Route path="/store-locations" element={<RoleProtectedRoute allowedRoles={['admin']}><StoreLocationManagementPage /></RoleProtectedRoute>} />
-        <Route path="/shelf-management" element={<RoleProtectedRoute allowedRoles={['admin']}><ShelfManagementPage /></RoleProtectedRoute>} />
         <Route path="/database-setup" element={<RoleProtectedRoute allowedRoles={['admin']}><DatabaseSetupPage /></RoleProtectedRoute>} />
         <Route path="/backup-management" element={<RoleProtectedRoute allowedRoles={['admin']}><BackupManagementPage /></RoleProtectedRoute>} />
         <Route path="/customers/import" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><ExcelImportPage /></RoleProtectedRoute>} />
@@ -260,6 +262,7 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
           <Route path="/payments-report" element={<RoleProtectedRoute allowedRoles={['admin']}><PaymentsReportPage /></RoleProtectedRoute>} />
           <Route path="/admin-settings" element={<RoleProtectedRoute allowedRoles={['admin']}><AdminSettingsPage /></RoleProtectedRoute>} />
           <Route path="/admin-management" element={<RoleProtectedRoute allowedRoles={['admin']}><AdminManagementPage /></RoleProtectedRoute>} />
+          <Route path="/integration-testing" element={<RoleProtectedRoute allowedRoles={['admin']}><IntegrationTestingPage /></RoleProtectedRoute>} />
           <Route path="/users" element={<RoleProtectedRoute allowedRoles={['admin']}><UserManagementPage /></RoleProtectedRoute>} />
           <Route path="/audit-logs" element={<RoleProtectedRoute allowedRoles={['admin']}><AuditLogsPage /></RoleProtectedRoute>} />
           <Route path="/finance" element={<RoleProtectedRoute allowedRoles={['admin']}><FinanceManagementPage /></RoleProtectedRoute>} />
@@ -288,11 +291,8 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
           {/* Consolidated Management Routes */}
           <Route path="/business" element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'customer-care']}><BusinessManagementPage /></RoleProtectedRoute>} />
 
-          <Route path="/whatsapp" element={<RoleProtectedRoute allowedRoles={['admin']}><WhatsAppWebPage /></RoleProtectedRoute>} />
-          <Route path="/whatsapp-manager" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><WhatsAppWebPage /></RoleProtectedRoute>} />
-          <Route path="/whatsapp-web" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><WhatsAppWebPage /></RoleProtectedRoute>} />
-          <Route path="/whatsapp/chrome-extension" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><ChromeExtensionPage /></RoleProtectedRoute>} />
-          <Route path="/chrome-extension" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><ChromeExtensionPage /></RoleProtectedRoute>} />
+
+
           
           {/* Diagnostics Routes */}
           <Route path="/diagnostics/new" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><NewDiagnosticRequestPage /></RoleProtectedRoute>} />
@@ -310,6 +310,7 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
           {/* POS Route */}
           <Route path="/pos" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><POSPage /></RoleProtectedRoute>} />
           <Route path="/general-settings-test" element={<GeneralSettingsTestPage />} />
+          <Route path="/customer-query-test" element={<CustomerQueryTest />} />
           
           {/* Primary Unified Inventory Route */}
           <Route path="/lats/unified-inventory" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><UnifiedInventoryPage /></RoleProtectedRoute>} />
@@ -344,6 +345,12 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
           <Route path="/lats/payment-history" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><PaymentHistoryPage /></RoleProtectedRoute>} />
           <Route path="/lats/payment-analytics" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><PaymentAnalyticsPage /></RoleProtectedRoute>} />
           <Route path="/lats/beem-test" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><BeemTestPage /></RoleProtectedRoute>} />
+          
+          {/* WhatsApp Testing Route */}
+          <Route path="/whatsapp" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><WhatsAppTestPage /></RoleProtectedRoute>} />
+          
+          {/* WhatsApp Management Route (alternative) */}
+          <Route path="/whatsapp-management" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><WhatsAppManagementPage /></RoleProtectedRoute>} />
           
           {/* Global Search Route */}
           <Route path="/search" element={<GlobalSearchPage />} />
@@ -555,6 +562,7 @@ function App() {
           onToggle={() => setShowDebugPanel(prev => !prev)} 
         />
       )}
+      {import.meta.env.DEV && <WhatsAppDebugPanel />}
     </ErrorBoundary>
   );
 }

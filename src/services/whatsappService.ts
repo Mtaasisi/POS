@@ -1,1481 +1,889 @@
 import { supabase } from '../lib/supabaseClient';
 
-// Enhanced rate limiting utility with better throttling and caching
-class RateLimiter {
-  private lastCall: number = 0;
-  private minInterval: number = 60000; // Increased to 60 seconds between calls to prevent rate limiting
-  private queue: Array<() => void> = [];
-  private processing: boolean = false;
-  private consecutiveErrors: number = 0;
-  private maxConsecutiveErrors: number = 3;
-  private cache: Map<string, { data: any; timestamp: number; ttl: number }> = new Map();
-  private rateLimitBackoff: number = 0; // Track rate limit backoff
-
-  async throttle<T>(fn: () => Promise<T>, cacheKey?: string, ttl: number = 1800000): Promise<T> { // Increased default TTL to 30 minutes
-    // Check cache first if cacheKey provided
-    if (cacheKey) {
-      const cached = this.cache.get(cacheKey);
-      if (cached && Date.now() - cached.timestamp < cached.ttl) {
-        console.log('📋 Using cached result for:', cacheKey);
-        return cached.data;
-      }
-    }
-
-    return new Promise((resolve, reject) => {
-      this.queue.push(async () => {
-        try {
-          const result = await fn();
-          
-          // Cache result if cacheKey provided
-          if (cacheKey) {
-            this.cache.set(cacheKey, {
-              data: result,
-              timestamp: Date.now(),
-              ttl: ttl
-            });
-          }
-          
-          // Reset rate limit backoff on success
-          this.rateLimitBackoff = 0;
-          
-          // Clear rate limit info from localStorage on success
-          try {
-            localStorage.removeItem('whatsapp_rate_limit_backoff');
-            localStorage.removeItem('whatsapp_last_error');
-            localStorage.setItem('whatsapp_last_check', Date.now().toString());
-          } catch (e) {
-            console.warn('Could not clear rate limit info from localStorage:', e);
-          }
-          resolve(result);
-        } catch (error) {
-          // Handle rate limit errors specifically
-          if (error instanceof Error && (error.message.includes('429') || error.message.includes('Rate limit'))) {
-            this.rateLimitBackoff = Math.min(this.rateLimitBackoff * 2 + 300000, 1800000); // Exponential backoff up to 30 minutes
-            console.warn(`🚫 Rate limit hit, backing off for ${this.rateLimitBackoff}ms`);
-            
-            // Store rate limit info in localStorage for monitoring
-            try {
-              localStorage.setItem('whatsapp_rate_limit_backoff', (Date.now() + this.rateLimitBackoff).toString());
-              localStorage.setItem('whatsapp_last_error', error.message);
-              const errorCount = parseInt(localStorage.getItem('whatsapp_error_count') || '0') + 1;
-              localStorage.setItem('whatsapp_error_count', errorCount.toString());
-              localStorage.setItem('whatsapp_last_check', Date.now().toString());
-            } catch (e) {
-              console.warn('Could not store rate limit info in localStorage:', e);
-            }
-          }
-          reject(error);
-        }
-      });
-      
-      this.processQueue();
-    });
-  }
-
-  private async processQueue() {
-    if (this.processing || this.queue.length === 0) return;
-    
-    this.processing = true;
-    
-    while (this.queue.length > 0) {
-      const now = Date.now();
-      const timeSinceLastCall = now - this.lastCall;
-      
-      // Use rate limit backoff if active, otherwise use adaptive interval
-      const currentInterval = this.rateLimitBackoff > 0 
-        ? this.rateLimitBackoff
-        : this.consecutiveErrors >= this.maxConsecutiveErrors 
-          ? this.minInterval * Math.pow(2, this.consecutiveErrors - this.maxConsecutiveErrors + 1) // Exponential backoff
-          : this.minInterval;
-      
-      if (timeSinceLastCall < currentInterval) {
-        await new Promise(resolve => setTimeout(resolve, currentInterval - timeSinceLastCall));
-      }
-      
-      const fn = this.queue.shift();
-      if (fn) {
-        this.lastCall = Date.now();
-        try {
-          await fn();
-          // Reset consecutive errors on success
-          this.consecutiveErrors = 0;
-        } catch (error) {
-          this.consecutiveErrors++;
-          console.warn(`Rate limiter error (${this.consecutiveErrors}/${this.maxConsecutiveErrors}):`, error);
-        }
-      }
-    }
-    
-    this.processing = false;
-  }
-
-  // Clear cache for specific key or all
-  clearCache(cacheKey?: string) {
-    if (cacheKey) {
-      this.cache.delete(cacheKey);
-    } else {
-      this.cache.clear();
-    }
-  }
-}
-
-  // Connection manager for better stability
-  class ConnectionManager {
-    private reconnectAttempts: number = 0;
-    private maxReconnectAttempts: number = 5;
-    private baseDelay: number = 1000;
-    private isConnected: boolean = false;
-    private connectionCallbacks: Array<(status: boolean) => void> = [];
-    private reconnectionTimeout: NodeJS.Timeout | null = null;
-
-  onConnectionChange(callback: (status: boolean) => void) {
-    this.connectionCallbacks.push(callback);
-  }
-
-  private notifyConnectionChange(status: boolean) {
-    this.isConnected = status;
-    this.connectionCallbacks.forEach(callback => callback(status));
-  }
-
-  async reconnectWithBackoff(): Promise<boolean> {
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.warn('⚠️ Max reconnection attempts reached');
-      return false;
-    }
-
-    const delay = Math.min(this.baseDelay * Math.pow(2, this.reconnectAttempts), 30000);
-    console.log(`🔄 Attempting reconnection in ${delay}ms (attempt ${this.reconnectAttempts + 1})`);
-    
-    await new Promise(resolve => setTimeout(resolve, delay));
-    this.reconnectAttempts++;
-    
-    // Attempt reconnection logic here
-    const success = await this.attemptReconnection();
-    
-    if (success) {
-      this.reconnectAttempts = 0;
-      this.notifyConnectionChange(true);
-    }
-    
-    return success;
-  }
-
-  resetReconnectionAttempts(): void {
-    this.reconnectAttempts = 0;
-    console.log('🔄 Reconnection attempts reset');
-  }
-
-  scheduleReconnection(delay?: number): void {
-    // Clear any existing timeout
-    if (this.reconnectionTimeout) {
-      clearTimeout(this.reconnectionTimeout);
-    }
-
-    const reconnectDelay = delay || Math.min(this.baseDelay * Math.pow(2, this.reconnectAttempts), 30000);
-    console.log(`⏰ Scheduling reconnection in ${reconnectDelay}ms`);
-
-    this.reconnectionTimeout = setTimeout(async () => {
-      console.log('🔄 Executing scheduled reconnection...');
-      await this.reconnectWithBackoff();
-    }, reconnectDelay);
-  }
-
-  cancelScheduledReconnection(): void {
-    if (this.reconnectionTimeout) {
-      clearTimeout(this.reconnectionTimeout);
-      this.reconnectionTimeout = null;
-      console.log('❌ Cancelled scheduled reconnection');
-    }
-  }
-
-  private async attemptReconnection(): Promise<boolean> {
-    try {
-      // Test connection with a simple API call
-      const settings = await this.getSettings();
-      const { whatsapp_instance_id, whatsapp_green_api_key } = settings;
-      
-      if (!whatsapp_instance_id || !whatsapp_green_api_key) {
-        return false;
-      }
-
-      const testUrl = `https://api.green-api.com/waInstance${whatsapp_instance_id}/getStateInstance/${whatsapp_green_api_key}`;
-      const response = await fetch(testUrl, { method: 'GET' });
-      
-      if (response.ok) {
-        console.log('✅ Reconnection successful');
-        return true;
-      }
-    } catch (error) {
-      console.error('❌ Reconnection failed:', error);
-    }
-    
-    return false;
-  }
-
-  private async getSettings(): Promise<any> {
-    // This would be implemented to get WhatsApp settings
-    const { data, error } = await supabase.from('settings').select('key, value');
-    if (error) throw error;
-    
-    const settings: any = {};
-    data?.forEach(item => {
-      settings[item.key] = item.value;
-    });
-    return settings;
-  }
+export interface WhatsAppInstance {
+  id: string;
+  instanceId: string;
+  apiToken: string;
+  phoneNumber: string;
+  status: 'connected' | 'disconnected' | 'connecting' | 'error';
+  qrCode?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface WhatsAppMessage {
   id: string;
   chatId: string;
-  sender: string;
-  recipient: string;
+  type: 'text' | 'image' | 'video' | 'audio' | 'document' | 'location' | 'contact' | 'sticker' | 'poll';
   content: string;
-  type: 'text' | 'media' | 'template';
-  status: 'sent' | 'delivered' | 'read' | 'failed';
   timestamp: string;
-  mediaUrl?: string;
-  templateId?: string;
-  error?: string;
-}
-
-export interface WhatsAppChat {
-  id: string;
-  customer_id?: string;
-  last_message?: string;
-  last_message_time?: string;
-  unread_count: number;
-  is_archived?: boolean;
-  tags?: string[];
-  assigned_to?: string;
-  status?: string;
-  created_at: string;
-  updated_at: string;
+  status: 'sent' | 'delivered' | 'read' | 'failed';
+  direction: 'incoming' | 'outgoing';
+  metadata?: any;
 }
 
 export interface WhatsAppWebhook {
-  type: 'message' | 'status' | 'contact';
-  data: any;
-  timestamp: string;
+  type: 'incomingMessageReceived' | 'outgoingMessageReceived' | 'outgoingAPIMessageReceived' | 'outgoingMessageStatus' | 'stateInstanceChanged' | 'statusInstanceChanged' | 'deviceInfo' | 'incomingCall';
+  timestamp: number;
+  idMessage?: string;
+  senderData?: {
+    chatId: string;
+    chatName?: string;
+    sender: string;
+    senderName?: string;
+  };
+  messageData?: {
+    typeMessage: string;
+    textMessageData?: {
+      textMessage: string;
+    };
+    extendedTextMessageData?: {
+      text: string;
+      description?: string;
+      title?: string;
+      previewType?: string;
+      jpegThumbnail?: string;
+    };
+    imageMessageData?: {
+      downloadUrl: string;
+      caption?: string;
+      mimeType: string;
+      sha256: string;
+      fileLength: number;
+    };
+    videoMessageData?: {
+      downloadUrl: string;
+      caption?: string;
+      mimeType: string;
+      sha256: string;
+      fileLength: number;
+    };
+    audioMessageData?: {
+      downloadUrl: string;
+      mimeType: string;
+      sha256: string;
+      fileLength: number;
+      voice: boolean;
+    };
+    documentMessageData?: {
+      downloadUrl: string;
+      caption?: string;
+      mimeType: string;
+      sha256: string;
+      fileLength: number;
+      fileName: string;
+    };
+    locationMessageData?: {
+      nameLocation?: string;
+      address?: string;
+      latitude: number;
+      longitude: number;
+      jpegThumbnail?: string;
+    };
+    contactMessageData?: {
+      displayName: string;
+      vcard: string;
+    };
+    stickerMessageData?: {
+      downloadUrl: string;
+      mimeType: string;
+      sha256: string;
+      fileLength: number;
+    };
+    pollMessageData?: {
+      name: string;
+      options: string[];
+      selectableOptionsCount: number;
+    };
+  };
+  statusData?: {
+    status: 'sent' | 'delivered' | 'read' | 'failed';
+    timestamp: number;
+  };
+  stateInstanceData?: {
+    stateInstance: 'notAuthorized' | 'authorized' | 'blocked' | 'sleepMode' | 'starting';
+  };
 }
 
 export class WhatsAppService {
-  private settingsCache: { value: any; fetchedAt: number } | null = null;
-  private realtimeSubscription: any = null;
-  private messageCallbacks: ((message: WhatsAppMessage) => void)[] = [];
-  private statusCallbacks: ((status: any) => void)[] = [];
-  private rateLimiter = new RateLimiter();
-  private connectionManager = new ConnectionManager();
-  
-  // Reconnection tracking properties
-  private reconnectionAttempts: number = 0;
-  private maxReconnectionAttempts: number = 5;
-  private lastReconnectionAttempt: number = 0;
-  private reconnectionCooldown: number = 30000; // 30 seconds cooldown between attempts
-  
-  // Prevent multiple simultaneous initialization
-  private isInitializing: boolean = false;
-  private isReconnecting: boolean = false; // New property for reconnection tracking
+  private instances: Map<string, WhatsAppInstance> = new Map();
+  private webhookUrl: string;
+  private defaultApiToken: string;
+  private isInitialized = false;
+  private _initializing = false; // New flag for concurrent initialization
 
   constructor() {
-    // Set up connection monitoring
-    this.connectionManager.onConnectionChange((status) => {
-      console.log(`📡 WhatsApp connection status: ${status ? 'CONNECTED' : 'DISCONNECTED'}`);
-      this.notifyStatusChange({ type: 'connection', status });
-    });
+    this.webhookUrl = import.meta.env.VITE_WHATSAPP_WEBHOOK_URL || '';
+    this.defaultApiToken = import.meta.env.VITE_GREEN_API_TOKEN || '';
   }
 
-  private async getSettings(): Promise<any> {
-    const now = Date.now();
-    if (this.settingsCache && now - this.settingsCache.fetchedAt < 60000) {
-      return this.settingsCache.value;
-    }
-    
-    try {
-      const { data, error } = await supabase.from('settings').select('key, value');
-      const DEFAULTS = {
-        whatsapp_green_api_key: '',
-        whatsapp_instance_id: '',
-        whatsapp_api_url: '',
-        whatsapp_media_url: '',
-        whatsapp_enable_bulk: true,
-        whatsapp_enable_auto: true,
-        whatsapp_log_retention_days: 365,
-        whatsapp_notification_email: '',
-        whatsapp_webhook_url: '',
-        whatsapp_enable_realtime: true,
-      };
-      const settings: any = { ...DEFAULTS };
-      if (!error && data) {
-        data.forEach((row: any) => {
-          if (row.key in settings) {
-            settings[row.key] = row.value;
-          }
-        });
-      }
-      this.settingsCache = { value: settings, fetchedAt: now };
-      return settings;
-    } catch (error) {
-      console.error('Error fetching WhatsApp settings:', error);
-      return {
-        whatsapp_green_api_key: '',
-        whatsapp_instance_id: '',
-        whatsapp_enable_bulk: true,
-        whatsapp_enable_auto: true,
-        whatsapp_enable_realtime: true,
-      };
-    }
-  }
-
-  // Initialize real-time subscriptions
-  async initializeRealtime() {
-    // Prevent multiple simultaneous initialization calls
-    if (this.isInitializing) {
-      console.log('🔄 WhatsApp real-time initialization already in progress, skipping...');
+  /**
+   * Initialize the WhatsApp service
+   */
+  async initialize() {
+    // Add a more robust check to prevent multiple initializations
+    if (this.isInitialized) {
+      DebugUtils.initLog('WhatsApp', 'Service already initialized, skipping...');
       return;
     }
     
-    this.isInitializing = true;
+    // Add a flag to prevent concurrent initialization attempts
+    if (this._initializing) {
+      DebugUtils.initLog('WhatsApp', 'Initialization already in progress, waiting...');
+      // Wait for the current initialization to complete
+      while (this._initializing) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      return;
+    }
+    
+    this._initializing = true;
     
     try {
-      const settings = await this.getSettings();
-      if (!settings.whatsapp_enable_realtime) {
-        console.log('WhatsApp real-time disabled in settings');
-        this.isInitializing = false;
-        return;
-      }
-
-      // Clean up any existing subscription first
-      if (this.realtimeSubscription) {
-        console.log('🔄 Cleaning up existing real-time subscription...');
-        supabase.removeChannel(this.realtimeSubscription);
-        this.realtimeSubscription = null;
-      }
-
-      console.log('📡 Initializing WhatsApp real-time subscription...');
-
-      // Subscribe to new messages with improved error handling
-      this.realtimeSubscription = supabase
-        .channel('whatsapp_messages')
-        .on('postgres_changes', 
-          { event: 'INSERT', schema: 'public', table: 'whatsapp_messages' },
-          (payload) => {
-            console.log('📨 New WhatsApp message received:', payload);
-            const message = payload.new as WhatsAppMessage;
-            this.messageCallbacks.forEach(callback => callback(message));
-          }
-        )
-        .on('postgres_changes',
-          { event: 'UPDATE', schema: 'public', table: 'whatsapp_messages' },
-          (payload) => {
-            console.log('📊 WhatsApp message status update:', payload);
-            const status = payload.new;
-            this.statusCallbacks.forEach(callback => callback(status));
-          }
-        )
-        .on('postgres_changes',
-          { event: '*', schema: 'public', table: 'whatsapp_chats' },
-          (payload) => {
-            console.log('💬 WhatsApp chat update:', payload);
-          }
-        )
-        .subscribe((status) => {
-          console.log('📡 WhatsApp real-time subscription status:', status);
-          
-          // Handle different subscription statuses
-          switch (status) {
-            case 'SUBSCRIBED':
-              console.log('✅ WhatsApp real-time subscription established successfully');
-              this.notifyStatusChange({ type: 'subscription', status: 'connected' });
-              // Reset reconnection attempts on successful connection
-              this.reconnectionAttempts = 0;
-              break;
-            case 'CLOSED':
-              console.log('🔴 WhatsApp real-time subscription closed');
-              this.notifyStatusChange({ type: 'subscription', status: 'disconnected' });
-              // Only attempt reconnection if we haven't exceeded the limit
-              if (this.reconnectionAttempts < this.maxReconnectionAttempts) {
-                setTimeout(() => this.attemptReconnection(), 5000);
-              } else {
-                console.log('🚫 Max reconnection attempts reached, stopping auto-reconnect');
-                this.notifyStatusChange({ type: 'subscription', status: 'max_attempts_reached' });
-              }
-              break;
-            case 'CHANNEL_ERROR':
-              console.log('❌ WhatsApp real-time subscription error');
-              this.notifyStatusChange({ type: 'subscription', status: 'error' });
-              // Only attempt reconnection if we haven't exceeded the limit
-              if (this.reconnectionAttempts < this.maxReconnectionAttempts) {
-                setTimeout(() => this.attemptReconnection(), 10000);
-              } else {
-                console.log('🚫 Max reconnection attempts reached, stopping auto-reconnect');
-                this.notifyStatusChange({ type: 'subscription', status: 'max_attempts_reached' });
-              }
-              break;
-            case 'TIMED_OUT':
-              console.log('⏰ WhatsApp real-time subscription timed out');
-              this.notifyStatusChange({ type: 'subscription', status: 'timeout' });
-              // Only attempt reconnection if we haven't exceeded the limit
-              if (this.reconnectionAttempts < this.maxReconnectionAttempts) {
-                setTimeout(() => this.attemptReconnection(), 3000);
-              } else {
-                console.log('🚫 Max reconnection attempts reached, stopping auto-reconnect');
-                this.notifyStatusChange({ type: 'subscription', status: 'max_attempts_reached' });
-              }
-              break;
-            default:
-              console.log('📡 WhatsApp real-time subscription status:', status);
-              break;
-          }
-        });
-
-      // Add error handling for the subscription
-      if (this.realtimeSubscription) {
-        this.realtimeSubscription.on('error', (error: any) => {
-          console.error('❌ WhatsApp real-time subscription error:', error);
-          this.notifyStatusChange({ type: 'subscription', status: 'error', error });
-        });
-      }
-
+      DebugUtils.initLog('WhatsApp', 'Starting service initialization...');
+      // Load instances from database
+      await this.loadInstances();
+      this.isInitialized = true;
+      DebugUtils.initLog('WhatsApp', 'Service initialized successfully');
     } catch (error) {
-      console.error('Failed to initialize WhatsApp real-time:', error);
-      this.notifyStatusChange({ type: 'subscription', status: 'error', error });
+      console.error('Failed to initialize WhatsApp service:', error);
+      // Don't throw the error, just log it and mark as initialized to prevent retries
+      this.isInitialized = true;
     } finally {
-      this.isInitializing = false;
+      this._initializing = false;
     }
   }
 
-  // Attempt to reconnect the real-time subscription
-  private async attemptReconnection() {
-    try {
-      // Check if we're already attempting reconnection
-      if (this.isReconnecting) {
-        console.log('⏳ Reconnection already in progress, skipping...');
-        return;
-      }
-
-      this.isReconnecting = true;
-      this.reconnectionAttempts++;
-
-      console.log(`🔄 Attempting to reconnect WhatsApp real-time subscription (attempt ${this.reconnectionAttempts}/${this.maxReconnectionAttempts})...`);
-
-      // Clean up existing subscription
-      if (this.realtimeSubscription) {
-        console.log('🔄 Cleaning up existing real-time subscription...');
-        supabase.removeChannel(this.realtimeSubscription);
-        this.realtimeSubscription = null;
-      }
-
-      // Wait a bit before attempting to reconnect
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // Initialize new subscription
-      await this.initializeRealtime();
-
-    } catch (error) {
-      console.error('❌ Reconnection attempt failed:', error);
-      this.notifyStatusChange({ type: 'subscription', status: 'reconnection_failed', error });
-    } finally {
-      this.isReconnecting = false;
-      
-      // Add cooldown period to prevent rapid reconnection attempts
-      if (this.reconnectionAttempts < this.maxReconnectionAttempts) {
-        const cooldownTime = Math.min(5000 * this.reconnectionAttempts, 30000); // Max 30 seconds
-        console.log(`⏳ Reconnection cooldown active (${cooldownTime / 1000}s remaining)`);
-        
-        setTimeout(() => {
-          // Only attempt reconnection if we're still disconnected
-          if (!this.realtimeSubscription || this.realtimeSubscription.state === 'CLOSED') {
-            this.attemptReconnection();
-          }
-        }, cooldownTime);
-      }
-    }
+  /**
+   * Reset initialization state (for debugging purposes)
+   */
+  resetInitialization() {
+    this.isInitialized = false;
+    this._initializing = false;
+    DebugUtils.initLog('WhatsApp', 'Initialization state reset');
   }
 
-  // Subscribe to new messages
-  onMessage(callback: (message: WhatsAppMessage) => void) {
-    this.messageCallbacks.push(callback);
-  }
-
-  // Subscribe to status updates
-  onStatusUpdate(callback: (status: any) => void) {
-    this.statusCallbacks.push(callback);
-  }
-
-  // Notify all status callbacks and dispatch custom events
-  private notifyStatusChange(status: any) {
-    this.statusCallbacks.forEach(callback => callback(status));
-    
-    // Dispatch custom events for components to listen to
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('whatsapp-status-change', { detail: status }));
-    }
-  }
-
-  // Unsubscribe from real-time updates
-  unsubscribe() {
-    if (this.realtimeSubscription) {
-      supabase.removeChannel(this.realtimeSubscription);
-      this.realtimeSubscription = null;
-    }
-    this.messageCallbacks = [];
-    this.statusCallbacks = [];
-    
-    // Reset reconnection tracking
-    this.reconnectionAttempts = 0;
-    this.lastReconnectionAttempt = 0;
-    this.isInitializing = false;
-  }
-
-  // Reset reconnection attempts (useful for manual reconnection)
-  resetReconnectionAttempts() {
-    this.reconnectionAttempts = 0;
-    this.lastReconnectionAttempt = 0;
-    this.isInitializing = false;
-    console.log('🔄 Reconnection attempts reset');
-  }
-
-  // Check if currently initializing
-  isCurrentlyInitializing(): boolean {
-    return this.isInitializing;
-  }
-
-  // Get current connection status
-  getConnectionStatus(): { isInitializing: boolean; reconnectionAttempts: number; maxAttempts: number; lastAttempt: number } {
+  /**
+   * Get initialization status
+   */
+  getInitializationStatus() {
     return {
-      isInitializing: this.isInitializing,
-      reconnectionAttempts: this.reconnectionAttempts,
-      maxAttempts: this.maxReconnectionAttempts,
-      lastAttempt: this.lastReconnectionAttempt
+      isInitialized: this.isInitialized,
+      isInitializing: this._initializing,
+      instanceCount: this.instances.size
     };
   }
 
-  // Connect to Green API (store credentials securely)
-  async connect(instanceId: string, apiKey: string): Promise<{ success: boolean; error?: string }> {
+  /**
+   * Load WhatsApp instances from database
+   */
+  private async loadInstances() {
     try {
-      // Test the connection first
-      const testResult = await this.testConnection(instanceId, apiKey);
-      if (!testResult.success) {
-        return testResult;
-      }
+      const { data, error } = await supabase
+        .from('whatsapp_instances')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-      // Save to settings table (admin only)
-      const { error } = await supabase.from('settings').upsert([
-        { key: 'whatsapp_instance_id', value: instanceId },
-        { key: 'whatsapp_green_api_key', value: apiKey }
-      ], { onConflict: 'key' });
-      
-      if (error) return { success: false, error: error.message };
-      
-      this.settingsCache = null;
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-    }
-  }
+      if (error) throw error;
 
-  // Test Green API connection with rate limiting and caching
-  async testConnection(instanceId: string, apiKey: string): Promise<{ success: boolean; error?: string }> {
-    const cacheKey = `connection_test_${instanceId}`;
-    return this.rateLimiter.throttle(async () => {
-      try {
-        const response = await fetch(`https://api.green-api.com/waInstance${instanceId}/getStateInstance/${apiKey}`, {
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          }
+      this.instances.clear();
+      data?.forEach(instance => {
+        this.instances.set(instance.instanceId, {
+          id: instance.id,
+          instanceId: instance.instance_id,
+          apiToken: instance.api_token,
+          phoneNumber: instance.phone_number,
+          status: instance.status,
+          qrCode: instance.qr_code,
+          createdAt: instance.created_at,
+          updatedAt: instance.updated_at
         });
-        
-        if (response.status === 429) {
-          console.warn('⚠️ WhatsApp API rate limit exceeded');
-          // Clear cache to force fresh check after rate limit
-          this.rateLimiter.clearCache(cacheKey);
-          return { success: false, error: 'Rate limit exceeded. Please wait before trying again.' };
-        }
-        
-        if (!response.ok) {
-          console.error(`❌ WhatsApp API error: ${response.status} ${response.statusText}`);
-          return { success: false, error: `Connection failed: ${response.status} ${response.statusText}` };
-        }
-        
-        const data = await response.json();
-        if (data.stateInstance === 'authorized') {
-          return { success: true };
-        } else {
-          return { success: false, error: `WhatsApp not authorized. Current state: ${data.stateInstance}` };
-        }
-      } catch (error) {
-        console.error('❌ WhatsApp connection test failed:', error);
-        return { success: false, error: error instanceof Error ? error.message : 'Connection test failed' };
-      }
-    }, cacheKey, 60000); // Cache for 1 minute
-  }
-
-  // Validate phone number format for Green API
-  private isValidPhoneNumber(phoneNumber: string): boolean {
-    // Remove any non-digit characters
-    const cleanNumber = phoneNumber.replace(/\D/g, '');
-    
-    // Check if it's a valid international format (10-15 digits)
-    if (cleanNumber.length < 10 || cleanNumber.length > 15) {
-      return false;
-    }
-    
-    // Check if it starts with a valid country code (1-3 digits)
-    const countryCodePattern = /^[1-9]\d{0,2}/;
-    if (!countryCodePattern.test(cleanNumber)) {
-      return false;
-    }
-    
-    return true;
-  }
-
-  // Send WhatsApp message via Green API with rate limiting and improved error handling
-  async sendMessage(chatId: string, content: string, type: 'text' | 'media' | 'template' = 'text', mediaUrl?: string,
- templateId?: string): Promise<{ success: boolean; error?: string; messageId?: string }> {
-
-    return this.rateLimiter.throttle(async () => {
-      try {
-        const settings = await this.getSettings();
-        const { whatsapp_instance_id, whatsapp_green_api_key, whatsapp_api_url, whatsapp_media_url } = settings;
-        
-        if (!whatsapp_instance_id || !whatsapp_green_api_key) {
-          return { success: false, error: 'Green API credentials not set. Please configure WhatsApp settings first.' };
-        }
-        
-        // Validate phone number format
-        if (!this.isValidPhoneNumber(chatId)) {
-          return { success: false, error: 'Invalid phone number format. Please use international format (e.g., 254700000000)' };
-        }
-        
-        // Use custom API URLs if configured, otherwise use default
-        const apiBaseUrl = whatsapp_api_url || 'https://api.green-api.com';
-        const mediaBaseUrl = whatsapp_media_url || 'https://media.green-api.com';
-        
-        let url: string;
-        let body: any;
-        
-        // Ensure chatId is in the correct format for Green API
-        const formattedChatId = chatId.includes('@c.us') ? chatId : `${chatId}@c.us`;
-        
-        switch (type) {
-          case 'text':
-            url = `${apiBaseUrl}/waInstance${whatsapp_instance_id}/sendMessage/${whatsapp_green_api_key}`;
-            body = { chatId: formattedChatId, message: content };
-            break;
-            
-          case 'media':
-            if (!mediaUrl) {
-              return { success: false, error: 'Media URL is required for media messages' };
-            }
-            url = `${mediaBaseUrl}/waInstance${whatsapp_instance_id}/sendFileByUrl/${whatsapp_green_api_key}`;
-            body = { 
-              chatId: formattedChatId, 
-              urlFile: mediaUrl, 
-              fileName: mediaUrl.split('/').pop() || 'media',
-              caption: content 
-            };
-            break;
-            
-          case 'template':
-            if (!templateId) {
-              return { success: false, error: 'Template ID is required for template messages' };
-            }
-            url = `${apiBaseUrl}/waInstance${whatsapp_instance_id}/sendTemplate/${whatsapp_green_api_key}`;
-            body = { chatId: formattedChatId, templateId, templateParams: [content] };
-            break;
-            
-          default:
-            return { success: false, error: 'Invalid message type' };
-        }
-
-        // Send with improved retry logic
-        const result = await this.sendWithRetry(url, body);
-        
-        if (result.success && result.data?.idMessage) {
-          // Log the message to database
-          await this.logMessage({
-            id: result.data.idMessage,
-            chatId: formattedChatId,
-            sender: 'system',
-            recipient: formattedChatId,
-            content,
-            type,
-            status: 'sent',
-            timestamp: new Date().toISOString(),
-            mediaUrl,
-            templateId
-          });
-          
-          return { success: true, messageId: result.data.idMessage };
-        }
-        
-        // Handle specific error cases
-        if (result.error?.includes('400')) {
-          console.error('📱 WhatsApp API 400 Error:', result.error);
-          // Try to reconnect if it's a connection issue
-          await this.connectionManager.reconnectWithBackoff();
-          return { success: false, error: 'Message delivery failed. Please check phone number format and try again.' };
-        }
-        
-        return result;
-      } catch (error) {
-        console.error('❌ Error sending WhatsApp message:', error);
-        return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-      }
-    });
-  }
-
-  // Send with retry logic
-  private async sendWithRetry(url: string, body: any, maxRetries: number = 3): Promise<{ success: boolean; error?: string; data?: any }> {
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
-        });
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          if (attempt === maxRetries) {
-            return { success: false, error: `HTTP ${response.status}: ${errorText}` };
-          }
-          // Wait before retry
-          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-          continue;
-        }
-        
-        const data = await response.json();
-        return { success: true, data };
-      } catch (error) {
-        if (attempt === maxRetries) {
-          return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-        }
-        // Wait before retry
-        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-      }
-    }
-    
-    return { success: false, error: 'Max retries exceeded' };
-  }
-
-  // Upload media file
-  async uploadMedia(file: File): Promise<{ success: boolean; url?: string; error?: string }> {
-    try {
-      const settings = await this.getSettings();
-      const { whatsapp_instance_id, whatsapp_green_api_key, whatsapp_media_url } = settings;
-      
-      if (!whatsapp_instance_id || !whatsapp_green_api_key) {
-        return { success: false, error: 'Green API credentials not set' };
-      }
-
-      const mediaBaseUrl = whatsapp_media_url || 'https://media.green-api.com';
-      const url = `${mediaBaseUrl}/waInstance${whatsapp_instance_id}/uploadFile/${whatsapp_green_api_key}`;
-      
-      const formData = new FormData();
-      formData.append('file', file);
-      
-      const response = await fetch(url, {
-        method: 'POST',
-        body: formData
       });
+    } catch (error) {
+      console.error('Error loading WhatsApp instances:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a new WhatsApp instance
+   */
+  async createInstance(phoneNumber: string, apiToken?: string): Promise<WhatsAppInstance> {
+    try {
+      const instanceId = `instance_${Date.now()}`;
+      const token = apiToken || this.defaultApiToken;
       
-      if (!response.ok) {
-        const errorText = await response.text();
-        return { success: false, error: `Upload failed: ${errorText}` };
+      if (!token) {
+        throw new Error('API token is required. Please provide an API token or set VITE_GREEN_API_TOKEN in your environment variables.');
       }
-      
-      const data = await response.json();
-      return { success: true, url: data.urlFile };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Upload failed' };
-    }
-  }
-
-  // Fetch chat history (from your DB or Green API)
-  async getChatHistory(chatId: string): Promise<WhatsAppMessage[]> {
-    try {
-      const { data, error } = await supabase
-        .from('whatsapp_messages')
-        .select('*')
-        .eq('chat_id', chatId)
-        .order('sent_at', { ascending: true });
-
-      if (error) throw error;
-      return data as WhatsAppMessage[];
-    } catch (error) {
-      console.error('Error fetching chat history:', error);
-      return [];
-    }
-  }
-
-  // Fetch all chats (from your DB)
-  async getChats(): Promise<WhatsAppChat[]> {
-    try {
-      const { data, error } = await supabase
-        .from('whatsapp_chats')
-        .select('*')
-        .order('updated_at', { ascending: false });
-
-      if (error) throw error;
-      return data as WhatsAppChat[];
-    } catch (error) {
-      console.error('Error fetching chats:', error);
-      return [];
-    }
-  }
-
-  // Bulk messaging with progress tracking
-  async sendBulk(chatIds: string[], content: string, onProgress?: (progress: { sent: number; total: number; failed: number }) => void): Promise<{ success: boolean; results: Array<{ chatId: string; success: boolean; error?: string }> }> {
-    try {
-      const settings = await this.getSettings();
-      if (!settings.whatsapp_enable_bulk) {
-        return { success: false, results: chatIds.map(chatId => ({ chatId, success: false, error: 'Bulk messaging disabled' })) };
-      }
-
-      const results: Array<{ chatId: string; success: boolean; error?: string }> = [];
-      let sent = 0;
-      let failed = 0;
-
-      for (const chatId of chatIds) {
-        try {
-          const result = await this.sendMessage(chatId, content);
-          results.push({ chatId, ...result });
-          
-          if (result.success) {
-            sent++;
-          } else {
-            failed++;
-          }
-          
-          // Report progress
-          if (onProgress) {
-            onProgress({ sent, total: chatIds.length, failed });
-          }
-          
-          // Rate limiting - wait between messages
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        } catch (error) {
-          results.push({ chatId, success: false, error: error instanceof Error ? error.message : 'Unknown error' });
-          failed++;
-        }
-      }
-
-      return { success: results.every(r => r.success), results };
-    } catch (error) {
-      console.error('Error in bulk messaging:', error);
-      return { 
-        success: false, 
-        results: chatIds.map(chatId => ({ 
-          chatId, 
-          success: false, 
-          error: error instanceof Error ? error.message : 'Unknown error' 
-        })) 
-      };
-    }
-  }
-
-  // Analytics with real data aggregation
-  async getAnalytics(days: number = 30): Promise<{ total: number; sent: number; failed: number; delivered: number; read: number; responseRate: number; avgResponseTime: number }> {
-    try {
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - days);
       
       const { data, error } = await supabase
-        .from('whatsapp_messages')
-        .select('status, direction, sent_at')
-        .gte('sent_at', startDate.toISOString());
-
-      if (error) throw error;
-
-      const messages = data || [];
-      const total = messages.length;
-      const sent = messages.filter(m => m.status === 'sent').length;
-      const failed = messages.filter(m => m.status === 'failed').length;
-      const delivered = messages.filter(m => m.status === 'delivered').length;
-      const read = messages.filter(m => m.status === 'read').length;
-      
-      // Calculate response rate (inbound messages that got responses)
-      const inboundMessages = messages.filter(m => m.direction === 'inbound');
-      const responseRate = inboundMessages.length > 0 ? 
-        (messages.filter(m => m.direction === 'outbound').length / inboundMessages.length) * 100 : 0;
-
-      // Calculate average response time (simplified)
-      const avgResponseTime = this.calculateAverageResponseTime(messages);
-
-      return {
-        total,
-        sent,
-        failed,
-        delivered,
-        read,
-        responseRate: Math.round(responseRate),
-        avgResponseTime
-      };
-    } catch (error) {
-      console.error('Error fetching analytics:', error);
-      return { total: 0, sent: 0, failed: 0, delivered: 0, read: 0, responseRate: 0, avgResponseTime: 0 };
-    }
-  }
-
-  // Calculate average response time
-  private calculateAverageResponseTime(messages: any[]): number {
-    const responseTimes: number[] = [];
-    
-    for (let i = 0; i < messages.length; i++) {
-      if (messages[i].direction === 'inbound') {
-        // Find next outbound message
-        for (let j = i + 1; j < messages.length; j++) {
-          if (messages[j].direction === 'outbound') {
-            const inboundTime = new Date(messages[i].sent_at).getTime();
-            const outboundTime = new Date(messages[j].sent_at).getTime();
-            const responseTime = (outboundTime - inboundTime) / (1000 * 60); // in minutes
-            responseTimes.push(responseTime);
-            break;
-          }
-        }
-      }
-    }
-    
-    if (responseTimes.length === 0) return 0;
-    return responseTimes.reduce((sum, time) => sum + time, 0) / responseTimes.length;
-  }
-
-  // Log WhatsApp message (to your DB)
-  async logMessage(msg: WhatsAppMessage): Promise<void> {
-    try {
-      // First, ensure we have a valid chat_id
-      let chatId = msg.chatId;
-      
-      // If no chat_id provided or if it's a phone number format, try to find or create one
-      if (!chatId || chatId.includes('@c.us')) {
-        console.warn('No valid chat_id provided for WhatsApp message, attempting to find existing chat...');
-        
-        // Extract phone number from chatId if it's in WhatsApp format
-        const phoneNumber = chatId?.replace('@c.us', '') || msg.sender || msg.recipient;
-        
-        // Try to find existing chat by phone number
-        const { data: existingChat, error: findError } = await supabase
-          .from('whatsapp_chats')
-          .select('id')
-          .eq('phone_number', phoneNumber)
-          .limit(1)
-          .single();
-          
-        if (findError || !existingChat) {
-          console.log('Creating new chat for phone number:', phoneNumber);
-          
-          // Create new chat
-          const { data: newChat, error: createError } = await supabase
-            .from('whatsapp_chats')
-            .insert({
-              phone_number: phoneNumber,
-              customer_name: phoneNumber, // Default name, can be updated later
-              status: 'active'
-            })
-            .select('id')
-            .single();
-            
-          if (createError || !newChat) {
-            console.error('Could not create new chat for message:', msg);
-            return;
-          }
-          
-          chatId = newChat.id;
-        } else {
-          chatId = existingChat.id;
-        }
-      }
-      
-      // Validate that the chat exists before inserting
-      const { data: chatExists, error: validateError } = await supabase
-        .from('whatsapp_chats')
-        .select('id')
-        .eq('id', chatId)
-        .single();
-        
-      if (validateError || !chatExists) {
-        console.error('Invalid chat_id provided for WhatsApp message:', chatId);
-        return;
-      }
-      
-      // Now insert the message with valid chat_id
-      const { error: insertError } = await supabase.from('whatsapp_messages').insert({
-        chat_id: chatId,
-        content: msg.content,
-        message_type: msg.type,
-        direction: 'outbound',
-        status: msg.status,
-        media_url: msg.mediaUrl,
-        sent_at: msg.timestamp
-      });
-      
-      if (insertError) {
-        console.error('Error inserting WhatsApp message:', insertError);
-      }
-    } catch (error) {
-      console.error('Error logging message:', error);
-    }
-  }
-
-  // Update message status
-  async updateMessageStatus(messageId: string, status: 'sent' | 'delivered' | 'read' | 'failed', errorMessage?: string): Promise<void> {
-    try {
-      const updateData: any = { status };
-      
-      if (status === 'delivered') {
-        updateData.delivered_at = new Date().toISOString();
-      } else if (status === 'read') {
-        updateData.read_at = new Date().toISOString();
-      } else if (status === 'failed') {
-        updateData.error_message = errorMessage;
-      }
-      
-      await supabase
-        .from('whatsapp_messages')
-        .update(updateData)
-        .eq('id', messageId);
-    } catch (error) {
-      console.error('Error updating message status:', error);
-    }
-  }
-
-  // Clean old logs
-  async cleanOldLogs() {
-    try {
-      const settings = await this.getSettings();
-      const days = settings.whatsapp_log_retention_days || 365;
-      const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-      
-      await supabase
-        .from('whatsapp_messages')
-        .delete()
-        .lt('sent_at', cutoff);
-    } catch (error) {
-      console.error('Error cleaning old logs:', error);
-    }
-  }
-
-  // Create a new WhatsApp chat for a customer
-  async createChat(customerId: string): Promise<{ success: boolean; chat?: any; error?: string }> {
-    try {
-      // Validate customerId
-      if (!customerId) {
-        return { success: false, error: 'Customer ID is required' };
-      }
-
-      // Check if customer exists first
-      const { data: customer, error: customerError } = await supabase
-        .from('customers')
-        .select('id, name, phone, whatsapp, profile_image, created_at')
-        .eq('id', customerId)
-        .single();
-      
-      if (customerError) {
-        return { success: false, error: `Customer not found: ${customerError.message}` };
-      }
-
-      // Check if chat already exists
-      const { data: existing, error: findError } = await supabase
-        .from('whatsapp_chats')
-        .select('*')
-        .eq('customer_id', customerId)
-        .maybeSingle();
-        
-      if (findError) return { success: false, error: findError.message };
-      if (existing) return { success: true, chat: existing };
-      
-      // Create new chat
-      const chatData = {
-        customer_id: customerId,
-        phone_number: customer.whatsapp || customer.phone || customerId,
-        customer_name: customer.name,
-        unread_count: 0,
-        status: 'active'
-      };
-
-      const { data, error } = await supabase
-        .from('whatsapp_chats')
-        .insert(chatData)
+        .from('whatsapp_instances')
+        .insert({
+          instance_id: instanceId,
+          api_token: token,
+          phone_number: phoneNumber,
+          status: 'disconnected'
+        })
         .select()
         .single();
-        
-      if (error) return { success: false, error: error.message };
-      return { success: true, chat: data };
+
+      if (error) throw error;
+
+      const instance: WhatsAppInstance = {
+        id: data.id,
+        instanceId: data.instance_id,
+        apiToken: data.api_token,
+        phoneNumber: data.phone_number,
+        status: data.status,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at
+      };
+
+      this.instances.set(instanceId, instance);
+      return instance;
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      console.error('Error creating WhatsApp instance:', error);
+      throw error;
     }
   }
 
-  // Get chat by customer ID
-  async getChatByCustomerId(customerId: string): Promise<{ success: boolean; chat?: any; error?: string }> {
+  /**
+   * Get QR code for instance authentication
+   */
+  async getQRCode(instanceId: string): Promise<string> {
+    const instance = this.instances.get(instanceId);
+    if (!instance) {
+      throw new Error('Instance not found');
+    }
+
     try {
-      const { data, error } = await supabase
-        .from('whatsapp_chats')
-        .select('*')
-        .eq('customer_id', customerId)
-        .maybeSingle();
-        
-      if (error) return { success: false, error: error.message };
-      return { success: true, chat: data };
+      const response = await fetch(`https://api.green-api.com/waInstance${instanceId}/getQrCode/${instance.apiToken}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.qrCode) {
+        // Update instance with QR code
+        await this.updateInstanceStatus(instanceId, 'connecting', data.qrCode);
+        return data.qrCode;
+      } else {
+        throw new Error('QR code not received');
+      }
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      console.error('Error getting QR code:', error);
+      throw error;
     }
   }
 
-  // Archive chat
-  async archiveChat(chatId: string): Promise<{ success: boolean; error?: string }> {
+  /**
+   * Get instance state
+   */
+  async getInstanceState(instanceId: string): Promise<string> {
+    const instance = this.instances.get(instanceId);
+    if (!instance) {
+      throw new Error('Instance not found');
+    }
+
     try {
-      const { error } = await supabase
-        .from('whatsapp_chats')
-        .update({ status: 'archived' })
-        .eq('id', chatId);
-        
-      if (error) return { success: false, error: error.message };
-      return { success: true };
+      const response = await fetch(`https://api.green-api.com/waInstance${instanceId}/getStateInstance/${instance.apiToken}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const state = data.stateInstance;
+      
+      // Update instance status based on state
+      let status: WhatsAppInstance['status'] = 'disconnected';
+      if (state === 'authorized') status = 'connected';
+      else if (state === 'notAuthorized') status = 'disconnected';
+      else if (state === 'blocked') status = 'error';
+      
+      await this.updateInstanceStatus(instanceId, status);
+      return state;
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      console.error('Error getting instance state:', error);
+      throw error;
     }
   }
 
-  // Mark messages as read
-  async markMessagesAsRead(chatId: string): Promise<{ success: boolean; error?: string }> {
+  /**
+   * Send text message
+   */
+  async sendTextMessage(instanceId: string, chatId: string, message: string): Promise<string> {
+    const instance = this.instances.get(instanceId);
+    if (!instance) {
+      throw new Error('Instance not found');
+    }
+
+    try {
+      const response = await fetch(`https://api.green-api.com/waInstance${instanceId}/sendMessage/${instance.apiToken}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          chatId: chatId,
+          message: message
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      // Log the message
+      await this.logMessage(instanceId, chatId, 'text', message, 'outgoing', 'sent');
+      
+      return data.idMessage;
+    } catch (error) {
+      console.error('Error sending text message:', error);
+      await this.logMessage(instanceId, chatId, 'text', message, 'outgoing', 'failed');
+      throw error;
+    }
+  }
+
+  /**
+   * Send file message
+   */
+  async sendFileMessage(instanceId: string, chatId: string, fileUrl: string, caption?: string): Promise<string> {
+    const instance = this.instances.get(instanceId);
+    if (!instance) {
+      throw new Error('Instance not found');
+    }
+
+    try {
+      const response = await fetch(`https://api.green-api.com/waInstance${instanceId}/sendFileByUrl/${instance.apiToken}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          chatId: chatId,
+          urlFile: fileUrl,
+          fileName: fileUrl.split('/').pop() || 'file',
+          caption: caption || ''
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      // Log the message
+      await this.logMessage(instanceId, chatId, 'document', fileUrl, 'outgoing', 'sent', { caption });
+      
+      return data.idMessage;
+    } catch (error) {
+      console.error('Error sending file message:', error);
+      await this.logMessage(instanceId, chatId, 'document', fileUrl, 'outgoing', 'failed', { caption });
+      throw error;
+    }
+  }
+
+  /**
+   * Send location message
+   */
+  async sendLocationMessage(instanceId: string, chatId: string, latitude: number, longitude: number, name?: string, address?: string): Promise<string> {
+    const instance = this.instances.get(instanceId);
+    if (!instance) {
+      throw new Error('Instance not found');
+    }
+
+    try {
+      const response = await fetch(`https://api.green-api.com/waInstance${instanceId}/sendLocation/${instance.apiToken}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          chatId: chatId,
+          latitude: latitude,
+          longitude: longitude,
+          nameLocation: name || '',
+          address: address || ''
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      // Log the message
+      await this.logMessage(instanceId, chatId, 'location', `${latitude},${longitude}`, 'outgoing', 'sent', { name, address });
+      
+      return data.idMessage;
+    } catch (error) {
+      console.error('Error sending location message:', error);
+      await this.logMessage(instanceId, chatId, 'location', `${latitude},${longitude}`, 'outgoing', 'failed', { name, address });
+      throw error;
+    }
+  }
+
+  /**
+   * Send contact message
+   */
+  async sendContactMessage(instanceId: string, chatId: string, contactData: { name: string; phone: string; email?: string }): Promise<string> {
+    const instance = this.instances.get(instanceId);
+    if (!instance) {
+      throw new Error('Instance not found');
+    }
+
+    try {
+      const vcard = `BEGIN:VCARD\nVERSION:3.0\nFN:${contactData.name}\nTEL:${contactData.phone}\n${contactData.email ? `EMAIL:${contactData.email}\n` : ''}END:VCARD`;
+
+      const response = await fetch(`https://api.green-api.com/waInstance${instanceId}/sendContact/${instance.apiToken}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          chatId: chatId,
+          contact: {
+            name: contactData.name,
+            phone: contactData.phone,
+            email: contactData.email || ''
+          }
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      // Log the message
+      await this.logMessage(instanceId, chatId, 'contact', contactData.name, 'outgoing', 'sent', contactData);
+      
+      return data.idMessage;
+    } catch (error) {
+      console.error('Error sending contact message:', error);
+      await this.logMessage(instanceId, chatId, 'contact', contactData.name, 'outgoing', 'failed', contactData);
+      throw error;
+    }
+  }
+
+  /**
+   * Get chat history
+   */
+  async getChatHistory(instanceId: string, chatId: string, count: number = 100): Promise<WhatsAppMessage[]> {
+    const instance = this.instances.get(instanceId);
+    if (!instance) {
+      throw new Error('Instance not found');
+    }
+
+    try {
+      const response = await fetch(`https://api.green-api.com/waInstance${instanceId}/getChatHistory/${instance.apiToken}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          chatId: chatId,
+          count: count
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data.map((msg: any) => ({
+        id: msg.idMessage,
+        chatId: msg.chatId,
+        type: this.mapMessageType(msg.typeMessage),
+        content: this.extractMessageContent(msg),
+        timestamp: new Date(msg.timestamp * 1000).toISOString(),
+        status: msg.statusMessage || 'sent',
+        direction: msg.type === 'incoming' ? 'incoming' : 'outgoing',
+        metadata: msg
+      }));
+    } catch (error) {
+      console.error('Error getting chat history:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check if a phone number is on WhatsApp
+   */
+  async checkWhatsApp(instanceId: string, phoneNumber: string): Promise<boolean> {
+    const instance = this.instances.get(instanceId);
+    if (!instance) {
+      throw new Error('Instance not found');
+    }
+
+    try {
+      const response = await fetch(`https://api.green-api.com/waInstance${instanceId}/checkWhatsapp/${instance.apiToken}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          phoneNumber: phoneNumber
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data.existsWhatsapp;
+    } catch (error) {
+      console.error('Error checking WhatsApp:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get contacts
+   */
+  async getContacts(instanceId: string): Promise<any[]> {
+    const instance = this.instances.get(instanceId);
+    if (!instance) {
+      throw new Error('Instance not found');
+    }
+
+    try {
+      const response = await fetch(`https://api.green-api.com/waInstance${instanceId}/getContacts/${instance.apiToken}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Error getting contacts:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Process incoming webhook
+   */
+  async processWebhook(webhookData: WhatsAppWebhook): Promise<void> {
+    try {
+      // Log the webhook
+      await this.logWebhook(webhookData);
+
+      // Handle different webhook types
+      switch (webhookData.type) {
+        case 'incomingMessageReceived':
+          await this.handleIncomingMessage(webhookData);
+          break;
+        case 'outgoingMessageStatus':
+          await this.handleMessageStatus(webhookData);
+          break;
+        case 'stateInstanceChanged':
+          await this.handleStateChange(webhookData);
+          break;
+        default:
+          console.log('Unhandled webhook type:', webhookData.type);
+      }
+    } catch (error) {
+      console.error('Error processing webhook:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Handle incoming message
+   */
+  private async handleIncomingMessage(webhook: WhatsAppWebhook): Promise<void> {
+    if (!webhook.messageData || !webhook.senderData) return;
+
+    const instanceId = this.getInstanceIdFromChatId(webhook.senderData.chatId);
+    if (!instanceId) return;
+
+    const messageType = this.mapMessageType(webhook.messageData.typeMessage);
+    const content = this.extractMessageContent(webhook.messageData);
+
+    await this.logMessage(
+      instanceId,
+      webhook.senderData.chatId,
+      messageType,
+      content,
+      'incoming',
+      'delivered',
+      webhook.messageData
+    );
+  }
+
+  /**
+   * Handle message status update
+   */
+  private async handleMessageStatus(webhook: WhatsAppWebhook): Promise<void> {
+    if (!webhook.statusData || !webhook.idMessage) return;
+
     try {
       const { error } = await supabase
         .from('whatsapp_messages')
-        .update({ 
-          status: 'read',
-          read_at: new Date().toISOString()
+        .update({
+          status: webhook.statusData.status,
+          updated_at: new Date().toISOString()
         })
-        .eq('chat_id', chatId)
-        .eq('direction', 'inbound')
-        .eq('status', 'delivered');
-        
-      if (error) return { success: false, error: error.message };
-      
-      // Update chat unread count
-      await supabase
-        .from('whatsapp_chats')
-        .update({ unread_count: 0 })
-        .eq('id', chatId);
-        
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-    }
-  }
+        .eq('id', webhook.idMessage);
 
-  // Check WhatsApp connection health
-  async checkConnectionHealth(): Promise<{ healthy: boolean; status: string; error?: string }> {
-    const cacheKey = 'connection_health';
-    return this.rateLimiter.throttle(async () => {
-      try {
-        const settings = await this.getSettings();
-        const { whatsapp_instance_id, whatsapp_green_api_key } = settings;
-        
-        if (!whatsapp_instance_id || !whatsapp_green_api_key) {
-          return { healthy: false, status: 'not_configured', error: 'WhatsApp credentials not configured' };
-        }
-
-        const url = `https://api.green-api.com/waInstance${whatsapp_instance_id}/getStateInstance/${whatsapp_green_api_key}`;
-        const response = await fetch(url, { 
-          method: 'GET',
-          headers: { 'Accept': 'application/json' }
-        });
-        
-        if (response.status === 429) {
-          console.warn('⚠️ WhatsApp API rate limit exceeded in health check');
-          this.rateLimiter.clearCache(cacheKey);
-          return { 
-            healthy: false, 
-            status: 'rate_limited', 
-            error: 'API rate limit exceeded. Please wait 30 minutes before checking again.' 
-          };
-        }
-        
-        if (!response.ok) {
-          return { 
-            healthy: false, 
-            status: 'api_error', 
-            error: `API returned ${response.status}: ${await response.text()}` 
-          };
-        }
-        
-        const data = await response.json();
-        
-        if (data.stateInstance === 'authorized') {
-          return { healthy: true, status: 'authorized' };
-        } else if (data.stateInstance === 'notAuthorized') {
-          return { healthy: false, status: 'not_authorized', error: 'WhatsApp not authorized. Please scan QR code.' };
-        } else if (data.stateInstance === 'blocked') {
-          return { healthy: false, status: 'blocked', error: 'WhatsApp account is blocked.' };
-        } else {
-          return { healthy: false, status: 'unknown', error: `Unknown state: ${data.stateInstance}` };
-        }
-      } catch (error) {
-        return { 
-          healthy: false, 
-          status: 'connection_error', 
-          error: error instanceof Error ? error.message : 'Unknown connection error' 
-        };
+      if (error) {
+        console.error('Error updating message status:', error);
       }
-    }, cacheKey, 3600000); // Cache for 60 minutes to reduce API calls
-  }
-
-  // Improved real-time subscription management with better error handling
-  async startRealtimeSubscription(): Promise<{ success: boolean; error?: string }> {
-    try {
-      // Cancel any existing scheduled reconnections
-      this.connectionManager.cancelScheduledReconnection();
-
-      if (this.realtimeSubscription) {
-        console.log('📡 Realtime subscription already active');
-        return { success: true };
-      }
-
-      // Check connection health first (but don't fail if unhealthy)
-      const health = await this.checkConnectionHealth();
-      if (!health.healthy) {
-        console.warn('⚠️ WhatsApp connection not healthy, but proceeding with subscription:', health.error);
-      } else {
-        console.log('✅ WhatsApp connection healthy, proceeding with subscription');
-      }
-
-      console.log('📡 Starting WhatsApp realtime subscription...');
-      
-      // Set up realtime subscription with better error handling and retry logic
-      this.realtimeSubscription = supabase
-        .channel('whatsapp-messages')
-        .on('postgres_changes', 
-          { event: '*', schema: 'public', table: 'whatsapp_messages' },
-          (payload) => {
-            console.log('📨 WhatsApp message update:', payload);
-            this.messageCallbacks.forEach(callback => callback(payload.new as WhatsAppMessage));
-          }
-        )
-        .on('postgres_changes',
-          { event: '*', schema: 'public', table: 'whatsapp_chats' },
-          (payload) => {
-            console.log('💬 WhatsApp chat update:', payload);
-          }
-        )
-        .subscribe((status) => {
-          console.log('📡 WhatsApp real-time subscription status:', status);
-          this.notifyStatusChange({ type: 'subscription', status });
-          
-          if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
-            console.log('🔄 Connection closed or error, attempting to reconnect...');
-            // Use exponential backoff for reconnection attempts
-            this.scheduleReconnection();
-          } else if (status === 'SUBSCRIBED') {
-            console.log('✅ Connection established successfully');
-            // Reset reconnection attempts on successful connection
-            this.connectionManager.resetReconnectionAttempts();
-          } else if (status === 'TIMED_OUT') {
-            console.log('⏰ Connection timed out, retrying...');
-            this.scheduleReconnection();
-          }
-        });
-
-      return { success: true };
     } catch (error) {
-      console.error('❌ Error starting realtime subscription:', error);
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      console.error('Error handling message status:', error);
     }
   }
 
-  // Stop realtime subscription
-  stopRealtimeSubscription(): void {
-    if (this.realtimeSubscription) {
-      console.log('🛑 Stopping WhatsApp realtime subscription...');
-      supabase.removeChannel(this.realtimeSubscription);
-      this.realtimeSubscription = null;
-    }
-    // Cancel any scheduled reconnections
-    this.connectionManager.cancelScheduledReconnection();
+  /**
+   * Handle instance state change
+   */
+  private async handleStateChange(webhook: WhatsAppWebhook): Promise<void> {
+    if (!webhook.stateInstanceData) return;
+
+    const instanceId = this.getInstanceIdFromWebhook(webhook);
+    if (!instanceId) return;
+
+    let status: WhatsAppInstance['status'] = 'disconnected';
+    if (webhook.stateInstanceData.stateInstance === 'authorized') status = 'connected';
+    else if (webhook.stateInstanceData.stateInstance === 'notAuthorized') status = 'disconnected';
+    else if (webhook.stateInstanceData.stateInstance === 'blocked') status = 'error';
+
+    await this.updateInstanceStatus(instanceId, status);
   }
 
-  // Schedule reconnection with exponential backoff
-  private scheduleReconnection(): void {
-    this.connectionManager.scheduleReconnection();
-  }
-
-  // Connection state management to prevent multiple simultaneous calls
-  private connectionCheckInProgress: boolean = false;
-  private connectionCheckPromise: Promise<any> | null = null;
-  private lastConnectionCheck: number = 0;
-
-  // Centralized connection check to prevent multiple simultaneous calls
-  async performConnectionCheck(): Promise<{ success: boolean; error?: string }> {
-    if (this.connectionCheckInProgress && this.connectionCheckPromise) {
-      console.log('⏳ Connection check already in progress, waiting...');
-      return this.connectionCheckPromise;
-    }
-
-    // Add debounce to prevent rapid successive calls
-    const now = Date.now();
-    const lastCheck = this.lastConnectionCheck || 0;
-    const minInterval = 5000; // 5 seconds minimum between checks
-    
-    if (now - lastCheck < minInterval) {
-      console.log('⏳ Debouncing connection check...');
-      await new Promise(resolve => setTimeout(resolve, minInterval - (now - lastCheck)));
-    }
-
-    this.lastConnectionCheck = now;
-    this.connectionCheckInProgress = true;
-    this.connectionCheckPromise = this.testConnection(
-      (await this.getSettings()).whatsapp_instance_id,
-      (await this.getSettings()).whatsapp_green_api_key
-    );
-
+  /**
+   * Update instance status
+   */
+  private async updateInstanceStatus(instanceId: string, status: WhatsAppInstance['status'], qrCode?: string): Promise<void> {
     try {
-      const result = await this.connectionCheckPromise;
-      return result;
-    } finally {
-      this.connectionCheckInProgress = false;
-      this.connectionCheckPromise = null;
-    }
-  }
-
-  // Centralized health check to prevent multiple simultaneous calls
-  async performHealthCheck(): Promise<{ healthy: boolean; status: string; error?: string }> {
-    if (this.connectionCheckInProgress && this.connectionCheckPromise) {
-      console.log('⏳ Health check already in progress, waiting...');
-      // Wait for the current check to complete
-      await this.connectionCheckPromise;
-    }
-
-    return this.checkConnectionHealth();
-  }
-
-  // Assign users to chats
-  async assignUsersToChats(userIds: string[], chatIds: string[]): Promise<{ success: boolean; error?: string }> {
-    try {
-      console.log('👥 Assigning users to chats:', { userIds, chatIds });
-      
-      // This is a placeholder implementation
-      // In a real implementation, you would update the database to assign users to chats
-      // For now, we'll just return success
-      
-      return { success: true };
-    } catch (error) {
-      console.error('❌ Error assigning users to chats:', error);
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Failed to assign users to chats' 
+      const updateData: any = {
+        status,
+        updated_at: new Date().toISOString()
       };
-    }
-  }
 
-  // Optimized method to fetch customers without creating long URLs
-  async fetchCustomersOptimized(excludeIds: string[] = [], limit: number = 1000): Promise<any[]> {
-    try {
-      console.log(`🔄 Fetching customers optimized (excluding ${excludeIds.length} IDs)`);
-      
-      // If we have too many IDs to exclude, use a different approach
-      if (excludeIds.length > 500) {
-        console.log('📊 Too many IDs to exclude, using timestamp-based approach');
-        return this.fetchCustomersByTimestamp(limit);
+      if (qrCode) {
+        updateData.qr_code = qrCode;
       }
-      
-      // If we have a reasonable number of IDs to exclude, use batching
-      if (excludeIds.length > 0) {
-        return this.fetchCustomersWithBatching(excludeIds, limit);
-      }
-      
-      // If no exclusions needed, fetch directly
-      const { data: customers, error } = await supabase
-        .from('customers')
-        .select('id, name, phone, whatsapp, profile_image, created_at')
-        .not('whatsapp', 'is', null)
-        .not('whatsapp', 'eq', '')
-        .limit(limit)
-        .order('created_at', { ascending: false });
-      
+
+      const { error } = await supabase
+        .from('whatsapp_instances')
+        .update(updateData)
+        .eq('instance_id', instanceId);
+
       if (error) throw error;
-      return customers || [];
-      
-    } catch (error) {
-      console.error('Error in fetchCustomersOptimized:', error);
-      return [];
-    }
-  }
 
-  // Fetch customers using timestamp-based filtering to avoid long URLs
-  private async fetchCustomersByTimestamp(limit: number = 1000): Promise<any[]> {
-    try {
-      // Get the most recent timestamp from existing chats to use as a cutoff
-      const cutoffTime = new Date();
-      cutoffTime.setHours(cutoffTime.getHours() - 24); // Last 24 hours as default
-      
-      const { data: customers, error } = await supabase
-        .from('customers')
-        .select('id, name, phone, whatsapp, profile_image, created_at')
-        .not('whatsapp', 'is', null)
-        .not('whatsapp', 'eq', '')
-        .gte('created_at', cutoffTime.toISOString())
-        .limit(limit)
-        .order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      return customers || [];
-      
-    } catch (error) {
-      console.error('Error in fetchCustomersByTimestamp:', error);
-      return [];
-    }
-  }
-
-  // Fetch customers using batching to avoid long URLs
-  private async fetchCustomersWithBatching(excludeIds: string[], limit: number = 1000): Promise<any[]> {
-    try {
-      const batchSize = 100;
-      const allCustomers: any[] = [];
-      const excludeIdSet = new Set(excludeIds);
-      
-      // Process in batches
-      for (let offset = 0; offset < limit; offset += batchSize) {
-        const { data: batchCustomers, error } = await supabase
-          .from('customers')
-          .select('id, name, phone, whatsapp, profile_image, created_at')
-          .not('whatsapp', 'is', null)
-          .not('whatsapp', 'eq', '')
-          .range(offset, offset + batchSize - 1)
-          .order('created_at', { ascending: false });
-        
-        if (error) {
-          console.warn('Error fetching batch:', error);
-          break;
-        }
-        
-        if (!batchCustomers || batchCustomers.length === 0) {
-          break;
-        }
-        
-        // Filter out excluded IDs
-        const filteredBatch = batchCustomers.filter(customer => !excludeIdSet.has(customer.id));
-        allCustomers.push(...filteredBatch);
-        
-        // If we have enough customers, stop
-        if (allCustomers.length >= limit) {
-          break;
-        }
-        
-        // Add a small delay to prevent overwhelming the API
-        await new Promise(resolve => setTimeout(resolve, 50));
+      // Update local cache
+      const instance = this.instances.get(instanceId);
+      if (instance) {
+        instance.status = status;
+        if (qrCode) instance.qrCode = qrCode;
+        instance.updatedAt = new Date().toISOString();
       }
-      
-      return allCustomers.slice(0, limit);
-      
     } catch (error) {
-      console.error('Error in fetchCustomersWithBatching:', error);
-      return [];
+      console.error('Error updating instance status:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Log message to database
+   */
+  private async logMessage(
+    instanceId: string,
+    chatId: string,
+    type: WhatsAppMessage['type'],
+    content: string,
+    direction: WhatsAppMessage['direction'],
+    status: WhatsAppMessage['status'],
+    metadata?: any
+  ): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('whatsapp_messages')
+        .insert({
+          instance_id: instanceId,
+          chat_id: chatId,
+          type,
+          content,
+          direction,
+          status,
+          metadata,
+          created_at: new Date().toISOString()
+        });
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error logging message:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Log webhook to database
+   */
+  private async logWebhook(webhook: WhatsAppWebhook): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('whatsapp_webhooks')
+        .insert({
+          type: webhook.type,
+          payload: webhook,
+          processed: false,
+          created_at: new Date().toISOString()
+        });
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error logging webhook:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Helper methods
+   */
+  private mapMessageType(typeMessage: string): WhatsAppMessage['type'] {
+    switch (typeMessage) {
+      case 'textMessage':
+      case 'extendedTextMessage':
+        return 'text';
+      case 'imageMessage':
+        return 'image';
+      case 'videoMessage':
+        return 'video';
+      case 'audioMessage':
+        return 'audio';
+      case 'documentMessage':
+        return 'document';
+      case 'locationMessage':
+        return 'location';
+      case 'contactMessage':
+        return 'contact';
+      case 'stickerMessage':
+        return 'sticker';
+      case 'pollMessage':
+        return 'poll';
+      default:
+        return 'text';
+    }
+  }
+
+  private extractMessageContent(messageData: any): string {
+    if (messageData.textMessageData) {
+      return messageData.textMessageData.textMessage;
+    }
+    if (messageData.extendedTextMessageData) {
+      return messageData.extendedTextMessageData.text;
+    }
+    if (messageData.imageMessageData) {
+      return messageData.imageMessageData.caption || '[Image]';
+    }
+    if (messageData.videoMessageData) {
+      return messageData.videoMessageData.caption || '[Video]';
+    }
+    if (messageData.audioMessageData) {
+      return '[Audio]';
+    }
+    if (messageData.documentMessageData) {
+      return messageData.documentMessageData.caption || `[Document: ${messageData.documentMessageData.fileName}]`;
+    }
+    if (messageData.locationMessageData) {
+      return `[Location: ${messageData.locationMessageData.nameLocation || 'Unknown'}]`;
+    }
+    if (messageData.contactMessageData) {
+      return `[Contact: ${messageData.contactMessageData.displayName}]`;
+    }
+    if (messageData.stickerMessageData) {
+      return '[Sticker]';
+    }
+    if (messageData.pollMessageData) {
+      return `[Poll: ${messageData.pollMessageData.name}]`;
+    }
+    return '[Unknown message type]';
+  }
+
+  private getInstanceIdFromChatId(chatId: string): string | null {
+    // Extract instance ID from chat ID or find the active instance
+    for (const [instanceId, instance] of this.instances) {
+      if (instance.status === 'connected') {
+        return instanceId;
+      }
+    }
+    return null;
+  }
+
+  private getInstanceIdFromWebhook(webhook: WhatsAppWebhook): string | null {
+    // This would need to be implemented based on how you identify which instance the webhook belongs to
+    // For now, return the first connected instance
+    for (const [instanceId, instance] of this.instances) {
+      if (instance.status === 'connected') {
+        return instanceId;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Get all instances
+   */
+  getInstances(): WhatsAppInstance[] {
+    return Array.from(this.instances.values());
+  }
+
+  /**
+   * Get instance by ID
+   */
+  getInstance(instanceId: string): WhatsAppInstance | undefined {
+    return this.instances.get(instanceId);
+  }
+
+  /**
+   * Delete instance
+   */
+  async deleteInstance(instanceId: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('whatsapp_instances')
+        .delete()
+        .eq('instance_id', instanceId);
+
+      if (error) throw error;
+
+      this.instances.delete(instanceId);
+    } catch (error) {
+      console.error('Error deleting instance:', error);
+      throw error;
     }
   }
 }
 
-export const whatsappService = new WhatsAppService(); 
+// Export singleton instance
+export const whatsappService = new WhatsAppService();

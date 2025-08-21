@@ -22,7 +22,7 @@ export const POSSettingsDatabaseSetup: React.FC<POSSettingsDatabaseSetupProps> =
     const wasSetupCompleted = localStorage.getItem(setupKey);
     
     if (wasSetupCompleted === 'true') {
-      DebugUtils.log('✅ POS setup already completed for this user, skipping...');
+      DebugUtils.sessionLog('pos_setup_complete', '✅ POS setup already completed for this user, skipping...');
       setIsSetupComplete(true);
       setupCompletedRef.current = true;
       return;

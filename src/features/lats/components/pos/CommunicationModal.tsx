@@ -5,7 +5,7 @@ import GlassButton from '../../../shared/components/ui/GlassButton';
 import { 
   LoyaltyCustomer 
 } from '../../../../lib/customerLoyaltyService';
-import { whatsappService } from '../../../../services/whatsappService';
+
 import { smsService } from '../../../../services/smsService';
 import { toast } from 'react-hot-toast';
 
@@ -20,7 +20,7 @@ const CommunicationModal: React.FC<CommunicationModalProps> = ({
   onClose, 
   customer 
 }) => {
-  const [communicationType, setCommunicationType] = useState<'whatsapp' | 'sms' | 'email'>('whatsapp');
+  const [communicationType, setCommunicationType] = useState<'sms' | 'email'>('sms');
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState('');
@@ -28,27 +28,22 @@ const CommunicationModal: React.FC<CommunicationModalProps> = ({
   // Predefined message templates
   const messageTemplates = {
     welcome: {
-      whatsapp: "🎉 Welcome to our loyalty program! You've earned {points} points on your first purchase. Thank you for choosing us!",
       sms: "Welcome to our loyalty program! You've earned {points} points. Thank you for choosing us!",
       email: "Welcome to our loyalty program! You've earned {points} points on your first purchase. We're excited to have you as a valued customer."
     },
     pointsUpdate: {
-      whatsapp: "⭐ Great news! You've earned {points} points on your recent purchase. Your total balance is now {totalPoints} points.",
       sms: "You've earned {points} points! Total balance: {totalPoints} points.",
       email: "Great news! You've earned {points} points on your recent purchase. Your total balance is now {totalPoints} points."
     },
     tierUpgrade: {
-      whatsapp: "👑 Congratulations! You've been upgraded to {tier} tier! Enjoy exclusive benefits and rewards.",
       sms: "Congratulations! You've been upgraded to {tier} tier!",
       email: "Congratulations! You've been upgraded to {tier} tier! Enjoy exclusive benefits and rewards."
     },
     rewardAvailable: {
-      whatsapp: "🎁 You have {points} points available for redemption! Visit us to claim your rewards.",
       sms: "You have {points} points available for redemption!",
       email: "You have {points} points available for redemption! Visit us to claim your rewards."
     },
     custom: {
-      whatsapp: "",
       sms: "",
       email: ""
     }
@@ -86,9 +81,6 @@ const CommunicationModal: React.FC<CommunicationModalProps> = ({
       let success = false;
       
       switch (communicationType) {
-        case 'whatsapp':
-          success = await whatsappService.sendMessage(customer.phone, message);
-          break;
         case 'sms':
           success = await smsService.sendSMS(customer.phone, message);
           break;

@@ -12,7 +12,7 @@ import SearchBar from '../ui/SearchBar';
 import BarcodeScanner from '../../../devices/components/BarcodeScanner';
 import { Link, useNavigate } from 'react-router-dom';
 import { PlusCircle, Smartphone, CheckCircle, UserCheck, QrCode, Hammer, PackageCheck, Wrench, XCircle, Clock, AlertTriangle, TrendingUp, Calendar, Users, Phone, Mail, MessageSquare, ClipboardList, Trophy, Star, Gift, Clock as ClockIcon, Users as UsersIcon, Check, ArrowUpDown, ArrowUp, ArrowDown, Settings } from 'lucide-react';
-import WhatsAppChatUI from '../../../whatsapp/components/WhatsAppChatUI';
+
 import { DeviceStatus, Device } from '../../../types';
 import Modal from '../ui/Modal';
 import StatusBadge from '../ui/StatusBadge';
@@ -1129,27 +1129,7 @@ const CustomerCareDashboard: React.FC<CustomerCareDashboardProps> = ({
               </div>
             </div>
 
-            {/* Remarks/Conversations Section */}
-            <div className="h-96">
-              <WhatsAppChatUI
-                remarks={selectedDevice.remarks || []}
-                activityEvents={[]} // We'll add activity events here later if needed
-                onAddRemark={async (content: string) => {
-                  if (selectedDevice) {
-                    // Add the remark using the devices context
-                    await addRemark(selectedDevice.id, content);
-                    // Refresh the device data
-                    const updatedDevice = devices.find(d => d.id === selectedDevice.id);
-                    if (updatedDevice) {
-                      setSelectedDevice(updatedDevice);
-                    }
-                  }
-                }}
-                currentUserId={currentUser?.id}
-                currentUserName={currentUser?.name || currentUser?.email}
-                isLoading={loading}
-              />
-            </div>
+
 
             {/* Additional Details */}
             <div>

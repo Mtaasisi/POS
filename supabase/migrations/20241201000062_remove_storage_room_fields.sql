@@ -1,0 +1,36 @@
+-- Remove Storage Room Fields Migration
+-- Migration: 20241201000062_remove_storage_room_fields.sql
+-- 
+-- This migration documents the removal of the following fields from storage room functionality:
+-- - room_type
+-- - min_humidity (humidity_min)
+-- - max_humidity (humidity_max) 
+-- - max_temperature (temperature_max)
+-- - min_temperature (temperature_min)
+-- - climate_control (has_climate_control)
+-- - lighting (has_lighting)
+-- - ventilation (has_ventilation)
+--
+-- These fields were removed from the UI components as they were not being used
+-- in the actual database schema and were causing confusion in the storage room
+-- management interface.
+
+-- Note: No actual database changes are needed as these fields were only
+-- present in the TypeScript interfaces and UI components, not in the database schema.
+
+-- Changes made:
+-- 1. Removed fields from StorageRoom interface in StorageRoomModal.tsx
+-- 2. Removed fields from storage room form data in both StorageRoomModal.tsx and ShelfModal.tsx
+-- 3. Removed UI elements for temperature range, humidity range, climate control, ventilation, and lighting
+-- 4. Removed validation logic for temperature and humidity ranges
+-- 5. Removed room types array and related UI elements
+-- 6. Updated grid layouts and descriptions to reflect the simplified form
+
+-- The storage room functionality now focuses on:
+-- - Basic information (name, code, description)
+-- - Location details (store_location_id, floor_level)
+-- - Physical details (area_sqm, max_capacity)
+-- - Security settings (is_secure, requires_access_card)
+-- - Status (is_active)
+-- - Visual organization (color_code)
+-- - Additional notes

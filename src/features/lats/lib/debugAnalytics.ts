@@ -1,4 +1,4 @@
-import { supabase } from '../../../../lib/supabase';
+import { supabase } from '../../../../lib/supabaseClient';
 
 /**
  * Debug script to check why total value is showing as $0.00

@@ -15,9 +15,8 @@ import { t } from '../../lib/i18n/t';
 import { format } from '../../lib/format';
 import { Product, Category, Brand, Supplier, ProductImage } from '../../types/inventory';
 import { StoreLocation } from '../../../settings/types/storeLocation';
-import { StoreShelf } from '../../../settings/types/storeShelf';
 import { storeLocationApi } from '../../../settings/utils/storeLocationApi';
-import { storeShelfApi } from '../../../settings/utils/storeShelfApi';
+import { useInventoryStore } from '../../stores/useInventoryStore';
 
 // Validation schema for product editing
 const editProductSchema = z.object({
@@ -30,7 +29,7 @@ const editProductSchema = z.object({
   supplierId: z.string().optional(),
   condition: z.string().min(1, 'Condition is required'),
   storeLocationId: z.string().optional(),
-  storeShelf: z.string().max(100, 'Store shelf must be less than 100 characters').optional(),
+
   price: z.number().min(0, 'Price must be 0 or greater'),
   costPrice: z.number().min(0, 'Cost price must be 0 or greater'),
   stockQuantity: z.number().min(0, 'Stock quantity must be 0 or greater'),
@@ -42,32 +41,47 @@ const editProductSchema = z.object({
 type EditProductFormData = z.infer<typeof editProductSchema>;
 
 interface EditProductModalProps {
-  product: Product | null;
-  categories: Category[];
-  brands: Brand[];
-  suppliers: Supplier[];
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: EditProductFormData) => Promise<void>;
-  loading?: boolean;
+  productId: string;
+  onProductUpdated?: (product: any) => void;
 }
 
 const EditProductModal: React.FC<EditProductModalProps> = ({
-  product,
-  categories,
-  brands,
-  suppliers,
   isOpen,
   onClose,
-  onSubmit,
-  loading = false
+  productId,
+  onProductUpdated
 }) => {
+  const { categories, brands, suppliers, updateProduct, loadCategories, loadBrands, loadSuppliers, getProduct } = useInventoryStore();
+  
   const [tagInput, setTagInput] = useState('');
   const [currentTags, setCurrentTags] = useState<string[]>([]);
   const [storeLocations, setStoreLocations] = useState<StoreLocation[]>([]);
-  const [shelves, setShelves] = useState<StoreShelf[]>([]);
+
   const [loadingLocations, setLoadingLocations] = useState(false);
-  const [loadingShelves, setLoadingShelves] = useState(false);
+  
+  const [isLoading, setIsLoading] = useState(false);
+  const [product, setProduct] = useState<Product | null>(null);
+
+  // Don't render if modal is not open
+  if (!isOpen) {
+    return null;
+  }
+
+  // Show loading state if required data is not available
+  if (isLoading || !product) {
+    return (
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+          <div className="flex items-center justify-center">
+            <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            <span className="ml-2">Loading product data...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const {
     control,
@@ -88,7 +102,7 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
       supplierId: '',
       condition: 'new',
       storeLocationId: '',
-      storeShelf: '',
+  
       price: 0,
       costPrice: 0,
       stockQuantity: 0,
@@ -124,64 +138,89 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
   useEffect(() => {
     const loadShelves = async () => {
       if (!selectedLocationId) {
-        setShelves([]);
         return;
       }
 
       try {
-        setLoadingShelves(true);
-        const locationShelves = await storeShelfApi.getShelvesByLocation(selectedLocationId);
-        setShelves(locationShelves);
+        // TODO: Implement shelf loading logic
+        // const locationShelves = await shelfApi.getByLocation(selectedLocationId);
       } catch (error) {
         console.error('Error loading shelves:', error);
         toast.error('Failed to load shelves');
-      } finally {
-        setLoadingShelves(false);
       }
     };
 
     loadShelves();
   }, [selectedLocationId]);
 
+  // Load categories, brands, and suppliers when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      loadCategories();
+      loadBrands();
+      loadSuppliers();
+    }
+  }, [isOpen, loadCategories, loadBrands, loadSuppliers]);
+
   // Load product data when product changes
   useEffect(() => {
-    if (product && isOpen) {
-      reset({
-        name: product.name,
-        description: product.description || '',
-        sku: product.sku,
-        barcode: product.barcode || '',
-        categoryId: product.categoryId,
-        brandId: product.brandId || '',
-        supplierId: product.supplierId || '',
-        condition: product.condition || 'new',
-        storeLocationId: '', // Will be set based on shelf lookup
-        storeShelf: product.storeShelf || '',
-        price: product.price || 0,
-        costPrice: product.costPrice || 0,
-        stockQuantity: product.stockQuantity || 0,
-        minStockLevel: product.minStockLevel || 0,
-        weight: product.weight || 0,
-        tags: product.tags || []
-      });
+    if (productId && isOpen) {
+      const loadProductData = async () => {
+        setIsLoading(true);
+        try {
+          const result = await getProduct(productId);
+          if (result && result.data) {
+            const fetchedProduct = result.data;
+            setProduct(fetchedProduct);
+            reset({
+              name: fetchedProduct.name,
+              description: fetchedProduct.description || '',
+              sku: fetchedProduct.sku,
+              barcode: fetchedProduct.barcode || '',
+              categoryId: fetchedProduct.categoryId,
+              brandId: fetchedProduct.brandId || '',
+              supplierId: fetchedProduct.supplierId || '',
+              condition: fetchedProduct.condition || 'new',
+              storeLocationId: '', // Will be set based on shelf lookup
+              storeShelf: fetchedProduct.storeShelf || '',
+              price: fetchedProduct.price || 0,
+              costPrice: fetchedProduct.costPrice || 0,
+              stockQuantity: fetchedProduct.stockQuantity || 0,
+              minStockLevel: fetchedProduct.minStockLevel || 0,
+              weight: fetchedProduct.weight || 0,
+              tags: fetchedProduct.tags || []
+            });
+            setCurrentTags(fetchedProduct.tags || []);
 
-      setCurrentTags(product.tags || []);
-
-      // If product has a shelf, find the location
-      if (product.storeShelf) {
-        findLocationForShelf(product.storeShelf);
-      }
+            // If product has a shelf, find the location
+            if (fetchedProduct.storeShelf) {
+              findLocationForShelf(fetchedProduct.storeShelf);
+            }
+          } else {
+            toast.error('Failed to load product data');
+            onClose();
+          }
+        } catch (error) {
+          console.error('Error loading product data:', error);
+          toast.error('Failed to load product data');
+          onClose();
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      loadProductData();
     }
-  }, [product, isOpen, reset]);
+  }, [productId, isOpen, reset, getProduct, onClose]);
 
   // Find location for existing shelf
   const findLocationForShelf = async (shelfCode: string) => {
     try {
-      const allShelves = await storeShelfApi.getAll();
-      const shelf = allShelves.find(s => s.code === shelfCode);
-      if (shelf) {
-        setValue('storeLocationId', shelf.store_location_id);
-      }
+      // TODO: Implement shelf lookup logic
+      // const allShelves = await shelfApi.getAll();
+      // const shelf = allShelves.find(s => s.code === shelfCode);
+      // if (shelf) {
+      //   setValue('storeLocationId', shelf.store_location_id);
+      // }
     } catch (error) {
       console.error('Error finding location for shelf:', error);
     }
@@ -216,16 +255,23 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
     setCurrentTags([]);
     setTagInput('');
     setStoreLocations([]);
-    setShelves([]);
+    ;
     onClose();
   };
 
   const handleFormSubmit = async (data: EditProductFormData) => {
     try {
-      await onSubmit(data);
-      handleClose();
+      const result = await updateProduct(productId, data);
+      if (result.ok) {
+        toast.success('Product updated successfully!');
+        onProductUpdated?.(result.data);
+        handleClose();
+      } else {
+        toast.error(result.message || 'Failed to update product');
+      }
     } catch (error) {
       console.error('Error submitting form:', error);
+      toast.error('Failed to update product');
     }
   };
 
@@ -304,7 +350,7 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
                     error={errors.categoryId?.message}
                   >
                     <option value="">{t('Select Category')}</option>
-                    {categories.map((category) => (
+                    {(categories || [])?.map((category) => (
                       <option key={category.id} value={category.id}>
                         {category.name}
                       </option>
@@ -323,7 +369,7 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
                     error={errors.brandId?.message}
                   >
                     <option value="">{t('Select Brand')}</option>
-                    {brands.map((brand) => (
+                    {(brands || [])?.map((brand) => (
                       <option key={brand.id} value={brand.id}>
                         {brand.name}
                       </option>
@@ -350,7 +396,7 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
                       error={errors.storeLocationId?.message}
                     >
                       <option value="">{loadingLocations ? t('Loading...') : t('Select Store Location')}</option>
-                      {storeLocations.map((location) => (
+                      {(storeLocations || [])?.map((location) => (
                         <option key={location.id} value={location.id}>
                           {location.name} ({location.city})
                         </option>
@@ -382,22 +428,22 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
                             : t('Select Shelf')
                         }
                       </option>
-                      {shelves.map((shelf) => (
+                      {(shelves || [])?.map((shelf) => (
                         <option key={shelf.id} value={shelf.code}>
                           {shelf.name} ({shelf.code}) - {shelf.current_capacity}/{shelf.max_capacity || '∞'}
                         </option>
                       ))}
                     </GlassSelect>
-                    {selectedLocationId && shelves.length === 0 && !loadingShelves && (
+                    {selectedLocationId && (shelves || []).length === 0 && !loadingShelves && (
                       <p className="text-sm text-gray-500 mt-1">
                         No shelves found for this location. 
                         <button
                           type="button"
-                          onClick={() => window.open('/shelf-management', '_blank')}
+                          onClick={() => window.open('/lats/inventory-management?shelves', '_blank')}
                           className="text-blue-600 hover:text-blue-800 ml-1 underline"
-                        >
-                          Create shelves
-                        </button>
+                                                  >
+                            Manage shelves
+                          </button>
                       </p>
                     )}
                   </div>
@@ -496,7 +542,7 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
                     error={errors.supplierId?.message}
                   >
                     <option value="">{t('Select Supplier')}</option>
-                    {suppliers.map((supplier) => (
+                    {(suppliers || [])?.map((supplier) => (
                       <option key={supplier.id} value={supplier.id}>
                         {supplier.name}
                       </option>
@@ -530,9 +576,9 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
                     {t('Add')}
                   </GlassButton>
                 </div>
-                {currentTags.length > 0 && (
+                {(currentTags || [])?.length > 0 && (
                   <div className="flex flex-wrap gap-2">
-                    {currentTags.map((tag, index) => (
+                    {(currentTags || [])?.map((tag, index) => (
                       <GlassBadge
                         key={index}
                         variant="info"
@@ -559,16 +605,16 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
                 type="button"
                 onClick={handleClose}
                 variant="secondary"
-                disabled={isSubmitting || loading}
+                disabled={isSubmitting || isLoading}
               >
                 {t('Cancel')}
               </GlassButton>
               <GlassButton
                 type="submit"
-                disabled={isSubmitting || loading}
+                disabled={isSubmitting || isLoading}
                 className="flex items-center space-x-2"
               >
-                {isSubmitting || loading ? (
+                {isSubmitting || isLoading ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                     <span>{t('Saving...')}</span>

@@ -10,6 +10,4 @@ export * from './components/StoreLocationCard';
 export * from './components/ShelfManagementTab';
 
 export * from './types/storeLocation';
-export * from './types/storeShelf';
 export * from './utils/storeLocationApi';
-export * from './utils/storeShelfApi';

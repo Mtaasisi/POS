@@ -57,6 +57,7 @@ export interface Database {
           last_visit: string
           is_active: boolean
           whatsapp: string | null
+
           referral_source: string | null
           birth_month: string | null
           birth_day: string | null
@@ -351,7 +352,7 @@ export interface Database {
           customer_id: string
           title: string
           content: string
-          sent_via: 'sms' | 'whatsapp' | 'email'
+          sent_via: 'sms' | 'email'
           sent_at: string
           status: 'sent' | 'delivered' | 'failed'
         }
@@ -360,7 +361,7 @@ export interface Database {
           customer_id: string
           title: string
           content: string
-          sent_via: 'sms' | 'whatsapp' | 'email'
+          sent_via: 'sms' | 'email'
           sent_at?: string
           status?: 'sent' | 'delivered' | 'failed'
         }
@@ -369,7 +370,7 @@ export interface Database {
           customer_id?: string
           title?: string
           content?: string
-          sent_via?: 'sms' | 'whatsapp' | 'email'
+          sent_via?: 'sms' | 'email'
           sent_at?: string
           status?: 'sent' | 'delivered' | 'failed'
         }

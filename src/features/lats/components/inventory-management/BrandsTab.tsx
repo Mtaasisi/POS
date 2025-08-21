@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useBrands } from '../../../../hooks/useBrands';
+import { useCategories } from '../../../../hooks/useCategories';
+import BrandForm from '../inventory/BrandForm';
 
 interface Brand {
   id: string;
@@ -25,15 +27,18 @@ interface Brand {
 
 interface BrandFormData {
   name: string;
-  description: string;
-  website: string;
-  contact_email: string;
-  contact_phone: string;
-  category: string;
+  description?: string;
+  logo_url?: string;
+  website?: string;
+  contact_email?: string;
+  contact_phone?: string;
+  category?: string;
+  is_active?: boolean;
 }
 
 const BrandsTab: React.FC = () => {
   const { brands, loading, refreshBrands, createBrand, updateBrand, deleteBrand } = useBrands();
+  const { categories: categoryData } = useCategories({ activeOnly: true });
   const [filteredBrands, setFilteredBrands] = useState<Brand[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -41,30 +46,14 @@ const BrandsTab: React.FC = () => {
   const [editingBrand, setEditingBrand] = useState<Brand | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [formData, setFormData] = useState<BrandFormData>({
-    name: '',
-    description: '',
-    website: '',
-    contact_email: '',
-    contact_phone: '',
-    category: ''
-  });
 
+  // Prepare categories for the select dropdown
   const categories = [
     { value: 'all', label: 'All Categories' },
-    { value: 'phone', label: 'Phone' },
-    { value: 'laptop', label: 'Laptop' },
-    { value: 'tablet', label: 'Tablet' },
-    { value: 'desktop', label: 'Desktop' },
-    { value: 'printer', label: 'Printer' },
-    { value: 'smartwatch', label: 'Smartwatch' },
-    { value: 'headphones', label: 'Headphones' },
-    { value: 'speaker', label: 'Speaker' },
-    { value: 'camera', label: 'Camera' },
-    { value: 'gaming', label: 'Gaming' },
-    { value: 'accessories', label: 'Accessories' },
-    { value: 'other', label: 'Other' }
+    ...categoryData.map(cat => ({ value: cat.name, label: cat.name }))
   ];
+
+
 
   // Filter brands based on search and category
   useEffect(() => {
@@ -86,27 +75,11 @@ const BrandsTab: React.FC = () => {
 
   const handleAddBrand = () => {
     setEditingBrand(null);
-    setFormData({
-      name: '',
-      description: '',
-      website: '',
-      contact_email: '',
-      contact_phone: '',
-      category: ''
-    });
     setShowBrandForm(true);
   };
 
   const handleEditBrand = (brand: Brand) => {
     setEditingBrand(brand);
-    setFormData({
-      name: brand.name,
-      description: brand.description || '',
-      website: brand.website || '',
-      contact_email: brand.contact_email || '',
-      contact_phone: brand.contact_phone || '',
-      category: brand.category || ''
-    });
     setShowBrandForm(true);
   };
 
@@ -125,37 +98,40 @@ const BrandsTab: React.FC = () => {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmitBrand = async (brandData: BrandFormData) => {
     setIsSubmitting(true);
 
     try {
       if (editingBrand) {
         const updatedBrand = await updateBrand(editingBrand.id, {
-          name: formData.name,
-          description: formData.description,
-          website: formData.website,
-          contact_email: formData.contact_email,
-          contact_phone: formData.contact_phone,
-          category: formData.category
+          name: brandData.name,
+          description: brandData.description || '',
+          logo_url: brandData.logo_url || '',
+          website: brandData.website || '',
+          contact_email: brandData.contact_email || '',
+          contact_phone: brandData.contact_phone || '',
+          category: brandData.category || ''
         });
         if (updatedBrand) {
           setShowBrandForm(false);
           refreshBrands();
+          toast.success('Brand updated successfully');
         }
       } else {
         const newBrand = await createBrand({
-          name: formData.name,
-          description: formData.description,
-          website: formData.website,
-          contact_email: formData.contact_email,
-          contact_phone: formData.contact_phone,
-          category: formData.category,
-          is_active: true
+          name: brandData.name,
+          description: brandData.description || '',
+          logo_url: brandData.logo_url || '',
+          website: brandData.website || '',
+          contact_email: brandData.contact_email || '',
+          contact_phone: brandData.contact_phone || '',
+          category: brandData.category || '',
+          is_active: brandData.is_active ?? true
         });
         if (newBrand) {
           setShowBrandForm(false);
           refreshBrands();
+          toast.success('Brand created successfully');
         }
       }
     } catch (error) {
@@ -165,9 +141,7 @@ const BrandsTab: React.FC = () => {
     }
   };
 
-  const handleInputChange = (field: keyof BrandFormData, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-  };
+
 
   return (
     <div className="space-y-6">
@@ -313,112 +287,13 @@ const BrandsTab: React.FC = () => {
       {/* Brand Form Modal */}
       {showBrandForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                {editingBrand ? 'Edit Brand' : 'Add New Brand'}
-              </h3>
-              
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Brand Name *
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => handleInputChange('name', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Description
-                  </label>
-                  <textarea
-                    value={formData.description}
-                    onChange={(e) => handleInputChange('description', e.target.value)}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Category
-                  </label>
-                  <select
-                    value={formData.category}
-                    onChange={(e) => handleInputChange('category', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="">Select category</option>
-                    {categories.filter(cat => cat.value !== 'all').map(category => (
-                      <option key={category.value} value={category.value}>
-                        {category.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Website
-                  </label>
-                  <input
-                    type="url"
-                    value={formData.website}
-                    onChange={(e) => handleInputChange('website', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="https://example.com"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Contact Email
-                  </label>
-                  <input
-                    type="email"
-                    value={formData.contact_email}
-                    onChange={(e) => handleInputChange('contact_email', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Contact Phone
-                  </label>
-                  <input
-                    type="tel"
-                    value={formData.contact_phone}
-                    onChange={(e) => handleInputChange('contact_phone', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-
-                <div className="flex gap-3 pt-4">
-                  <GlassButton
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 text-white"
-                  >
-                    {isSubmitting ? 'Saving...' : (editingBrand ? 'Update Brand' : 'Add Brand')}
-                  </GlassButton>
-                  <GlassButton
-                    type="button"
-                    onClick={() => setShowBrandForm(false)}
-                    variant="secondary"
-                    className="flex-1"
-                  >
-                    Cancel
-                  </GlassButton>
-                </div>
-              </form>
-            </div>
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <BrandForm
+              brand={editingBrand || undefined}
+              onSubmit={handleSubmitBrand}
+              onCancel={() => setShowBrandForm(false)}
+              loading={isSubmitting}
+            />
           </div>
         </div>
       )}

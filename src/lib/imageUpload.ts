@@ -109,7 +109,7 @@ export class ImageUploadService {
       }
       
       // Handle temporary product IDs (don't create database records yet)
-      if (productId.startsWith('temp-product-') || productId.startsWith('test-product-')) {
+      if (productId.startsWith('temp-product-') || productId.startsWith('test-product-') || productId.startsWith('temp-sparepart-')) {
         console.log('📝 DEBUG: Uploading to storage only for temporary product:', productId);
         
         const uploadedImage: UploadedImage = {
@@ -427,7 +427,7 @@ export class ImageUploadService {
   static async getProductImages(productId: string): Promise<UploadedImage[]> {
     try {
       // Check if productId is a temporary ID and get from development storage
-      if (productId.startsWith('temp-product-') || productId.startsWith('test-product-')) {
+      if (productId.startsWith('temp-product-') || productId.startsWith('test-product-') || productId.startsWith('temp-sparepart-')) {
         console.log('📝 Getting images from development storage for temporary product:', productId);
         // Import the EnhancedImageUploadService to access development storage
         const { EnhancedImageUploadService } = await import('./enhancedImageUpload');

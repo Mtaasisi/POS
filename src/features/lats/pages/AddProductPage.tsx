@@ -29,9 +29,7 @@ import { getActiveBrands, Brand } from '../../../lib/brandApi';
 import { getActiveCategories, Category } from '../../../lib/categoryApi';
 import { getActiveSuppliers, Supplier } from '../../../lib/supplierApi';
 import { StoreLocation } from '../../settings/types/storeLocation';
-import { StoreShelf } from '../../settings/types/storeShelf';
 import { storeLocationApi } from '../../settings/utils/storeLocationApi';
-import { storeShelfApi } from '../../settings/utils/storeShelfApi';
 
 // ProductImage interface for form validation
 const ProductImageSchema = z.object({
@@ -66,7 +64,7 @@ const productFormSchema = z.object({
   brandId: z.string().optional(),
   supplierId: z.string().optional(),
   condition: z.string().min(1, 'Product condition must be selected'),
-  storeShelf: z.string().optional(),
+  
   price: z.number().min(0, 'Price must be 0 or greater'),
   costPrice: z.number().min(0, 'Cost price must be 0 or greater'),
   stockQuantity: z.number().min(0, 'Stock quantity must be 0 or greater'),
@@ -86,9 +84,10 @@ const AddProductPage: React.FC = () => {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [storeLocations, setStoreLocations] = useState<StoreLocation[]>([]);
-  const [shelves, setShelves] = useState<StoreShelf[]>([]);
+  const [shelves, setShelves] = useState<any[]>([]);
+
   const [loadingLocations, setLoadingLocations] = useState(false);
-  const [loadingShelves, setLoadingShelves] = useState(false);
+
   const [loading, setLoading] = useState(false);
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [currentErrors, setCurrentErrors] = useState<Record<string, string>>({});
@@ -103,7 +102,7 @@ const AddProductPage: React.FC = () => {
     supplierId: '',
     condition: '',
     storeLocationId: '',
-    storeShelf: '',
+
     price: 0,
     costPrice: 0,
     stockQuantity: 0,
@@ -842,14 +841,15 @@ const AddProductPage: React.FC = () => {
       }
 
       try {
-        setLoadingShelves(true);
-        const locationShelves = await storeShelfApi.getShelvesByLocation(formData.storeLocationId);
-        setShelves(locationShelves);
+        // TODO: Implement shelf loading logic
+        // For now, set empty array to prevent error
+        setShelves([]);
+        // const locationShelves = await shelfApi.getByLocation(formData.storeLocationId);
+        // setShelves(locationShelves);
       } catch (error) {
         console.error('Error loading shelves:', error);
         toast.error('Failed to load shelves');
-      } finally {
-        setLoadingShelves(false);
+        setShelves([]);
       }
     };
 
@@ -971,8 +971,6 @@ const AddProductPage: React.FC = () => {
                     )}
                   </div>
                   </div>
-                  
-
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   
@@ -1054,9 +1052,7 @@ const AddProductPage: React.FC = () => {
                       </div>
                     )}
                   </div>
-                  
 
-                  
                   {/* Store Location and Shelf Selection */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* Store Location */}
@@ -1075,7 +1071,7 @@ const AddProductPage: React.FC = () => {
                         onChange={e => setFormData(prev => ({ 
                           ...prev, 
                           storeLocationId: e.target.value,
-                          storeShelf: '' // Reset shelf when location changes
+                          
                         }))}
                       >
                         <option value="">Select Store Location</option>
@@ -1099,8 +1095,7 @@ const AddProductPage: React.FC = () => {
                       <select
                         id="store-shelf-select"
                         className="w-full py-3 px-3 bg-white/30 backdrop-blur-md border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none transition-colors"
-                        value={formData.storeShelf}
-                        onChange={e => setFormData(prev => ({ ...prev, storeShelf: e.target.value }))}
+
                         disabled={!formData.storeLocationId}
                       >
                         <option value="">
@@ -1115,20 +1110,7 @@ const AddProductPage: React.FC = () => {
                           </option>
                         ))}
                       </select>
-                      {formData.storeLocationId && shelves.length === 0 && (
-                        <div className="mt-2 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-                          <div className="text-sm text-yellow-800">
-                            No shelves found for this location. 
-                            <button
-                              type="button"
-                              onClick={() => window.open('/shelf-management', '_blank')}
-                              className="text-blue-600 hover:text-blue-800 ml-1 underline"
-                            >
-                              Create shelves
-                            </button>
-                          </div>
-                        </div>
-                      )}
+                      
                     </div>
                   </div>
                   
@@ -1197,8 +1179,6 @@ const AddProductPage: React.FC = () => {
                     )}
                   </div>
                 </div>
-
-
 
                 {/* Condition Buttons */}
                 <div>
@@ -1971,10 +1951,6 @@ const AddProductPage: React.FC = () => {
                     />
                   </div>
                 </div>
-
-
-
-
 
                 {/* Submit Button */}
                <div className="flex justify-end gap-2 mt-6">

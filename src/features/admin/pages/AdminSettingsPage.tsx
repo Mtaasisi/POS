@@ -119,12 +119,7 @@ interface SystemSettings {
       dailyLimit: number;
       usedToday: number;
     };
-    whatsapp: {
-      provider: string;
-      status: 'active' | 'inactive' | 'error';
-      connected: boolean;
-      lastMessage: string;
-    };
+    
     ai: {
       provider: string;
       status: 'active' | 'inactive' | 'error';
@@ -552,6 +547,13 @@ const AdminSettingsPage: React.FC = () => {
               <p className="text-gray-600 mt-2">Manage system configuration, backend settings, and database connections</p>
             </div>
             <div className="flex gap-2">
+              <GlassButton
+                onClick={() => window.location.href = '/integration-testing'}
+                className="flex items-center gap-2 bg-green-600 hover:bg-green-700"
+              >
+                <TestTube className="w-4 h-4" />
+                Test Integrations
+              </GlassButton>
               <GlassButton
                 onClick={loadSystemSettings}
                 disabled={loading}
@@ -1913,13 +1915,7 @@ const IntegrationsSettings: React.FC<{
       color: 'text-blue-600',
       bgColor: 'from-blue-50 to-indigo-50'
     },
-    {
-      id: 'whatsapp',
-      name: 'WhatsApp Service',
-      icon: MessageCircle,
-      color: 'text-green-600',
-      bgColor: 'from-green-50 to-emerald-50'
-    },
+    
     {
       id: 'ai',
       name: 'AI Service',
@@ -2062,47 +2058,7 @@ const IntegrationsSettings: React.FC<{
                     </div>
                   )}
 
-                  {integration.id === 'whatsapp' && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Provider
-                        </label>
-                        <GlassInput
-                          type="text"
-                          value={integrationSettings.provider}
-                          onChange={(e) => setLocalSettings(prev => ({
-                            ...prev,
-                            whatsapp: { ...prev.whatsapp, provider: e.target.value }
-                          }))}
-                          className="w-full"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Connection Status
-                        </label>
-                        <div className="flex items-center gap-2">
-                          {integrationSettings.connected ? (
-                            <CheckCircle className="w-4 h-4 text-green-500" />
-                          ) : (
-                            <AlertCircle className="w-4 h-4 text-red-500" />
-                          )}
-                          <span className="text-sm">
-                            {integrationSettings.connected ? 'Connected' : 'Disconnected'}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Last Message
-                        </label>
-                        <div className="text-sm text-gray-600">
-                          {integrationSettings.lastMessage || 'No messages sent'}
-                        </div>
-                      </div>
-                    </div>
-                  )}
+          
 
                   {integration.id === 'ai' && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

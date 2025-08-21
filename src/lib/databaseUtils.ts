@@ -132,8 +132,6 @@ export const COMMON_TABLES = {
   CUSTOMERS: 'customers',
   PRODUCTS: 'lats_products',
   SALES: 'lats_sales',
-  WHATSAPP_MESSAGES: 'whatsapp_messages',
-  WHATSAPP_CHATS: 'whatsapp_chats',
   NOTIFICATION_SETTINGS: 'notification_settings',
   CATEGORIES: 'lats_categories',
   BRANDS: 'lats_brands',

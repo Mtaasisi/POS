@@ -29,11 +29,7 @@ vercel --prod
    - Set project name (e.g., "lats-chance")
    - Confirm deployment settings
 
-4. **Get your webhook URL**:
-After deployment, your webhook will be available at:
-```
-https://your-project-name.vercel.app/api/chrome-extension-webhook
-```
+
 
 ### Environment Variables
 
@@ -121,34 +117,41 @@ After deployment, test your webhook:
 
 1. **Test the endpoint**:
 ```bash
-curl -X GET https://your-domain.com/api/chrome-extension-webhook
+curl -X GET https://your-domain.com/api/whatsapp-business-webhook
 ```
 
 2. **Test with a POST request**:
 ```bash
-curl -X POST https://your-domain.com/api/chrome-extension-webhook \
+curl -X POST https://your-domain.com/api/whatsapp-business-webhook \
   -H "Content-Type: application/json" \
   -d '{
-    "type": "message",
-    "data": {
-      "id": "test_123",
-      "chatId": "test_chat",
-      "content": "Hello world",
-      "type": "text",
-      "timestamp": 1234567890,
-      "isFromMe": false,
-      "customerPhone": "+1234567890",
-      "customerName": "Test User"
-    }
+    "object": "whatsapp_business_account",
+    "entry": [{
+      "id": "123456789",
+      "changes": [{
+        "value": {
+          "messaging_product": "whatsapp",
+          "metadata": {
+            "display_phone_number": "1234567890",
+            "phone_number_id": "123456789"
+          },
+          "messages": [{
+            "id": "test_123",
+            "from": "1234567890",
+            "timestamp": "1234567890",
+            "type": "text",
+            "text": {
+              "body": "Hello world"
+            }
+          }]
+        },
+        "field": "messages"
+      }]
+    }]
   }'
 ```
 
-## Chrome Extension Configuration
 
-Update your Chrome extension with the new webhook URL:
-
-1. **Webhook URL**: `https://your-domain.com/api/chrome-extension-webhook`
-2. **API Key**: `1755675069644-f5ab0e92276f1e3332d41ece111c6201`
 
 ## Monitoring
 
@@ -169,7 +172,7 @@ Your webhook logs will show:
 
 1. **CORS Errors**:
    - Ensure CORS headers are set in `vercel.json`
-   - Check if your Chrome extension is sending proper headers
+   - Check if your API is sending proper headers
 
 2. **Function Timeout**:
    - Vercel functions have a 10-second timeout
@@ -228,11 +231,10 @@ vercel env ls
 
 After deployment:
 
-1. **Update your Chrome extension** with the new webhook URL
-2. **Test the integration** thoroughly
-3. **Monitor performance** and logs
-4. **Set up alerts** for webhook failures
-5. **Document the setup** for your team
+1. **Test the integration** thoroughly
+2. **Monitor performance** and logs
+3. **Set up alerts** for failures
+4. **Document the setup** for your team
 
 ## Support
 
@@ -241,5 +243,5 @@ If you encounter issues:
 1. Check the deployment logs
 2. Verify environment variables
 3. Test the webhook endpoint
-4. Review the Chrome extension configuration
+4. Review the WhatsApp Business API configuration
 5. Contact support if needed

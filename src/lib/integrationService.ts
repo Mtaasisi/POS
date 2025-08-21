@@ -57,10 +57,7 @@ export const saveIntegration = async (integration: Omit<IntegrationConfig, 'id' 
       await updateSMSServiceConfig(integration.config);
     }
     
-    // Update WhatsApp service configuration if it's the WhatsApp integration
-    if (integration.type === 'whatsapp' && integration.provider === 'green-api') {
-      await updateWhatsAppServiceConfig(integration.config);
-    }
+
     
     toast.success(`${integration.name} configuration saved successfully`);
     return true;
@@ -90,25 +87,7 @@ const updateSMSServiceConfig = async (config: Record<string, any>) => {
   }
 };
 
-/**
- * Update WhatsApp service configuration dynamically
- */
-const updateWhatsAppServiceConfig = async (config: Record<string, any>) => {
-  try {
-    const { instance_id, api_key } = config;
-    
-    console.log('Updating WhatsApp service configuration:', {
-      instance_id,
-      api_key: api_key ? '***' : 'not set'
-    });
-    
-    // In a real implementation, you might update a global config or service instance
-    // For example: whatsappService.updateConfig({ instance_id, api_key });
-    
-  } catch (error) {
-    console.error('Error updating WhatsApp service config:', error);
-  }
-};
+
 
 /**
  * Delete integration from database
@@ -138,8 +117,7 @@ export const testIntegration = async (integration: IntegrationConfig): Promise<I
     switch (integration.type) {
       case 'sms':
         return await testSMSIntegration(integration);
-      case 'whatsapp':
-        return await testWhatsAppIntegration(integration);
+
       case 'ai':
         return await testAIIntegration(integration);
       case 'storage':
@@ -201,45 +179,7 @@ const testSMSIntegration = async (integration: IntegrationConfig): Promise<Integ
   }
 };
 
-/**
- * Test WhatsApp integration (Green API)
- */
-const testWhatsAppIntegration = async (integration: IntegrationConfig): Promise<IntegrationStatus> => {
-  try {
-    const { instance_id, api_key } = integration.config;
-    
-    if (!instance_id || !api_key) {
-      return {
-        isConnected: false,
-        lastCheck: new Date().toISOString(),
-        error: 'Missing credentials'
-      };
-    }
-    
-    // Test Green API connection
-    const response = await fetch(`https://api.green-api.com/waInstance${instance_id}/getStateInstance/${api_key}`);
-    const data = await response.json();
-    
-    if (data.stateInstance === 'authorized') {
-      return {
-        isConnected: true,
-        lastCheck: new Date().toISOString()
-      };
-    } else {
-      return {
-        isConnected: false,
-        lastCheck: new Date().toISOString(),
-        error: `WhatsApp not authorized: ${data.stateInstance}`
-      };
-    }
-  } catch (error) {
-    return {
-      isConnected: false,
-      lastCheck: new Date().toISOString(),
-      error: error instanceof Error ? error.message : 'Network error'
-    };
-  }
-};
+
 
 /**
  * Test AI integration (Gemini)

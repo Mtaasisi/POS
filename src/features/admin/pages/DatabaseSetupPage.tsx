@@ -121,7 +121,7 @@ const DatabaseSetupPage: React.FC = () => {
   const checkBrandsTable = async () => {
     try {
       const { data, error } = await supabase
-        .from('brands')
+        .from('lats_brands')
         .select('count')
         .limit(1);
 
@@ -143,14 +143,14 @@ const DatabaseSetupPage: React.FC = () => {
       const { error: migrationError } = await supabase.rpc('exec_sql', {
         sql: `
           -- First, let's create a backup of the current brands data
-          CREATE TABLE IF NOT EXISTS brands_backup AS SELECT * FROM brands;
+          CREATE TABLE IF NOT EXISTS lats_brands_backup AS SELECT * FROM lats_brands;
 
           -- Update the brands table to use categories as JSON array
-          ALTER TABLE brands 
-          DROP CONSTRAINT IF EXISTS brands_category_check;
+          ALTER TABLE lats_brands 
+          DROP CONSTRAINT IF EXISTS lats_brands_category_check;
 
           -- Change category column to JSON type to store multiple categories
-          ALTER TABLE brands 
+          ALTER TABLE lats_brands 
           ALTER COLUMN category TYPE JSONB USING 
             CASE 
               WHEN category IS NULL THEN '[]'::jsonb
@@ -159,40 +159,40 @@ const DatabaseSetupPage: React.FC = () => {
             END;
 
           -- Add a check constraint to ensure categories is always an array
-          ALTER TABLE brands 
-          ADD CONSTRAINT brands_categories_check 
+          ALTER TABLE lats_brands 
+          ADD CONSTRAINT lats_brands_categories_check 
           CHECK (jsonb_typeof(category) = 'array');
 
           -- Update existing brands with common multiple categories
-          UPDATE brands SET category = '["phone", "laptop", "tablet"]'::jsonb WHERE name ILIKE '%Apple%';
-          UPDATE brands SET category = '["phone", "laptop", "tablet", "desktop"]'::jsonb WHERE name ILIKE '%Samsung%';
-          UPDATE brands SET category = '["phone", "laptop", "tablet"]'::jsonb WHERE name ILIKE '%Google%';
-          UPDATE brands SET category = '["laptop", "desktop", "tablet"]'::jsonb WHERE name ILIKE '%Microsoft%';
-          UPDATE brands SET category = '["laptop", "desktop"]'::jsonb WHERE name ILIKE '%Lenovo%';
-          UPDATE brands SET category = '["laptop", "desktop", "printer"]'::jsonb WHERE name ILIKE '%HP%';
-          UPDATE brands SET category = '["laptop", "desktop"]'::jsonb WHERE name ILIKE '%Dell%';
-          UPDATE brands SET category = '["phone", "laptop", "tablet"]'::jsonb WHERE name ILIKE '%Huawei%';
-          UPDATE brands SET category = '["phone", "laptop", "tablet"]'::jsonb WHERE name ILIKE '%Xiaomi%';
-          UPDATE brands SET category = '["phone"]'::jsonb WHERE name ILIKE '%OnePlus%';
-          UPDATE brands SET category = '["phone", "laptop", "tablet"]'::jsonb WHERE name ILIKE '%Sony%';
-          UPDATE brands SET category = '["phone", "laptop", "tablet"]'::jsonb WHERE name ILIKE '%LG%';
-          UPDATE brands SET category = '["phone"]'::jsonb WHERE name ILIKE '%Motorola%';
-          UPDATE brands SET category = '["phone"]'::jsonb WHERE name ILIKE '%Nokia%';
-          UPDATE brands SET category = '["phone"]'::jsonb WHERE name ILIKE '%Tecno%';
-          UPDATE brands SET category = '["phone"]'::jsonb WHERE name ILIKE '%Infinix%';
-          UPDATE brands SET category = '["phone"]'::jsonb WHERE name ILIKE '%Itel%';
-          UPDATE brands SET category = '["phone"]'::jsonb WHERE name ILIKE '%HTC%';
-          UPDATE brands SET category = '["laptop", "desktop"]'::jsonb WHERE name ILIKE '%Asus%';
-          UPDATE brands SET category = '["laptop", "desktop"]'::jsonb WHERE name ILIKE '%Acer%';
-          UPDATE brands SET category = '["printer"]'::jsonb WHERE name ILIKE '%Canon%';
-          UPDATE brands SET category = '["printer"]'::jsonb WHERE name ILIKE '%Epson%';
-          UPDATE brands SET category = '["printer"]'::jsonb WHERE name ILIKE '%Brother%';
+          UPDATE lats_brands SET category = '["phone", "laptop", "tablet"]'::jsonb WHERE name ILIKE '%Apple%';
+          UPDATE lats_brands SET category = '["phone", "laptop", "tablet", "desktop"]'::jsonb WHERE name ILIKE '%Samsung%';
+          UPDATE lats_brands SET category = '["phone", "laptop", "tablet"]'::jsonb WHERE name ILIKE '%Google%';
+          UPDATE lats_brands SET category = '["laptop", "desktop", "tablet"]'::jsonb WHERE name ILIKE '%Microsoft%';
+          UPDATE lats_brands SET category = '["laptop", "desktop"]'::jsonb WHERE name ILIKE '%Lenovo%';
+          UPDATE lats_brands SET category = '["laptop", "desktop", "printer"]'::jsonb WHERE name ILIKE '%HP%';
+          UPDATE lats_brands SET category = '["laptop", "desktop"]'::jsonb WHERE name ILIKE '%Dell%';
+          UPDATE lats_brands SET category = '["phone", "laptop", "tablet"]'::jsonb WHERE name ILIKE '%Huawei%';
+          UPDATE lats_brands SET category = '["phone", "laptop", "tablet"]'::jsonb WHERE name ILIKE '%Xiaomi%';
+          UPDATE lats_brands SET category = '["phone"]'::jsonb WHERE name ILIKE '%OnePlus%';
+          UPDATE lats_brands SET category = '["phone", "laptop", "tablet"]'::jsonb WHERE name ILIKE '%Sony%';
+          UPDATE lats_brands SET category = '["phone", "laptop", "tablet"]'::jsonb WHERE name ILIKE '%LG%';
+          UPDATE lats_brands SET category = '["phone"]'::jsonb WHERE name ILIKE '%Motorola%';
+          UPDATE lats_brands SET category = '["phone"]'::jsonb WHERE name ILIKE '%Nokia%';
+          UPDATE lats_brands SET category = '["phone"]'::jsonb WHERE name ILIKE '%Tecno%';
+          UPDATE lats_brands SET category = '["phone"]'::jsonb WHERE name ILIKE '%Infinix%';
+          UPDATE lats_brands SET category = '["phone"]'::jsonb WHERE name ILIKE '%Itel%';
+          UPDATE lats_brands SET category = '["phone"]'::jsonb WHERE name ILIKE '%HTC%';
+          UPDATE lats_brands SET category = '["laptop", "desktop"]'::jsonb WHERE name ILIKE '%Asus%';
+          UPDATE lats_brands SET category = '["laptop", "desktop"]'::jsonb WHERE name ILIKE '%Acer%';
+          UPDATE lats_brands SET category = '["printer"]'::jsonb WHERE name ILIKE '%Canon%';
+          UPDATE lats_brands SET category = '["printer"]'::jsonb WHERE name ILIKE '%Epson%';
+          UPDATE lats_brands SET category = '["printer"]'::jsonb WHERE name ILIKE '%Brother%';
 
           -- Update any remaining brands that don't have categories set
-          UPDATE brands SET category = '["other"]'::jsonb WHERE category IS NULL OR category = '[]'::jsonb;
+          UPDATE lats_brands SET category = '["other"]'::jsonb WHERE category IS NULL OR category = '[]'::jsonb;
 
           -- Create an index for better performance when querying by categories
-          CREATE INDEX IF NOT EXISTS idx_brands_categories ON brands USING GIN (category);
+          CREATE INDEX IF NOT EXISTS idx_lats_brands_categories ON lats_brands USING GIN (category);
 
           -- Add a function to check if a brand has a specific category
           CREATE OR REPLACE FUNCTION brand_has_category(brand_categories JSONB, search_category TEXT)

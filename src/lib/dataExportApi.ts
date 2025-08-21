@@ -178,8 +178,6 @@ export const exportDatabaseSchema = async (): Promise<Blob> => {
       'spare_parts',
       'sms_logs',
       'sms_campaigns',
-      'whatsapp_messages',
-      'whatsapp_campaigns',
       'customer_checkins',
       'staff_points',
       'user_daily_goals',
@@ -210,7 +208,7 @@ export const exportDatabaseSchema = async (): Promise<Blob> => {
         'points integer DEFAULT 0',
         'last_visit timestamp with time zone',
         'is_active boolean DEFAULT true',
-        'whatsapp text',
+    
         'referral_source text',
         'birth_month text',
         'birth_day text',
@@ -329,25 +327,7 @@ export const exportDatabaseSchema = async (): Promise<Blob> => {
         'created_by uuid',
         'created_at timestamp with time zone DEFAULT now()'
       ],
-      whatsapp_messages: [
-        'id uuid PRIMARY KEY DEFAULT gen_random_uuid()',
-        'phone_number text NOT NULL',
-        'message text NOT NULL',
-        'status text DEFAULT \'sent\'',
-        'sent_at timestamp with time zone DEFAULT now()',
-        'delivery_status text',
-        'created_by uuid'
-      ],
-      whatsapp_campaigns: [
-        'id uuid PRIMARY KEY DEFAULT gen_random_uuid()',
-        'name text NOT NULL',
-        'message text NOT NULL',
-        'target_customers text[]',
-        'status text DEFAULT \'draft\'',
-        'sent_at timestamp with time zone',
-        'created_by uuid',
-        'created_at timestamp with time zone DEFAULT now()'
-      ],
+  
       customer_checkins: [
         'id uuid PRIMARY KEY DEFAULT gen_random_uuid()',
         'customer_id uuid REFERENCES customers(id)',

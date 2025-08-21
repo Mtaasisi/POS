@@ -101,7 +101,7 @@ const CustomersPage = () => {
   const [tagFilterMulti, setTagFilterMulti] = useState<string[]>([]);
   const [referralFilterMulti, setReferralFilterMulti] = useState<string[]>([]);
   const [birthdayFilter, setBirthdayFilter] = useState(false);
-  const [whatsappFilter, setWhatsappFilter] = useState(false);
+
 
   // Appointments state
   const [activeTab, setActiveTab] = useState<'customers' | 'appointments'>('customers');
@@ -595,7 +595,7 @@ const CustomersPage = () => {
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, loyaltyFilterMulti, statusFilterMulti, tagFilterMulti, referralFilterMulti, birthdayFilter, whatsappFilter, showInactive, sortBy]);
+  }, [searchQuery, loyaltyFilterMulti, statusFilterMulti, tagFilterMulti, referralFilterMulti, birthdayFilter, showInactive, sortBy]);
 
   // Clean filter implementation - now works with server-side search
   const filteredCustomers = useMemo(() => {
@@ -642,12 +642,7 @@ const CustomersPage = () => {
       );
     }
 
-    // WhatsApp filter
-    if (whatsappFilter) {
-      filtered = filtered.filter(customer => 
-        customer.whatsapp && customer.whatsapp.trim() !== ''
-      );
-    }
+
 
     // Inactive filter
     if (showInactive) {
@@ -684,7 +679,7 @@ const CustomersPage = () => {
     tagFilterMulti, 
     referralFilterMulti, 
     birthdayFilter, 
-    whatsappFilter, 
+ 
     showInactive, 
     sortBy
   ]);
@@ -1499,8 +1494,7 @@ const CustomersPage = () => {
         onReferralFilterChange={setReferralFilterMulti}
         birthdayFilter={birthdayFilter}
         onBirthdayFilterChange={setBirthdayFilter}
-        whatsappFilter={whatsappFilter}
-        onWhatsappFilterChange={setWhatsappFilter}
+
         showInactive={showInactive}
         onShowInactiveChange={setShowInactive}
         sortBy={sortBy}
@@ -1635,12 +1629,7 @@ const CustomersPage = () => {
                             <Phone className="w-3 h-3 text-gray-500" />
                             <span className="text-gray-900">{customer.phone}</span>
                           </div>
-                          {customer.whatsapp && (
-                            <div className="flex items-center gap-1 text-xs text-green-600">
-                              <MessageSquare className="w-3 h-3" />
-                              <span>{customer.whatsapp}</span>
-                            </div>
-                          )}
+
                           {customer.referralSource && (
                             <div className="flex items-center gap-1 text-xs text-purple-600">
                               <Tag className="w-3 h-3" />
@@ -1793,13 +1782,7 @@ const CustomersPage = () => {
                   <span className="text-gray-700">{customer.phone}</span>
                 </div>
                 
-                {/* WhatsApp and Referral Source */}
-                {customer.whatsapp && (
-                  <div className="flex items-center gap-2 text-xs text-green-600 mb-1">
-                    <MessageSquare className="w-3 h-3" />
-                    <span>WhatsApp: {customer.whatsapp}</span>
-                  </div>
-                )}
+
                 
                 {customer.referralSource && (
                   <div className="flex items-center gap-2 text-xs text-purple-600 mb-1">

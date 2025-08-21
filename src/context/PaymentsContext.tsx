@@ -91,7 +91,7 @@ export const PaymentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           id: payment.id,
           customer_id: payment.customer_id,
           amount: payment.amount,
-          method: payment.payment_method,
+          method: payment.method,
           device_id: payment.device_id,
           payment_date: payment.payment_date,
           payment_type: payment.payment_type,

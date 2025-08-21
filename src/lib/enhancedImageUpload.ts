@@ -219,7 +219,7 @@ export class EnhancedImageUploadService {
         });
         
         // Fallback: Store image locally for temporary products
-        if (productId.startsWith('temp-product-') || productId.startsWith('test-product-')) {
+        if (productId.startsWith('temp-product-') || productId.startsWith('test-product-') || productId.startsWith('temp-sparepart-')) {
           console.log('🔄 Attempting local fallback for temporary product...');
           try {
             const localImageUrl = URL.createObjectURL(file);
@@ -309,7 +309,7 @@ export class EnhancedImageUploadService {
       }
 
       // Handle temporary product IDs (don't create database records yet)
-      if (productId.startsWith('temp-product-') || productId.startsWith('test-product-')) {
+      if (productId.startsWith('temp-product-') || productId.startsWith('test-product-') || productId.startsWith('temp-sparepart-')) {
         console.log('📝 Skipping database record for temporary product:', productId);
         
         const uploadedImage: UploadedImage = {
@@ -437,7 +437,7 @@ export class EnhancedImageUploadService {
   static async deleteImage(imageId: string, bucket: string = 'product-images', productId?: string): Promise<UploadResult> {
     try {
       // Handle temporary products
-      if (productId && (productId.startsWith('temp-product-') || productId.startsWith('test-product-'))) {
+      if (productId && (productId.startsWith('temp-product-') || productId.startsWith('test-product-') || productId.startsWith('temp-sparepart-'))) {
         console.log('📝 Deleting image for temporary product:', productId, 'imageId:', imageId);
         
         const devImages = this.devImageStorage.get(productId) || [];
@@ -514,7 +514,7 @@ export class EnhancedImageUploadService {
   static async setPrimaryImage(imageId: string, productId?: string): Promise<UploadResult> {
     try {
       // Handle temporary products
-      if (productId && (productId.startsWith('temp-product-') || productId.startsWith('test-product-'))) {
+      if (productId && (productId.startsWith('temp-product-') || productId.startsWith('test-product-') || productId.startsWith('temp-sparepart-'))) {
         console.log('📝 Setting primary image for temporary product:', productId, 'imageId:', imageId);
         
         const devImages = this.devImageStorage.get(productId) || [];

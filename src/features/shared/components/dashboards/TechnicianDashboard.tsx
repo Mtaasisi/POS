@@ -116,9 +116,8 @@ const TechnicianDashboard: React.FC<TechnicianDashboardProps> = ({
 
 
 
-  // Filter devices for technician role - show only assigned devices by default, excluding completed devices
+  // Filter devices for technician role - devices are already filtered at DB level, just exclude completed devices
   const technicianDevices = devices.filter(device => 
-    device.assignedTo === currentUser?.id && 
     device.status !== 'repair-complete' && 
     device.status !== 'done'
   );
@@ -147,7 +146,7 @@ const TechnicianDashboard: React.FC<TechnicianDashboardProps> = ({
     return filtered;
   }, [technicianDevices, searchQuery, statusFilter]);
 
-  // Get priority devices - use technicianDevices (all assigned) for accurate counts
+  // Get priority devices - filter for current technician since these functions return all devices
   const dueToday = getDevicesDueToday().filter(d => d.assignedTo === currentUser?.id);
   const overdue = getOverdueDevices().filter(d => d.assignedTo === currentUser?.id);
   const inProgress = technicianDevices.filter(d => 

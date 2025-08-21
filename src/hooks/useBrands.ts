@@ -43,7 +43,7 @@ export const useBrands = (options: UseBrandsOptions = {}): UseBrandsReturn => {
     
     try {
       const { data, error: fetchError } = await supabase
-        .from('brands')
+        .from('lats_brands')
         .select('*')
         .order('name');
 
@@ -64,7 +64,7 @@ export const useBrands = (options: UseBrandsOptions = {}): UseBrandsReturn => {
   const createBrand = async (brand: Omit<Brand, 'id' | 'created_at' | 'updated_at'>): Promise<Brand | null> => {
     try {
       const { data, error: createError } = await supabase
-        .from('brands')
+        .from('lats_brands')
         .insert([brand])
         .select()
         .single();
@@ -87,7 +87,7 @@ export const useBrands = (options: UseBrandsOptions = {}): UseBrandsReturn => {
   const updateBrand = async (id: string, updates: Partial<Brand>): Promise<Brand | null> => {
     try {
       const { data, error: updateError } = await supabase
-        .from('brands')
+        .from('lats_brands')
         .update(updates)
         .eq('id', id)
         .select()
@@ -111,7 +111,7 @@ export const useBrands = (options: UseBrandsOptions = {}): UseBrandsReturn => {
   const deleteBrand = async (id: string): Promise<boolean> => {
     try {
       const { error: deleteError } = await supabase
-        .from('brands')
+        .from('lats_brands')
         .delete()
         .eq('id', id);
 

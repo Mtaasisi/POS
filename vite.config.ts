@@ -117,7 +117,14 @@ export default defineConfig({
     // Add better error handling
     cors: true,
     // Add request timeout
-    proxy: {},
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path
+      }
+    },
     // Add better error handling for development
     middlewareMode: false,
     // Increase header size limit to prevent 431 errors

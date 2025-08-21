@@ -11,7 +11,7 @@ import {
   LoyaltyReward, 
   PointTransaction 
 } from '../../../lib/customerLoyaltyService';
-import { whatsappService } from '../../../services/whatsappService';
+
 import { smsService } from '../../../services/smsService';
 import { MessageCircle, Phone, Mail, Send, BarChart3, TrendingUp, Users, DollarSign, ShoppingBag, Clock, Gift, Award, CheckCircle, AlertCircle, Megaphone, Filter, Download, Upload, Target, Calendar, Star, Crown, Zap, Settings, RefreshCw, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'react-hot-toast';
@@ -223,14 +223,7 @@ const CustomerLoyaltyPage: React.FC = () => {
       let success = false;
       
       switch (communicationType) {
-        case 'whatsapp':
-          const waResult = await whatsappService.sendMessage(
-            selectedCustomerForCommunication.phone,
-            communicationMessage,
-            'text'
-          );
-          success = waResult.success;
-          break;
+
           
         case 'sms':
           const smsResult = await smsService.sendSMS(
@@ -268,7 +261,7 @@ const CustomerLoyaltyPage: React.FC = () => {
     }
   };
 
-  const openCommunicationModal = (customer: LoyaltyCustomer, type: 'whatsapp' | 'sms' | 'email') => {
+  const openCommunicationModal = (customer: LoyaltyCustomer, type: 'sms' | 'email') => {
     setSelectedCustomerForCommunication(customer);
     setCommunicationType(type);
     setCommunicationMessage('');
@@ -440,15 +433,7 @@ const CustomerLoyaltyPage: React.FC = () => {
         // Send notification to customer
         const notificationMessage = `Congratulations! You've successfully redeemed ${selectedReward.name} for ${selectedReward.points} points. Your new balance is ${selectedCustomerForRedemption.points - selectedReward.points} points.`;
         
-        try {
-          await whatsappService.sendMessage(
-            selectedCustomerForRedemption.phone,
-            notificationMessage,
-            'text'
-          );
-        } catch (error) {
-          console.warn('Could not send WhatsApp notification:', error);
-        }
+
 
         toast.success(`Reward redeemed successfully! ${selectedReward.points} points deducted.`);
         
@@ -637,17 +622,9 @@ const CustomerLoyaltyPage: React.FC = () => {
           break;
 
         case 'communication':
-          for (const customerId of selectedCustomers) {
-            const customer = customers.find(c => c.customerId === customerId);
-            if (customer) {
-              const result = await whatsappService.sendMessage(
-                customer.phone,
-                bulkMessage,
-                'text'
-              );
-              if (!result.success) success = false;
-            }
-          }
+          // WhatsApp service removed
+          success = false;
+          toast.error('WhatsApp service not available');
           break;
 
         case 'export':

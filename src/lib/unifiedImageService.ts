@@ -79,7 +79,7 @@ export class UnifiedImageService {
       // 5. Handle temporary products vs real products
       let uploadedImage: ProductImage;
       
-      if (productId.startsWith('temp-product-') || productId.startsWith('test-product-')) {
+      if (productId.startsWith('temp-product-') || productId.startsWith('test-product-') || productId.startsWith('temp-sparepart-')) {
         // For temporary products, create a local image object
         console.log('📝 Creating temporary image for product:', productId);
         uploadedImage = {
@@ -138,7 +138,7 @@ export class UnifiedImageService {
   static async getProductImages(productId: string): Promise<ProductImage[]> {
     try {
       // Handle temporary products (don't query database)
-      if (productId.startsWith('temp-product-') || productId.startsWith('test-product-')) {
+      if (productId.startsWith('temp-product-') || productId.startsWith('test-product-') || productId.startsWith('temp-sparepart-')) {
         console.log('📝 Getting images for temporary product:', productId);
         // Return empty array for temporary products
         return [];

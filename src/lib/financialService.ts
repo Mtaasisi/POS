@@ -212,7 +212,7 @@ class FinancialService {
         id: payment.id,
         customer_id: payment.customer_id,
         amount: payment.amount,
-        method: payment.payment_method,
+        method: payment.method,
         device_id: payment.device_id,
         payment_date: payment.payment_date,
         payment_type: payment.payment_type,
@@ -403,10 +403,7 @@ class FinancialService {
       // If no data, return sample data for demonstration
       if (!data || data.length === 0) {
         // Only log once per session to reduce console spam
-        if (!window.financialSampleDataLogged) {
-          console.log('No expenses found, returning sample data for demonstration');
-          window.financialSampleDataLogged = true;
-        }
+        DebugUtils.sessionLog('financial_expenses_sample', 'No expenses found, returning sample data for demonstration');
         return [
           {
             id: 'sample-1',
@@ -466,10 +463,7 @@ class FinancialService {
       // If no data, return sample data for demonstration
       if (!data || data.length === 0) {
         // Only log once per session to reduce console spam
-        if (!window.financialAccountsSampleDataLogged) {
-          console.log('No accounts found, returning sample data for demonstration');
-          window.financialAccountsSampleDataLogged = true;
-        }
+        DebugUtils.sessionLog('financial_accounts_sample', 'No accounts found, returning sample data for demonstration');
         return [
           {
             id: 'sample-account',

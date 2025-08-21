@@ -98,7 +98,7 @@ export const CustomersProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         points: 0,
         lastVisit: timestamp,
         isActive: true,
-        whatsapp: customerData.whatsapp || undefined,
+
         referralSource: customerData.referralSource || undefined,
         birthMonth: customerData.birthMonth || undefined,
         birthDay: customerData.birthDay || undefined,

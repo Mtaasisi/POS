@@ -11,7 +11,7 @@ export interface PaymentTransaction {
   description?: string;
   customer_id?: string;
   order_id?: string;
-  source_type: 'pos_sale' | 'device_payment' | 'manual_entry' | 'whatsapp_payment';
+  source_type: 'pos_sale' | 'device_payment' | 'manual_entry';
   receipt_url?: string;
   created_by?: string;
   created_at: string;
@@ -44,7 +44,7 @@ export interface PaymentRoutingRule {
   id: string;
   rule_name: string;
   payment_method_id?: string;
-  source_type: 'all' | 'pos_sale' | 'device_payment' | 'whatsapp_payment';
+  source_type: 'all' | 'pos_sale' | 'device_payment';
   min_amount: number;
   max_amount?: number;
   target_account_id: string;
@@ -442,22 +442,7 @@ class EnhancedPaymentService {
     );
   }
 
-  // Process WhatsApp payment
-  async processWhatsAppPayment(
-    paymentMethodId: string,
-    amount: number,
-    customerId: string,
-    description?: string
-  ): Promise<string | null> {
-    return this.routePaymentToAccount(
-      paymentMethodId,
-      amount,
-      'whatsapp_payment',
-      undefined,
-      customerId,
-      description || `WhatsApp payment from customer ${customerId}`
-    );
-  }
+
 
   // Get account balance history
   async getAccountBalanceHistory(

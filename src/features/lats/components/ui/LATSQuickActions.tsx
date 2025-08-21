@@ -17,7 +17,8 @@ import {
   Upload,
   Settings,
   Activity,
-  Smartphone
+  Smartphone,
+  MessageSquare
 } from 'lucide-react';
 
 interface QuickAction {
@@ -27,7 +28,7 @@ interface QuickAction {
   icon: React.ComponentType<{ size?: number }>;
   path: string;
   color: string;
-  category: 'sales' | 'inventory' | 'customers' | 'analytics' | 'reports';
+  category: 'sales' | 'inventory' | 'customers' | 'analytics' | 'reports' | 'integration';
 }
 
 const QUICK_ACTIONS: QuickAction[] = [
@@ -131,7 +132,6 @@ const QUICK_ACTIONS: QuickAction[] = [
     color: 'from-red-500 to-red-600',
     category: 'analytics'
   },
-
   {
     id: 'payment-settings',
     name: 'Payment Settings',
@@ -167,13 +167,14 @@ const QUICK_ACTIONS: QuickAction[] = [
     path: '/lats/beem-test',
     color: 'from-blue-500 to-blue-600',
     category: 'sales'
-  }
+  },
+
 ];
 
 interface LATSQuickActionsProps {
   className?: string;
   variant?: 'grid' | 'list' | 'compact';
-  category?: 'all' | 'sales' | 'inventory' | 'customers' | 'analytics' | 'reports';
+  category?: 'all' | 'sales' | 'inventory' | 'customers' | 'analytics' | 'reports' | 'integration';
   maxItems?: number;
 }
 

@@ -94,7 +94,6 @@ const IntegrationsManager: React.FC<IntegrationsManagerProps> = ({ onIntegration
   const validateIntegrationConfig = (integration: IntegrationConfig): boolean => {
     const requiredFields = {
       'sms': ['username', 'password', 'sender_id'],
-      'whatsapp': ['instance_id', 'api_key'],
       'ai': ['api_key'],
       'storage': ['url', 'anon_key']
     };
@@ -158,10 +157,7 @@ const IntegrationsManager: React.FC<IntegrationsManagerProps> = ({ onIntegration
             api_url: 'https://mshastra.com/sendurl.aspx',
             balance_url: 'https://mshastra.com/balance.aspx'
           },
-          'WhatsApp Green API': {
-            instance_id: '',
-            api_key: ''
-          },
+
           'Gemini AI': {
             api_key: '',
             model: 'gemini-pro'

@@ -312,7 +312,7 @@ const SupplierForm: React.FC<SupplierFormProps> = ({
                   onChange={field.onChange}
                   error={errors.whatsapp?.message}
                   maxLength={20}
-                  helperText="WhatsApp business number"
+                  helperText="WhatsApp number"
                 />
               )}
             />

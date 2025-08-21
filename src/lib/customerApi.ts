@@ -2,6 +2,11 @@ import { supabase } from './supabaseClient';
 import { cacheSetAll, cacheGetAll } from './offlineCache';
 import { Customer } from '../types';
 
+// Configuration constants to prevent resource exhaustion
+const BATCH_SIZE = 50; // Maximum customers per batch
+const REQUEST_DELAY = 100; // Delay between batches in milliseconds
+const MAX_CONCURRENT_REQUESTS = 10; // Maximum concurrent requests
+
 // Function to normalize color tag values
 function normalizeColorTag(colorTag: string): 'new' | 'vip' | 'complainer' | 'purchased' {
   if (!colorTag) return 'new';
@@ -83,157 +88,63 @@ export async function fetchAllCustomers() {
       
       console.log(`📊 Total customers in database: ${count}`);
       
-      // Fetch customers with all related data in a single query
-      const { data: customers, error: customersError } = await supabase
-        .from('customers')
-        .select(`
-          id, name, email, phone, gender, city, joined_date, loyalty_level, color_tag, referred_by, total_spent, points, last_visit, is_active, whatsapp, birth_month, birth_day, referral_source, initial_notes, total_returns, profile_image, created_at, updated_at,
-          customer_notes(*),
-          customer_payments(
-            *,
-            devices(brand, model)
-          ),
-          promo_messages(*),
-          devices(*)
-        `)
-        .limit(1000); // Add explicit limit to see if this helps
+      // Use pagination to fetch customers in batches to avoid overwhelming the browser
+      const pageSize = BATCH_SIZE; // Use configured batch size
+      const totalPages = Math.ceil((count || 0) / pageSize);
+      let allCustomers = [];
       
-      if (customersError) {
-        console.error('❌ Error fetching customers:', customersError);
-        throw customersError;
+      console.log(`📄 Fetching ${totalPages} pages of customers with batch size ${pageSize}...`);
+      
+      // Fetch customers page by page with controlled concurrency
+      for (let page = 1; page <= totalPages; page++) {
+        console.log(`📄 Fetching page ${page}/${totalPages}...`);
+        
+        try {
+          const customersPage = await fetchCustomersPaginated(page, pageSize);
+          allCustomers = [...allCustomers, ...customersPage];
+          
+          // Add a delay between pages to prevent overwhelming the connection pool
+          if (page < totalPages) {
+            await new Promise(resolve => setTimeout(resolve, REQUEST_DELAY));
+          }
+        } catch (error) {
+          console.error(`❌ Error fetching page ${page}:`, error);
+          // Continue with other pages even if one fails
+        }
       }
       
-      console.log(`✅ Fetched ${customers.length} customers from database`);
+      console.log(`✅ Successfully fetched ${allCustomers.length} customers total`);
       
-      if (customersError) {
-        console.error('❌ Error fetching customers:', customersError);
-        throw customersError;
-      }
-      
-      console.log(`✅ Fetched ${customers.length} customers from database`);
-      
-      // Note: loyalty_customers table doesn't exist in the database schema
-      // We'll use the points field from the customers table instead
-      console.log('ℹ️ Using points from customers table (loyalty_customers table not available)');
-      
-      // Create a map of loyalty data by customer_id (using customer data)
-      const loyaltyMap = new Map();
-      (customers || []).forEach((customer: any) => {
-        loyaltyMap.set(customer.id, {
-          customer_id: customer.id,
-          points: customer.points || 0,
-          tier: customer.loyalty_level || 'bronze',
-          join_date: customer.joined_date,
-          last_visit: customer.last_visit,
-          total_spent: customer.total_spent || 0,
-          rewards_redeemed: 0 // Default value since we don't have this data
+      // Cache the results
+      if (allCustomers.length > 0) {
+        customerCache.set('all', {
+          data: allCustomers,
+          timestamp: Date.now()
         });
-      });
-      
-      if (customers.length < count) {
-        console.warn(`⚠️ Warning: Fetched ${customers.length} customers but database has ${count} total`);
-        console.warn('This might be due to a default limit or complex join issues');
+        console.log('💾 Cached customer data');
       }
       
-      // Transform the data to match our frontend types
-      const customersWithData = customers.map(customer => {
-        // Get loyalty data for this customer
-        const loyaltyInfo = loyaltyMap.get(customer.id);
-        
-        // Transform related data
-        const transformedNotes = (customer.customer_notes || []).map((note: any) => ({
-          id: note.id,
-          content: note.content,
-          createdBy: note.created_by,
-          createdAt: note.created_at
-        }));
-
-        // Transform device payments
-        const transformedDevicePayments = (customer.customer_payments || []).map((payment: any) => ({
-          id: payment.id,
-          amount: payment.amount,
-          method: payment.method,
-          deviceId: payment.device_id,
-          deviceName: payment.devices 
-            ? `${payment.devices.brand || ''} ${payment.devices.model || ''}`.trim() 
-            : undefined,
-          date: payment.payment_date,
-          type: payment.payment_type,
-          status: payment.status,
-          createdBy: payment.created_by,
-          createdAt: payment.created_at,
-          source: 'device_payment'
-        }));
-
-        // Use only device payments
-        const transformedPayments = transformedDevicePayments;
-
-        const transformedPromoHistory = (customer.promo_messages || []).map((promo: any) => ({
-          id: promo.id,
-          title: promo.title,
-          content: promo.content,
-          sentVia: promo.sent_via,
-          sentAt: promo.sent_at,
-          status: promo.status
-        }));
-
-        const transformedDevices = (customer.devices || []).map((device: any) => ({
-          id: device.id,
-          customerId: device.customer_id,
-          brand: device.brand,
-          model: device.model,
-          serialNumber: device.serial_number,
-          issueDescription: device.issue_description,
-          status: device.status,
-          assignedTo: device.assigned_to,
-          estimatedHours: device.estimated_hours,
-          expectedReturnDate: device.expected_return_date,
-          warrantyStart: device.warranty_start,
-          warrantyEnd: device.warranty_end,
-          warrantyStatus: device.warranty_status,
-          repairCount: device.repair_count,
-          lastReturnDate: device.last_return_date,
-          createdAt: device.created_at,
-          updatedAt: device.updated_at
-        }));
-
-        // Combine customer data with loyalty data
-        const baseCustomer = fromDbCustomer(customer);
-        
-        return {
-          ...baseCustomer,
-          // Override points with loyalty data if available
-          points: loyaltyInfo?.points || baseCustomer.points || 0,
-          // Add loyalty-specific fields
-          loyaltyTier: loyaltyInfo?.tier || 'bronze',
-          loyaltyJoinDate: loyaltyInfo?.join_date ? new Date(loyaltyInfo.join_date) : baseCustomer.joinedDate,
-          loyaltyLastVisit: loyaltyInfo?.last_visit ? new Date(loyaltyInfo.last_visit) : baseCustomer.lastVisit,
-          loyaltyRewardsRedeemed: loyaltyInfo?.rewards_redeemed || 0,
-          loyaltyTotalSpent: loyaltyInfo?.total_spent || baseCustomer.totalSpent || 0,
-          isLoyaltyMember: !!loyaltyInfo,
-          notes: transformedNotes,
-          payments: transformedPayments,
-          promoHistory: transformedPromoHistory,
-          devices: transformedDevices
-        };
-      });
-
-      console.log(`✅ Successfully processed ${customersWithData.length} customers with loyalty data`);
-      await cacheSetAll('customers', customersWithData);
-      return customersWithData;
+      return allCustomers;
+      
     } catch (error) {
-      console.error('❌ Error fetching customers:', error);
-      // Fallback to cached data if available
-      const cachedData = await cacheGetAll('customers');
-      if (cachedData.length > 0) {
-        console.log(`📦 Using cached data: ${cachedData.length} customers`);
-        return cachedData;
+      console.error('❌ Error in fetchAllCustomers:', error);
+      
+      // Try to return cached data if available
+      const cachedData = customerCache.get('all');
+      if (cachedData && Date.now() - cachedData.timestamp < CACHE_DURATION) {
+        console.log('🔄 Returning cached customer data due to error');
+        return cachedData.data;
       }
+      
       throw error;
     }
   } else {
-    console.log('📱 Offline mode - using cached data');
-    return await cacheGetAll('customers');
+    console.log('📱 Offline mode - returning cached data');
+    const cachedData = customerCache.get('all');
+    if (cachedData && Date.now() - cachedData.timestamp < CACHE_DURATION) {
+      return cachedData.data;
+    }
+    return [];
   }
 }
 
@@ -245,7 +156,7 @@ export async function fetchAllCustomersSimple() {
       // Simple query without complex joins
       const { data: customers, error: customersError } = await supabase
         .from('customers')
-        .select('id, name, email, phone, gender, city, joined_date, loyalty_level, color_tag, referred_by, total_spent, points, last_visit, is_active, whatsapp, birth_month, birth_day, referral_source, initial_notes, total_returns, profile_image, created_at, updated_at')
+        .select('id, name, email, phone, gender, city, joined_date, loyalty_level, color_tag, referred_by, total_spent, points, last_visit, is_active, whatsapp, birth_month, birth_day, referral_source, total_returns, profile_image, created_at, updated_at')
         .limit(1000);
       
       if (customersError) {
@@ -381,54 +292,7 @@ export async function fetchCustomersPaginated(page: number = 1, pageSize: number
           source: 'device_payment'
         }));
 
-        // Add POS sales as payments (fetch directly for this customer)
-        let customerPosSales = [];
-        try {
-          const { data: posData } = await supabase
-            .from('lats_sales')
-            .select(`
-              *,
-              lats_sale_items(*)
-            `)
-            .eq('customer_id', customer.id)
-            .order('created_at', { ascending: false });
-          customerPosSales = posData || [];
-        } catch (error) {
-          console.warn('⚠️ POS sales query failed for customer:', error);
-        }
-
-        const posPayments = customerPosSales.map((sale: any) => ({
-          id: sale.id,
-          amount: sale.total_amount,
-          method: sale.payment_method,
-          deviceId: null,
-          deviceName: undefined,
-          date: sale.created_at,
-          type: 'payment',
-          status: sale.status === 'completed' ? 'completed' : 
-                  sale.status === 'pending' ? 'pending' : 'failed',
-          createdBy: sale.created_by,
-          createdAt: sale.created_at,
-          source: 'pos_sale',
-          orderId: sale.id,
-          orderStatus: sale.status,
-          totalAmount: sale.total_amount,
-          discountAmount: 0, // Not available in new schema
-          taxAmount: 0, // Not available in new schema
-          shippingCost: 0, // Not available in new schema
-          amountPaid: sale.total_amount, // Assuming full payment for completed sales
-          balanceDue: 0, // Not available in new schema
-          customerType: 'retail', // Default value
-          deliveryMethod: 'pickup', // Default value
-          deliveryAddress: '', // Not available in new schema
-          deliveryCity: '', // Not available in new schema
-          deliveryNotes: '', // Not available in new schema
-          orderItems: sale.lats_sale_items || []
-        }));
-
-        // Combine device payments and POS sales
-        const allPayments = [...transformedPayments, ...posPayments];
-
+        // Transform promo history
         const transformedPromoHistory = (customer.promo_messages || []).map((promo: any) => ({
           id: promo.id,
           message: promo.message,
@@ -473,14 +337,89 @@ export async function fetchCustomersPaginated(page: number = 1, pageSize: number
           loyaltyTotalSpent: loyaltyInfo?.total_spent || baseCustomer.totalSpent || 0,
           isLoyaltyMember: !!loyaltyInfo,
           notes: transformedNotes,
-          payments: allPayments,
+          payments: transformedPayments, // Only device payments for now, POS sales will be added separately
           promoHistory: transformedPromoHistory,
           devices: transformedDevices
         };
       }));
 
+      // Batch fetch POS sales for all customers in this page
+      const customerIds = customers.map(c => c.id);
+      let allPosSales = [];
+      
+      if (customerIds.length > 0) {
+        try {
+          console.log(`🔍 Batch fetching POS sales for ${customerIds.length} customers...`);
+          const { data: posData, error: posError } = await supabase
+            .from('lats_sales')
+            .select(`
+              *,
+              lats_sale_items(*)
+            `)
+            .in('customer_id', customerIds)
+            .order('created_at', { ascending: false });
+          
+          if (posError) {
+            console.warn('⚠️ Batch POS sales query failed:', posError);
+          } else {
+            allPosSales = posData || [];
+            console.log(`✅ Batch fetched ${allPosSales.length} POS sales`);
+          }
+        } catch (error) {
+          console.warn('⚠️ Batch POS sales query failed:', error);
+        }
+      }
+
+      // Group POS sales by customer and add to customer data
+      const posSalesByCustomer = new Map();
+      allPosSales.forEach(sale => {
+        if (!posSalesByCustomer.has(sale.customer_id)) {
+          posSalesByCustomer.set(sale.customer_id, []);
+        }
+        posSalesByCustomer.get(sale.customer_id).push(sale);
+      });
+
+      // Add POS sales to each customer's payments
+      const customersWithAllData = customersWithData.map(customer => {
+        const customerPosSales = posSalesByCustomer.get(customer.id) || [];
+        
+        const posPayments = customerPosSales.map((sale: any) => ({
+          id: sale.id,
+          amount: sale.total_amount,
+          method: sale.payment_method,
+          deviceId: null,
+          deviceName: undefined,
+          date: sale.created_at,
+          type: 'payment',
+          status: sale.status === 'completed' ? 'completed' : 
+                  sale.status === 'pending' ? 'pending' : 'failed',
+          createdBy: sale.created_by,
+          createdAt: sale.created_at,
+          source: 'pos_sale',
+          orderId: sale.id,
+          orderStatus: sale.status,
+          totalAmount: sale.total_amount,
+          discountAmount: 0, // Not available in new schema
+          taxAmount: 0, // Not available in new schema
+          shippingCost: 0, // Not available in new schema
+          amountPaid: sale.total_amount, // Assuming full payment for completed sales
+          balanceDue: 0, // Not available in new schema
+          customerType: 'retail', // Default value
+          deliveryMethod: 'pickup', // Default value
+          deliveryAddress: '', // Not available in new schema
+          deliveryCity: '', // Not available in new schema
+          deliveryNotes: '', // Not available in new schema
+          orderItems: sale.lats_sale_items || []
+        }));
+
+        return {
+          ...customer,
+          payments: [...customer.payments, ...posPayments]
+        };
+      });
+
       return {
-        customers: customersWithData,
+        customers: customersWithAllData,
         totalCount: count || 0,
         currentPage: page,
         totalPages: Math.ceil((count || 0) / pageSize),
@@ -518,7 +457,7 @@ export async function fetchCustomerById(customerId: string) {
       let { data: customers, error: customersError } = await supabase
         .from('customers')
         .select(`
-          *,
+          id, name, email, phone, gender, city, joined_date, loyalty_level, color_tag, referred_by, total_spent, points, last_visit, is_active, whatsapp, birth_month, birth_day, referral_source, initial_notes, total_returns, profile_image, created_at, updated_at,
           customer_notes(*),
           customer_payments(
             *,
@@ -660,7 +599,7 @@ export async function fetchCustomerById(customerId: string) {
           orderId: payment.order_id,
           paymentDate: payment.payment_date,
           amount: payment.amount,
-          paymentMethod: payment.payment_method,
+          paymentMethod: payment.method,
           notes: payment.notes,
           createdBy: payment.created_by
         })) || [],
@@ -819,54 +758,7 @@ export async function searchCustomers(query: string, page: number = 1, pageSize:
           source: 'device_payment'
         }));
 
-        // Add POS sales as payments (fetch directly for this customer)
-        let customerPosSales = [];
-        try {
-          const { data: posData } = await supabase
-            .from('lats_sales')
-            .select(`
-              *,
-              lats_sale_items(*)
-            `)
-            .eq('customer_id', customer.id)
-            .order('created_at', { ascending: false });
-          customerPosSales = posData || [];
-        } catch (error) {
-          console.warn('⚠️ POS sales query failed for customer:', error);
-        }
-
-        const posPayments = customerPosSales.map((sale: any) => ({
-          id: sale.id,
-          amount: sale.total_amount,
-          method: sale.payment_method,
-          deviceId: null,
-          deviceName: undefined,
-          date: sale.created_at,
-          type: 'payment',
-          status: sale.status === 'completed' ? 'completed' : 
-                  sale.status === 'pending' ? 'pending' : 'failed',
-          createdBy: sale.created_by,
-          createdAt: sale.created_at,
-          source: 'pos_sale',
-          orderId: sale.id,
-          orderStatus: sale.status,
-          totalAmount: sale.total_amount,
-          discountAmount: 0, // Not available in new schema
-          taxAmount: 0, // Not available in new schema
-          shippingCost: 0, // Not available in new schema
-          amountPaid: sale.total_amount, // Assuming full payment for completed sales
-          balanceDue: 0, // Not available in new schema
-          customerType: 'retail', // Default value
-          deliveryMethod: 'pickup', // Default value
-          deliveryAddress: '', // Not available in new schema
-          deliveryCity: '', // Not available in new schema
-          deliveryNotes: '', // Not available in new schema
-          orderItems: sale.lats_sale_items || []
-        }));
-
-        // Combine device payments and POS sales
-        const allPayments = [...transformedPayments, ...posPayments];
-
+        // Transform promo history
         const transformedPromoHistory = (customer.promo_messages || []).map((promo: any) => ({
           id: promo.id,
           message: promo.message,
@@ -911,14 +803,89 @@ export async function searchCustomers(query: string, page: number = 1, pageSize:
           loyaltyTotalSpent: loyaltyInfo?.total_spent || baseCustomer.totalSpent || 0,
           isLoyaltyMember: !!loyaltyInfo,
           notes: transformedNotes,
-          payments: allPayments,
+          payments: transformedPayments, // Only device payments for now, POS sales will be added separately
           promoHistory: transformedPromoHistory,
           devices: transformedDevices
         };
       }));
 
+      // Batch fetch POS sales for all customers in this search result
+      const customerIds = customers.map(c => c.id);
+      let allPosSales = [];
+      
+      if (customerIds.length > 0) {
+        try {
+          console.log(`🔍 Batch fetching POS sales for ${customerIds.length} customers in search results...`);
+          const { data: posData, error: posError } = await supabase
+            .from('lats_sales')
+            .select(`
+              *,
+              lats_sale_items(*)
+            `)
+            .in('customer_id', customerIds)
+            .order('created_at', { ascending: false });
+          
+          if (posError) {
+            console.warn('⚠️ Batch POS sales query failed:', posError);
+          } else {
+            allPosSales = posData || [];
+            console.log(`✅ Batch fetched ${allPosSales.length} POS sales for search results`);
+          }
+        } catch (error) {
+          console.warn('⚠️ Batch POS sales query failed:', error);
+        }
+      }
+
+      // Group POS sales by customer and add to customer data
+      const posSalesByCustomer = new Map();
+      allPosSales.forEach(sale => {
+        if (!posSalesByCustomer.has(sale.customer_id)) {
+          posSalesByCustomer.set(sale.customer_id, []);
+        }
+        posSalesByCustomer.get(sale.customer_id).push(sale);
+      });
+
+      // Add POS sales to each customer's payments
+      const customersWithAllData = customersWithData.map(customer => {
+        const customerPosSales = posSalesByCustomer.get(customer.id) || [];
+        
+        const posPayments = customerPosSales.map((sale: any) => ({
+          id: sale.id,
+          amount: sale.total_amount,
+          method: sale.payment_method,
+          deviceId: null,
+          deviceName: undefined,
+          date: sale.created_at,
+          type: 'payment',
+          status: sale.status === 'completed' ? 'completed' : 
+                  sale.status === 'pending' ? 'pending' : 'failed',
+          createdBy: sale.created_by,
+          createdAt: sale.created_at,
+          source: 'pos_sale',
+          orderId: sale.id,
+          orderStatus: sale.status,
+          totalAmount: sale.total_amount,
+          discountAmount: 0, // Not available in new schema
+          taxAmount: 0, // Not available in new schema
+          shippingCost: 0, // Not available in new schema
+          amountPaid: sale.total_amount, // Assuming full payment for completed sales
+          balanceDue: 0, // Not available in new schema
+          customerType: 'retail', // Default value
+          deliveryMethod: 'pickup', // Default value
+          deliveryAddress: '', // Not available in new schema
+          deliveryCity: '', // Not available in new schema
+          deliveryNotes: '', // Not available in new schema
+          orderItems: sale.lats_sale_items || []
+        }));
+
+        return {
+          ...customer,
+          payments: [...customer.payments, ...posPayments]
+        };
+      });
+
       return {
-        customers: customersWithData,
+        customers: customersWithAllData,
         totalCount: count || 0,
         currentPage: page,
         totalPages: Math.ceil((count || 0) / pageSize),
@@ -1328,8 +1295,7 @@ function toDbCustomer(customer: any) {
     points: customer.points || 0,
     last_visit: customer.lastVisit,
     is_active: customer.isActive,
-    // Additional fields
-    whatsapp: customer.whatsapp,
+
     referral_source: customer.referralSource,
     birth_month: customer.birthMonth,
     birth_day: customer.birthDay,
@@ -1362,8 +1328,7 @@ function fromDbCustomer(db: any) {
     points: db.points || 0,
     lastVisit: db.last_visit,
     isActive: db.is_active,
-    // Additional fields from database
-    whatsapp: db.whatsapp,
+
     referralSource: db.referral_source,
     birthMonth: db.birth_month,
     birthDay: db.birth_day,
@@ -1400,8 +1365,7 @@ export async function addCustomerToDb(customer: Omit<Customer, 'promoHistory' | 
     points: initialPoints,
     last_visit: customer.lastVisit || null,
     is_active: typeof customer.isActive === 'boolean' ? customer.isActive : true,
-    // Additional form fields
-    whatsapp: customer.whatsapp?.trim() || null,
+
     birth_month: customer.birthMonth || null,
     birth_day: customer.birthDay || null,
     referral_source: customer.referralSource?.trim() || null,
@@ -2064,3 +2028,81 @@ export async function searchCustomersBackground(
 export function getBackgroundSearchManager() {
   return backgroundSearchManager;
 } 
+
+// Add a simple test function to debug the 400 error
+export async function testCustomerQuery() {
+  try {
+    console.log('🔍 Testing basic customer query...');
+    
+    // First, try a very simple query
+    const { data: simpleData, error: simpleError } = await supabase
+      .from('customers')
+      .select('id, name')
+      .limit(1);
+    
+    if (simpleError) {
+      console.error('❌ Simple query failed:', simpleError);
+      return { success: false, error: simpleError, type: 'simple' };
+    }
+    
+    console.log('✅ Simple query succeeded:', simpleData);
+    
+    // Now try with customer_notes
+    const { data: notesData, error: notesError } = await supabase
+      .from('customers')
+      .select('id, name, customer_notes(*)')
+      .limit(1);
+    
+    if (notesError) {
+      console.error('❌ Notes query failed:', notesError);
+      return { success: false, error: notesError, type: 'notes' };
+    }
+    
+    console.log('✅ Notes query succeeded:', notesData);
+    
+    // Now try with customer_payments
+    const { data: paymentsData, error: paymentsError } = await supabase
+      .from('customers')
+      .select('id, name, customer_payments(*)')
+      .limit(1);
+    
+    if (paymentsError) {
+      console.error('❌ Payments query failed:', paymentsError);
+      return { success: false, error: paymentsError, type: 'payments' };
+    }
+    
+    console.log('✅ Payments query succeeded:', paymentsData);
+    
+    // Now try with devices
+    const { data: devicesData, error: devicesError } = await supabase
+      .from('customers')
+      .select('id, name, devices(*)')
+      .limit(1);
+    
+    if (devicesError) {
+      console.error('❌ Devices query failed:', devicesError);
+      return { success: false, error: devicesError, type: 'devices' };
+    }
+    
+    console.log('✅ Devices query succeeded:', devicesData);
+    
+    // Now try with promo_messages
+    const { data: promoData, error: promoError } = await supabase
+      .from('customers')
+      .select('id, name, promo_messages(*)')
+      .limit(1);
+    
+    if (promoError) {
+      console.error('❌ Promo messages query failed:', promoError);
+      return { success: false, error: promoError, type: 'promo' };
+    }
+    
+    console.log('✅ Promo messages query succeeded:', promoData);
+    
+    return { success: true, type: 'all' };
+    
+  } catch (error) {
+    console.error('❌ Test query failed:', error);
+    return { success: false, error, type: 'exception' };
+  }
+}

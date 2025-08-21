@@ -77,14 +77,15 @@ const AdminManagementPage: React.FC = () => {
       category: 'inventory'
     },
     {
-      id: 'shelf-management',
-      title: 'Shelf Management',
-      description: 'Manage shelves and product locations',
+      id: 'shelves-management',
+      title: 'Shelves Management',
+      description: 'Manage storage shelves and capacity',
       icon: <Layers size={24} />,
-      path: '/shelf-management',
+      path: '/lats/inventory-management?shelves',
       color: 'from-purple-500 to-purple-600',
       category: 'inventory'
     },
+
     {
       id: 'purchase-orders',
       title: 'Purchase Orders',
@@ -210,24 +211,7 @@ const AdminManagementPage: React.FC = () => {
     },
 
     // Communication
-    {
-      id: 'whatsapp-manager',
-      title: 'WhatsApp Manager',
-      description: 'Manage WhatsApp communications',
-      icon: <MessageCircle size={24} />,
-      path: '/whatsapp',
-      color: 'from-green-500 to-green-600',
-      category: 'communication'
-    },
-    {
-      id: 'whatsapp-web',
-      title: 'WhatsApp Web',
-      description: 'WhatsApp Web interface',
-      icon: <MessageCircle size={24} />,
-      path: '/whatsapp-web',
-      color: 'from-green-400 to-green-500',
-      category: 'communication'
-    },
+    
     {
       id: 'sms-centre',
       title: 'SMS Centre',
@@ -308,8 +292,8 @@ const AdminManagementPage: React.FC = () => {
       case 'communication':
         return {
           title: 'Communication Tools',
-          description: 'WhatsApp, SMS, and communication management systems.',
-          features: ['WhatsApp Manager', 'WhatsApp Web', 'SMS Centre', 'Communication Templates'],
+          description: 'SMS and communication management systems.',
+          features: ['SMS Centre', 'Communication Templates'],
           icon: <MessageCircle size={24} />
         };
       default:
@@ -399,8 +383,8 @@ const AdminManagementPage: React.FC = () => {
               <MessageCircle size={20} />
             </div>
             <h3 className="font-semibold text-gray-900 mb-1">Communication</h3>
-            <p className="text-sm text-gray-600">3 tools</p>
-            <p className="text-xs text-gray-500 mt-1">WhatsApp, SMS, Web</p>
+            <p className="text-sm text-gray-600">2 tools</p>
+                            <p className="text-xs text-gray-500 mt-1">SMS</p>
           </div>
         </div>
       </GlassCard>

@@ -6,7 +6,7 @@ import GlassButton from '../components/ui/GlassButton';
 import GlassCard from '../components/ui/GlassCard';
 import { PageErrorWrapper } from '../components/PageErrorWrapper';
 import { useErrorHandler } from '../../../hooks/useErrorHandler';
-import { whatsappService } from '../../../services/whatsappService';
+
 
 const LoginPage: React.FC = () => {
   // Add state for email, default to recent email from localStorage
@@ -127,13 +127,7 @@ const LoginPage: React.FC = () => {
         // On successful login, save email to localStorage
         localStorage.setItem('recent_login_email', email);
         
-        // Send WhatsApp message to your number
-        try {
-          await whatsappService.sendMessage('255746605561@c.us', `Login successful: ${email}`, 'text');
-        } catch (whatsappError) {
-          // Don't fail login if WhatsApp fails
-          console.warn('WhatsApp notification failed:', whatsappError);
-        }
+
         
         const redirectPath = getLastVisitedPage();
         navigate(redirectPath);

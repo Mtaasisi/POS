@@ -35,7 +35,7 @@ The Store Location Management feature provides comprehensive functionality to ma
 #### Contact Information
 - **Phone**: Contact phone number
 - **Email**: Contact email address
-- **WhatsApp**: WhatsApp business number
+- **WhatsApp**: WhatsApp number
 
 #### Manager Information
 - **Manager Name**: Location manager

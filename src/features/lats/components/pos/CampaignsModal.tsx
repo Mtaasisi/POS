@@ -6,7 +6,7 @@ import {
   customerLoyaltyService, 
   LoyaltyCustomer 
 } from '../../../../lib/customerLoyaltyService';
-import { toast } from 'react-hot-toast';
+import { toast } from '../../../../lib/toastUtils';
 
 interface Campaign {
   id: string;
