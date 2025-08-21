@@ -1,5 +1,5 @@
 // Simple test webhook for debugging
-exports.handler = async function(event, context) {
+export default async function handler(event, context) {
   console.log('Test webhook received:', JSON.stringify(event.body, null, 2));
   
   return {
@@ -11,9 +11,9 @@ exports.handler = async function(event, context) {
     },
     body: JSON.stringify({
       success: true,
-      message: 'Test webhook received successfully',
+      message: 'Test webhook working!',
       timestamp: new Date().toISOString(),
-      data: JSON.parse(event.body || '{}')
+      receivedData: event.body ? JSON.parse(event.body) : null
     })
   };
-};
+}

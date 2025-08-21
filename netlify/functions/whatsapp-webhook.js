@@ -5,6 +5,8 @@
  * Deploy this to Netlify Functions for automatic auto-reply processing
  */
 
+import fetch from 'node-fetch';
+
 // WhatsApp credentials
 const WHATSAPP_CREDENTIALS = {
   instanceId: '7105284900',
@@ -141,7 +143,7 @@ async function handleIncomingMessage(webhookData) {
 }
 
 // Netlify function handler
-exports.handler = async function(event, context) {
+export default async function handler(event, context) {
   // Set CORS headers
   const headers = {
     'Access-Control-Allow-Origin': '*',
