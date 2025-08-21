@@ -41,13 +41,5 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "installCommand": "npm install",
-  "framework": "vite",
-  "functions": {
-    "src/api/**/*.js": {
-      "runtime": "@vercel/node@18"
-    },
-    "src/api/**/*.ts": {
-      "runtime": "@vercel/node@18"
-    }
-  }
+  "framework": "vite"
 }
