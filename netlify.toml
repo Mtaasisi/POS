@@ -1,60 +1,42 @@
 [build]
-  publish = "dist"
+  # Build command for your app
   command = "npm run build"
-
-[build.environment]
-  NODE_VERSION = "18"
-
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
-
-[[headers]]
-  for = "/sw.js"
-  [headers.values]
-    Cache-Control = "public, max-age=0, must-revalidate"
-
-[[headers]]
-  for = "/manifest.webmanifest"
-  [headers.values]
-    Content-Type = "application/manifest+json"
-
-[[headers]]
-  for = "/assets/*"
-  [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
-
-[[headers]]
-  for = "/*.js"
-  [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
-
-[[headers]]
-  for = "/*.css"
-  [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
-
-[[headers]]
-  for = "/*.png"
-  [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
-
-[[headers]]
-  for = "/*.jpg"
-  [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
-
-[[headers]]
-  for = "/*.svg"
-  [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
+  
+  # Publish directory (adjust based on your build output)
+  publish = "dist"
+  
+  # Functions directory
+  functions = "netlify/functions"
 
 [functions]
-  directory = "netlify/functions"
+  # Node.js version for functions
+  node_bundler = "esbuild"
+  
+  # Function timeout (in seconds)
+  timeout = 30
 
-[dev]
-  command = "npm run dev"
-  port = 5173
-  publish = "dist"
+# Redirects for the webhook
+[[redirects]]
+  from = "/api/whatsapp-webhook"
+  to = "/.netlify/functions/whatsapp-webhook"
+  status = 200
+  force = true
+
+# Headers for the webhook endpoint
+[[headers]]
+  for = "/.netlify/functions/whatsapp-webhook"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Headers = "Content-Type"
+    Access-Control-Allow-Methods = "POST, OPTIONS"
+
+# Environment variables (optional - you can set these in Netlify dashboard)
+[context.production.environment]
+  NODE_ENV = "production"
+
+[context.deploy-preview.environment]
+  NODE_ENV = "preview"
+
+[context.branch-deploy.environment]
+  NODE_ENV = "development"
 
