@@ -1,6 +1,7 @@
 [build]
-  command = "npm run build"
-  publish = "dist"
+  # Skip React build since we only need functions
+  command = "echo 'Skipping React build - only deploying functions'"
+  publish = "public"
   functions = "netlify/functions"
 
 [functions]
