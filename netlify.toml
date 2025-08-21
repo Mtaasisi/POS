@@ -1,6 +1,6 @@
 [build]
-  command = "echo Skipping build"
-  publish = "public"
+  command = "npm run build"
+  publish = "dist"
   functions = "netlify/functions"
 
 [build.environment]
@@ -20,8 +20,18 @@
   status = 200
 
 [[redirects]]
+  from = "/api/whatsapp-official-webhook"
+  to = "/.netlify/functions/whatsapp-official-webhook"
+  status = 200
+
+[[redirects]]
   from = "/api/health"
   to = "/.netlify/functions/health"
+  status = 200
+
+[[redirects]]
+  from = "/api/whatsapp-proxy"
+  to = "/.netlify/functions/whatsapp-proxy"
   status = 200
 
 [[headers]]
