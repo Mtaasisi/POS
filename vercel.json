@@ -43,8 +43,11 @@
   "installCommand": "npm install",
   "framework": "vite",
   "functions": {
-    "api/**/*.js": {
-      "runtime": "nodejs18.x"
+    "src/api/**/*.js": {
+      "runtime": "@vercel/node@18"
+    },
+    "src/api/**/*.ts": {
+      "runtime": "@vercel/node@18"
     }
   }
 }
