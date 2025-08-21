@@ -13,19 +13,16 @@
   from = "/api/whatsapp-webhook"
   to = "/.netlify/functions/whatsapp-webhook"
   status = 200
-  force = true
 
 [[redirects]]
   from = "/api/test-webhook"
   to = "/.netlify/functions/test-webhook"
   status = 200
-  force = true
 
 [[redirects]]
   from = "/api/health"
   to = "/.netlify/functions/health"
   status = 200
-  force = true
 
 [[headers]]
   for = "/.netlify/functions/*"
@@ -33,13 +30,4 @@
     Access-Control-Allow-Origin = "*"
     Access-Control-Allow-Headers = "Content-Type"
     Access-Control-Allow-Methods = "POST, OPTIONS"
-
-[context.production.environment]
-  NODE_ENV = "production"
-
-[context.deploy-preview.environment]
-  NODE_ENV = "preview"
-
-[context.branch-deploy.environment]
-  NODE_ENV = "development"
 
