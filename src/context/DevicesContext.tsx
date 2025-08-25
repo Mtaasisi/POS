@@ -318,7 +318,7 @@ export const DevicesProvider: React.FC<{ children: React.ReactNode }> = React.me
           if (trigger.condition.customerTag && customer.customerTag !== trigger.condition.customerTag) continue;
         }
         // Try to auto-fill variables from device/customer
-        let variables: Record<string, string> = {};
+        const variables: Record<string, string> = {};
         let missingVariable = false;
         if (template.variables && Array.isArray(template.variables)) {
           for (const v of template.variables) {

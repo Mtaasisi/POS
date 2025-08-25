@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { Package, ChevronDown, ChevronUp, Tag, Hash, Plus, Minus, Search, AlertCircle, Image } from 'lucide-react';
@@ -43,26 +43,74 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
   showBrand = true,
   className = ''
 }) => {
-  // Get general settings
+  // Add error state for React refresh issues
+  const [hasError, setHasError] = useState(false);
+
+  // Defensive check for product
+  if (!product) {
+    console.error('VariantProductCard: Product is null or undefined');
+    return (
+      <div className="p-4 border border-red-200 bg-red-50 rounded-lg">
+        <p className="text-red-600 text-sm">Product data is missing</p>
+      </div>
+    );
+  }
+
+  // Get general settings with error handling
+  let generalSettings;
+  try {
+    generalSettings = useGeneralSettingsUI();
+  } catch (error) {
+    console.error('Error getting general settings:', error);
+    // Fallback to default settings
+    generalSettings = {
+      showProductImages: true,
+      showStockLevels: true,
+      showPrices: true,
+      showBarcodes: true
+    };
+  }
+
   const {
     showProductImages,
     showStockLevels,
     showPrices,
     showBarcodes
-  } = useGeneralSettingsUI();
+  } = generalSettings;
 
   const navigate = useNavigate();
   const [selectedVariant, setSelectedVariant] = useState<ProductSearchVariant | null>(null);
   const [showVariantModal, setShowVariantModal] = useState(false);
   const [isImagePopupOpen, setIsImagePopupOpen] = useState(false);
 
-  // Get primary variant using utility function
-  const primaryVariant = getPrimaryVariant(product);
+  // Reset error state on mount/remount (helps with React refresh)
+  useEffect(() => {
+    setHasError(false);
+  }, []);
+
+  // Get primary variant using utility function with error handling
+  let primaryVariant;
+  let stockStatus;
+  try {
+    primaryVariant = getPrimaryVariant(product);
+    stockStatus = getProductStockStatus(product);
+  } catch (error) {
+    console.error('Error getting product data:', error);
+    setHasError(true);
+    return (
+      <div className="p-4 border border-red-200 bg-red-50 rounded-lg">
+        <p className="text-red-600 text-sm">Error loading product data</p>
+        <button 
+          onClick={() => setHasError(false)}
+          className="mt-2 text-blue-600 text-xs hover:underline"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
   
   // Get stock status using utility function
-  const stockStatus = getProductStockStatus(product);
-
-  // Get stock status badge
   const getStockStatusBadge = () => {
     // Handle products with no variants
     if (!product.variants || product.variants.length === 0) {
@@ -137,9 +185,11 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
 
   // Convert product images to new format
   const convertToProductImages = (): ProductImage[] => {
-    if (!product.images || product.images.length === 0) return [];
+    if (!product.images || product.images.length === 0) {
+      return [];
+    }
     
-    return product.images.map((imageUrl, index) => ({
+    const convertedImages = product.images.map((imageUrl, index) => ({
       id: `temp-${product.id}-${index}`,
       url: imageUrl,
       thumbnailUrl: imageUrl,
@@ -148,6 +198,8 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
       isPrimary: index === 0,
       uploadedAt: new Date().toISOString()
     }));
+    
+    return convertedImages;
   };
 
   const productImages = convertToProductImages();

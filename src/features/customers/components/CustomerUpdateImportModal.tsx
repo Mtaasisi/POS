@@ -289,7 +289,7 @@ const CustomerUpdateImportModal: React.FC<CustomerUpdateImportModalProps> = Reac
         const normalizedEmail = importedCustomer.email.toLowerCase();
         
         // Try to find existing customer by phone, whatsapp, or email
-        let matchedCustomer = phoneMap.get(normalizedPhone) || 
+        const matchedCustomer = phoneMap.get(normalizedPhone) || 
                             whatsappMap.get(normalizedPhone) ||
                             whatsappMap.get(normalizedWhatsApp) ||
                             emailMap.get(normalizedEmail);

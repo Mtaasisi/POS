@@ -1,6 +1,27 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { createClient } from '@supabase/supabase-js';
+import { Brand } from '../lib/brandApi';
 import { toast } from 'react-hot-toast';
+
+// Temporary workaround: Create a clean Supabase client for brands
+const createCleanSupabaseClient = () => {
+  const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.REACT_APP_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.warn('⚠️ Missing Supabase environment variables, falling back to main client');
+    return supabase;
+  }
+  
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: true
+    }
+  });
+};
 
 interface Brand {
   id: string;
@@ -42,20 +63,62 @@ export const useBrands = (options: UseBrandsOptions = {}): UseBrandsReturn => {
     setError(null);
     
     try {
+      console.log('🔍 useBrands: Starting to load brands...');
+      
       const { data, error: fetchError } = await supabase
         .from('lats_brands')
         .select('*')
         .order('name');
 
       if (fetchError) {
+        console.error('❌ useBrands: Fetch error:', fetchError);
+        
+        // Check if it's a 400 error with conflicting parameters
+        if (fetchError.code === '400' && fetchError.message?.includes('columns')) {
+          console.warn('⚠️ useBrands: Detected conflicting parameters, retrying with clean client...');
+          
+          // Try with clean client first
+          try {
+            const cleanClient = createCleanSupabaseClient();
+            const { data: cleanData, error: cleanError } = await cleanClient
+              .from('lats_brands')
+              .select('*')
+              .order('name');
+              
+            if (!cleanError) {
+              console.log('✅ useBrands: Successfully loaded brands with clean client');
+              setBrands(cleanData || []);
+              return;
+            }
+          } catch (cleanClientError) {
+            console.warn('⚠️ useBrands: Clean client also failed, trying explicit select...');
+          }
+          
+          // Fallback to explicit column selection
+          const { data: retryData, error: retryError } = await supabase
+            .from('lats_brands')
+            .select('id, name, description, logo_url, website, contact_email, contact_phone, category, is_active, created_at, updated_at')
+            .order('name');
+            
+          if (retryError) {
+            console.error('❌ useBrands: Retry also failed:', retryError);
+            throw retryError;
+          }
+          
+          console.log('✅ useBrands: Successfully loaded brands after retry');
+          setBrands(retryData || []);
+          return;
+        }
+        
         throw fetchError;
       }
 
+      console.log('✅ useBrands: Successfully loaded brands');
       setBrands(data || []);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load brands';
       setError(errorMessage);
-      console.error('Error loading brands:', err);
+      console.error('❌ useBrands: Error loading brands:', err);
     } finally {
       setLoading(false);
     }

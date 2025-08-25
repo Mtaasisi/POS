@@ -27,13 +27,10 @@ async function findIncompleteProducts() {
           cost_price,
           quantity,
           min_quantity,
-          max_quantity,
-          barcode,
-          weight,
-          dimensions
+          barcode
         )
       `)
-      .or('description.is.null,description.eq.,lats_product_variants.selling_price.lte.0,lats_product_variants.cost_price.lt.0,lats_product_variants.quantity.lt.0');
+      .or('description.is.null,description.eq.');
 
     if (error) {
       console.error('❌ Error finding incomplete products:', error);

@@ -243,7 +243,11 @@ class FinancialService {
         .select(`
           *,
           customers(name),
-          lats_sale_items(*)
+          lats_sale_items(
+            *,
+            lats_products(name, description),
+            lats_product_variants(name, sku, attributes)
+          )
         `)
         .order('created_at', { ascending: false });
 
@@ -400,40 +404,9 @@ class FinancialService {
         return [];
       }
 
-      // If no data, return sample data for demonstration
+      // If no data, return empty array
       if (!data || data.length === 0) {
-        // Only log once per session to reduce console spam
-        DebugUtils.sessionLog('financial_expenses_sample', 'No expenses found, returning sample data for demonstration');
-        return [
-          {
-            id: 'sample-1',
-            title: 'Office Supplies',
-            account_id: 'sample-account',
-            category: 'Office Supplies',
-            amount: 150.00,
-            description: 'Purchase of office supplies for the month',
-            expense_date: new Date().toISOString().split('T')[0],
-            payment_method: 'cash',
-            status: 'approved',
-            receipt_url: undefined,
-            created_at: new Date().toISOString(),
-            account_name: 'Main Cash Account'
-          },
-          {
-            id: 'sample-2',
-            title: 'Internet Bill',
-            account_id: 'sample-account',
-            category: 'Utilities',
-            amount: 75.00,
-            description: 'Monthly internet service payment',
-            expense_date: new Date().toISOString().split('T')[0],
-            payment_method: 'transfer',
-            status: 'approved',
-            receipt_url: undefined,
-            created_at: new Date().toISOString(),
-            account_name: 'Main Cash Account'
-          }
-        ];
+        return [];
       }
 
       return data?.map((expense: any) => ({
@@ -460,34 +433,9 @@ class FinancialService {
         return [];
       }
 
-      // If no data, return sample data for demonstration
+      // If no data, return empty array
       if (!data || data.length === 0) {
-        // Only log once per session to reduce console spam
-        DebugUtils.sessionLog('financial_accounts_sample', 'No accounts found, returning sample data for demonstration');
-        return [
-          {
-            id: 'sample-account',
-            name: 'Main Cash Account',
-            type: 'cash',
-            balance: 1000.00,
-            account_number: undefined,
-            bank_name: undefined,
-            is_active: true,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          },
-          {
-            id: 'sample-account-2',
-            name: 'Business Bank Account',
-            type: 'bank',
-            balance: 5000.00,
-            account_number: '1234567890',
-            bank_name: 'Sample Bank',
-            is_active: true,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          }
-        ];
+        return [];
       }
 
       return data || [];

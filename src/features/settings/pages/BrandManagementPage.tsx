@@ -401,7 +401,7 @@ const BrandManagementPage: React.FC = () => {
   const [editingBrand, setEditingBrand] = useState<Brand | null>(null);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [demoBrandValue, setDemoBrandValue] = useState<string>('');
+
 
   const categories = [
     { value: 'all', label: 'All Categories', icon: <Tag size={16} /> },
@@ -758,31 +758,7 @@ const BrandManagementPage: React.FC = () => {
         </div>
       </GlassCard>
 
-      {/* Brand Input Demo */}
-      <GlassCard className="mb-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Store className="w-5 h-5 text-blue-600" />
-          <h3 className="text-lg font-semibold text-gray-900">Brand Input Demo</h3>
-        </div>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Try the new grid-style brand input:
-            </label>
-            <BrandInput
-              value={demoBrandValue}
-              onChange={setDemoBrandValue}
-              placeholder="Click to see brands in grid layout..."
-              className="max-w-md"
-            />
-          </div>
-          {demoBrandValue && (
-            <div className="text-sm text-gray-600">
-              Selected brand: <span className="font-medium">{demoBrandValue}</span>
-            </div>
-          )}
-        </div>
-      </GlassCard>
+
 
       {/* Brands Grid */}
       {loading ? (

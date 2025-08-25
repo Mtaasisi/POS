@@ -4,39 +4,7 @@ import GlassCard from '../components/ui/GlassCard';
 import GlassButton from '../components/ui/GlassButton';
 import PageHeader from '../components/ui/PageHeader';
 
-// Demo sales reports data
-const DEMO_SALES_REPORTS = {
-  dailyReports: [
-    { date: '2024-01-15', sales: 125000, transactions: 8, customers: 6, avgOrder: 15625 },
-    { date: '2024-01-14', sales: 98000, transactions: 6, customers: 5, avgOrder: 16333 },
-    { date: '2024-01-13', sales: 145000, transactions: 9, customers: 7, avgOrder: 16111 },
-    { date: '2024-01-12', sales: 89000, transactions: 5, customers: 4, avgOrder: 17800 },
-    { date: '2024-01-11', sales: 167000, transactions: 10, customers: 8, avgOrder: 16700 },
-    { date: '2024-01-10', sales: 112000, transactions: 7, customers: 6, avgOrder: 16000 },
-    { date: '2024-01-09', sales: 134000, transactions: 8, customers: 7, avgOrder: 16750 },
-  ],
-  productReports: [
-    { product: 'iPhone 14 Pro', units: 3, revenue: 479997, cost: 360000, profit: 119997 },
-    { product: 'MacBook Pro 14"', units: 2, revenue: 599998, cost: 500000, profit: 99998 },
-    { product: 'Samsung Galaxy S23', units: 4, revenue: 519996, cost: 380000, profit: 139996 },
-    { product: 'AirPods Pro', units: 8, revenue: 367992, cost: 280000, profit: 87992 },
-    { product: 'Dell XPS 13', units: 2, revenue: 379998, cost: 280000, profit: 99998 },
-    { product: 'Samsung Galaxy Watch', units: 5, revenue: 179995, cost: 140000, profit: 39995 },
-  ],
-  customerReports: [
-    { customer: 'Mike Johnson', orders: 3, totalSpent: 245000, avgOrder: 81667, lastOrder: '2024-01-15' },
-    { customer: 'David Brown', orders: 2, totalSpent: 189999, avgOrder: 94999, lastOrder: '2024-01-14' },
-    { customer: 'John Doe', orders: 4, totalSpent: 167000, avgOrder: 41750, lastOrder: '2024-01-13' },
-    { customer: 'Jane Smith', orders: 2, totalSpent: 145000, avgOrder: 72500, lastOrder: '2024-01-12' },
-    { customer: 'Sarah Wilson', orders: 1, totalSpent: 89999, avgOrder: 89999, lastOrder: '2024-01-11' },
-  ],
-  paymentReports: [
-    { method: 'M-Pesa', transactions: 15, amount: 350000, percentage: 45 },
-    { method: 'Cash', transactions: 8, amount: 200000, percentage: 25 },
-    { method: 'Card', transactions: 7, amount: 180000, percentage: 23 },
-    { method: 'Bank Transfer', transactions: 2, amount: 50000, percentage: 7 },
-  ]
-};
+
 
 const SalesReportsPage: React.FC = () => {
   const [selectedPeriod, setSelectedPeriod] = useState('7d');
@@ -45,19 +13,13 @@ const SalesReportsPage: React.FC = () => {
 
   // Calculate summary metrics
   const summaryMetrics = useMemo(() => {
-    const totalSales = DEMO_SALES_REPORTS.dailyReports.reduce((sum, day) => sum + day.sales, 0);
-    const totalTransactions = DEMO_SALES_REPORTS.dailyReports.reduce((sum, day) => sum + day.transactions, 0);
-    const totalCustomers = DEMO_SALES_REPORTS.dailyReports.reduce((sum, day) => sum + day.customers, 0);
-    const averageOrder = totalSales / totalTransactions;
-    const totalProfit = DEMO_SALES_REPORTS.productReports.reduce((sum, product) => sum + product.profit, 0);
-
     return {
-      totalSales,
-      totalTransactions,
-      totalCustomers,
-      averageOrder,
-      totalProfit,
-      profitMargin: (totalProfit / totalSales * 100).toFixed(1)
+      totalSales: 0,
+      totalTransactions: 0,
+      totalCustomers: 0,
+      averageOrder: 0,
+      totalProfit: 0,
+      profitMargin: '0.0'
     };
   }, []);
 
@@ -260,25 +222,18 @@ const SalesReportsPage: React.FC = () => {
           <>
             <GlassCard className="p-6">
               <h3 className="text-lg font-semibold text-gray-800 mb-4">Daily Sales Trend</h3>
-          <div className="space-y-3">
-                {DEMO_SALES_REPORTS.dailyReports.map((day, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div>
-                      <div className="font-medium text-gray-900">{new Date(day.date).toLocaleDateString()}</div>
-                      <div className="text-sm text-gray-600">{day.transactions} transactions, {day.customers} customers</div>
-                </div>
-                <div className="text-right">
-                      <div className="font-semibold text-gray-900">{formatMoney(day.sales)}</div>
-                      <div className="text-sm text-gray-600">Avg: {formatMoney(day.avgOrder)}</div>
-                </div>
+              <div className="text-center py-8 text-gray-500">
+                <p>No sales data available for the selected period</p>
+                <p className="text-sm mt-2">Generate a report to see daily sales trends</p>
               </div>
-            ))}
-          </div>
-        </GlassCard>
+            </GlassCard>
 
             <GlassCard className="p-6">
               <h3 className="text-lg font-semibold text-gray-800 mb-4">Sales Performance</h3>
-              {generateChart(DEMO_SALES_REPORTS.dailyReports, 'date', 'sales', 'blue')}
+              <div className="text-center py-8 text-gray-500">
+                <p>No chart data available</p>
+                <p className="text-sm mt-2">Generate a report to see sales performance charts</p>
+              </div>
             </GlassCard>
           </>
         )}
@@ -287,33 +242,18 @@ const SalesReportsPage: React.FC = () => {
           <>
             <GlassCard className="p-6">
               <h3 className="text-lg font-semibold text-gray-800 mb-4">Product Performance</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-gray-200">
-                      <th className="text-left py-2 px-2 font-medium text-gray-700">Product</th>
-                      <th className="text-left py-2 px-2 font-medium text-gray-700">Units</th>
-                      <th className="text-left py-2 px-2 font-medium text-gray-700">Revenue</th>
-                      <th className="text-left py-2 px-2 font-medium text-gray-700">Profit</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {DEMO_SALES_REPORTS.productReports.map((product, index) => (
-                      <tr key={index} className="border-b border-gray-100">
-                        <td className="py-2 px-2 text-sm text-gray-900">{product.product}</td>
-                        <td className="py-2 px-2 text-sm text-gray-600">{product.units}</td>
-                        <td className="py-2 px-2 text-sm font-medium text-gray-900">{formatMoney(product.revenue)}</td>
-                        <td className="py-2 px-2 text-sm text-green-600 font-medium">{formatMoney(product.profit)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="text-center py-8 text-gray-500">
+                <p>No product performance data available</p>
+                <p className="text-sm mt-2">Generate a report to see product performance metrics</p>
               </div>
             </GlassCard>
 
             <GlassCard className="p-6">
               <h3 className="text-lg font-semibold text-gray-800 mb-4">Revenue by Product</h3>
-              {generateChart(DEMO_SALES_REPORTS.productReports, 'product', 'revenue', 'green')}
+              <div className="text-center py-8 text-gray-500">
+                <p>No chart data available</p>
+                <p className="text-sm mt-2">Generate a report to see revenue charts</p>
+              </div>
             </GlassCard>
           </>
         )}
@@ -322,62 +262,41 @@ const SalesReportsPage: React.FC = () => {
           <>
             <GlassCard className="p-6">
               <h3 className="text-lg font-semibold text-gray-800 mb-4">Customer Analysis</h3>
-          <div className="space-y-3">
-                {DEMO_SALES_REPORTS.customerReports.map((customer, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div>
-                      <div className="font-medium text-gray-900">{customer.customer}</div>
-                      <div className="text-sm text-gray-600">{customer.orders} orders, Last: {customer.lastOrder}</div>
-                </div>
-                <div className="text-right">
-                      <div className="font-semibold text-gray-900">{formatMoney(customer.totalSpent)}</div>
-                      <div className="text-sm text-gray-600">Avg: {formatMoney(customer.avgOrder)}</div>
-                </div>
+              <div className="text-center py-8 text-gray-500">
+                <p>No customer analysis data available</p>
+                <p className="text-sm mt-2">Generate a report to see customer spending patterns</p>
               </div>
-            ))}
-          </div>
-        </GlassCard>
+            </GlassCard>
 
             <GlassCard className="p-6">
               <h3 className="text-lg font-semibold text-gray-800 mb-4">Customer Spending</h3>
-              {generateChart(DEMO_SALES_REPORTS.customerReports, 'customer', 'totalSpent', 'purple')}
+              <div className="text-center py-8 text-gray-500">
+                <p>No chart data available</p>
+                <p className="text-sm mt-2">Generate a report to see customer spending charts</p>
+              </div>
             </GlassCard>
-            </>
-          )}
+          </>
+        )}
           
         {selectedReport === 'payments' && (
           <>
             <GlassCard className="p-6">
               <h3 className="text-lg font-semibold text-gray-800 mb-4">Payment Methods</h3>
-        <div className="space-y-4">
-                {DEMO_SALES_REPORTS.paymentReports.map((payment, index) => (
-                  <div key={index} className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                        <span className="text-blue-600 text-sm font-medium">
-                          {payment.method === 'M-Pesa' ? '📱' : payment.method === 'Cash' ? '💵' : payment.method === 'Card' ? '💳' : '🏦'}
-                        </span>
-            </div>
-                    <div>
-                        <div className="font-medium text-gray-900">{payment.method}</div>
-                        <div className="text-sm text-gray-600">{payment.transactions} transactions</div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-semibold text-gray-900">{formatMoney(payment.amount)}</div>
-                      <div className="text-sm text-gray-600">{payment.percentage}%</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+              <div className="text-center py-8 text-gray-500">
+                <p>No payment method data available</p>
+                <p className="text-sm mt-2">Generate a report to see payment method analysis</p>
+              </div>
             </GlassCard>
 
             <GlassCard className="p-6">
               <h3 className="text-lg font-semibold text-gray-800 mb-4">Payment Distribution</h3>
-              {generateChart(DEMO_SALES_REPORTS.paymentReports, 'method', 'amount', 'orange')}
+              <div className="text-center py-8 text-gray-500">
+                <p>No chart data available</p>
+                <p className="text-sm mt-2">Generate a report to see payment distribution charts</p>
+              </div>
             </GlassCard>
           </>
-          )}
+        )}
         </div>
 
       {/* Quick Actions */}

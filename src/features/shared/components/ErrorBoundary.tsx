@@ -49,6 +49,17 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
     console.error('Component Stack:', errorInfo.componentStack);
     console.groupEnd();
 
+    // Check if this is a React refresh error
+    const isReactRefreshError = error.message.includes('React Refresh') || 
+                               error.message.includes('@react-refresh') ||
+                               errorInfo.componentStack.includes('React Refresh');
+    
+    if (isReactRefreshError) {
+      console.log('🔄 Detected React refresh error, attempting to recover...');
+      // For React refresh errors, we might want to show a different message
+      // or handle them differently
+    }
+
     // You could also send to an error reporting service here
     // Example: Sentry.captureException(error, { extra: errorInfo });
   }
@@ -79,6 +90,24 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
     window.history.back();
   };
 
+  handleRefreshPage = () => {
+    window.location.reload();
+  };
+
+  // Handle React refresh errors specifically
+  handleReactRefreshError = () => {
+    console.log('🔄 Handling React refresh error, reloading page...');
+    // Clear any cached data that might be causing issues
+    if (typeof window !== 'undefined') {
+      // Clear session storage
+      sessionStorage.clear();
+      // Clear any problematic cached data
+      localStorage.removeItem('pos_setup_complete');
+      // Reload the page
+      window.location.reload();
+    }
+  };
+
   render() {
     const { hasError, error, errorInfo, retryCount } = this.state;
     const { children, fallback, maxRetries = 3 } = this.props;
@@ -92,6 +121,11 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
           retry: this.handleRetry
         });
       }
+
+      // Check if this is a React refresh error
+      const isReactRefreshError = error?.message?.includes('React Refresh') || 
+                                 error?.message?.includes('@react-refresh') ||
+                                 errorInfo?.componentStack?.includes('React Refresh');
 
       // Default error UI
       return (
@@ -108,11 +142,21 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
               {/* Error Title */}
               <div>
                 <h1 className="text-2xl font-bold text-gray-900 mb-2">
-                  Something went wrong
+                  {isReactRefreshError ? 'Development Refresh Error' : 'Something went wrong'}
                 </h1>
                 <p className="text-gray-600">
-                  An unexpected error occurred. We're sorry for the inconvenience.
+                  {isReactRefreshError 
+                    ? process.env.NODE_ENV === 'development'
+                      ? 'A development refresh error occurred. This is usually temporary and can be resolved by refreshing the page. This error typically happens during hot reloading in development mode.'
+                      : 'A refresh error occurred. This is usually temporary and can be resolved by refreshing the page.'
+                    : 'An unexpected error occurred. We\'re sorry for the inconvenience.'
+                  }
                 </p>
+                {isReactRefreshError && process.env.NODE_ENV === 'development' && (
+                  <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800">
+                    💡 <strong>Development Tip:</strong> This error often occurs during hot reloading. Try saving your file again or manually refreshing the page.
+                  </div>
+                )}
               </div>
 
               {/* Error Details */}
@@ -144,14 +188,24 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 
               {/* Action Buttons */}
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                <GlassButton
-                  onClick={this.handleRetry}
-                  disabled={retryCount >= maxRetries}
-                  icon={<RefreshCw className="w-4 h-4" />}
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
-                >
-                  {retryCount >= maxRetries ? 'Max Retries Reached' : 'Try Again'}
-                </GlassButton>
+                {isReactRefreshError ? (
+                  <GlassButton
+                    onClick={this.handleRefreshPage}
+                    icon={<RefreshCw className="w-4 h-4" />}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    Refresh Page
+                  </GlassButton>
+                ) : (
+                  <GlassButton
+                    onClick={this.handleRetry}
+                    disabled={retryCount >= maxRetries}
+                    icon={<RefreshCw className="w-4 h-4" />}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    {retryCount >= maxRetries ? 'Max Retries Reached' : 'Try Again'}
+                  </GlassButton>
+                )}
                 
                 <GlassButton
                   onClick={this.handleGoBack}

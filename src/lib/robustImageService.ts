@@ -71,24 +71,19 @@ export class RobustImageService {
       let imageUrl: string;
       let thumbnailUrl: string;
 
-      if (import.meta.env.DEV) {
-        // Development: Optimized base64 with compression
+      // Always upload to storage for proper file storage
+      try {
+        const uploadResult = await this.uploadToStorage(file, fileName);
+        imageUrl = uploadResult.url;
+        thumbnailUrl = uploadResult.thumbnailUrl;
+        console.log('✅ Uploaded to Supabase Storage:', imageUrl);
+      } catch (storageError) {
+        console.warn('Storage failed, using base64 fallback:', storageError);
+        // Fallback to base64 only if storage completely fails
         const compressedImage = await this.compressImage(file);
         imageUrl = compressedImage;
         thumbnailUrl = await this.createThumbnail(file, 200);
-        console.log('🛠️ Development: Using compressed base64');
-      } else {
-        // Production: Upload to storage with fallback
-        try {
-          const uploadResult = await this.uploadToStorage(file, fileName);
-          imageUrl = uploadResult.url;
-          thumbnailUrl = uploadResult.thumbnailUrl;
-        } catch (storageError) {
-          console.warn('Storage failed, using base64 fallback:', storageError);
-          const compressedImage = await this.compressImage(file);
-          imageUrl = compressedImage;
-          thumbnailUrl = await this.createThumbnail(file, 200);
-        }
+        console.log('⚠️ Using base64 fallback due to storage error');
       }
 
       // 5. Save to database
@@ -142,8 +137,7 @@ export class RobustImageService {
         .from('product_images')
         .select('*')
         .eq('product_id', productId)
-        .order('is_primary', { ascending: false })
-        .order('created_at', { ascending: true });
+        .order('is_primary', { ascending: false });
 
       if (error) throw error;
 

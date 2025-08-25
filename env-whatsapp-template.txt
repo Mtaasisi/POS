@@ -1,0 +1,17 @@
+# WhatsApp API Configuration
+# Add these to your .env file or server environment variables
+
+# GreenAPI WhatsApp Configuration
+GREENAPI_INSTANCE_ID=your_instance_id_here
+GREENAPI_API_TOKEN=your_api_token_here
+GREENAPI_API_URL=https://api.greenapi.com
+
+# Database Configuration (if using database for credentials)
+SUPABASE_DB_HOST=db.jxhzveborezjhsmzsgbc.supabase.co
+SUPABASE_DB_PORT=5432
+SUPABASE_DB_NAME=postgres
+SUPABASE_DB_USER=postgres
+SUPABASE_DB_PASSWORD=your_database_password_here
+
+# Application Environment
+APP_ENV=production

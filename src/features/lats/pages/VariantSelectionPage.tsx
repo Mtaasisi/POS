@@ -23,50 +23,26 @@ const VariantSelectionPage: React.FC<VariantSelectionPageProps> = ({
   const location = useLocation();
   const [selectedVariant, setSelectedVariant] = useState<ProductSearchVariant | null>(null);
 
-  // Get product from props, navigation state, or use sample product
-  const product = propProduct || location.state?.product || {
-    id: '1',
-    name: 'Sample Product with Variants',
-    categoryName: 'Electronics',
-    brandName: 'Sample Brand',
-    categoryId: '1',
-    tags: [],
-    images: [],
-    variants: [
-      {
-        id: '1',
-        name: 'Small - Red',
-        sku: 'SAMPLE-RED-S',
-        sellingPrice: 1500,
-        quantity: 10,
-        attributes: { size: 'Small', color: 'Red' }
-      },
-      {
-        id: '2',
-        name: 'Medium - Blue',
-        sku: 'SAMPLE-BLUE-M',
-        sellingPrice: 2000,
-        quantity: 5,
-        attributes: { size: 'Medium', color: 'Blue' }
-      },
-      {
-        id: '3',
-        name: 'Large - Green',
-        sku: 'SAMPLE-GREEN-L',
-        sellingPrice: 2500,
-        quantity: 0,
-        attributes: { size: 'Large', color: 'Green' }
-      },
-      {
-        id: '4',
-        name: 'Extra Large - Black',
-        sku: 'SAMPLE-BLACK-XL',
-        sellingPrice: 3000,
-        quantity: 3,
-        attributes: { size: 'Extra Large', color: 'Black' }
-      }
-    ]
-  };
+  // Get product from props or navigation state
+  const product = propProduct || location.state?.product;
+  
+  // If no product is provided, show empty state
+  if (!product) {
+    return (
+      <div className="min-h-screen p-6 bg-gradient-to-br from-blue-50 to-indigo-100">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center py-12">
+            <Package className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">No Product Selected</h1>
+            <p className="text-gray-600 mb-6">Please select a product to view its variants.</p>
+            <GlassButton onClick={() => navigate('/lats/pos')}>
+              Back to POS
+            </GlassButton>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const getStockStatus = (stock: number) => {
     if (stock <= 0) return 'out-of-stock';

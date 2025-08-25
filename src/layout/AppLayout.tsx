@@ -23,7 +23,6 @@ import {
   ChevronLeft,
   ChevronRight,
   MessageCircle,
-  MessageSquare,
   RotateCcw,
   BarChart2,
   CreditCard,
@@ -51,7 +50,12 @@ import {
   Shield, 
   Database,
   MapPin,
-  Layers
+  Layers,
+  Brain,
+  Wrench,
+  CalendarDays,
+  Star,
+  ClipboardList
 } from 'lucide-react';
 import GlassButton from '../features/shared/components/ui/GlassButton';
 
@@ -62,11 +66,22 @@ const AppLayout: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isNavCollapsed, setIsNavCollapsed] = useState(true);
   const [showAddCustomer, setShowAddCustomer] = useState(false);
+  const [readItems, setReadItems] = useState<Set<string>>(() => {
+    const saved = localStorage.getItem('navReadItems');
+    return saved ? new Set(JSON.parse(saved)) : new Set();
+  });
   const navigate = useNavigate();
   const location = useLocation();
 
   // Check if we're on the POS page
   const isOnPOSPage = location.pathname === '/pos';
+
+  // Mark current page as read when location changes
+  useEffect(() => {
+    if (location.pathname) {
+      markAsRead(location.pathname);
+    }
+  }, [location.pathname]);
 
   // Calculate activity counts
   const getActivityCounts = () => {
@@ -131,8 +146,53 @@ const AppLayout: React.FC = () => {
     navigate('/login');
   };
 
+  // Mark navigation item as read when visited
+  const markAsRead = (path: string) => {
+    setReadItems(prev => {
+      const newSet = new Set([...prev, path]);
+      localStorage.setItem('navReadItems', JSON.stringify([...newSet]));
+      return newSet;
+    });
+  };
+
+  // Check if item has unread activity
+  const hasUnreadActivity = (path: string, count?: number) => {
+    if (!count || count <= 0) return false;
+    return !readItems.has(path);
+  };
+
+  // Get unread count for an item
+  const getUnreadCount = (path: string, count?: number) => {
+    if (!count || count <= 0) return 0;
+    return readItems.has(path) ? 0 : count;
+  };
+
+  // Clear all read statuses (for testing or resetting)
+  const clearAllReadStatuses = () => {
+    setReadItems(new Set());
+    localStorage.removeItem('navReadItems');
+  };
+
+  // Get total unread count across all navigation items
+  const getTotalUnreadCount = () => {
+    return navItems.reduce((total, item) => {
+      return total + getUnreadCount(item.path, item.count);
+    }, 0);
+  };
+
+  // Mark all navigation items as read
+  const markAllAsRead = () => {
+    const allPaths = navItems.map(item => item.path);
+    setReadItems(prev => {
+      const newSet = new Set([...prev, ...allPaths]);
+      localStorage.setItem('navReadItems', JSON.stringify([...newSet]));
+      return newSet;
+    });
+  };
+
   const getNavItems = () => {
     const items = [
+      // Main Dashboard
       {
         path: '/dashboard',
         label: 'Dashboard',
@@ -141,151 +201,163 @@ const AppLayout: React.FC = () => {
         count: activityCounts.activeDevices
       },
 
-      // Core Business Operations
+      // Core Operations
       {
         path: '/devices',
         label: 'Devices',
         icon: <Smartphone size={20} />,
         roles: ['admin', 'customer-care', 'technician'],
-        count: activityCounts.activeDevices
+        count: activityCounts.activeDevices + activityCounts.overdueDevices
+      },
+      {
+        path: '/customers',
+        label: 'Customers',
+        icon: <Users size={20} />,
+        roles: ['admin', 'customer-care', 'technician'],
+        count: activityCounts.newCustomers
       },
       {
         path: '/pos',
         label: 'POS System',
         icon: <ShoppingCart size={20} />,
-        roles: ['admin', 'customer-care']
-      },
-      {
-        path: '/lats/unified-inventory',
-        label: 'Unified Inventory',
-        icon: <Package size={20} />,
-        roles: ['admin', 'customer-care']
-      },
-      {
-        path: '/lats/add-product',
-        label: 'Add Product',
-        icon: <Plus size={20} />,
-        roles: ['admin', 'customer-care']
-      },
-      {
-        path: '/lats/spare-parts',
-        label: 'Spare Parts',
-        icon: <Package size={20} />,
-        roles: ['admin', 'technician']
-      },
-      {
-        path: '/lats/beem-test',
-        label: 'Beem Test',
-        icon: <CreditCard size={20} />,
-        roles: ['admin', 'customer-care']
-      },
-      {
-        path: '/whatsapp',
-        label: 'WhatsApp Testing',
-        icon: <MessageSquare size={20} />,
-        roles: ['admin', 'customer-care']
-      },
-
-      // Customer Management
-      {
-        path: '/customers',
-        label: 'Customers',
-        icon: <Users size={20} />,
         roles: ['admin', 'customer-care'],
-        count: activityCounts.newCustomers
+        count: Math.floor(Math.random() * 4) // Placeholder for pending transactions
       },
       {
         path: '/appointments',
         label: 'Appointments',
         icon: <Calendar size={20} />,
-        roles: ['admin', 'customer-care']
+        roles: ['admin', 'customer-care'],
+        count: Math.floor(Math.random() * 3) // Placeholder for pending appointments
       },
       {
         path: '/services',
-        label: 'Service Management',
-        icon: <Briefcase size={20} />,
-        roles: ['admin', 'customer-care']
+        label: 'Services',
+        icon: <Wrench size={20} />,
+        roles: ['admin', 'customer-care'],
+        count: Math.floor(Math.random() * 2) // Placeholder for active services
+      },
+
+      // Inventory Management
+      {
+        path: '/lats/unified-inventory',
+        label: 'Inventory',
+        icon: <Package size={20} />,
+        roles: ['admin', 'customer-care'],
+        count: Math.floor(Math.random() * 3) // Placeholder for low stock items
+      },
+      {
+        path: '/lats/storage-rooms',
+        label: 'Storage Rooms',
+        icon: <Building size={20} />,
+        roles: ['admin', 'customer-care'],
+        count: Math.floor(Math.random() * 2) // Placeholder for storage room alerts
+      },
+      {
+        path: '/lats/spare-parts',
+        label: 'Spare Parts',
+        icon: <Package size={20} />,
+        roles: ['admin', 'technician'],
+        count: Math.floor(Math.random() * 2) // Placeholder for spare parts alerts
+      },
+
+      // Employee Management
+      {
+        path: '/employees',
+        label: 'Employees',
+        icon: <UserCheck size={20} />,
+        roles: ['admin', 'manager'],
+        count: Math.floor(Math.random() * 2) // Placeholder for employee alerts
+      },
+      {
+        path: '/attendance',
+        label: 'Attendance',
+        icon: <Clock size={20} />,
+        roles: ['admin', 'manager', 'technician', 'customer-care'],
+        count: Math.floor(Math.random() * 2) // Placeholder for attendance alerts
+      },
+
+      // Diagnostics - Unified Interface
+      {
+        path: '/diagnostics',
+        label: 'Diagnostics',
+        icon: <Stethoscope size={20} />,
+        roles: ['admin', 'customer-care', 'technician'],
+        count: Math.floor(Math.random() * 3) // Placeholder for diagnostic alerts
       },
 
       // Business Management
       {
         path: '/business',
-        label: 'Business Management',
-        icon: <BarChart2 size={20} />,
-        roles: ['admin', 'manager', 'customer-care']
+        label: 'Business',
+        icon: <Briefcase size={20} />,
+        roles: ['admin', 'manager', 'customer-care'],
+        count: Math.floor(Math.random() * 2) // Placeholder for business alerts
+      },
+      {
+        path: '/analytics',
+        label: 'Analytics',
+        icon: <BarChart3 size={20} />,
+        roles: ['admin', 'manager'],
+        count: Math.floor(Math.random() * 2) // Placeholder for analytics alerts
+      },
+      {
+        path: '/calendar',
+        label: 'Calendar',
+        icon: <CalendarDays size={20} />,
+        roles: ['admin', 'manager', 'customer-care'],
+        count: Math.floor(Math.random() * 2) // Placeholder for calendar events
       },
 
-      // Employee & User Management
+      // Finance & Payments - Unified Interface
       {
-        path: '/employees',
-        label: 'Employees',
-        icon: <Users size={20} />,
-        roles: ['admin', 'manager']
+        path: '/finance',
+        label: 'Finance',
+        icon: <DollarSign size={20} />,
+        roles: ['admin'],
+        count: Math.floor(Math.random() * 2) // Placeholder for finance alerts
       },
       {
-        path: '/attendance',
-        label: 'Attendance',
-        icon: <Calendar size={20} />,
-        roles: ['admin', 'manager', 'technician', 'customer-care']
-      },
-
-      // Data Management
-      {
-        path: '/excel-import',
-        label: 'Data Import',
-        icon: <Upload size={20} />,
-        roles: ['admin']
-      },
-      {
-        path: '/product-export',
-        label: 'Product Export',
-        icon: <Download size={20} />,
-        roles: ['admin']
-      },
-      {
-        path: '/excel-templates',
-        label: 'Excel Templates',
-        icon: <FileText size={20} />,
-        roles: ['admin', 'customer-care']
+        path: '/points-management',
+        label: 'Payment Management',
+        icon: <CreditCard size={20} />,
+        roles: ['admin'],
+        count: Math.floor(Math.random() * 2) // Placeholder for payment alerts
       },
 
-      // Admin Management
+      // Communication & Integration
+      {
+        path: '/lats/whatsapp-hub',
+        label: 'WhatsApp Hub',
+        icon: <MessageCircle size={20} />,
+        roles: ['admin'],
+        count: Math.floor(Math.random() * 2) // Placeholder for WhatsApp alerts
+      },
+
+      // Admin & Settings
       {
         path: '/admin-management',
-        label: 'Admin Management',
+        label: 'Admin',
         icon: <Settings size={20} />,
-        roles: ['admin']
-      },
-
-
-
-      // Diagnostics (Role-specific)
-      {
-        path: '/diagnostics/assigned',
-        label: 'My Diagnostics',
-        icon: <Stethoscope size={20} />,
-        roles: ['technician']
+        roles: ['admin'],
+        count: Math.floor(Math.random() * 2) // Placeholder for admin alerts
       },
       {
-        path: '/diagnostics/reports',
-        label: 'Diagnostic Reports',
-        icon: <Stethoscope size={20} />,
-        roles: ['admin']
+        path: '/supplier-management',
+        label: 'Supplier Management',
+        icon: <Building size={20} />,
+        roles: ['admin'],
+        count: Math.floor(Math.random() * 2) // Placeholder for supplier alerts
       },
       {
-        path: '/store-locations',
-        label: 'Store Locations',
-        icon: <MapPin size={20} />,
-        roles: ['admin', 'customer-care']
-      },
-      {
-        path: '/lats/inventory-management?shelves',
-        label: 'Shelves Management',
-        icon: <Layers size={20} />,
-        roles: ['admin', 'customer-care']
+        path: '/settings',
+        label: 'Settings',
+        icon: <Settings size={20} />,
+        roles: ['admin', 'customer-care', 'technician'],
+        count: 0
       }
     ];
-    
+
     return items.filter(item => item.roles.includes(currentUser.role));
   };
 
@@ -318,9 +390,7 @@ const AppLayout: React.FC = () => {
           onClick={() => setIsMenuOpen(false)}
         />
       )}
-      
 
-      
       {/* Sidebar */}
       <div
         className={`
@@ -354,9 +424,7 @@ const AppLayout: React.FC = () => {
               </div>
             </div>
           </div>
-          
 
-           
           {/* Navigation */}
           <nav className={`flex-1 ${isNavCollapsed ? 'p-2' : 'p-4'} overflow-y-auto`}>
             <ul className="space-y-1">
@@ -372,7 +440,10 @@ const AppLayout: React.FC = () => {
                         : 'text-gray-700 hover:bg-white/40 hover:text-gray-900'
                       }
                     `}
-                    onClick={() => setIsMenuOpen(false)}
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      markAsRead(item.path);
+                    }}
                   >
                     <span className={`
                       ${location.pathname === item.path ? 'text-blue-600' : 'text-blue-500'}
@@ -382,21 +453,22 @@ const AppLayout: React.FC = () => {
                       {item.icon}
                       
                       {/* Activity Counter - Compact mode for collapsed sidebar */}
-                      {item.count && item.count > 0 && isNavCollapsed && (
+                      {getUnreadCount(item.path, item.count) > 0 && isNavCollapsed && (
                         <ActivityCounter 
-                          count={item.count} 
+                          count={getUnreadCount(item.path, item.count)} 
                           compact={true}
                         />
                       )}
+
                     </span>
                     <span className={`transition-opacity duration-300 ${isNavCollapsed ? 'md:hidden' : ''} flex-1`}>
                       {item.label}
                     </span>
                     
                     {/* Activity Counter - Normal mode for expanded sidebar */}
-                    {item.count && item.count > 0 && !isNavCollapsed && (
+                    {getUnreadCount(item.path, item.count) > 0 && !isNavCollapsed && (
                       <ActivityCounter 
-                        count={item.count} 
+                        count={getUnreadCount(item.path, item.count)} 
                         className={`${isNavCollapsed ? 'md:hidden' : ''}`}
                       />
                     )}
@@ -447,7 +519,6 @@ const AppLayout: React.FC = () => {
       {/* Main Content */}
       <main className={`transition-all duration-500 min-h-screen relative z-10 pt-0 pb-8 ${isNavCollapsed ? 'md:ml-[5.5rem]' : 'md:ml-72'}`}>
         <Outlet />
-        
 
         {/* Only show modals for users with permissions */}
         {(currentUser.role === 'admin' || currentUser.role === 'customer-care') && (

@@ -1,11 +1,12 @@
-// VariantProductCard component for ProductCatalogPage
+// VariantProductCard component for UnifiedInventoryPage
 import React, { useState } from 'react';
-import { Package, Tag, ChevronDown, ChevronUp, Star, Eye, Edit, Trash2, TrendingUp, Zap, Shield } from 'lucide-react';
+import { Package, Tag, ChevronDown, ChevronUp, Star, Eye, Edit, Trash2, TrendingUp, Zap, Shield, Printer } from 'lucide-react';
 import GlassCard from '../ui/GlassCard';
 import GlassButton from '../ui/GlassButton';
 import GlassBadge from '../ui/GlassBadge';
 import ProductImageDisplay from './ProductImageDisplay';
 import { format } from '../../lib/format';
+import { LabelPrintingModal } from '../../../../components/LabelPrintingModal';
 
 interface ProductVariant {
   id: string;
@@ -60,6 +61,7 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
 }) => {
   const [showVariants, setShowVariants] = useState(false);
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
+  const [showLabelModal, setShowLabelModal] = useState(false);
 
   // Get primary variant (first active variant or first variant)
   const primaryVariant = product.variants.find(v => v.isActive) || product.variants[0];
@@ -124,6 +126,22 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
   const handleVariantSelect = (variant: ProductVariant) => {
     setSelectedVariant(variant);
     setShowVariants(false);
+  };
+
+  // Prepare product data for label printing
+  const getProductForLabel = () => {
+    const variant = selectedVariant || primaryVariant;
+    return {
+      id: product.id,
+      name: product.name,
+      sku: variant?.sku || product.id,
+      barcode: variant?.sku || product.id,
+      price: variant?.sellingPrice || 0,
+      size: variant?.attributes?.size || '',
+      color: variant?.attributes?.color || '',
+      brand: product.brandName || '',
+      category: product.categoryName || ''
+    };
   };
 
   // Check if product has multiple variants
@@ -543,6 +561,18 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
               )}
             </div>
             <div className="flex items-center gap-2">
+              {/* Label Print Button */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowLabelModal(true);
+                }}
+                className="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 transition-all duration-200 rounded-lg"
+                title="Print Label"
+              >
+                <Printer size={16} />
+              </button>
+              
               {onView && (
                 <button
                   onClick={(e) => {
@@ -592,6 +622,14 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
             </div>
           </div>
         )}
+
+        {/* Label Printing Modal */}
+        <LabelPrintingModal
+          isOpen={showLabelModal}
+          onClose={() => setShowLabelModal(false)}
+          product={getProductForLabel()}
+          formatMoney={format.money}
+        />
       </div>
     </div>
   );

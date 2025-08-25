@@ -7,7 +7,6 @@ import { useNavigationHistory } from '../../../hooks/useNavigationHistory';
 import { useNotifications } from '../../notifications/hooks/useNotifications';
 import {
   Bell,
-  Search,
   Menu,
   X,
   User,
@@ -60,13 +59,13 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, isMenuOpen, isNavCollapse
     notifications, 
     unreadNotifications, 
     markAsRead, 
-    markAsActioned, 
+    _markAsActioned, 
     dismissNotification 
   } = useNotifications();
   
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [isOnline, _setIsOnline] = useState(navigator.onLine);
   
   const { handleBackClick, previousPage } = useNavigationHistory();
   
@@ -95,7 +94,7 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, isMenuOpen, isNavCollapse
   // Calculate activity counts
   const getActivityCounts = () => {
     const now = new Date();
-    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const _oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
     // Active devices (not done or failed)
     const activeDevices = devices.filter(device => {

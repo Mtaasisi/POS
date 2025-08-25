@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useGeneralSettings } from '../hooks/usePOSSettings';
 import { GeneralSettings } from '../lib/posSettingsApi';
+import { useAuth } from './AuthContext';
 
 interface GeneralSettingsContextType {
   settings: GeneralSettings | null;
@@ -37,6 +38,9 @@ export const useGeneralSettingsContext = () => {
 };
 
 export const GeneralSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated } = useAuth();
+  
+  // Only initialize settings when authenticated
   const {
     settings,
     loading,
@@ -48,53 +52,6 @@ export const GeneralSettingsProvider: React.FC<{ children: React.ReactNode }> = 
   } = useGeneralSettings();
 
   const [currentSettings, setCurrentSettings] = useState<GeneralSettings | null>(null);
-
-  // Apply settings when they change
-  useEffect(() => {
-    if (settings) {
-      setCurrentSettings(settings);
-      applySettingsToUI(settings);
-    }
-  }, [settings]);
-
-  // Listen for settings update events
-  useEffect(() => {
-    const handleSettingsUpdate = (event: CustomEvent) => {
-      if (event.detail.type === 'general') {
-        loadSettings();
-      }
-    };
-
-    window.addEventListener('settingsUpdated', handleSettingsUpdate as EventListener);
-    
-    return () => {
-      window.removeEventListener('settingsUpdated', handleSettingsUpdate as EventListener);
-    };
-  }, [loadSettings]);
-
-  // Apply all settings to the UI
-  const applySettingsToUI = (settings: GeneralSettings) => {
-    // Apply theme
-    applyTheme(settings.theme);
-    
-    // Apply language
-    applyLanguage(settings.language);
-    
-    // Apply currency
-    applyCurrency(settings.currency);
-    
-    // Apply timezone
-    applyTimezone(settings.timezone);
-    
-    // Apply display settings
-    applyDisplaySettings(settings);
-    
-    // Apply behavior settings
-    applyBehaviorSettings(settings);
-    
-    // Apply performance settings
-    applyPerformanceSettings(settings);
-  };
 
   // Apply theme to document
   const applyTheme = (theme: 'light' | 'dark' | 'auto') => {
@@ -156,6 +113,86 @@ export const GeneralSettingsProvider: React.FC<{ children: React.ReactNode }> = 
     localStorage.setItem('enableLazyLoading', settings.enable_lazy_loading.toString());
     localStorage.setItem('maxSearchResults', settings.max_search_results.toString());
   };
+
+  // Apply all settings to the UI
+  const applySettingsToUI = (settings: GeneralSettings) => {
+    // Apply theme
+    applyTheme(settings.theme);
+    
+    // Apply language
+    applyLanguage(settings.language);
+    
+    // Apply currency
+    applyCurrency(settings.currency);
+    
+    // Apply timezone
+    applyTimezone(settings.timezone);
+    
+    // Apply display settings
+    applyDisplaySettings(settings);
+    
+    // Apply behavior settings
+    applyBehaviorSettings(settings);
+    
+    // Apply performance settings
+    applyPerformanceSettings(settings);
+  };
+
+  // Apply settings when they change
+  useEffect(() => {
+    if (settings) {
+      setCurrentSettings(settings);
+      applySettingsToUI(settings);
+    }
+  }, [settings]);
+
+  // Listen for settings update events
+  useEffect(() => {
+    const handleSettingsUpdate = (event: CustomEvent) => {
+      if (event.detail.type === 'general') {
+        loadSettings();
+      }
+    };
+
+    window.addEventListener('settingsUpdated', handleSettingsUpdate as EventListener);
+    
+    return () => {
+      window.removeEventListener('settingsUpdated', handleSettingsUpdate as EventListener);
+    };
+  }, [loadSettings]);
+
+  // Show loading state while not authenticated
+  if (!isAuthenticated) {
+    return (
+      <GeneralSettingsContext.Provider value={{
+        settings: null,
+        loading: true,
+        error: null,
+        applyTheme: () => {},
+        applyLanguage: () => {},
+        applyCurrency: () => {},
+        applyTimezone: () => {},
+        formatCurrency: (amount: number) => amount.toString(),
+        formatDate: (date: Date) => date.toLocaleDateString(),
+        formatTime: (date: Date) => date.toLocaleTimeString(),
+        showProductImages: true,
+        showStockLevels: true,
+        showPrices: true,
+        showBarcodes: true,
+        productsPerPage: 20,
+        autoCompleteSearch: true,
+        confirmDelete: true,
+        showConfirmations: true,
+        enableSoundEffects: true,
+        enableAnimations: true,
+        refreshSettings: async () => {}
+      }}>
+        {children}
+      </GeneralSettingsContext.Provider>
+    );
+  }
+
+
 
   // Format currency based on settings
   const formatCurrency = (amount: number): string => {

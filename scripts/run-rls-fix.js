@@ -1,93 +1,139 @@
-import { createClient } from '@supabase/supabase-js';
+#!/usr/bin/env node
 
-// Use the same configuration as the main app
-const SUPABASE_URL = 'https://jxhzveborezjhsmzsgbc.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHp2ZWJvcmV6amhzbXpzZ2JjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3MTE1MjQsImV4cCI6MjA2ODI4NzUyNH0.pIug4PlJ3Q14GxcYilW-u0blByYoyeOfN3q9RNIjgfw';
+/**
+ * Script to fix RLS policies for whatsapp_instances table
+ * This addresses the 406 Not Acceptable error
+ */
 
-// Create Supabase client with anon key
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const { createClient } = require('@supabase/supabase-js');
+const fs = require('fs');
+const path = require('path');
+
+// Load environment variables
+require('dotenv').config();
+
+const supabaseUrl = process.env.VITE_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseServiceKey) {
+  console.error('❌ Missing required environment variables:');
+  console.error('   - VITE_SUPABASE_URL');
+  console.error('   - SUPABASE_SERVICE_ROLE_KEY');
+  process.exit(1);
+}
+
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 async function runRLSFix() {
-  console.log('🚀 Running RLS Policies Fix...');
-  
   try {
-    // Read the RLS migration file
-    const fs = await import('fs');
-    const path = await import('path');
+    console.log('🔧 Running RLS fix for whatsapp_instances table...');
     
-    const migrationPath = path.join(process.cwd(), 'supabase', 'migrations', '20241201000021_fix_pos_settings_rls_policies.sql');
-    const migrationSQL = fs.readFileSync(migrationPath, 'utf8');
+    // Read the SQL script
+    const sqlPath = path.join(__dirname, 'fix-whatsapp-instances-406-error.sql');
+    const sqlScript = fs.readFileSync(sqlPath, 'utf8');
     
-    console.log('📋 Executing RLS migration...');
+    console.log('📄 SQL script loaded, executing...');
     
-    // Execute the migration using RPC
-    const { error: migrationError } = await supabase.rpc('exec_sql', {
-      sql: migrationSQL
-    });
+    // Execute the SQL script
+    const { data, error } = await supabase.rpc('exec_sql', { sql: sqlScript });
     
-    if (migrationError) {
-      console.error('❌ RLS migration failed:', migrationError);
-      return;
+    if (error) {
+      console.error('❌ Error executing SQL script:', error);
+      process.exit(1);
     }
     
-    console.log('✅ RLS migration completed successfully');
-    
-    // Test the tables by trying to query them
-    const tablesToTest = [
-      'lats_pos_barcode_scanner_settings',
-      'lats_pos_search_filter_settings',
-      'lats_pos_user_permissions_settings',
-      'lats_pos_loyalty_customer_settings',
-      'lats_pos_analytics_reporting_settings',
-      'lats_pos_notification_settings'
-    ];
-    
-    console.log('🧪 Testing table access after RLS fix...');
-    
-    for (const table of tablesToTest) {
-      try {
-        const { data, error } = await supabase
-          .from(table)
-          .select('id')
-          .limit(1);
-        
-        if (error) {
-          console.log(`❌ Error testing ${table}:`, error.message);
-        } else {
-          console.log(`✅ ${table} is accessible`);
-        }
-      } catch (err) {
-        console.log(`❌ Exception testing ${table}:`, err.message);
-      }
-    }
-    
-    // Test with a specific user ID
-    const testUserId = 'a7c9adb7-f525-4850-bd42-79a769f12953';
-    console.log(`🧪 Testing with user ID: ${testUserId}`);
-    
-    for (const table of tablesToTest) {
-      try {
-        const { data, error } = await supabase
-          .from(table)
-          .select('*')
-          .eq('user_id', testUserId);
-        
-        if (error) {
-          console.log(`❌ Error querying ${table} for user:`, error.message);
-        } else {
-          console.log(`✅ ${table} has ${data?.length || 0} records for user`);
-        }
-      } catch (err) {
-        console.log(`❌ Exception querying ${table} for user:`, err.message);
-      }
-    }
-    
-    console.log('🎉 RLS fix completed!');
+    console.log('✅ RLS fix completed successfully!');
+    console.log('📊 Results:', data);
     
   } catch (error) {
-    console.error('💥 Error running RLS fix:', error);
+    console.error('❌ Error running RLS fix:', error);
+    process.exit(1);
+  }
+}
+
+// Alternative method using direct SQL execution
+async function runRLSFixAlternative() {
+  try {
+    console.log('🔧 Running RLS fix (alternative method)...');
+    
+    // Drop existing policies
+    console.log('🗑️ Dropping existing policies...');
+    const policiesToDrop = [
+      "Users can view their own WhatsApp instances",
+      "Users can insert their own WhatsApp instances", 
+      "Users can update their own WhatsApp instances",
+      "Users can delete their own WhatsApp instances",
+      "Authenticated users can view WhatsApp instances",
+      "Authenticated users can insert WhatsApp instances",
+      "Authenticated users can update WhatsApp instances",
+      "Authenticated users can delete WhatsApp instances",
+      "Admin users have full access to WhatsApp instances",
+      "Development fallback policy",
+      "Allow all authenticated users to access whatsapp_instances"
+    ];
+    
+    for (const policyName of policiesToDrop) {
+      try {
+        await supabase.rpc('exec_sql', { 
+          sql: `DROP POLICY IF EXISTS "${policyName}" ON whatsapp_instances;` 
+        });
+        console.log(`✅ Dropped policy: ${policyName}`);
+      } catch (error) {
+        console.log(`⚠️ Could not drop policy ${policyName}:`, error.message);
+      }
+    }
+    
+    // Create new policies
+    console.log('🔨 Creating new policies...');
+    
+    const newPolicies = [
+      `CREATE POLICY "Allow authenticated users to view whatsapp_instances" 
+       ON whatsapp_instances FOR SELECT TO authenticated USING (true);`,
+      
+      `CREATE POLICY "Allow authenticated users to create whatsapp_instances" 
+       ON whatsapp_instances FOR INSERT TO authenticated WITH CHECK (true);`,
+      
+      `CREATE POLICY "Allow authenticated users to update whatsapp_instances" 
+       ON whatsapp_instances FOR UPDATE TO authenticated USING (true) WITH CHECK (true);`,
+      
+      `CREATE POLICY "Allow authenticated users to delete whatsapp_instances" 
+       ON whatsapp_instances FOR DELETE TO authenticated USING (true);`,
+      
+      `CREATE POLICY "Fallback policy for all whatsapp_instances operations" 
+       ON whatsapp_instances FOR ALL TO authenticated USING (true) WITH CHECK (true);`
+    ];
+    
+    for (const policy of newPolicies) {
+      try {
+        await supabase.rpc('exec_sql', { sql: policy });
+        console.log('✅ Created policy successfully');
+      } catch (error) {
+        console.error('❌ Error creating policy:', error.message);
+      }
+    }
+    
+    // Test the fix
+    console.log('🧪 Testing the fix...');
+    const { data: testData, error: testError } = await supabase
+      .from('whatsapp_instances')
+      .select('*')
+      .limit(1);
+    
+    if (testError) {
+      console.error('❌ Test failed:', testError);
+    } else {
+      console.log('✅ Test successful! Table is accessible.');
+      console.log(`📊 Found ${testData?.length || 0} instances`);
+    }
+    
+  } catch (error) {
+    console.error('❌ Error in alternative RLS fix:', error);
   }
 }
 
 // Run the fix
-runRLSFix();
+if (process.argv.includes('--alternative')) {
+  runRLSFixAlternative();
+} else {
+  runRLSFix();
+}

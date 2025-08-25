@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { logInfo, logDebug } from './debugUtils';
 
 export interface TableStatus {
   exists: boolean;
@@ -138,18 +139,28 @@ export const COMMON_TABLES = {
   SUPPLIERS: 'lats_suppliers'
 } as const;
 
-// Pre-check common tables on app startup
+// Singleton to track if database check has been initialized
+let databaseCheckInitialized = false;
+
+// Pre-check common tables on app startup (only once)
 export const initializeDatabaseCheck = async () => {
-  console.log('🔍 Checking database table accessibility...');
+  // Only run once per app session
+  if (databaseCheckInitialized) {
+    return DatabaseUtils.getCacheStatus();
+  }
+  
+  databaseCheckInitialized = true;
+  
+  logInfo('DatabaseUtils', 'Checking database table accessibility...');
   
   const tableStatuses = await DatabaseUtils.checkTablesExist(Object.values(COMMON_TABLES));
   
-  console.log('📊 Database table status:');
+  logInfo('DatabaseUtils', 'Database table status:');
   Object.entries(tableStatuses).forEach(([table, status]) => {
     const icon = status.accessible ? '✅' : '❌';
-    console.log(`${icon} ${table}: ${status.accessible ? 'accessible' : 'not accessible'}`);
+    logDebug('DatabaseUtils', `${icon} ${table}: ${status.accessible ? 'accessible' : 'not accessible'}`);
     if (status.error) {
-      console.log(`   Error: ${status.error}`);
+      logDebug('DatabaseUtils', `   Error: ${status.error}`);
     }
   });
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useInventoryStore } from '../features/lats/stores/useInventoryStore';
 import { useCustomers } from '../context/CustomersContext';
 import { Package, CheckCircle, Users, Smartphone, Settings } from 'lucide-react';
+import { useCyclingLoadingMessage } from '../hooks/useCyclingLoadingMessage';
 
 const BackgroundDataLoader: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -10,6 +11,12 @@ const BackgroundDataLoader: React.FC = () => {
   
   const { products, categories, brands, suppliers, isLoading: storeLoading } = useInventoryStore();
   const { customers } = useCustomers();
+  
+  // Cycling loading messages
+  const { currentMessage } = useCyclingLoadingMessage({
+    enabled: isLoading,
+    interval: 2500
+  });
 
   // Track loading states for different data types
   const [dataStates, setDataStates] = useState({
@@ -68,7 +75,9 @@ const BackgroundDataLoader: React.FC = () => {
             <>
               <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500"></div>
               <div className="flex-1">
-                <p className="text-sm font-medium text-gray-700">Loading data...</p>
+                <p className={`text-sm font-medium ${currentMessage.color || 'text-gray-700'}`}>
+                  {currentMessage.icon} {currentMessage.text}
+                </p>
                 <div className="flex items-center space-x-2 mt-1">
                   <Package className="h-3 w-3 text-blue-500" />
                   <Users className="h-3 w-3 text-green-500" />

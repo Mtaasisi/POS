@@ -4,21 +4,37 @@ export interface Category {
   id: string;
   name: string;
   description?: string;
+  parent_id?: string;
   color?: string;
+  icon?: string;
+  is_active: boolean;
+  sort_order: number;
+  metadata?: Record<string, any>;
   created_at: string;
   updated_at: string;
+  children?: Category[];
 }
 
 export interface CreateCategoryData {
   name: string;
   description?: string;
+  parent_id?: string;
   color?: string;
+  icon?: string;
+  is_active?: boolean;
+  sort_order?: number;
+  metadata?: Record<string, any>;
 }
 
 export interface UpdateCategoryData {
   name?: string;
   description?: string;
+  parent_id?: string;
   color?: string;
+  icon?: string;
+  is_active?: boolean;
+  sort_order?: number;
+  metadata?: Record<string, any>;
 }
 
 // Get all categories
@@ -37,18 +53,100 @@ export const getCategories = async (): Promise<Category[]> => {
   }
 };
 
-// Get active categories only (since there's no is_active column, return all categories)
+// Get active categories only
 export const getActiveCategories = async (): Promise<Category[]> => {
   try {
     const { data, error } = await supabase
       .from('lats_categories')
       .select('*')
+      .eq('is_active', true)
+      .order('sort_order')
       .order('name');
 
     if (error) throw error;
     return data || [];
   } catch (error) {
     console.error('Error fetching active categories:', error);
+    throw error;
+  }
+};
+
+// Get root categories (no parent)
+export const getRootCategories = async (): Promise<Category[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('lats_categories')
+      .select('*')
+      .is('parent_id', null)
+      .eq('is_active', true)
+      .order('sort_order')
+      .order('name');
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching root categories:', error);
+    throw error;
+  }
+};
+
+// Get subcategories of a parent category
+export const getSubcategories = async (parentId: string): Promise<Category[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('lats_categories')
+      .select('*')
+      .eq('parent_id', parentId)
+      .eq('is_active', true)
+      .order('sort_order')
+      .order('name');
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching subcategories:', error);
+    throw error;
+  }
+};
+
+// Get category hierarchy (tree structure)
+export const getCategoryHierarchy = async (): Promise<Category[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('lats_categories')
+      .select('*')
+      .eq('is_active', true)
+      .order('sort_order')
+      .order('name');
+
+    if (error) throw error;
+    
+    // Build hierarchy
+    const categories = data || [];
+    const categoryMap = new Map<string, Category>();
+    const rootCategories: Category[] = [];
+
+    // Create a map of all categories
+    categories.forEach(category => {
+      categoryMap.set(category.id, { ...category, children: [] });
+    });
+
+    // Build the tree structure
+    categories.forEach(category => {
+      if (category.parent_id) {
+        const parent = categoryMap.get(category.parent_id);
+        if (parent) {
+          parent.children = parent.children || [];
+          parent.children.push(categoryMap.get(category.id)!);
+        }
+      } else {
+        rootCategories.push(categoryMap.get(category.id)!);
+      }
+    });
+
+    return rootCategories;
+  } catch (error) {
+    console.error('Error fetching category hierarchy:', error);
     throw error;
   }
 };

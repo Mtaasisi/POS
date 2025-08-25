@@ -201,7 +201,7 @@ const calculateNextRun = (frequency: string, time: string): string => {
   const now = new Date();
   const [hour, minute] = time.split(':').map(Number);
   
-  let nextRun = new Date();
+  const nextRun = new Date();
   nextRun.setHours(hour, minute, 0, 0);
   
   // If time has passed today, move to next occurrence

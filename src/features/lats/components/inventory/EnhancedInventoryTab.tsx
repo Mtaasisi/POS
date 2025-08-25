@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import GlassCard from '../../../shared/components/ui/GlassCard';
 import GlassButton from '../../../shared/components/ui/GlassButton';
 import SearchBar from '../../../shared/components/ui/SearchBar';
@@ -6,10 +6,11 @@ import GlassSelect from '../../../shared/components/ui/GlassSelect';
 import VariantProductCard from './VariantProductCard';
 import { SimpleImageDisplay } from '../../../../components/SimpleImageDisplay';
 import { ProductImage } from '../../../../lib/robustImageService';
+import { LabelPrintingModal } from '../../../../components/LabelPrintingModal';
 import { 
   Package, Grid, List, Star, CheckCircle, XCircle, 
   Download, Upload, Edit, Eye, Trash2, DollarSign, TrendingUp,
-  AlertTriangle, Calculator, Crown, Users
+  AlertTriangle, Calculator, Crown, Users, Printer
 } from 'lucide-react';
 
 interface EnhancedInventoryTabProps {
@@ -100,6 +101,8 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
   productModals,
   deleteProduct
 }) => {
+  const [showLabelModal, setShowLabelModal] = useState(false);
+  const [selectedProductForLabel, setSelectedProductForLabel] = useState<any>(null);
   // Debug logging (reduced to prevent console spam)
   if (import.meta.env.MODE === 'development' && false) { // Disabled debug logging
     console.log('🔍 EnhancedInventoryTab Debug:', {
@@ -348,6 +351,31 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
               </GlassButton>
               <GlassButton
                 variant="secondary"
+                icon={<Printer size={16} />}
+                onClick={() => {
+                  // Open label printing modal for first selected product
+                  const firstProduct = products.find(p => selectedProducts.includes(p.id));
+                  if (firstProduct) {
+                    setSelectedProductForLabel({
+                      id: firstProduct.id,
+                      name: firstProduct.name,
+                      sku: firstProduct.variants?.[0]?.sku || firstProduct.id,
+                      barcode: firstProduct.variants?.[0]?.sku || firstProduct.id,
+                      price: firstProduct.variants?.[0]?.sellingPrice || 0,
+                      size: firstProduct.variants?.[0]?.attributes?.size || '',
+                      color: firstProduct.variants?.[0]?.attributes?.color || '',
+                      brand: firstProduct.brand?.name || '',
+                      category: categories.find(c => c.id === firstProduct.categoryId)?.name || ''
+                    });
+                    setShowLabelModal(true);
+                  }
+                }}
+                className="text-sm"
+              >
+                Print Labels
+              </GlassButton>
+              <GlassButton
+                variant="secondary"
                 icon={<Trash2 size={16} />}
                 onClick={() => setShowDeleteConfirmation(true)}
                 className="text-sm text-red-600 hover:bg-red-50"
@@ -484,6 +512,27 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
                           >
                             <Calculator className="w-4 h-4" />
                           </button>
+                          <button
+                            onClick={(e) => { 
+                              e.stopPropagation(); 
+                              setSelectedProductForLabel({
+                                id: product.id,
+                                name: product.name,
+                                sku: product.variants?.[0]?.sku || product.id,
+                                barcode: product.variants?.[0]?.sku || product.id,
+                                price: product.variants?.[0]?.sellingPrice || 0,
+                                size: product.variants?.[0]?.attributes?.size || '',
+                                color: product.variants?.[0]?.attributes?.color || '',
+                                brand: product.brand?.name || '',
+                                category: categories.find(c => c.id === product.categoryId)?.name || ''
+                              });
+                              setShowLabelModal(true);
+                            }}
+                            className="p-1 text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded"
+                            title="Print Label"
+                          >
+                            <Printer className="w-4 h-4" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -544,6 +593,19 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
             </GlassButton>
           </div>
         </GlassCard>
+      )}
+
+      {/* Label Printing Modal */}
+      {selectedProductForLabel && (
+        <LabelPrintingModal
+          isOpen={showLabelModal}
+          onClose={() => {
+            setShowLabelModal(false);
+            setSelectedProductForLabel(null);
+          }}
+          product={selectedProductForLabel}
+          formatMoney={formatMoney}
+        />
       )}
     </div>
   );

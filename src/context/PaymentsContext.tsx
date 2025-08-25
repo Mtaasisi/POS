@@ -79,11 +79,15 @@ export const PaymentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         .select(`
           *,
           customers(name),
-          lats_sale_items(*)
+          lats_sale_items(
+            *,
+            lats_products(name, description),
+            lats_product_variants(name, sku, attributes)
+          )
         `)
         .order('created_at', { ascending: false });
 
-      let allPayments: any[] = [];
+      const allPayments: any[] = [];
 
       // Transform device payments
       if (!devicePaymentsError && devicePaymentsData) {

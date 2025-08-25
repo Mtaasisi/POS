@@ -9,6 +9,12 @@
 [functions]
   node_bundler = "esbuild"
 
+# SPA redirect rule - this is crucial for React Router to work
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
 [[redirects]]
   from = "/api/whatsapp-webhook"
   to = "/.netlify/functions/whatsapp-webhook"
@@ -32,6 +38,11 @@
 [[redirects]]
   from = "/api/whatsapp-proxy"
   to = "/.netlify/functions/whatsapp-proxy"
+  status = 200
+
+[[redirects]]
+  from = "/api/green-api-proxy"
+  to = "/.netlify/functions/green-api-proxy"
   status = 200
 
 [[headers]]

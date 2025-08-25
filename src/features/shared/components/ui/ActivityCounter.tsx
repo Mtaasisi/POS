@@ -7,14 +7,17 @@ interface ActivityCounterProps {
 }
 
 const ActivityCounter: React.FC<ActivityCounterProps> = ({ count, className = '', compact = false }) => {
-  // Don't render anything if count is 0 or less
-  if (count <= 0) return null;
+  // Convert count to number and check if it's 0 or less
+  const numericCount = typeof count === 'string' ? parseInt(count, 10) : count;
+  
+  // Don't render anything if count is 0, less than 0, or NaN
+  if (numericCount <= 0 || isNaN(numericCount)) return null;
   
   if (compact) {
     return (
       <div className="absolute -top-1 -right-1 z-10">
         <span className="bg-red-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center border border-white shadow">
-          {count > 99 ? '99+' : count}
+          {numericCount > 99 ? '99+' : numericCount}
         </span>
       </div>
     );
@@ -28,7 +31,7 @@ const ActivityCounter: React.FC<ActivityCounterProps> = ({ count, className = ''
       bg-red-500 rounded-full
       ${className}
     `}>
-      {count > 99 ? '99+' : count}
+      {numericCount > 99 ? '99+' : numericCount}
     </span>
   );
 };

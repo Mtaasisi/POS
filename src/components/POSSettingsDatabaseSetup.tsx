@@ -8,8 +8,17 @@ interface POSSettingsDatabaseSetupProps {
 }
 
 export const POSSettingsDatabaseSetup: React.FC<POSSettingsDatabaseSetupProps> = ({ children }) => {
-  const authContext = useContext(AuthContext);
-  const currentUser = authContext?.currentUser;
+  // Safely get auth context
+  let authContext = null;
+  let currentUser = null;
+  
+  try {
+    authContext = useContext(AuthContext);
+    currentUser = authContext?.currentUser;
+  } catch (err) {
+    console.warn('AuthContext not available, skipping POS setup');
+  }
+  
   const [isSetupComplete, setIsSetupComplete] = useState(false);
   const [isSettingUp, setIsSettingUp] = useState(false);
   const setupCompletedRef = useRef(false);
@@ -679,17 +688,22 @@ export const POSSettingsDatabaseSetup: React.FC<POSSettingsDatabaseSetupProps> =
   };
 
   // Show loading state while auth context is not ready or while setting up
-  if (!authContext || isSettingUp) {
+  if (isSettingUp) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">
-            {!authContext ? 'Initializing authentication...' : 'Setting up POS settings database...'}
+            Setting up POS settings database...
           </p>
         </div>
       </div>
     );
+  }
+
+  // If auth context is not available, just render children
+  if (!authContext) {
+    return <>{children}</>;
   }
 
   return <>{children}</>;

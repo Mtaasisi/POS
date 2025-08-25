@@ -119,7 +119,11 @@ class POSService {
         .from('lats_sales')
         .select(`
           *,
-          lats_sale_items(*)
+          lats_sale_items(
+            *,
+            lats_products(name, description),
+            lats_product_variants(name, sku, attributes)
+          )
         `)
         .gte('created_at', startDate)
         .lte('created_at', endDate)
@@ -145,7 +149,11 @@ class POSService {
         .from('lats_sales')
         .select(`
           *,
-          lats_sale_items(*)
+          lats_sale_items(
+            *,
+            lats_products(name, description),
+            lats_product_variants(name, sku, attributes)
+          )
         `)
         .order('created_at', { ascending: false })
         .limit(limit);

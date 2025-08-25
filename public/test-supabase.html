@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Supabase Connection Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-result {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        pre {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Supabase Connection Test</h1>
+        
+        <div class="test-result info">
+            <strong>Current Configuration:</strong><br>
+            URL: https://jxhzveborezjhsmzsgbc.supabase.co<br>
+            Key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHp2ZWJvcmV6amhzbXpzZ2JjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3MTE1MjQsImV4cCI6MjA2ODI4NzUyNH0.pIug4PlJ3Q14GxcYilW-u0blByYoyeOfN3q9RNIjgfw
+        </div>
+
+        <h2>Tests</h2>
+        
+        <button onclick="testDNS()">🌐 Test DNS Resolution</button>
+        <button onclick="testHTTP()">🔗 Test HTTP Connection</button>
+        <button onclick="testAPI()">📡 Test Supabase API</button>
+        <button onclick="runAllTests()">🚀 Run All Tests</button>
+        
+        <div id="results"></div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://jxhzveborezjhsmzsgbc.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHp2ZWJvcmV6amhzbXpzZ2JjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3MTE1MjQsImV4cCI6MjA2ODI4NzUyNH0.pIug4PlJ3Q14GxcYilW-u0blByYoyeOfN3q9RNIjgfw';
+
+        function addResult(title, success, message, details = null) {
+            const resultsDiv = document.getElementById('results');
+            const resultDiv = document.createElement('div');
+            resultDiv.className = `test-result ${success ? 'success' : 'error'}`;
+            
+            let html = `<strong>${title}:</strong> ${success ? '✅ SUCCESS' : '❌ FAILED'}<br>`;
+            html += `${message}`;
+            
+            if (details) {
+                html += `<pre>${JSON.stringify(details, null, 2)}</pre>`;
+            }
+            
+            resultDiv.innerHTML = html;
+            resultsDiv.appendChild(resultDiv);
+        }
+
+        async function testDNS() {
+            try {
+                const start = performance.now();
+                const response = await fetch(SUPABASE_URL, { 
+                    method: 'HEAD',
+                    mode: 'no-cors'
+                });
+                const end = performance.now();
+                
+                addResult(
+                    'DNS Resolution',
+                    true,
+                    `Domain resolves successfully (${Math.round(end - start)}ms)`
+                );
+            } catch (error) {
+                addResult(
+                    'DNS Resolution',
+                    false,
+                    `Failed to resolve domain: ${error.message}`
+                );
+            }
+        }
+
+        async function testHTTP() {
+            try {
+                const response = await fetch(SUPABASE_URL);
+                addResult(
+                    'HTTP Connection',
+                    true,
+                    `HTTP connection successful (Status: ${response.status})`
+                );
+            } catch (error) {
+                addResult(
+                    'HTTP Connection',
+                    false,
+                    `HTTP connection failed: ${error.message}`
+                );
+            }
+        }
+
+        async function testAPI() {
+            try {
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/devices?select=count&limit=1`, {
+                    headers: {
+                        'apikey': SUPABASE_KEY,
+                        'Authorization': `Bearer ${SUPABASE_KEY}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    addResult(
+                        'Supabase API',
+                        true,
+                        `API call successful (Status: ${response.status})`,
+                        data
+                    );
+                } else {
+                    addResult(
+                        'Supabase API',
+                        false,
+                        `API call failed (Status: ${response.status})`,
+                        data
+                    );
+                }
+            } catch (error) {
+                addResult(
+                    'Supabase API',
+                    false,
+                    `API call failed: ${error.message}`
+                );
+            }
+        }
+
+        async function runAllTests() {
+            document.getElementById('results').innerHTML = '';
+            await testDNS();
+            await testHTTP();
+            await testAPI();
+        }
+
+        // Auto-run tests on page load
+        window.onload = function() {
+            setTimeout(runAllTests, 1000);
+        };
+    </script>
+</body>
+</html>

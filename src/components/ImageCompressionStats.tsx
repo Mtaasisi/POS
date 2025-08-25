@@ -20,10 +20,10 @@ export const ImageCompressionStats: React.FC<ImageCompressionStatsProps> = ({
   
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 B';
-    const k = 1024;
+    const kilobyte = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    const size = parseFloat((bytes / Math.pow(k, i)).toFixed(2));
+    const i = Math.floor(Math.log(bytes) / Math.log(kilobyte));
+    const size = parseFloat((bytes / Math.pow(kilobyte, i)).toFixed(2));
     return `${size} ${sizes[i]}`;
   };
   

@@ -57,7 +57,7 @@ const StockHistoryTable: React.FC<StockHistoryTableProps> = ({
 
   // Filter and sort movements
   const filteredAndSortedMovements = useMemo(() => {
-    let filtered = movements.filter(movement => {
+    const filtered = movements.filter(movement => {
       if (filters.adjustmentType && movement.adjustmentType !== filters.adjustmentType) {
         return false;
       }

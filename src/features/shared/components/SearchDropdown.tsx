@@ -7,32 +7,17 @@ import {
   Smartphone,
   Users,
   Package,
-  ShoppingCart,
   FileText,
   Crown,
   CreditCard,
   TrendingUp,
   Warehouse,
   BarChart3,
-  Activity,
-  Calendar,
-  MessageSquare,
-  Settings,
-  User,
-  Building,
-  DollarSign,
   Clock,
-  MapPin,
-  Phone,
-  Mail,
-  Tag,
-  Filter,
   ArrowRight,
   ExternalLink,
   Loader2,
   X,
-  Command,
-  Zap,
 } from 'lucide-react';
 
 interface SearchResult extends ServiceSearchResult {
@@ -56,7 +41,7 @@ const SearchDropdown: React.FC<SearchDropdownProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [_error, setError] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);

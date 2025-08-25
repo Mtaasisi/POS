@@ -148,8 +148,7 @@ export class UnifiedImageService {
         .from('product_images')
         .select('*')
         .eq('product_id', productId)
-        .order('is_primary', { ascending: false })
-        .order('created_at', { ascending: true });
+        .order('is_primary', { ascending: false });
 
       if (error) throw error;
 

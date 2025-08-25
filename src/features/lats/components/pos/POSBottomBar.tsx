@@ -1,5 +1,5 @@
-import React from 'react';
-import { BarChart3, Zap, Settings, Users, Package, TrendingUp, FileText, Crown } from 'lucide-react';
+import React, { useState } from 'react';
+import { BarChart3, Zap, Settings, Users, Package, TrendingUp, FileText, Crown, Maximize2, Minimize2 } from 'lucide-react';
 import GlassButton from '../../../shared/components/ui/GlassButton';
 
 interface POSBottomBarProps {
@@ -25,6 +25,24 @@ const POSBottomBar: React.FC<POSBottomBarProps> = ({
   onLoyalty,
   className = ''
 }) => {
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().then(() => {
+        setIsFullscreen(true);
+      }).catch(err => {
+        console.log('Error attempting to enable fullscreen:', err);
+      });
+    } else {
+      document.exitFullscreen().then(() => {
+        setIsFullscreen(false);
+      }).catch(err => {
+        console.log('Error attempting to exit fullscreen:', err);
+      });
+    }
+  };
+
   return (
     <div className={`fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-gray-200 shadow-lg z-40 ${className}`}>
       <div className="max-w-7xl mx-auto px-4 py-3">
@@ -103,6 +121,14 @@ const POSBottomBar: React.FC<POSBottomBarProps> = ({
                 <Crown size={18} />
               </button>
             )}
+            
+            <button
+              onClick={toggleFullscreen}
+              className="p-2 text-gray-600 hover:text-yellow-600 hover:bg-yellow-50 rounded-lg transition-colors duration-200"
+              title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+            >
+              {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+            </button>
             
             <button
               onClick={onSettings}

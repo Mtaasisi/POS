@@ -20,7 +20,7 @@ import BulkSMSModal from '../components/BulkSMSModal';
 import ExcelImportModal from '../components/ExcelImportModal';
 import CustomerUpdateImportModal from '../components/CustomerUpdateImportModal';
 import DropdownPortal from '../../../features/shared/components/ui/DropdownPortal';
-import { SMSService } from '../../../services/smsService';
+import { smsService } from '../../../services/smsService';
 import { fetchAllCustomers, fetchCustomersPaginated, searchCustomers, searchCustomersFast, searchCustomersBackground, getBackgroundSearchManager } from '../../../lib/customerApi';
 import { formatCurrency } from '../../../lib/customerApi';
 import AddCustomerModal from '../components/forms/AddCustomerModal';
@@ -759,19 +759,18 @@ const CustomersPage = () => {
 
     setSendingSMS(true);
     try {
-      const smsService = new SMSService();
-      const result = await smsService.sendBulkSMSToCustomers(
-        recipients.map(c => ({ id: c.id, phone: c.phone, name: c.name })),
-        message,
-        currentUser.id
-      );
+      const result = await smsService.sendBulkSMS({
+        recipients: recipients.map(c => c.phone),
+        message: message,
+        created_by: currentUser.id
+      });
 
       if (result.success) {
-        toast.success(`SMS sent successfully to all ${result.totalSent} customers!`);
-      } else if (result.totalSent > 0) {
-        toast.success(`SMS sent to ${result.totalSent} customers, ${result.totalFailed} failed.`);
+        toast.success(`SMS sent successfully to all ${result.sent} customers!`);
+      } else if (result.sent > 0) {
+        toast.success(`SMS sent to ${result.sent} customers, ${result.failed} failed.`);
       } else {
-        toast.error(`Failed to send SMS to any customers. ${result.totalFailed} errors.`);
+        toast.error(`Failed to send SMS to any customers. ${result.failed} errors.`);
       }
 
       // Log detailed results

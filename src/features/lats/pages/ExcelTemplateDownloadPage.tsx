@@ -42,11 +42,11 @@ Instructions:
 5. Category, Brand, and Supplier IDs can be left empty if not available
 
 Required Fields (*),name*,sku*,barcode,description,price,cost_price,stock_quantity,min_stock,max_stock,category_id,brand_id,supplier_id,tags,variant_name
-Sample Product 1,iPhone 14 Pro,IPH14P-128,1234567890123,Latest iPhone model with A16 chip,159999,120000,15,5,50,,,smartphone,apple,Default Variant
-Sample Product 2,Samsung Galaxy S23,SAMS23-256,1234567890124,Flagship Android phone with Snapdragon,129999,100000,12,5,50,,,smartphone,samsung,Default Variant
-Sample Product 3,MacBook Air M2,MBA-M2-256,1234567890125,13-inch laptop with Apple M2 chip,899999,750000,8,3,25,,,laptop,apple,Default Variant
-Sample Product 4,AirPods Pro,APP-GEN2,1234567890126,Wireless earbuds with noise cancellation,299999,200000,20,10,100,,,audio,apple,Default Variant
-Sample Product 5,Galaxy Watch 6,GW6-44MM,1234567890127,Smartwatch with health tracking,199999,150000,10,5,30,,,wearable,samsung,Default Variant
+Product 1,Example Product 1,PROD-001,1234567890123,Example product description,159999,120000,15,5,50,,,electronics,example,Default Variant
+Product 2,Example Product 2,PROD-002,1234567890124,Another example product,129999,100000,12,5,50,,,electronics,example,Default Variant
+Product 3,Example Product 3,PROD-003,1234567890125,Third example product,899999,750000,8,3,25,,,electronics,example,Default Variant
+Product 4,Example Product 4,PROD-004,1234567890126,Fourth example product,299999,200000,20,10,100,,,electronics,example,Default Variant
+Product 5,Example Product 5,PROD-005,1234567890127,Fifth example product,199999,150000,10,5,30,,,electronics,example,Default Variant
 
 Field Descriptions:
 name* - Product name (required)
@@ -73,10 +73,10 @@ Instructions:
 5. Color tags: new, vip, complainer, purchased
 
 Required Fields (*),Name*,Phone Number*,Gender,City,WhatsApp Number,Notes,Loyalty Level,Color Tag,Birth Month,Birth Day,Referral Source,Location Description,National ID,Referred By,Total Spent,Points,Is Active,Email
-Sample Customer 1,John Doe,+255712345678,male,Dar es Salaam,+255712345678,Regular customer prefers phone calls,bronze,new,3,15,social media,123 Main Street Dar es Salaam,1234567890123456,Jane Smith,50000,100,true,john.doe@email.com
-Sample Customer 2,Jane Smith,+255723456789,female,Arusha,+255723456789,VIP customer very satisfied,silver,vip,6,22,recommendation,456 Business Ave Arusha,2345678901234567,Mike Johnson,75000,150,true,jane.smith@email.com
-Sample Customer 3,Mike Johnson,+255734567890,male,Mwanza,+255734567890,Regular customer,gold,new,12,5,physically,789 Home Road Mwanza,3456789012345678,Alice Brown,100000,200,true,mike.johnson@email.com
-Sample Customer 4,Alice Brown,+255745678901,female,Dodoma,+255745678901,Social media customer,platinum,purchased,9,10,instagram,321 Social Street Dodoma,4567890123456789,John Doe,150000,300,true,alice.brown@email.com
+Customer 1,Example Customer 1,+255712345678,male,Dar es Salaam,+255712345678,Example customer notes,bronze,new,3,15,social media,123 Main Street Dar es Salaam,1234567890123456,Example Referrer,50000,100,true,example1@email.com
+Customer 2,Example Customer 2,+255723456789,female,Arusha,+255723456789,Another example customer,silver,vip,6,22,recommendation,456 Business Ave Arusha,2345678901234567,Example Referrer,75000,150,true,example2@email.com
+Customer 3,Example Customer 3,+255734567890,male,Mwanza,+255734567890,Third example customer,gold,new,12,5,physically,789 Home Road Mwanza,3456789012345678,Example Referrer,100000,200,true,example3@email.com
+Customer 4,Example Customer 4,+255745678901,female,Dodoma,+255745678901,Fourth example customer,platinum,purchased,9,10,instagram,321 Social Street Dodoma,4567890123456789,Example Referrer,150000,300,true,example4@email.com
 
 Field Descriptions:
 Name* - Customer full name (required)

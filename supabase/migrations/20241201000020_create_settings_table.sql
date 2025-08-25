@@ -31,6 +31,12 @@ ON settings FOR SELECT
 TO authenticated 
 USING (true);
 
+CREATE POLICY "Allow authenticated users to manage settings" 
+ON settings FOR ALL 
+TO authenticated 
+USING (true);
+
+-- Keep the admin policy as a backup but make it less restrictive
 CREATE POLICY "Allow admin users to manage settings" 
 ON settings FOR ALL 
 TO authenticated 

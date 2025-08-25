@@ -83,31 +83,7 @@ const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
     return '255' + cleanPhone;
   };
 
-  // Function to format WhatsApp numbers with 255 prefix
-  const formatWhatsAppNumber = (whatsapp: string): string => {
-    if (!whatsapp) return '';
-    
-    // Remove any existing spaces or special characters
-    const cleanWhatsApp = whatsapp.replace(/[\s\-()]/g, '');
-    
-    // If already has +255 or 255 prefix, return as is
-    if (cleanWhatsApp.startsWith('+255') || cleanWhatsApp.startsWith('255')) {
-      return cleanWhatsApp;
-    }
-    
-    // If starts with 0, convert to +255 format
-    if (cleanWhatsApp.startsWith('0')) {
-      return '+255' + cleanWhatsApp.substring(1);
-    }
-    
-    // If it's a 9-digit number without prefix, add 255
-    if (cleanWhatsApp.length === 9 && /^\d+$/.test(cleanWhatsApp)) {
-      return '255' + cleanWhatsApp;
-    }
-    
-    // For any other format, add 255 prefix
-    return '255' + cleanWhatsApp;
-  };
+
 
   // Function to format customer names
   const formatCustomerName = (name: string): string => {
@@ -375,18 +351,16 @@ const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
           phone: formatPhoneNumber(customer.phone),
           gender: formatGender(customer.gender),
           city: formatCityName(customer.city),
-          whatsapp: customer.whatsapp ? formatWhatsAppNumber(customer.whatsapp) : '',
-          notes: customer.notes?.trim() || '',
+          whatsapp: customer.whatsapp ? formatPhoneNumber(customer.whatsapp) : '',
+          notes: customer.notes || '',
           loyaltyLevel: customer.loyaltyLevel || 'bronze',
           colorTag: customer.colorTag || 'new',
           birthMonth: customer.birthMonth || '',
           birthDay: customer.birthDay || '',
           referralSource: formatReferralSource(customer.referralSource || ''),
-          referralSourceCustom: customer.referralSourceCustom?.trim() || '',
-          isActive: true,
+          referralSourceCustom: customer.referralSourceCustom || '',
           createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          userId: currentUser?.uid || ''
+          updatedAt: new Date().toISOString()
         };
         
         // Add customer to database
@@ -450,9 +424,8 @@ const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
   const downloadTemplate = () => {
     const template = [
       ['Name', 'Email', 'Phone', 'Gender', 'City', 'WhatsApp', 'Notes', 'Loyalty Level', 'Color Tag', 'Birth Month', 'Birth Day', 'Referral Source'],
-      ['John Doe', 'john@example.com', '0712345678', 'male', 'Dar es Salaam', '0712345678', 'Test customer', 'bronze', 'new', '01', '15', 'facebook']
+      ['John Doe', 'john@example.com', '0712345678', 'male', 'Dar es Salaam', '0712345678', 'Sample notes', 'bronze', 'new', '01', '15', 'facebook']
     ];
-    
     const csvContent = template.map(row => row.join(',')).join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);

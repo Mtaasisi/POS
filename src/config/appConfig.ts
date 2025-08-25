@@ -26,7 +26,7 @@ export const APP_CONFIG = {
 
   // API Configuration
   api: {
-    baseUrl: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+    baseUrl: import.meta.env.VITE_API_URL || 'https://inauzwa.store',
     timeout: 30000, // 30 seconds
     maxRetries: 3,
   },
@@ -77,6 +77,20 @@ export const APP_CONFIG = {
     maxHeaderSize: 8192, // 8KB max header size to prevent 431 errors
     requestTimeout: 30000, // 30 seconds
     retryAttempts: 3,
+  },
+
+  // AI Configuration
+  ai: {
+    enabled: true, // Enable AI services
+    gemini: {
+      enabled: true, // Enable Gemini AI
+      maxRequestsPerMinute: 2,
+      minRequestInterval: 30000, // 30 seconds
+      errorCooldown: 120000, // 2 minutes
+    },
+    fallback: {
+      enabled: true, // Always enable fallback responses
+    }
   },
 };
 

@@ -9,7 +9,7 @@ import DeviceCard from '../DeviceCard';
 import SearchBar from '../ui/SearchBar';
 import BarcodeScanner from '../../../devices/components/BarcodeScanner';
 import { Link } from 'react-router-dom';
-import { PlusCircle, Smartphone, CheckCircle, UserCheck, QrCode, Hammer, PackageCheck, Wrench, XCircle, Clock, AlertTriangle, TrendingUp, Calendar, Settings, Trophy, Star, Stethoscope, ChevronDown, ChevronUp, Eye } from 'lucide-react';
+import { PlusCircle, Smartphone, CheckCircle, UserCheck, QrCode, Clock, AlertTriangle, TrendingUp, Calendar, Settings, Trophy, Star, Stethoscope, ChevronDown, ChevronUp, Eye } from 'lucide-react';
 import { DeviceStatus, Device } from '../../../types';
 
 import { getDiagnosticRequests } from '../../../../lib/diagnosticsApi';
@@ -37,11 +37,11 @@ const TechnicianDashboard: React.FC<TechnicianDashboardProps> = ({
   setStatusFilter
 }) => {
   const { currentUser } = useAuth();
-  const { getDevicesDueToday, getOverdueDevices } = useDevices();
+  const { getOverdueDevices } = useDevices();
   const { getGoalProgress } = useUserGoals();
   const [showScanner, setShowScanner] = useState(false);
-  const [assignedReturns, setAssignedReturns] = useState<any[]>([]);
-  const [returnsLoading, setReturnsLoading] = useState(true);
+  const [_assignedReturns, setAssignedReturns] = useState<any[]>([]);
+  const [_returnsLoading, setReturnsLoading] = useState(true);
   
   // Add diagnostic devices state
   const [diagnosticRequests, setDiagnosticRequests] = useState<DiagnosticRequest[]>([]);

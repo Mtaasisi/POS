@@ -5,7 +5,7 @@ import { ApiError, ValidationError } from '../types/inventory';
 export const handleApiError = (error: any, context: string = 'Operation'): ApiError => {
   console.error(`[LATS Error] ${context}:`, error);
   
-  let apiError: ApiError = {
+  const apiError: ApiError = {
     code: 'UNKNOWN_ERROR',
     message: 'An unexpected error occurred',
     details: error

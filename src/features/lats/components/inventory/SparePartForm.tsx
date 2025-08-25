@@ -26,8 +26,9 @@ const SparePartForm: React.FC<SparePartFormProps> = ({
 
   // Store location and shelf state
   const [storeLocations, setStoreLocations] = useState<StoreLocation[]>([]);
-
+  const [shelves, setShelves] = useState<any[]>([]);
   const [loadingLocations, setLoadingLocations] = useState(false);
+  const [loadingShelves, setLoadingShelves] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -84,15 +85,22 @@ const SparePartForm: React.FC<SparePartFormProps> = ({
   useEffect(() => {
     const loadShelves = async () => {
       if (!formData.storeLocationId) {
+        setShelves([]);
         return;
       }
 
       try {
+        setLoadingShelves(true);
+        setShelves([]);
         // TODO: Implement shelf loading logic
         // const locationShelves = await shelfApi.getByLocation(formData.storeLocationId);
+        // setShelves(locationShelves);
       } catch (error) {
         console.error('Error loading shelves:', error);
         toast.error('Failed to load shelves');
+        setShelves([]);
+      } finally {
+        setLoadingShelves(false);
       }
     };
 
@@ -510,8 +518,8 @@ const SparePartForm: React.FC<SparePartFormProps> = ({
                     {/* Shelf Selection */}
                     <div>
                       <label className="block mb-2 font-medium text-gray-700">
-                        <Layers className="w-4 h-4 inline mr-2" />
-                        Shelf
+                        <Building className="w-4 h-4 inline mr-2" />
+                        Storage Room
                       </label>
                       <select
                         className="w-full py-3 px-3 bg-white/30 backdrop-blur-md border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 transition-colors"
@@ -536,14 +544,14 @@ const SparePartForm: React.FC<SparePartFormProps> = ({
                       {formData.storeLocationId && shelves.length === 0 && !loadingShelves && (
                         <div className="mt-2 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
                           <div className="text-sm text-yellow-800">
-                            No shelves found for this location. 
+                            No storage rooms found for this location.
                             <button
                               type="button"
-                              onClick={() => window.open('/lats/inventory-management?shelves', '_blank')}
+                              onClick={() => window.open('/lats/inventory-management?storage-room', '_blank')}
                               className="text-blue-600 hover:text-blue-800 ml-1 underline"
-                                                      >
-                            Manage shelves
-                          </button>
+                            >
+                              Manage storage rooms
+                            </button>
                           </div>
                         </div>
                       )}

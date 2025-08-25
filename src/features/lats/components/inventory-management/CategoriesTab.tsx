@@ -4,11 +4,12 @@ import GlassButton from '../../../shared/components/ui/GlassButton';
 import SearchBar from '../../../shared/components/ui/SearchBar';
 import { 
   Tag, Plus, Edit, Trash2, Search, Package, 
-  CheckCircle, XCircle, FolderOpen
+  CheckCircle, XCircle, FolderOpen, Grid, List
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useCategories } from '../../../../hooks/useCategories';
 import CategoryFormModal from '../inventory/CategoryFormModal';
+import CategoryTree from '../inventory/CategoryTree';
 
 interface Category {
   id: string;
@@ -38,6 +39,8 @@ const CategoriesTab: React.FC = () => {
   const [showCategoryForm, setShowCategoryForm] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [viewMode, setViewMode] = useState<'grid' | 'tree'>('tree');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | undefined>();
 
   // Filter categories based on search
   useEffect(() => {
@@ -98,6 +101,17 @@ const CategoriesTab: React.FC = () => {
     return categories?.filter(cat => !cat.parent_id) || [];
   };
 
+  const handleAddSubcategory = (parentId: string) => {
+    const parentCategory = categories?.find(cat => cat.id === parentId);
+    setEditingCategory(null);
+    // Pre-fill the parent ID in the form
+    setShowCategoryForm(true);
+  };
+
+  const handleSelectCategory = (category: Category) => {
+    setSelectedCategoryId(category.id);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -120,14 +134,44 @@ const CategoriesTab: React.FC = () => {
         </GlassButton>
       </div>
 
-      {/* Filters */}
+      {/* Filters and View Controls */}
       <GlassCard className="p-4">
-        <SearchBar
-          placeholder="Search categories..."
-          value={searchQuery}
-          onChange={setSearchQuery}
-          icon={<Search size={18} />}
-        />
+        <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
+          <div className="flex-1">
+            <SearchBar
+              placeholder="Search categories..."
+              value={searchQuery}
+              onChange={setSearchQuery}
+              icon={<Search size={18} />}
+            />
+          </div>
+          
+          {/* View Toggle */}
+          <div className="flex items-center gap-2 bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => setViewMode('tree')}
+              className={`p-2 rounded-md transition-colors ${
+                viewMode === 'tree' 
+                  ? 'bg-white shadow-sm text-blue-600' 
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+              title="Tree view"
+            >
+              <List size={18} />
+            </button>
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`p-2 rounded-md transition-colors ${
+                viewMode === 'grid' 
+                  ? 'bg-white shadow-sm text-blue-600' 
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+              title="Grid view"
+            >
+              <Grid size={18} />
+            </button>
+          </div>
+        </div>
       </GlassCard>
 
       {/* Categories List */}
@@ -156,6 +200,15 @@ const CategoriesTab: React.FC = () => {
               </GlassButton>
             )}
           </div>
+        ) : viewMode === 'tree' ? (
+          <CategoryTree
+            categories={filteredCategories}
+            onEditCategory={handleEditCategory}
+            onDeleteCategory={handleDeleteCategory}
+            onAddSubcategory={handleAddSubcategory}
+            selectedCategoryId={selectedCategoryId}
+            onSelectCategory={handleSelectCategory}
+          />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredCategories.map((category) => (
@@ -229,6 +282,7 @@ const CategoriesTab: React.FC = () => {
         onSubmit={handleSubmitCategory}
         parentCategories={getParentCategories()}
         loading={isSubmitting}
+        editingCategory={editingCategory}
       />
     </div>
   );

@@ -11,7 +11,7 @@ import { removeDuplicateDevices } from '../DeviceCard';
 import SearchBar from '../ui/SearchBar';
 import BarcodeScanner from '../../../devices/components/BarcodeScanner';
 import { Link, useNavigate } from 'react-router-dom';
-import { PlusCircle, Smartphone, CheckCircle, UserCheck, QrCode, Hammer, PackageCheck, Wrench, XCircle, Clock, AlertTriangle, TrendingUp, Calendar, Users, Phone, Mail, MessageSquare, ClipboardList, Trophy, Star, Gift, Clock as ClockIcon, Users as UsersIcon, Check, ArrowUpDown, ArrowUp, ArrowDown, Settings } from 'lucide-react';
+import { PlusCircle, Smartphone, CheckCircle, UserCheck, QrCode, Clock, AlertTriangle, TrendingUp, Calendar, Users, Phone, Mail, MessageSquare, ClipboardList, Trophy, Star, Gift, Check, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 
 import { DeviceStatus, Device } from '../../../types';
 import Modal from '../ui/Modal';
@@ -37,9 +37,9 @@ const CustomerCareDashboard: React.FC<CustomerCareDashboardProps> = ({
   setStatusFilter
 }) => {
   const { currentUser } = useAuth();
-  const { getDevicesDueToday, getOverdueDevices, addRemark } = useDevices();
+  const { getOverdueDevices, addRemark: _addRemark } = useDevices();
   const { customers, addPoints } = useCustomers();
-  const { userGoals, getGoalProgress } = useUserGoals();
+  const { userGoals: _userGoals, getGoalProgress } = useUserGoals();
   const navigate = useNavigate();
   const [showScanner, setShowScanner] = useState(false);
   const [showReadyHandoverModal, setShowReadyHandoverModal] = useState(false);

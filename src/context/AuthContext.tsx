@@ -1,8 +1,10 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import * as React from 'react';
+import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { retryWithBackoff } from '../lib/supabaseClient';
 import { toast } from 'react-hot-toast';
-import { POSSettingsAPI } from '../lib/posSettingsApi';
+// Removed POSSettingsAPI import to avoid circular dependency
+import { logInfo, logError, logWarn, trackInit } from '../lib/debugUtils';
 
 // Import the inventory store for automatic product loading
 import { useInventoryStore } from '../features/lats/stores/useInventoryStore';
@@ -31,7 +33,7 @@ export const useAuth = () => {
 // Global flag to prevent multiple AuthProvider instances
 let globalAuthProviderInitialized = false;
 
-let authProviderMountCount = 0; // Static mount counter for debugging
+const authProviderMountCount = 0; // Static mount counter for debugging
 
 // Helper to map Supabase user (is_active) to app User (isActive)
 function mapUserFromSupabase(user: any): any {
@@ -75,9 +77,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const dataLoadedRef = useRef(false);
   
   // Expose data loaded flag globally for cache manager
-  if (typeof window !== 'undefined') {
-    window.__AUTH_DATA_LOADED_FLAG__ = dataLoadedRef.current;
-  }
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.__AUTH_DATA_LOADED_FLAG__ = dataLoadedRef.current;
+    }
+  }, []);
 
   // Function to load products and other data automatically in background
   const loadInitialDataInBackground = async () => {
@@ -94,54 +98,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Small delay to ensure UI is fully loaded first
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Get the inventory store
-      const inventoryStore = useInventoryStore.getState();
-      
-      // Load inventory data first (highest priority)
-      const inventoryPromises = [
-        inventoryStore.loadProducts({ page: 1, limit: 50 }),
-        inventoryStore.loadCategories(),
-        inventoryStore.loadBrands(),
-        inventoryStore.loadSuppliers()
-      ];
-      
-      // Load other data sources
+      // Load other data sources first (avoid store calls during initialization)
       const otherDataPromises = [
         loadCustomersData(),
         loadDevicesData(),
         loadSettingsData()
       ];
       
-      // Execute inventory loading first, then other data
-      console.log('🚀 Starting inventory data loading...');
-      const inventoryResults = await Promise.allSettled(inventoryPromises);
-      
       console.log('🚀 Starting other data loading...');
       const otherResults = await Promise.allSettled(otherDataPromises);
       
-      // Combine results
-      const results = [...inventoryResults, ...otherResults];
-      
-      // Count successful loads
-      const successfulLoads = results.filter(result => result.status === 'fulfilled').length;
-      const totalLoads = results.length;
-      
-      console.log(`✅ Background data loading completed: ${successfulLoads}/${totalLoads} successful`);
-      
-      // Show a subtle toast notification
-      if (successfulLoads > 0) {
-        // Get specific data counts for better feedback
-        const inventoryCount = results[0]?.status === 'fulfilled' ? '📦' : '';
-        const customerCount = results[4]?.status === 'fulfilled' ? '👥' : '';
-        const deviceCount = results[5]?.status === 'fulfilled' ? '📱' : '';
-        const settingsCount = results[6]?.status === 'fulfilled' ? '⚙️' : '';
+      // Load inventory data after other data (to avoid initialization issues)
+      try {
+        const inventoryStore = useInventoryStore.getState();
+        const inventoryPromises = [
+          inventoryStore.loadProducts({ page: 1, limit: 50 }),
+          inventoryStore.loadCategories(),
+          inventoryStore.loadBrands(),
+          inventoryStore.loadSuppliers()
+        ];
         
-        const icons = [inventoryCount, customerCount, deviceCount, settingsCount].filter(Boolean).join(' ');
+        console.log('🚀 Starting inventory data loading...');
+        const inventoryResults = await Promise.allSettled(inventoryPromises);
         
-        toast.success(`${icons} ${successfulLoads} data sources loaded successfully`, {
-          duration: 4000,
-          position: 'bottom-right'
-        });
+        // Combine results
+        const results = [...otherResults, ...inventoryResults];
+        
+        // Count successful loads
+        const successfulLoads = results.filter(result => result.status === 'fulfilled').length;
+        const totalLoads = results.length;
+        
+        console.log(`✅ Background data loading completed: ${successfulLoads}/${totalLoads} successful`);
+        
+        // Background data loading completed silently
+        if (successfulLoads > 0) {
+          console.log(`✅ Background data loading completed: ${successfulLoads}/${totalLoads} successful`);
+        }
+      } catch (inventoryError) {
+        console.error('❌ Error loading inventory data:', inventoryError);
+        // Continue with other results even if inventory fails
+        const successfulLoads = otherResults.filter(result => result.status === 'fulfilled').length;
+        if (successfulLoads > 0) {
+          console.log(`✅ Background data loading completed (partial): ${successfulLoads}/${otherResults.length} successful`);
+        }
       }
     } catch (error) {
       console.error('❌ Error in background data loading:', error);
@@ -164,14 +163,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const { fetchAllCustomers } = await import('../lib/customerApi');
           const customers = await fetchAllCustomers();
           console.log(`✅ Loaded ${customers.length} customers successfully`);
-          
-          // Show a specific notification for customer loading
-          if (customers.length > 0) {
-            toast.success(`👥 ${customers.length} customers loaded successfully`, {
-              duration: 2000,
-              position: 'bottom-right'
-            });
-          }
           
           return customers;
         } catch (error) {
@@ -302,7 +293,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(false);
       
       // Start background data loading after successful authentication
-      loadInitialDataInBackground();
+      // Moved to separate useEffect to avoid initialization issues
     } catch (err) {
       console.error('Error in fetchAndSetUserProfile:', err);
       // Set user with default technician role if there's an error
@@ -317,7 +308,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(false);
       
       // Start background data loading after successful authentication
-      loadInitialDataInBackground();
+      // Moved to separate useEffect to avoid initialization issues
     }
   };
 
@@ -355,57 +346,61 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     // Prevent multiple initializations
     if (initializedRef.current || globalAuthProviderInitialized) {
-      console.log('⚠️ AuthProvider already initialized, skipping...');
+      logWarn('AuthProvider', 'Already initialized, skipping...');
+      return;
+    }
+    
+    if (!trackInit('AuthProvider')) {
       return;
     }
     
     globalAuthProviderInitialized = true;
     authProviderMountCount.current++;
-    console.log('🚀 Initializing AuthProvider (mount #', authProviderMountCount.current, ')');
+    logInfo('AuthProvider', `Initializing (mount #${authProviderMountCount.current})`);
     
     const initializeAuth = async () => {
-      try {
-        setLoading(true);
-        console.log('🔐 Checking for existing session...');
-        
-        // Get current session
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        
-        if (sessionError) {
-          console.error('❌ Session error:', sessionError);
+        try {
+          setLoading(true);
+          logInfo('AuthProvider', 'Checking for existing session...');
+          
+          // Get current session
+          const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+          
+          if (sessionError) {
+            logError('AuthProvider', 'Session error:', sessionError);
+            setCurrentUser(null);
+            setLoading(false);
+            return;
+          }
+          
+          if (session?.user) {
+            logInfo('AuthProvider', `Found existing session for user: ${session.user.email}`);
+            await fetchAndSetUserProfile(session.user);
+          } else {
+            logInfo('AuthProvider', 'No existing session found');
+            setCurrentUser(null);
+          }
+          
+          setLoading(false);
+          initializedRef.current = true;
+          logInfo('AuthProvider', 'Auth initialization complete');
+        } catch (err) {
+          logError('AuthProvider', 'Error initializing auth:', err);
           setCurrentUser(null);
           setLoading(false);
-          return;
+          initializedRef.current = true;
         }
-        
-        if (session?.user) {
-          console.log('✅ Found existing session for user:', session.user.email);
-          await fetchAndSetUserProfile(session.user);
-        } else {
-          console.log('ℹ️ No existing session found');
-          setCurrentUser(null);
-        }
-        
-        setLoading(false);
-        initializedRef.current = true;
-        console.log('✅ Auth initialization complete');
-      } catch (err) {
-        console.error('❌ Error initializing auth:', err);
-        setCurrentUser(null);
-        setLoading(false);
-        initializedRef.current = true;
-      }
-    };
+      };
 
     // Set up auth state change listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('🔄 Auth state change:', event, session?.user?.email);
+      logInfo('AuthProvider', `Auth state change: ${event}`, session?.user?.email);
       
       if (event === 'SIGNED_IN' && session?.user) {
-        console.log('👤 User signed in:', session.user.email);
+        logInfo('AuthProvider', `User signed in: ${session.user.email}`);
         fetchAndSetUserProfile(session.user);
       } else if (event === 'SIGNED_OUT') {
-        console.log('👋 User signed out');
+        logInfo('AuthProvider', 'User signed out');
         
         // Clear POS settings user cache
         POSSettingsAPI.clearUserCache();
@@ -414,7 +409,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setLoading(false);
         dataLoadedRef.current = false; // Reset data loaded flag
       } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-        console.log('🔄 Token refreshed for user:', session.user.email);
+        logInfo('AuthProvider', `Token refreshed for user: ${session.user.email}`);
         // Don't refetch profile on token refresh, just ensure user is still set
         if (!currentUser) {
           fetchAndSetUserProfile(session.user);
@@ -427,12 +422,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Cleanup function
     return () => {
-      console.log('🧹 Cleaning up AuthProvider');
+      logInfo('AuthProvider', 'Cleaning up AuthProvider');
       subscription.unsubscribe();
       authProviderMountCount.current--;
       // Don't reset globalAuthProviderInitialized on cleanup to prevent re-initialization
     };
   }, []); // Empty dependency array to run only once
+
+  // Separate useEffect for data loading to avoid initialization issues
+  useEffect(() => {
+    if (currentUser && !dataLoadedRef.current) {
+      loadInitialDataInBackground();
+    }
+  }, [currentUser]);
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
@@ -476,8 +478,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('👋 Logging out user');
       setLoading(true);
       
-      // Clear POS settings user cache
-      POSSettingsAPI.clearUserCache();
+      // Clear POS settings user cache (handled by the hook itself)
+      // POSSettingsAPI.clearUserCache(); // Removed to avoid circular dependency
       
       await supabase.auth.signOut();
       setCurrentUser(null);

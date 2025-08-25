@@ -31,7 +31,6 @@ import StepIndicator from '../components/StepIndicator';
 import InteractiveDeviceDiagram from '../components/InteractiveDeviceDiagram';
 import VideoTutorials from '../components/VideoTutorials';
 
-
 const COMMON_MODELS = {
   'Apple': ['iPhone 15', 'iPhone 14', 'iPhone 13', 'iPhone 12', 'iPhone 11', 'iPhone X', 'iPhone 8', 'iPhone 7', 'iPhone 6'],
   'Samsung': ['Galaxy S24', 'Galaxy S23', 'Galaxy S22', 'Galaxy S21', 'Galaxy Note', 'Galaxy A', 'Galaxy M'],
@@ -60,12 +59,10 @@ const initialForm = {
   assignedTo: '', // Add assignedTo to form state
 };
 
-
 type DeviceConditionKey = 'screenCracked' | 'backCoverDamaged' | 'waterDamage' | 'noPower' | 'buttonsNotWorking' | 'other';
 const conditionOptions: { key: DeviceConditionKey | 'otherText'; label: string }[] = [
   { key: 'other', label: 'Condition Assessment' },
 ];
-
 
 const DeviceIntakeUnifiedPage: React.FC = () => {
   // All state variables and refs
@@ -218,8 +215,6 @@ const DeviceIntakeUnifiedPage: React.FC = () => {
     '1_week': <Calendar size={20} className="text-purple-500" />,
     custom: <Calendar size={20} className="text-gray-400" />,
   };
-
-
 
   const handleDropdownSelect = (value: string) => {
     setCompletionOption(value);
@@ -1031,91 +1026,7 @@ IMPORTANT INSTRUCTIONS:
   return (
     <div className="p-4 sm:p-6 h-full overflow-y-auto pt-8">
       <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6">
-
-
-        {/* Quick Actions Panel */}
-        {completionPercentage >= 80 && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="font-semibold text-blue-900">Quick Actions</h4>
-              <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full">
-                {completionPercentage}% Complete
-              </span>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-              <button
-                type="button"
-                onClick={() => setShowConditionAssessment(true)}
-                className="flex items-center gap-2 p-3 bg-white rounded-lg border border-blue-200 hover:bg-blue-50 transition-colors"
-              >
-                <AlertIcon size={16} className="text-orange-500" />
-                <span className="text-sm font-medium">Add Device Issues</span>
-              </button>
-              
-                              <button
-                  type="button"
-                  onClick={analyzeDeviceProblem}
-                  disabled={!formData.brand || !formData.model || !formData.issueDescription.trim() || aiAnalysis.isAnalyzing}
-                  className="flex items-center gap-2 p-3 bg-white rounded-lg border border-blue-200 hover:bg-blue-50 transition-colors disabled:opacity-50"
-                >
-                  {aiAnalysis.isAnalyzing ? (
-                    <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
-                  ) : (
-                    <Brain size={16} className="text-purple-500" />
-                  )}
-                  <span className="text-sm font-medium">
-                    {aiAnalysis.isAnalyzing ? labels.analyzing : labels.aiAnalysis}
-                  </span>
-                </button>
-              
-              <button
-                type="button"
-                onClick={() => {
-                  if (selectedCustomer) {
-                    // Open WhatsApp with pre-filled message
-                    const message = `Hi ${selectedCustomer.name}, we've received your device for repair. We'll keep you updated on the progress.`;
-                    window.open(`https://wa.me/${selectedCustomer.phone.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`, '_blank');
-                  }
-                }}
-                disabled={!selectedCustomer}
-                className="flex items-center gap-2 p-3 bg-white rounded-lg border border-blue-200 hover:bg-blue-50 transition-colors disabled:opacity-50"
-              >
-                <MessageCircle size={16} className="text-green-500" />
-                <span className="text-sm font-medium">Send WhatsApp</span>
-              </button>
-              
-              <button
-                type="button"
-                onClick={() => {
-                  setSubmittedDevice({
-                    id: `preview-${Date.now()}`,
-                    brand: formData.brand,
-                    model: formData.model,
-                    serialNumber: imeiOrSerial,
-                    unlockCode: formData.unlockCode,
-                    customerName: selectedCustomer?.name,
-                    phoneNumber: selectedCustomer?.phone,
-                    expectedReturnDate: formData.expectedReturnDate,
-                    status: 'assigned' as DeviceStatus,
-                    issueDescription: formData.issueDescription,
-                    conditions: selectedConditions,
-                    otherText: otherConditionText
-                  });
-                  setShowQRPrint(true);
-                }}
-                disabled={!formData.brand || !formData.model || !imeiOrSerial}
-                className="flex items-center gap-2 p-3 bg-white rounded-lg border border-blue-200 hover:bg-blue-50 transition-colors disabled:opacity-50"
-              >
-                <Smartphone size={16} className="text-purple-500" />
-                <span className="text-sm font-medium">Print QR Code</span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {!submittedDevice && (
-        <GlassCard className="mb-6">
-          {/* Unified Customer and Device Form */}
+        <GlassCard className="p-6">
           <div className="space-y-6">
             {/* Customer Section */}
             <div className="border-b border-gray-200 pb-6">
@@ -2033,7 +1944,6 @@ IMPORTANT INSTRUCTIONS:
             </div>
           </div>
         </GlassCard>
-      )}
       </div>
       {showConditionAssessment && (
         <Modal

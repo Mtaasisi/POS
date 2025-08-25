@@ -16,105 +16,6 @@ import {
   MessageSquare, Zap, Globe
 } from 'lucide-react';
 
-// Demo data for dashboard metrics
-const DEMO_METRICS = {
-  todaySales: 125000,
-  todayOrders: 18,
-  totalProducts: 156,
-  activeCustomers: 1247,
-  lowStockItems: 8,
-  pendingPayments: 3,
-  monthlyRevenue: 2850000,
-  monthlyGrowth: 18.75
-};
-
-const DEMO_RECENT_ACTIVITIES = [
-  {
-    id: '1',
-    type: 'sale',
-    title: 'New sale completed',
-    description: 'iPhone 14 Pro sold to John Doe',
-    amount: 159999,
-    time: '2 minutes ago',
-    icon: ShoppingCart,
-    color: 'text-blue-600'
-  },
-  {
-    id: '2',
-    type: 'product',
-    title: 'Product added',
-    description: 'Samsung Galaxy S24 added to catalog',
-    time: '15 minutes ago',
-    icon: Package,
-    color: 'text-green-600'
-  },
-  {
-    id: '3',
-    type: 'customer',
-    title: 'New customer registered',
-    description: 'Sarah Wilson joined loyalty program',
-    time: '1 hour ago',
-    icon: Users,
-    color: 'text-purple-600'
-  },
-  {
-    id: '4',
-    type: 'payment',
-    title: 'Payment received',
-            description: 'Payment of TZS 89,999 received',
-    amount: 89999,
-    time: '2 hours ago',
-    icon: CreditCard,
-    color: 'text-orange-600'
-  },
-  {
-    id: '5',
-    type: 'inventory',
-    title: 'Low stock alert',
-    description: 'MacBook Pro 14" stock below minimum',
-    time: '3 hours ago',
-    icon: Package,
-    color: 'text-red-600'
-  },
-
-];
-
-const DEMO_QUICK_STATS = [
-  {
-    title: 'Today\'s Sales',
-            value: 'TZS 125,000',
-    change: '+12.5%',
-    changeType: 'positive',
-    icon: DollarSign,
-    color: 'from-green-500 to-green-600'
-  },
-  {
-    title: 'Active Products',
-    value: '156',
-    change: '+3',
-    changeType: 'positive',
-    icon: Package,
-    color: 'from-blue-500 to-blue-600'
-  },
-  {
-    title: 'Total Customers',
-    value: '1,247',
-    change: '+15',
-    changeType: 'positive',
-    icon: Users,
-    color: 'from-purple-500 to-purple-600'
-  },
-  {
-    title: 'Low Stock Items',
-    value: '8',
-    change: '-2',
-    changeType: 'negative',
-    icon: Activity,
-    color: 'from-orange-500 to-orange-600'
-  },
-
-];
-
 const LATSDashboardPage: React.FC = () => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
@@ -130,9 +31,18 @@ const LATSDashboardPage: React.FC = () => {
   // Loading state for dashboard data
   const [isLoading, setIsLoading] = useState(true);
   const [dashboardData, setDashboardData] = useState({
-    metrics: DEMO_METRICS,
-    recentActivities: DEMO_RECENT_ACTIVITIES,
-    quickStats: DEMO_QUICK_STATS
+    metrics: {
+      todaySales: 0,
+      todayOrders: 0,
+      totalProducts: 0,
+      activeCustomers: 0,
+      lowStockItems: 0,
+      pendingPayments: 0,
+      monthlyRevenue: 0,
+      monthlyGrowth: 0
+    },
+    recentActivities: [],
+    quickStats: []
   });
 
   // Load dashboard data with error handling
@@ -149,9 +59,18 @@ const LATSDashboardPage: React.FC = () => {
         // const data = await response.json();
         
         setDashboardData({
-          metrics: DEMO_METRICS,
-          recentActivities: DEMO_RECENT_ACTIVITIES,
-          quickStats: DEMO_QUICK_STATS
+          metrics: {
+            todaySales: 0,
+            todayOrders: 0,
+            totalProducts: 0,
+            activeCustomers: 0,
+            lowStockItems: 0,
+            pendingPayments: 0,
+            monthlyRevenue: 0,
+            monthlyGrowth: 0
+          },
+          recentActivities: [],
+          quickStats: []
         });
         
         setIsLoading(false);
@@ -257,7 +176,7 @@ const LATSDashboardPage: React.FC = () => {
               Start New Sale
             </GlassButton>
             <GlassButton
-              onClick={() => handleNavigation('/lats/inventory/products/new')}
+              onClick={() => handleNavigation('/lats/add-product')}
               icon={<Plus size={18} />}
               className="bg-gradient-to-r from-green-500 to-green-600 text-white"
             >

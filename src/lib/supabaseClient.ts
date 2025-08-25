@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { Database } from './database.types';
+import { logInfo, logDebug } from './debugUtils';
 
 // Type definition for window config
 declare global {
@@ -22,7 +23,9 @@ const getConfig = () => {
   const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
   
   if (envUrl && envKey) {
-    console.log('🔧 Using environment variables for Supabase configuration');
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[SupabaseClient] Using environment variables for Supabase configuration');
+    }
     return {
       url: envUrl,
       key: envKey
@@ -30,7 +33,9 @@ const getConfig = () => {
   }
   
   // Fallback to hardcoded configuration (for backward compatibility)
-  console.log('🔧 Using fallback Supabase configuration');
+      if (process.env.NODE_ENV === 'development') {
+      console.log('[SupabaseClient] Using fallback Supabase configuration');
+    }
   return {
     url: 'https://jxhzveborezjhsmzsgbc.supabase.co',
     key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHp2ZWJvcmV6amhzbXpzZ2JjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3MTE1MjQsImV4cCI6MjA2ODI4NzUyNH0.pIug4PlJ3Q14GxcYilW-u0blByYoyeOfN3q9RNIjgfw'
@@ -42,13 +47,16 @@ let supabaseInstance: ReturnType<typeof createClient<Database>> | null = null;
 
 export const supabase = (() => {
   if (!supabaseInstance) {
-    console.log('🔧 Creating Supabase client instance...');
+    // Use console.log directly to avoid any potential SQL execution issues
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[SupabaseClient] Creating Supabase client instance...');
+    }
     
-    // Clear any cached auth data
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('repair-app-auth-token');
-      localStorage.removeItem('supabase.auth.token');
-      console.log('🧹 Cleared cached auth data');
+    // Only clear cached auth data if there's a specific issue
+    // Don't clear on every initialization
+    if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+      // Only log in development, don't clear auth data
+      console.log('[SupabaseClient] Supabase client initialization in development mode');
     }
     
     const config = getConfig();

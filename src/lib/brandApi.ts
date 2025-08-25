@@ -1,6 +1,39 @@
 import { createClient } from '@supabase/supabase-js';
 import { supabase } from './supabaseClient';
 
+// Temporary workaround: Create a clean Supabase client for brands
+// This helps avoid any global configurations that might be adding conflicting parameters
+const createCleanSupabaseClient = () => {
+  const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.REACT_APP_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.warn('⚠️ Missing Supabase environment variables, falling back to main client');
+    return supabase;
+  }
+  
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: true
+    }
+  });
+};
+
+// Debug function to help identify the source of conflicting parameters
+const debugSupabaseRequest = (table: string, operation: string) => {
+  console.log(`🔍 Debug: ${operation} on ${table}`);
+  console.log('🔍 Debug: Current URL:', window.location.href);
+  console.log('🔍 Debug: User Agent:', navigator.userAgent);
+  
+  // Check if there are any browser extensions that might interfere
+  if (typeof window !== 'undefined') {
+    // Log any global objects that might be modifying requests
+    console.log('🔍 Debug: Checking for potential request modifiers...');
+  }
+};
+
 export interface BrandCategory {
   value: string;
   label: string;
@@ -39,19 +72,59 @@ export interface UpdateBrandData {
 // Get all active brands
 export const getActiveBrands = async (): Promise<Brand[]> => {
   try {
+    console.log('🔍 getActiveBrands: Starting fetch...');
+    debugSupabaseRequest('lats_brands', 'getActiveBrands');
+    
     const { data, error } = await supabase
       .from('lats_brands')
       .select('*')
       .order('name');
 
     if (error) {
-      console.error('Error fetching brands:', error);
+      console.error('❌ Error fetching brands:', error);
+      
+      // Check if it's a 400 error with conflicting parameters
+      if (error.code === '400' && error.message?.includes('columns')) {
+        console.warn('⚠️ Detected conflicting parameters, retrying with clean client...');
+        
+        // Try with clean client first
+        try {
+          const cleanClient = createCleanSupabaseClient();
+          const { data: cleanData, error: cleanError } = await cleanClient
+            .from('lats_brands')
+            .select('*')
+            .order('name');
+            
+          if (!cleanError) {
+            console.log('✅ getActiveBrands: Successfully fetched brands with clean client');
+            return cleanData || [];
+          }
+        } catch (cleanClientError) {
+          console.warn('⚠️ Clean client also failed, trying explicit select...');
+        }
+        
+        // Fallback to explicit column selection
+        const { data: retryData, error: retryError } = await supabase
+          .from('lats_brands')
+          .select('id, name, description, logo_url, website, contact_email, contact_phone, category, is_active, created_at, updated_at')
+          .order('name');
+          
+        if (retryError) {
+          console.error('❌ Retry also failed:', retryError);
+          throw new Error('Failed to fetch brands after retry');
+        }
+        
+        console.log('✅ getActiveBrands: Successfully fetched brands after retry');
+        return retryData || [];
+      }
+      
       throw new Error('Failed to fetch brands');
     }
 
+    console.log('✅ getActiveBrands: Successfully fetched brands');
     return data || [];
   } catch (error) {
-    console.error('Error in getActiveBrands:', error);
+    console.error('❌ Error in getActiveBrands:', error);
     throw error;
   }
 };
@@ -59,19 +132,58 @@ export const getActiveBrands = async (): Promise<Brand[]> => {
 // Get all brands (including inactive)
 export const getAllBrands = async (): Promise<Brand[]> => {
   try {
+    console.log('🔍 getAllBrands: Starting fetch...');
+    
     const { data, error } = await supabase
       .from('lats_brands')
       .select('*')
       .order('name');
 
     if (error) {
-      console.error('Error fetching all brands:', error);
+      console.error('❌ Error fetching all brands:', error);
+      
+      // Check if it's a 400 error with conflicting parameters
+      if (error.code === '400' && error.message?.includes('columns')) {
+        console.warn('⚠️ Detected conflicting parameters, retrying with clean client...');
+        
+        // Try with clean client first
+        try {
+          const cleanClient = createCleanSupabaseClient();
+          const { data: cleanData, error: cleanError } = await cleanClient
+            .from('lats_brands')
+            .select('*')
+            .order('name');
+            
+          if (!cleanError) {
+            console.log('✅ getAllBrands: Successfully fetched brands with clean client');
+            return cleanData || [];
+          }
+        } catch (cleanClientError) {
+          console.warn('⚠️ Clean client also failed, trying explicit select...');
+        }
+        
+        // Fallback to explicit column selection
+        const { data: retryData, error: retryError } = await supabase
+          .from('lats_brands')
+          .select('id, name, description, logo_url, website, contact_email, contact_phone, category, is_active, created_at, updated_at')
+          .order('name');
+          
+        if (retryError) {
+          console.error('❌ Retry also failed:', retryError);
+          throw new Error('Failed to fetch brands after retry');
+        }
+        
+        console.log('✅ getAllBrands: Successfully fetched brands after retry');
+        return retryData || [];
+      }
+      
       throw new Error('Failed to fetch brands');
     }
 
+    console.log('✅ getAllBrands: Successfully fetched brands');
     return data || [];
   } catch (error) {
-    console.error('Error in getAllBrands:', error);
+    console.error('❌ Error in getAllBrands:', error);
     throw error;
   }
 };

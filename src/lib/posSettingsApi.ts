@@ -179,33 +179,34 @@ export interface SearchFilterSettings {
   id?: string;
   user_id?: string;
   business_id?: string;
-  enable_smart_search: boolean;
-  enable_auto_complete: boolean;
-  search_debounce_time: number;
-  max_search_results: number;
+  
+  // Search Settings
+  enable_product_search: boolean;
+  enable_customer_search: boolean;
+  enable_sales_search: boolean;
+  search_by_name: boolean;
+  search_by_barcode: boolean;
+  search_by_sku: boolean;
+  search_by_category: boolean;
+  search_by_brand: boolean;
+  search_by_supplier: boolean;
+  search_by_description: boolean;
+  search_by_tags: boolean;
+  
+  // Advanced Search
   enable_fuzzy_search: boolean;
-  enable_exact_match: boolean;
-  enable_partial_match: boolean;
-  search_in_description: boolean;
-  search_in_barcode: boolean;
-  enable_advanced_filters: boolean;
-  enable_category_filter: boolean;
-  enable_brand_filter: boolean;
-  enable_price_filter: boolean;
-  enable_stock_filter: boolean;
+  enable_autocomplete: boolean;
+  min_search_length: number;
+  max_search_results: number;
+  search_timeout: number;
+  search_debounce_time: number;
+  
+  // Search History
   enable_search_history: boolean;
   max_search_history: number;
   enable_recent_searches: boolean;
   enable_popular_searches: boolean;
-  show_search_suggestions: boolean;
-  enable_search_caching: boolean;
-  cache_expiry_time: number;
-  enable_lazy_loading: boolean;
-  search_timeout: number;
-  enable_voice_search: boolean;
-  enable_barcode_search: boolean;
-  enable_image_search: boolean;
-  enable_synonyms: boolean;
+  enable_search_suggestions: boolean;
 }
 
 export interface UserPermissionsSettings {

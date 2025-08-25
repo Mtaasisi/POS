@@ -143,13 +143,8 @@ const CustomerDataUpdatePage: React.FC = () => {
   // Export customers to CSV
   const exportToCSV = () => {
     const headers = [
-      'ID', 'Name', 'Email', 'Phone', 'Gender', 'City', 'WhatsApp', 
-      'Referral Source', 'Birth Month', 'Birth Day', 'Total Returns',
-      'Initial Notes', 'Location Description', 'National ID', 'Points',
-      'Total Spent', 'Loyalty Level', 'Color Tag', 'Customer Tag',
-      'Notes', 'Is Active', 'Joined Date', 'Last Visit'
+      'ID', 'Name', 'Email', 'Phone', 'Gender', 'City', 'WhatsApp', 'Referral Source', 'Birth Month', 'Birth Day', 'Total Returns', 'Initial Notes', 'Location Description', 'National ID', 'Points', 'Total Spent', 'Loyalty Level', 'Color Tag', 'Customer Tag', 'Notes', 'Is Active'
     ];
-
     const csvContent = [
       headers.join(','),
       ...customers.map(customer => [
@@ -221,32 +216,13 @@ const CustomerDataUpdatePage: React.FC = () => {
           </p>
         </div>
 
-        {/* Action Buttons */}
-        <GlassCard className="mb-6 p-6">
-          <div className="flex flex-wrap gap-4 items-center">
-            <GlassButton
-              onClick={loadCustomers}
-              disabled={loading}
-              className="bg-blue-500 hover:bg-blue-600"
-            >
+        {/* Main Content */}
+        <GlassCard className="mb-6">
+          <div className="flex flex-wrap gap-4 mb-6">
+            <GlassButton onClick={loadCustomers} disabled={loading}>
               {loading ? 'Loading...' : 'Load Customers'}
             </GlassButton>
-
-            <GlassButton
-              onClick={() => fileInputRef.current?.click()}
-              className="bg-green-500 hover:bg-green-600"
-            >
-              Import CSV
-            </GlassButton>
-
-            <GlassButton
-              onClick={exportToCSV}
-              disabled={customers.length === 0}
-              className="bg-purple-500 hover:bg-purple-600"
-            >
-              Export CSV
-            </GlassButton>
-
+            
             <input
               ref={fileInputRef}
               type="file"
@@ -254,130 +230,93 @@ const CustomerDataUpdatePage: React.FC = () => {
               onChange={handleFileImport}
               className="hidden"
             />
+            <GlassButton 
+              onClick={() => fileInputRef.current?.click()}
+              variant="secondary"
+            >
+              Import CSV
+            </GlassButton>
+            
+            <GlassButton 
+              onClick={exportToCSV}
+              variant="secondary"
+              disabled={customers.length === 0}
+            >
+              Export CSV
+            </GlassButton>
           </div>
-        </GlassCard>
 
-        {/* Filters */}
-        <GlassCard className="mb-6 p-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Search
-              </label>
-              <input
-                type="text"
-                placeholder="Search by name, email, phone..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Filter by Tag
-              </label>
-              <select
-                value={filterTag}
-                onChange={(e) => setFilterTag(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">All Tags</option>
-                <option value="vip">VIP</option>
-                <option value="regular">Regular</option>
-                <option value="new">New</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Sort By
-              </label>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as any)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="name">Name</option>
-                <option value="points">Points</option>
-                <option value="total_spent">Total Spent</option>
-              </select>
-            </div>
-
-            <div className="flex items-end">
-              <span className="text-sm text-gray-600">
-                {filteredCustomers.length} customers
-              </span>
-            </div>
+          {/* Search and Filter */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <input
+              type="text"
+              placeholder="Search customers..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            
+            <select
+              value={filterTag}
+              onChange={(e) => setFilterTag(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">All Tags</option>
+              <option value="vip">VIP</option>
+              <option value="regular">Regular</option>
+              <option value="new">New</option>
+            </select>
+            
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as 'name' | 'points' | 'total_spent')}
+              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="name">Sort by Name</option>
+              <option value="points">Sort by Points</option>
+              <option value="total_spent">Sort by Total Spent</option>
+            </select>
           </div>
-        </GlassCard>
 
-        {/* Customer List */}
-        <div className="grid gap-4">
-          {filteredCustomers.map((customer) => (
-            <GlassCard key={customer.id} className="p-4 hover:shadow-lg transition-shadow">
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-4">
-                    <div>
-                      <h3 className="font-semibold text-lg text-gray-800">
-                        {customer.name}
-                      </h3>
-                      <p className="text-sm text-gray-600">
-                        {customer.email} • {customer.phone}
-                      </p>
-                      {customer.whatsapp && (
-                        <p className="text-sm text-green-600">
-                          WhatsApp: {customer.whatsapp}
-                        </p>
-                      )}
-                    </div>
-                    
-                    <div className="flex gap-2">
-                      {customer.birth_month && (
-                        <span className="px-2 py-1 bg-pink-100 text-pink-800 text-xs rounded-full">
-                          🎂 {customer.birth_month} {customer.birth_day}
-                        </span>
-                      )}
-                      {customer.referral_source && (
-                        <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
-                          📱 {customer.referral_source}
-                        </span>
-                      )}
-                      {customer.points && customer.points > 100 && (
-                        <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded-full">
-                          ⭐ {customer.points} pts
-                        </span>
-                      )}
-                    </div>
+          {/* Customer List */}
+          <div className="space-y-4">
+            {filteredCustomers.map((customer) => (
+              <div
+                key={customer.id}
+                className="bg-white p-4 rounded-lg border border-gray-200 hover:border-blue-300 cursor-pointer"
+                onClick={() => {
+                  setSelectedCustomer(customer);
+                  setShowEditModal(true);
+                }}
+              >
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h3 className="font-semibold text-gray-900">{customer.name}</h3>
+                    <p className="text-gray-600">{customer.phone}</p>
+                    <p className="text-sm text-gray-500">{customer.city}</p>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm text-gray-500">Points: {customer.points || 0}</div>
+                    <div className="text-sm text-gray-500">Spent: ${customer.total_spent || 0}</div>
+                    {customer.customer_tag && (
+                      <span className="inline-block px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded">
+                        {customer.customer_tag}
+                      </span>
+                    )}
                   </div>
                 </div>
-
-                <GlassButton
-                  onClick={() => {
-                    setSelectedCustomer(customer);
-                    setShowEditModal(true);
-                  }}
-                  className="bg-blue-500 hover:bg-blue-600"
-                >
-                  Edit
-                </GlassButton>
               </div>
-            </GlassCard>
-          ))}
-        </div>
+            ))}
+          </div>
 
-        {filteredCustomers.length === 0 && (
-          <GlassCard className="p-8 text-center">
-            <p className="text-gray-500">
-              {customers.length === 0 ? 'No customers loaded. Click "Load Customers" to start.' : 'No customers match your filters.'}
-            </p>
-          </GlassCard>
-        )}
-      </div>
+          {filteredCustomers.length === 0 && (
+            <div className="text-center py-8 text-gray-500">
+              No customers found. Click "Load Customers" to load data from the database.
+            </div>
+          )}
+        </GlassCard>
 
-      {/* Edit Modal */}
-      {selectedCustomer && (
+        {selectedCustomer && (
         <Modal
           isOpen={showEditModal}
           onClose={() => {
@@ -396,6 +335,7 @@ const CustomerDataUpdatePage: React.FC = () => {
           />
         </Modal>
       )}
+      </div>
     </div>
   );
 };
@@ -457,18 +397,6 @@ const CustomerEditForm: React.FC<CustomerEditFormProps> = ({ customer, onSave, o
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            WhatsApp
-          </label>
-          <input
-            type="tel"
-            value={formData.whatsapp || ''}
-            onChange={(e) => setFormData({ ...formData, whatsapp: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
             City
           </label>
           <input
@@ -478,143 +406,22 @@ const CustomerEditForm: React.FC<CustomerEditFormProps> = ({ customer, onSave, o
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Gender
-          </label>
-          <select
-            value={formData.gender || ''}
-            onChange={(e) => setFormData({ ...formData, gender: e.target.value as any })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">Select Gender</option>
-            <option value="male">Male</option>
-            <option value="female">Female</option>
-            <option value="other">Other</option>
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Birth Month
-          </label>
-          <select
-            value={formData.birth_month || ''}
-            onChange={(e) => setFormData({ ...formData, birth_month: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">Select Month</option>
-            {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map(month => (
-              <option key={month} value={month}>{month}</option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Birth Day
-          </label>
-          <select
-            value={formData.birth_day || ''}
-            onChange={(e) => setFormData({ ...formData, birth_day: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">Select Day</option>
-            {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
-              <option key={day} value={day.toString()}>{day}</option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Referral Source
-          </label>
-          <input
-            type="text"
-            value={formData.referral_source || ''}
-            onChange={(e) => setFormData({ ...formData, referral_source: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Instagram, Friend, Walk-in..."
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Points
-          </label>
-          <input
-            type="number"
-            value={formData.points || 0}
-            onChange={(e) => setFormData({ ...formData, points: parseInt(e.target.value) || 0 })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Total Spent
-          </label>
-          <input
-            type="number"
-            value={formData.total_spent || 0}
-            onChange={(e) => setFormData({ ...formData, total_spent: parseFloat(e.target.value) || 0 })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Total Returns
-          </label>
-          <input
-            type="number"
-            value={formData.total_returns || 0}
-            onChange={(e) => setFormData({ ...formData, total_returns: parseInt(e.target.value) || 0 })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
       </div>
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Notes
-        </label>
-        <textarea
-          value={formData.notes || ''}
-          onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-          rows={3}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Initial Notes
-        </label>
-        <textarea
-          value={formData.initial_notes || ''}
-          onChange={(e) => setFormData({ ...formData, initial_notes: e.target.value })}
-          rows={3}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      </div>
-
-      <div className="flex gap-4 pt-4">
-        <GlassButton
-          type="submit"
-          className="bg-blue-500 hover:bg-blue-600"
-        >
-          Save Changes
-        </GlassButton>
-        <GlassButton
+      <div className="flex justify-end space-x-3 pt-4">
+        <button
           type="button"
           onClick={onCancel}
-          className="bg-gray-500 hover:bg-gray-600"
+          className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500"
         >
           Cancel
-        </GlassButton>
+        </button>
+        <button
+          type="submit"
+          className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          Save Changes
+        </button>
       </div>
     </form>
   );

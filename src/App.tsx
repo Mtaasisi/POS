@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DevicesProvider, useDevices } from './context/DevicesContext';
@@ -11,92 +11,92 @@ import { GeneralSettingsProvider } from './context/GeneralSettingsContext';
 import { BrandsProvider } from './context/BrandsContext';
 import { Toaster } from 'react-hot-toast';
 
-import BackgroundSelector from './features/settings/components/BackgroundSelector';
+// import BackgroundSelector from './features/settings/components/BackgroundSelector';
 import GlobalLoadingProgress from './features/shared/components/ui/GlobalLoadingProgress';
 import LoginPage from './features/shared/pages/LoginPage';
 import DashboardPage from './features/shared/pages/DashboardPage';
-import NewDevicePage from './features/devices/pages/NewDevicePage';
+const NewDevicePage = lazy(() => import('./features/devices/pages/NewDevicePage'));
 import DevicesPage from './features/devices/pages/DevicesPage';
 
 import DeviceDetailPage from './features/devices/pages/DeviceDetailPage';
-import CustomersPage from './features/customers/pages/CustomersPage';
-import CustomerDetailPage from './features/customers/pages/CustomerDetailPage';
+const CustomersPage = lazy(() => import('./features/customers/pages/CustomersPage'));
+const CustomerDetailPage = lazy(() => import('./features/customers/pages/CustomerDetailPage'));
 import CustomerDataUpdatePage from './features/customers/pages/CustomerDataUpdatePage';
 import AppLayout from './layout/AppLayout';
 import { ErrorBoundary } from './features/shared/components/ErrorBoundary';
-import SettingsPage from './features/settings/pages/SettingsPage';
-import AdminSettingsPage from './features/admin/pages/AdminSettingsPage';
+const SettingsPage = lazy(() => import('./features/settings/pages/UnifiedSettingsPage'));
+const AdminSettingsPage = lazy(() => import('./features/admin/pages/AdminSettingsPage'));
 import AdminManagementPage from './features/admin/pages/AdminManagementPage';
 import IntegrationTestingPage from './features/admin/pages/IntegrationTestingPage';
 import UserManagementPage from './features/users/pages/UserManagementPage';
-import SupplierManagementPage from './features/settings/pages/SupplierManagementPage';
+const UnifiedSupplierManagementPage = lazy(() => import('./features/settings/pages/UnifiedSupplierManagementPage'));
 import { SuppliersProvider } from './context/SuppliersContext';
-import SMSControlCenterPage from './features/reports/pages/SMSControlCenterPage';
-import PointsManagementPage from './features/finance/pages/PointsManagementPage';
-import PaymentsReportPage from './features/finance/pages/PaymentsReportPage';
+const SMSControlCenterPage = lazy(() => import('./features/reports/pages/SMSControlCenterPage'));
+const UnifiedPaymentManagementPage = lazy(() => import('./features/finance/pages/UnifiedPaymentManagementPage'));
+
 import AuditLogsPage from './features/admin/pages/AuditLogsPage';
-import FinanceManagementPage from './features/finance/pages/FinanceManagementPage';
-import PaymentsAccountsPage from './features/finance/pages/PaymentsAccountsPage';
-import EmployeeManagementPage from './features/employees/pages/EmployeeManagementPage';
+const FinanceManagementPage = lazy(() => import('./features/finance/pages/FinanceManagementPage'));
+
+const EmployeeManagementPage = lazy(() => import('./features/employees/pages/EmployeeManagementPage'));
 import EmployeeAttendancePage from './features/employees/pages/EmployeeAttendancePage';
-import CustomerCareDiagnosticsPage from './features/customers/pages/CustomerCareDiagnosticsPage';
-import CustomerAnalyticsPage from './features/customers/pages/CustomerAnalyticsPage';
-import BirthdayManagementPage from './features/customers/pages/BirthdayManagementPage';
+// import CustomerCareDiagnosticsPage from './features/customers/pages/CustomerCareDiagnosticsPage';
 
+// import BirthdayManagementPage from './features/customers/pages/BirthdayManagementPage';
 
-import NotificationSettingsPage from './features/notifications/pages/NotificationSettingsPage';
-import NotificationsPage from './features/notifications/pages/NotificationsPage';
+// import NotificationSettingsPage from './features/notifications/pages/NotificationSettingsPage';
+// import NotificationsPage from './features/notifications/pages/NotificationsPage';
 import ServiceManagementPage from './features/services/pages/ServiceManagementPage';
-import CalendarViewPage from './features/calendar/pages/CalendarViewPage';
-import AppointmentPage from './features/appointments/pages/AppointmentPage';
+
+const UnifiedAppointmentPage = lazy(() => import('./features/appointments/pages/UnifiedAppointmentPage'));
 import BusinessManagementPage from './features/business/pages/BusinessManagementPage';
 import MobileOptimizationPage from './features/mobile/pages/MobileOptimizationPage';
-import AdvancedAnalyticsPage from './features/analytics/pages/AdvancedAnalyticsPage';
+const UnifiedAnalyticsPage = lazy(() => import('./features/analytics/pages/UnifiedAnalyticsPage'));
 import GlobalSearchPage from './features/shared/pages/GlobalSearchPage';
-import LoadingDemoPage from './features/shared/pages/LoadingDemoPage';
-import BrandManagementPage from './features/settings/pages/BrandManagementPage';
-import CategoryManagementPage from './features/settings/pages/CategoryManagementPage';
+
+const BrandManagementPage = lazy(() => import('./features/settings/pages/BrandManagementPage'));
+const CategoryManagementPage = lazy(() => import('./features/settings/pages/CategoryManagementPage'));
 import { StoreLocationManagementPage } from './features/settings/pages/StoreLocationManagementPage';
 import DatabaseSetupPage from './features/admin/pages/DatabaseSetupPage';
-import BackupManagementPage from './features/backup/pages/BackupManagementPage';
+import { BackupManagementPage } from './features/backup/pages/BackupManagementPage';
 import ExcelImportPage from './features/reports/pages/ExcelImportPage';
 import ExcelTemplateDownloadPage from './features/lats/pages/ExcelTemplateDownloadPage';
 import ProductExportPage from './features/lats/pages/ProductExportPage';
 
-import NewDiagnosticRequestPage from './features/diagnostics/pages/NewDiagnosticRequestPage';
-import AssignedDiagnosticsPage from './features/diagnostics/pages/AssignedDiagnosticsPage';
-import DiagnosticDevicePage from './features/diagnostics/pages/DiagnosticDevicePage';
-import DiagnosticReportsPage from './features/diagnostics/pages/DiagnosticReportsPage';
-import DiagnosticTemplatesPage from './features/diagnostics/pages/DiagnosticTemplatesPage';
-import DiagnosticGroupedDevicesPage from './features/diagnostics/pages/DiagnosticGroupedDevicesPage';
+const UnifiedDiagnosticManagementPage = lazy(() => import('./features/diagnostics/pages/UnifiedDiagnosticManagementPage'));
 
-import LATSDashboardPage from './features/lats/pages/LATSDashboardPage';
-import PurchaseOrdersPage from './features/lats/pages/PurchaseOrdersPage';
-import NewPurchaseOrderPage from './features/lats/pages/NewPurchaseOrderPage';
-import PurchaseOrderDetailPage from './features/lats/pages/PurchaseOrderDetailPage';
-import SparePartsPage from './features/lats/pages/SparePartsPage';
-import PaymentHistoryPage from './features/lats/pages/PaymentHistoryPage';
-import PaymentAnalyticsPage from './features/lats/pages/PaymentAnalyticsPage';
-import SalesReportsPage from './features/lats/pages/SalesReportsPage';
-import CustomerLoyaltyPage from './features/lats/pages/CustomerLoyaltyPage';
-import PaymentTrackingPage from './features/lats/pages/PaymentTrackingPage';
-import BusinessAnalyticsPage from './features/lats/pages/BusinessAnalyticsPage';
-import InventoryPage from './features/lats/pages/InventoryPage';
-import ProductCatalogPage from './features/lats/pages/ProductCatalogPage';
-import UnifiedInventoryPage from './features/lats/pages/UnifiedInventoryPage';
-import AddProductPage from './features/lats/pages/AddProductPage';
-import EditProductPage from './features/lats/pages/EditProductPage';
+const LATSDashboardPage = lazy(() => import('./features/lats/pages/LATSDashboardPage'));
+const PurchaseOrdersPage = lazy(() => import('./features/lats/pages/PurchaseOrdersPage'));
+const NewPurchaseOrderPage = lazy(() => import('./features/lats/pages/NewPurchaseOrderPage'));
+const PurchaseOrderDetailPage = lazy(() => import('./features/lats/pages/PurchaseOrderDetailPage'));
+const SparePartsPage = lazy(() => import('./features/lats/pages/SparePartsPage'));
+const PaymentHistoryPage = lazy(() => import('./features/lats/pages/PaymentHistoryPage'));
+
+const SalesReportsPage = lazy(() => import('./features/lats/pages/SalesReportsPage'));
+const CustomerLoyaltyPage = lazy(() => import('./features/lats/pages/CustomerLoyaltyPage'));
+const PaymentTrackingPage = lazy(() => import('./features/lats/pages/PaymentTrackingPage'));
+
+
+
+const UnifiedInventoryPage = lazy(() => import('./features/lats/pages/UnifiedInventoryPage'));
+const AddProductPage = lazy(() => import('./features/lats/pages/AddProductPage'));
+const EditProductPage = lazy(() => import('./features/lats/pages/EditProductPage'));
 
 import ProductDetailPage from './features/lats/pages/ProductDetailPage';
-import POSPage from './features/lats/pages/POSPage';
-import GeneralSettingsTestPage from './features/lats/pages/GeneralSettingsTestPage';
+const POSPage = lazy(() => import('./features/lats/pages/POSPage').then(module => ({
+  default: module.default
+})));
+
 import { CustomerQueryTest } from './components/CustomerQueryTest';
 import InventoryManagementPage from './features/lats/pages/InventoryManagementPage';
+const StorageRoomManagementPage = lazy(() => import('./features/lats/pages/StorageRoomManagementPage'));
+import StorageRoomDetailPage from './features/lats/pages/StorageRoomDetailPage';
 import BeemTestPage from './features/lats/pages/BeemTestPage';
-import WhatsAppManagementPage from './features/whatsapp/pages/WhatsAppManagementPage';
-import WhatsAppTestPage from './pages/WhatsAppTestPage';
-import { WhatsAppDebugPanel } from './components/WhatsAppDebugPanel';
-import DebugPanel from './components/DebugPanel';
+
+const WhatsAppHubPage = lazy(() => import('./features/lats/pages/WhatsAppHubPage'));
+const WhatsAppSettingsPage = lazy(() => import('./features/lats/pages/WhatsAppSettingsPage'));
+const BluetoothPrinterPage = lazy(() => import('./pages/BluetoothPrinterPage'));
+
+import AITrainingManagerPage from './pages/AITrainingManagerPage';
 
 import { initializeDatabaseCheck } from './lib/databaseUtils';
 import { supabase } from './lib/supabaseClient';
@@ -108,6 +108,15 @@ import BackgroundDataLoader from './components/BackgroundDataLoader';
 import { POSSettingsDatabaseSetup } from './components/POSSettingsDatabaseSetup';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
+// Loading component for lazy-loaded pages
+const PageLoadingSpinner = () => (
+  <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className="text-center">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+      <p className="text-gray-600">Loading...</p>
+    </div>
+  </div>
+);
 
 // LoadingProgressWrapper component that can access the loading context
 const LoadingProgressWrapper: React.FC = () => {
@@ -162,19 +171,19 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
           const { operation, pointsToAdjust, reason, customerId } = action.payload;
           const adjustment = operation === 'add' ? Math.abs(pointsToAdjust) : -Math.abs(pointsToAdjust);
           // Fetch current points
-          const { data, error } = await supabase
+          const { data, error } = await supabase!
             .from('customers')
             .select('points')
             .eq('id', customerId)
             .single();
           if (!error && data) {
             const newPoints = (data.points || 0) + adjustment;
-            await supabase
+            await supabase!
               .from('customers')
               .update({ points: newPoints })
               .eq('id', customerId);
             // Optionally add a note
-            await supabase
+            await supabase!
               .from('customer_notes')
               .insert({
                 id: `note-${Date.now()}`,
@@ -232,17 +241,14 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
         >
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />
-  
 
           <Route path="/devices" element={<DevicesPage />} />
-          <Route path="/devices/new" element={<NewDevicePage />} />
+          <Route path="/devices/new" element={<Suspense fallback={<PageLoadingSpinner />}><NewDevicePage /></Suspense>} />
           <Route path="/devices/:id" element={<DeviceDetailPage />} />
 
-
-
-        <Route path="/brand-management" element={<RoleProtectedRoute allowedRoles={['admin']}><BrandManagementPage /></RoleProtectedRoute>} />
-        <Route path="/category-management" element={<RoleProtectedRoute allowedRoles={['admin']}><CategoryManagementPage /></RoleProtectedRoute>} />
-        <Route path="/supplier-management" element={<RoleProtectedRoute allowedRoles={['admin']}><SupplierManagementPage /></RoleProtectedRoute>} />
+        <Route path="/brand-management" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><BrandManagementPage /></Suspense></RoleProtectedRoute>} />
+        <Route path="/category-management" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><CategoryManagementPage /></Suspense></RoleProtectedRoute>} />
+                  <Route path="/supplier-management" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedSupplierManagementPage /></Suspense></RoleProtectedRoute>} />
         <Route path="/store-locations" element={<RoleProtectedRoute allowedRoles={['admin']}><StoreLocationManagementPage /></RoleProtectedRoute>} />
         <Route path="/database-setup" element={<RoleProtectedRoute allowedRoles={['admin']}><DatabaseSetupPage /></RoleProtectedRoute>} />
         <Route path="/backup-management" element={<RoleProtectedRoute allowedRoles={['admin']}><BackupManagementPage /></RoleProtectedRoute>} />
@@ -251,39 +257,38 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
         <Route path="/excel-templates" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><ExcelTemplateDownloadPage /></RoleProtectedRoute>} />
         <Route path="/product-export" element={<RoleProtectedRoute allowedRoles={['admin']}><ProductExportPage /></RoleProtectedRoute>} />
 
-          <Route path="/customers" element={<CustomersPage />} />
-          <Route path="/customers/analytics" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><CustomerAnalyticsPage /></RoleProtectedRoute>} />
-          <Route path="/customers/:id" element={<CustomerDetailPage />} />
+          <Route path="/customers" element={<Suspense fallback={<PageLoadingSpinner />}><CustomersPage /></Suspense>} />
+
+          <Route path="/customers/:id" element={<Suspense fallback={<PageLoadingSpinner />}><CustomerDetailPage /></Suspense>} />
           <Route path="/customers/update" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><CustomerDataUpdatePage /></RoleProtectedRoute>} />
 
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/sms" element={<RoleProtectedRoute allowedRoles={['admin']}><SMSControlCenterPage /></RoleProtectedRoute>} />
-          <Route path="/points-management" element={<RoleProtectedRoute allowedRoles={['admin']}><PointsManagementPage /></RoleProtectedRoute>} />
-          <Route path="/payments-report" element={<RoleProtectedRoute allowedRoles={['admin']}><PaymentsReportPage /></RoleProtectedRoute>} />
-          <Route path="/admin-settings" element={<RoleProtectedRoute allowedRoles={['admin']}><AdminSettingsPage /></RoleProtectedRoute>} />
+          <Route path="/settings" element={<Suspense fallback={<PageLoadingSpinner />}><SettingsPage /></Suspense>} />
+          <Route path="/sms" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><SMSControlCenterPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/points-management" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedPaymentManagementPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/payments-report" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedPaymentManagementPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/admin-settings" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><AdminSettingsPage /></Suspense></RoleProtectedRoute>} />
           <Route path="/admin-management" element={<RoleProtectedRoute allowedRoles={['admin']}><AdminManagementPage /></RoleProtectedRoute>} />
           <Route path="/integration-testing" element={<RoleProtectedRoute allowedRoles={['admin']}><IntegrationTestingPage /></RoleProtectedRoute>} />
           <Route path="/users" element={<RoleProtectedRoute allowedRoles={['admin']}><UserManagementPage /></RoleProtectedRoute>} />
           <Route path="/audit-logs" element={<RoleProtectedRoute allowedRoles={['admin']}><AuditLogsPage /></RoleProtectedRoute>} />
-          <Route path="/finance" element={<RoleProtectedRoute allowedRoles={['admin']}><FinanceManagementPage /></RoleProtectedRoute>} />
-          <Route path="/payments-accounts" element={<RoleProtectedRoute allowedRoles={['admin']}><PaymentsAccountsPage /></RoleProtectedRoute>} />
+          <Route path="/finance" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><FinanceManagementPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/payments-accounts" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedPaymentManagementPage /></Suspense></RoleProtectedRoute>} />
           
           {/* Appointment Management Routes */}
-          <Route path="/appointments" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><AppointmentPage /></RoleProtectedRoute>} />
+          <Route path="/appointments" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedAppointmentPage /></Suspense></RoleProtectedRoute>} />
           
           {/* Service Management Routes */}
           <Route path="/services" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><ServiceManagementPage /></RoleProtectedRoute>} />
           
           {/* Employee Management Routes */}
-          <Route path="/employees" element={<RoleProtectedRoute allowedRoles={['admin', 'manager']}><EmployeeManagementPage /></RoleProtectedRoute>} />
+          <Route path="/employees" element={<RoleProtectedRoute allowedRoles={['admin', 'manager']}><Suspense fallback={<PageLoadingSpinner />}><EmployeeManagementPage /></Suspense></RoleProtectedRoute>} />
           <Route path="/attendance" element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'technician', 'customer-care']}><EmployeeAttendancePage /></RoleProtectedRoute>} />
 
-          
           {/* Advanced Analytics Routes */}
-          <Route path="/analytics" element={<RoleProtectedRoute allowedRoles={['admin', 'manager']}><AdvancedAnalyticsPage /></RoleProtectedRoute>} />
+          <Route path="/analytics" element={<RoleProtectedRoute allowedRoles={['admin', 'manager']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedAnalyticsPage /></Suspense></RoleProtectedRoute>} />
           
           {/* Calendar View Routes */}
-          <Route path="/calendar" element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'customer-care']}><CalendarViewPage /></RoleProtectedRoute>} />
+
           
           {/* Mobile Optimization Routes */}
           <Route path="/mobile" element={<RoleProtectedRoute allowedRoles={['admin', 'manager']}><MobileOptimizationPage /></RoleProtectedRoute>} />
@@ -291,32 +296,36 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
           {/* Consolidated Management Routes */}
           <Route path="/business" element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'customer-care']}><BusinessManagementPage /></RoleProtectedRoute>} />
 
-
-
-          
-          {/* Diagnostics Routes */}
-          <Route path="/diagnostics/new" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><NewDiagnosticRequestPage /></RoleProtectedRoute>} />
-          <Route path="/diagnostics/new-request" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><NewDiagnosticRequestPage /></RoleProtectedRoute>} />
-          <Route path="/diagnostics/my-requests" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><CustomerCareDiagnosticsPage /></RoleProtectedRoute>} />
-          <Route path="/diagnostics/assigned" element={<RoleProtectedRoute allowedRoles={['technician']}><AssignedDiagnosticsPage /></RoleProtectedRoute>} />
-          <Route path="/diagnostics/device/:requestId/:deviceId" element={<RoleProtectedRoute allowedRoles={['admin', 'technician']}><DiagnosticDevicePage /></RoleProtectedRoute>} />
-          <Route path="/diagnostics/grouped/:requestId/:deviceName/:model" element={<RoleProtectedRoute allowedRoles={['admin', 'technician']}><DiagnosticGroupedDevicesPage /></RoleProtectedRoute>} />
-          <Route path="/diagnostics/reports" element={<RoleProtectedRoute allowedRoles={['admin', 'technician']}><DiagnosticReportsPage /></RoleProtectedRoute>} />
-          <Route path="/diagnostics/templates" element={<RoleProtectedRoute allowedRoles={['admin']}><DiagnosticTemplatesPage /></RoleProtectedRoute>} />
+          {/* Diagnostics Routes - Unified Interface */}
+          <Route path="/diagnostics" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedDiagnosticManagementPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/diagnostics/new" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedDiagnosticManagementPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/diagnostics/new-request" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedDiagnosticManagementPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/diagnostics/my-requests" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedDiagnosticManagementPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/diagnostics/assigned" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedDiagnosticManagementPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/diagnostics/reports" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedDiagnosticManagementPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/diagnostics/templates" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedDiagnosticManagementPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/diagnostics/device/:requestId/:deviceId" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedDiagnosticManagementPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/diagnostics/grouped/:requestId/:deviceName/:model" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedDiagnosticManagementPage /></Suspense></RoleProtectedRoute>} />
           
           {/* LATS Module Routes */}
-          <Route path="/lats" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><LATSDashboardPage /></RoleProtectedRoute>} />
+          <Route path="/lats" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><LATSDashboardPage /></Suspense></RoleProtectedRoute>} />
           
           {/* POS Route */}
-          <Route path="/pos" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><POSPage /></RoleProtectedRoute>} />
-          <Route path="/general-settings-test" element={<GeneralSettingsTestPage />} />
+          <Route path="/pos" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><POSPage /></Suspense></RoleProtectedRoute>} />
+
           <Route path="/customer-query-test" element={<CustomerQueryTest />} />
           
           {/* Primary Unified Inventory Route */}
-          <Route path="/lats/unified-inventory" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><UnifiedInventoryPage /></RoleProtectedRoute>} />
+          <Route path="/lats/unified-inventory" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedInventoryPage /></Suspense></RoleProtectedRoute>} />
           
           {/* Inventory Management Route */}
           <Route path="/lats/inventory-management" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><InventoryManagementPage /></RoleProtectedRoute>} />
+          
+          {/* Storage Room Management Route */}
+          <Route path="/lats/storage-rooms" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><StorageRoomManagementPage /></Suspense></RoleProtectedRoute>} />
+          
+          {/* Storage Room Detail Route */}
+          <Route path="/lats/storage-rooms/:id" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><StorageRoomDetailPage /></RoleProtectedRoute>} />
           
           {/* Redirect old inventory routes to unified inventory */}
           <Route path="/lats/inventory" element={<Navigate to="/lats/unified-inventory" replace />} />
@@ -326,38 +335,41 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
           <Route path="/lats/products/:id" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><ProductDetailPage /></RoleProtectedRoute>} />
           
           {/* Add Product Route */}
-          <Route path="/lats/add-product" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><AddProductPage /></RoleProtectedRoute>} />
+          <Route path="/lats/add-product" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><AddProductPage /></Suspense></RoleProtectedRoute>} />
           
           {/* Edit Product Route */}
-          <Route path="/lats/products/:productId/edit" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><EditProductPage /></RoleProtectedRoute>} />
+          <Route path="/lats/products/:productId/edit" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><EditProductPage /></Suspense></RoleProtectedRoute>} />
 
-          <Route path="/lats/sales-reports" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><SalesReportsPage /></RoleProtectedRoute>} />
-          <Route path="/lats/loyalty" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><CustomerLoyaltyPage /></RoleProtectedRoute>} />
-          <Route path="/lats/payments" element={<RoleProtectedRoute allowedRoles={['admin']}><PaymentTrackingPage /></RoleProtectedRoute>} />
-          <Route path="/lats/analytics" element={<RoleProtectedRoute allowedRoles={['admin']}><BusinessAnalyticsPage /></RoleProtectedRoute>} />
-          <Route path="/lats/purchase-orders" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><PurchaseOrdersPage /></RoleProtectedRoute>} />
-          <Route path="/lats/purchase-orders/new" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><NewPurchaseOrderPage /></RoleProtectedRoute>} />
-          <Route path="/lats/purchase-orders/:id" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><PurchaseOrderDetailPage /></RoleProtectedRoute>} />
-          <Route path="/lats/supplier-management" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><SupplierManagementPage /></RoleProtectedRoute>} />
-          <Route path="/lats/spare-parts" element={<RoleProtectedRoute allowedRoles={['admin', 'technician']}><SparePartsPage /></RoleProtectedRoute>} />
+          <Route path="/lats/sales-reports" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><SalesReportsPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/lats/loyalty" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><CustomerLoyaltyPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/lats/payments" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><PaymentTrackingPage /></Suspense></RoleProtectedRoute>} />
+
+          <Route path="/lats/purchase-orders" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><PurchaseOrdersPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/lats/purchase-orders/new" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><NewPurchaseOrderPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/lats/purchase-orders/:id" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><PurchaseOrderDetailPage /></Suspense></RoleProtectedRoute>} />
+
+          <Route path="/lats/spare-parts" element={<RoleProtectedRoute allowedRoles={['admin', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><SparePartsPage /></Suspense></RoleProtectedRoute>} />
           
           {/* Payment routes */}
-          <Route path="/lats/payment-history" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><PaymentHistoryPage /></RoleProtectedRoute>} />
-          <Route path="/lats/payment-analytics" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><PaymentAnalyticsPage /></RoleProtectedRoute>} />
+          <Route path="/lats/payment-history" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><PaymentHistoryPage /></Suspense></RoleProtectedRoute>} />
+
           <Route path="/lats/beem-test" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><BeemTestPage /></RoleProtectedRoute>} />
           
-          {/* WhatsApp Testing Route */}
-          <Route path="/whatsapp" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><WhatsAppTestPage /></RoleProtectedRoute>} />
-          
-          {/* WhatsApp Management Route (alternative) */}
-          <Route path="/whatsapp-management" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><WhatsAppManagementPage /></RoleProtectedRoute>} />
+
+        <Route path="/lats/whatsapp-hub" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><WhatsAppHubPage /></Suspense></RoleProtectedRoute>} />
+        <Route path="/lats/whatsapp-settings/:instanceId" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><WhatsAppSettingsPage /></Suspense></RoleProtectedRoute>} />
+
+        {/* Bluetooth Printer Management Route */}
+        <Route path="/bluetooth-printer" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><BluetoothPrinterPage /></Suspense></RoleProtectedRoute>} />
+
+          {/* AI Training Manager Route */}
+          <Route path="/ai-training" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><AITrainingManagerPage /></RoleProtectedRoute>} />
           
           {/* Global Search Route */}
           <Route path="/search" element={<GlobalSearchPage />} />
         </Route>
 
         {/* Full-page routes (outside AppLayout) */}
-        <Route path="/loading-demo" element={<LoadingDemoPage />} />
         
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
@@ -369,6 +381,37 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();
   
+  // Add error boundary for React refresh issues
+  const [hasError, setHasError] = useState(false);
+  
+  // Reset error state on mount
+  useEffect(() => {
+    setHasError(false);
+  }, []);
+  
+  // Handle any errors during render
+  if (hasError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-50 to-orange-50">
+        <div className="text-center">
+          <div className="text-red-600 mb-4">
+            <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Authentication Error</h3>
+          <p className="text-gray-600 mb-4">There was an issue with authentication. Please refresh the page.</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+          >
+            Refresh Page
+          </button>
+        </div>
+      </div>
+    );
+  }
+  
   // Show loading state while checking authentication
   if (loading) {
     return (
@@ -381,12 +424,19 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
     );
   }
   
-  if (!isAuthenticated) {
-    localStorage.setItem('postLoginRedirect', window.location.pathname);
-    return <Navigate to="/login" />;
+  // Handle authentication check
+  try {
+    if (!isAuthenticated) {
+      localStorage.setItem('postLoginRedirect', window.location.pathname);
+      return <Navigate to="/login" />;
+    }
+    
+    return <>{children}</>;
+  } catch (error) {
+    console.error('ProtectedRoute error:', error);
+    setHasError(true);
+    return null;
   }
-  
-  return <>{children}</>;
 };
 
 // Role-based protected route component
@@ -396,6 +446,37 @@ const RoleProtectedRoute: React.FC<{
 }> = ({ children, allowedRoles }) => {
   const { isAuthenticated, loading, currentUser } = useAuth();
   
+  // Add error boundary for React refresh issues
+  const [hasError, setHasError] = useState(false);
+  
+  // Reset error state on mount
+  useEffect(() => {
+    setHasError(false);
+  }, []);
+  
+  // Handle any errors during render
+  if (hasError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-50 to-orange-50">
+        <div className="text-center">
+          <div className="text-red-600 mb-4">
+            <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Access Error</h3>
+          <p className="text-gray-600 mb-4">There was an issue with role verification. Please refresh the page.</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+          >
+            Refresh Page
+          </button>
+        </div>
+      </div>
+    );
+  }
+  
   // Show loading state while checking authentication
   if (loading) {
     return (
@@ -408,19 +489,26 @@ const RoleProtectedRoute: React.FC<{
     );
   }
   
-  if (!isAuthenticated) {
-    localStorage.setItem('postLoginRedirect', window.location.pathname);
-    return <Navigate to="/login" />;
+  // Handle authentication and role checks
+  try {
+    if (!isAuthenticated) {
+      localStorage.setItem('postLoginRedirect', window.location.pathname);
+      return <Navigate to="/login" />;
+    }
+    
+    if (!currentUser || !allowedRoles.includes(currentUser.role)) {
+      return <Navigate to="/dashboard" replace />;
+    }
+    
+    return <>{children}</>;
+  } catch (error) {
+    console.error('RoleProtectedRoute error:', error);
+    setHasError(true);
+    return null;
   }
-  
-  if (!currentUser || !allowedRoles.includes(currentUser.role)) {
-    return <Navigate to="/dashboard" replace />;
-  }
-  
-  return <>{children}</>;
 };
 
-function clearAllIndexedDB() {
+function _clearAllIndexedDB() {
   const databases = ['offline-cache', 'pending-actions', 'user-goals'];
   databases.forEach(dbName => {
     const request = indexedDB.deleteDatabase(dbName);
@@ -431,8 +519,7 @@ function clearAllIndexedDB() {
 
 function App() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [isSyncing, _setIsSyncing] = useState(false);
 
   // --- Global scroll position persistence ---
   useEffect(() => {
@@ -467,18 +554,6 @@ function App() {
   // Initialize cache
   useEffect(() => {
     initializeCache();
-  }, []);
-
-  // Debug panel keyboard shortcut (Ctrl+Shift+D)
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.ctrlKey && event.shiftKey && event.key === 'D') {
-        setShowDebugPanel(prev => !prev);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   useEffect(() => {
@@ -556,13 +631,7 @@ function App() {
           },
         }}
       />
-      {import.meta.env.DEV && (
-        <DebugPanel 
-          isVisible={showDebugPanel} 
-          onToggle={() => setShowDebugPanel(prev => !prev)} 
-        />
-      )}
-      {import.meta.env.DEV && <WhatsAppDebugPanel />}
+      
     </ErrorBoundary>
   );
 }

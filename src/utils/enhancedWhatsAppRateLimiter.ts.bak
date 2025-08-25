@@ -1,0 +1,275 @@
+// Enhanced WhatsApp Rate Limiter with Centralized Status Management
+// Fixes 429 (Too Many Requests) errors by coordinating all API calls
+
+interface RateLimitConfig {
+  minInterval: number;
+  maxRetries: number;
+  baseDelay: number;
+  maxDelay: number;
+  storageKey: string;
+}
+
+interface RateLimitState {
+  lastRequestTime: number;
+  retryCount: number;
+  isBlocked: boolean;
+  blockUntil: number;
+}
+
+class EnhancedWhatsAppRateLimiter {
+  private config: RateLimitConfig;
+  private state: RateLimitState;
+  private statusCache: Map<string, { data: any; timestamp: number; ttl: number }> = new Map();
+  private subscribers: Set<(status: any) => void> = new Set();
+
+  constructor(config: Partial<RateLimitConfig> = {}) {
+    this.config = {
+      minInterval: 8000,
+      maxRetries: 3,
+      baseDelay: 2000,
+      maxDelay: 10000,
+      storageKey: 'whatsapp_rate_limiter',
+      ...config
+    };
+
+    this.state = {
+      lastRequestTime: 0,
+      retryCount: 0,
+      isBlocked: false,
+      blockUntil: 0
+    };
+
+    this.loadState();
+  }
+
+  async makeRequest<T>(
+    requestFn: () => Promise<T>,
+    options: any = {}
+  ): Promise<{ success: boolean; data?: T; error?: string; retryCount?: number }> {
+    const { force = false, priority = 'normal', cacheKey, cacheTTL = 30000 } = options;
+
+    if (cacheKey && priority === 'normal') {
+      const cached = this.statusCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < cacheTTL) {
+        console.log(`📱 Rate limiter: Using cached data for ${cacheKey}`);
+        return { success: true, data: cached.data };
+      }
+    }
+
+    if (this.state.isBlocked && !force) {
+      const remainingBlockTime = this.state.blockUntil - Date.now();
+      if (remainingBlockTime > 0) {
+        console.log(`📱 Rate limiter: Blocked for ${Math.ceil(remainingBlockTime / 1000)} more seconds`);
+        return {
+          success: false,
+          error: `Rate limited. Try again in ${Math.ceil(remainingBlockTime / 1000)} seconds`,
+          retryCount: this.state.retryCount
+        };
+      } else {
+        this.state.isBlocked = false;
+        this.state.retryCount = 0;
+      }
+    }
+
+    const timeSinceLastRequest = Date.now() - this.state.lastRequestTime;
+    if (timeSinceLastRequest < this.config.minInterval && !force) {
+      const waitTime = this.config.minInterval - timeSinceLastRequest;
+      console.log(`📱 Rate limiter: Waiting ${Math.ceil(waitTime / 1000)} seconds before next request`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+
+    try {
+      this.state.lastRequestTime = Date.now();
+      const result = await requestFn();
+      
+      this.state.retryCount = 0;
+      
+      if (cacheKey && priority === 'normal') {
+        this.statusCache.set(cacheKey, {
+          data: result,
+          timestamp: Date.now(),
+          ttl: cacheTTL
+        });
+      }
+      
+      this.saveState();
+      return { success: true, data: result };
+    } catch (error: any) {
+      return this.handleRequestError(error, requestFn, options);
+    }
+  }
+
+  private async handleRequestError<T>(
+    error: any,
+    requestFn: () => Promise<T>,
+    options: any
+  ): Promise<{ success: boolean; data?: T; error?: string; retryCount?: number }> {
+    
+    if (error?.status === 429 || error?.message?.includes('429')) {
+      console.log(`📱 Rate limiter: 429 error detected, attempt ${this.state.retryCount + 1}/${this.config.maxRetries}`);
+      
+      if (this.state.retryCount < this.config.maxRetries) {
+        this.state.retryCount++;
+        
+        const delay = Math.min(
+          this.config.baseDelay * Math.pow(2, this.state.retryCount - 1),
+          this.config.maxDelay
+        );
+        
+        console.log(`📱 Rate limiter: Waiting ${delay / 1000} seconds before retry...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        
+        return this.makeRequest(requestFn, options);
+      } else {
+        const blockTime = this.config.maxDelay * 2;
+        this.state.isBlocked = true;
+        this.state.blockUntil = Date.now() + blockTime;
+        this.saveState();
+        
+        console.log(`📱 Rate limiter: Max retries reached, blocking for ${blockTime / 1000} seconds`);
+        return {
+          success: false,
+          error: `Rate limit exceeded. Try again in ${Math.ceil(blockTime / 1000)} seconds`,
+          retryCount: this.state.retryCount
+        };
+      }
+    }
+    
+    console.error('📱 Rate limiter: Request failed:', error);
+    return {
+      success: false,
+      error: error?.message || 'Request failed',
+      retryCount: this.state.retryCount
+    };
+  }
+
+  async getStatus(force = false): Promise<{ success: boolean; data?: any; error?: string }> {
+    return this.makeRequest(
+      async () => {
+        const { getWhatsAppSettings } = await import('../lib/whatsappSettingsApi');
+        const settings = await getWhatsAppSettings();
+        
+        const response = await fetch(
+          `${settings.apiUrl}/waInstance${settings.instanceId}/getStateInstance/${settings.apiToken}`,
+          { method: 'GET' }
+        );
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        return response.json();
+      },
+      {
+        force,
+        priority: 'normal',
+        cacheKey: 'whatsapp_status',
+        cacheTTL: 30000
+      }
+    );
+  }
+
+  subscribe(callback: (status: any) => void): () => void {
+    this.subscribers.add(callback);
+    return () => this.subscribers.delete(callback);
+  }
+
+  private notifySubscribers(status: any) {
+    this.subscribers.forEach(callback => {
+      try {
+        callback(status);
+      } catch (error) {
+        console.error('📱 Rate limiter: Subscriber callback error:', error);
+      }
+    });
+  }
+
+  private loadState() {
+    try {
+      const stored = sessionStorage.getItem(this.config.storageKey);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        this.state = { ...this.state, ...parsed };
+      }
+    } catch (error) {
+      console.warn('📱 Rate limiter: Failed to load state from storage:', error);
+    }
+  }
+
+  private saveState() {
+    try {
+      sessionStorage.setItem(this.config.storageKey, JSON.stringify(this.state));
+    } catch (error) {
+      console.warn('📱 Rate limiter: Failed to save state to storage:', error);
+    }
+  }
+
+  clearCache() {
+    this.statusCache.clear();
+    this.state = {
+      lastRequestTime: 0,
+      retryCount: 0,
+      isBlocked: false,
+      blockUntil: 0
+    };
+    this.saveState();
+  }
+}
+
+// Global rate limiter instance
+export const enhancedWhatsAppRateLimiter = new EnhancedWhatsAppRateLimiter();
+
+// Utility function for making rate-limited requests
+export const enhancedRateLimitedRequest = async <T>(
+  url: string,
+  options: RequestInit = {},
+  rateLimitOptions: any = {}
+): Promise<{ success: boolean; data?: T; error?: string; retryCount?: number }> {
+  return enhancedWhatsAppRateLimiter.makeRequest(
+    async () => {
+      const response = await fetch(url, options);
+      
+      if (!response.ok) {
+        const error = new Error(`HTTP error! status: ${response.status}`);
+        (error as any).status = response.status;
+        throw error;
+      }
+      
+      return response.json() as T;
+    },
+    rateLimitOptions
+  );
+};
+
+// Utility function for status checks
+export const enhancedRateLimitedStatusCheck = async (
+  force = false
+): Promise<{ success: boolean; data?: any; error?: string; retryCount?: number }> {
+  return enhancedWhatsAppRateLimiter.getStatus(force);
+};
+
+// Utility function for QR code requests
+export const enhancedRateLimitedQRRequest = async <T>(
+  url: string,
+  options: RequestInit = {}
+): Promise<{ success: boolean; data?: T; error?: string; retryCount?: number }> {
+  return enhancedRateLimitedRequest<T>(url, options, {
+    priority: 'low',
+    cacheKey: 'whatsapp_qr',
+    cacheTTL: 10000
+  });
+};
+
+// Utility function for message sending
+export const enhancedRateLimitedMessageSend = async <T>(
+  url: string,
+  options: RequestInit = {}
+): Promise<{ success: boolean; data?: T; error?: string; retryCount?: number }> {
+  return enhancedRateLimitedRequest<T>(url, options, {
+    priority: 'high',
+    cacheKey: 'whatsapp_message',
+    cacheTTL: 5000
+  });
+};
+
+export default enhancedWhatsAppRateLimiter;

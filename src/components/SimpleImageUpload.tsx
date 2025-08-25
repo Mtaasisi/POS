@@ -4,8 +4,8 @@ import { RobustImageService, ProductImage } from '../lib/robustImageService';
 import { toast } from 'react-hot-toast';
 
 interface SimpleImageUploadProps {
-  productId: string;
-  userId: string;
+  productId?: string;
+  userId?: string;
   onImagesChange?: (images: ProductImage[]) => void;
   maxFiles?: number;
   className?: string;
@@ -30,15 +30,17 @@ export const SimpleImageUpload: React.FC<SimpleImageUploadProps> = ({
   // Load existing images on mount
   React.useEffect(() => {
     // Only load images if we have a real product ID
-    if (!productId.startsWith('temp-product-') && !productId.startsWith('test-product-') && !productId.startsWith('temp-sparepart-')) {
+    if (productId && typeof productId === 'string' && !productId.startsWith('temp-product-') && !productId.startsWith('test-product-') && !productId.startsWith('temp-sparepart-')) {
       loadImages();
     }
   }, [productId]);
 
   const loadImages = async () => {
     try {
+      if (!productId) return;
+      
       // For temporary products, load from local storage
-      if (productId.startsWith('temp-product-') || productId.startsWith('test-product-') || productId.startsWith('temp-sparepart-')) {
+      if (productId && typeof productId === 'string' && (productId.startsWith('temp-product-') || productId.startsWith('test-product-') || productId.startsWith('temp-sparepart-'))) {
         const tempProductImages = tempImages.get(productId) || [];
         setImages(tempProductImages);
         onImagesChange?.(tempProductImages);
@@ -54,7 +56,7 @@ export const SimpleImageUpload: React.FC<SimpleImageUploadProps> = ({
   };
 
   const handleFileSelect = async (files: FileList | null) => {
-    if (!files || uploading) return;
+    if (!files || uploading || !productId || !userId) return;
 
     const fileArray = Array.from(files);
     if (images.length + fileArray.length > maxFiles) {
@@ -74,7 +76,7 @@ export const SimpleImageUpload: React.FC<SimpleImageUploadProps> = ({
         if (result.success && result.image) {
           
           // Handle temporary products differently
-          if (productId.startsWith('temp-product-') || productId.startsWith('test-product-') || productId.startsWith('temp-sparepart-')) {
+          if (productId && typeof productId === 'string' && (productId.startsWith('temp-product-') || productId.startsWith('test-product-') || productId.startsWith('temp-sparepart-'))) {
             const currentTempImages = tempImages.get(productId) || [];
             const newTempImages = [...currentTempImages, result.image!];
             setTempImages(prev => new Map(prev).set(productId, newTempImages));
@@ -100,14 +102,14 @@ export const SimpleImageUpload: React.FC<SimpleImageUploadProps> = ({
   };
 
   const handleDelete = async (imageId: string) => {
-    if (!confirm('Delete this image?')) return;
+    if (!confirm('Delete this image?') || !productId) return;
 
     setDeleting(imageId);
     try {
-              const result = await RobustImageService.deleteImage(imageId);
+      const result = await RobustImageService.deleteImage(imageId);
       if (result.success) {
         // Handle temporary products differently
-        if (productId.startsWith('temp-product-') || productId.startsWith('test-product-') || productId.startsWith('temp-sparepart-')) {
+        if (productId && typeof productId === 'string' && (productId.startsWith('temp-product-') || productId.startsWith('test-product-') || productId.startsWith('temp-sparepart-'))) {
           const newTempImages = (tempImages.get(productId) || []).filter(img => img.id !== imageId);
           setTempImages(prev => new Map(prev).set(productId, newTempImages));
           setImages(newTempImages);
@@ -128,8 +130,10 @@ export const SimpleImageUpload: React.FC<SimpleImageUploadProps> = ({
   };
 
   const handleSetPrimary = async (imageId: string) => {
+    if (!productId) return;
+    
     try {
-              const result = await RobustImageService.setPrimaryImage(imageId, productId);
+      const result = await RobustImageService.setPrimaryImage(imageId, productId);
       if (result.success) {
         // Handle temporary products differently
         if (productId.startsWith('temp-product-') || productId.startsWith('test-product-') || productId.startsWith('temp-sparepart-')) {

@@ -253,7 +253,7 @@ const ProductExcelExport: React.FC = () => {
                 sellingPrice: v.selling_price,
                 quantity: v.quantity,
                 minQuantity: v.min_quantity,
-                maxQuantity: v.max_quantity,
+                maxQuantity: null, // Column was removed in migration
         
                 dimensions: v.dimensions,
                 createdAt: v.created_at,
@@ -269,7 +269,7 @@ const ProductExcelExport: React.FC = () => {
               sellingPrice: variant.selling_price,
               quantity: variant.quantity,
               minQuantity: variant.min_quantity,
-              maxQuantity: variant.max_quantity,
+              maxQuantity: null, // Column was removed in migration
       
               dimensions: variant.dimensions ? 
                 `${variant.dimensions.length || 0}L x ${variant.dimensions.width || 0}W x ${variant.dimensions.height || 0}H` : '',

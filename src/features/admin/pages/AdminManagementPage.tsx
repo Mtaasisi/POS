@@ -77,11 +77,11 @@ const AdminManagementPage: React.FC = () => {
       category: 'inventory'
     },
     {
-      id: 'shelves-management',
-      title: 'Shelves Management',
-      description: 'Manage storage shelves and capacity',
-      icon: <Layers size={24} />,
-      path: '/lats/inventory-management?shelves',
+      id: 'storage-room-management',
+      title: 'Storage Room Management',
+      description: 'Manage storage rooms and capacity',
+      icon: <Building size={24} />,
+      path: '/lats/inventory-management?storage-room',
       color: 'from-purple-500 to-purple-600',
       category: 'inventory'
     },
@@ -141,6 +141,26 @@ const AdminManagementPage: React.FC = () => {
       path: '/mobile',
       color: 'from-pink-500 to-pink-600',
       category: 'system'
+    },
+
+    // Communication & Integration
+    {
+      id: 'green-api-management',
+      title: 'Green API Management',
+      description: 'Manage WhatsApp integration and messaging',
+      icon: <MessageCircle size={24} />,
+      path: '/lats/whatsapp-hub',
+      color: 'from-green-500 to-green-600',
+      category: 'communication'
+    },
+    {
+      id: 'whatsapp-hub',
+      title: 'WhatsApp Hub',
+      description: 'Centralized WhatsApp messaging and management',
+      icon: <MessageCircle size={24} />,
+      path: '/lats/whatsapp-hub',
+      color: 'from-green-500 to-green-600',
+      category: 'communication'
     },
 
     // Security & Monitoring

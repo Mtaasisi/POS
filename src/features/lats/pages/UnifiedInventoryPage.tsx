@@ -38,12 +38,29 @@ import { useInventoryStore } from '../stores/useInventoryStore';
 import { format } from '../lib/format';
 import { latsEventBus } from '../lib/data/eventBus';
 import { runDatabaseDiagnostics, logDiagnosticResult } from '../lib/databaseDiagnostics';
+import { useCyclingLoadingMessage } from '../../../hooks/useCyclingLoadingMessage';
+
 
 // Loading Progress Indicator Component
 const LoadingProgressIndicator: React.FC<{ progress: any }> = ({ progress }) => {
   const totalSteps = 6;
   const completedSteps = Object.values(progress).filter(Boolean).length;
   const percentage = Math.round((completedSteps / totalSteps) * 100);
+  
+  // Cycling loading messages for inventory
+  const { currentMessage } = useCyclingLoadingMessage({
+    enabled: completedSteps < totalSteps,
+    interval: 2000,
+    messages: [
+      { text: "Loading inventory data...", icon: "📦", color: "text-blue-600" },
+      { text: "Fetching product categories...", icon: "📁", color: "text-green-600" },
+      { text: "Syncing brand information...", icon: "🏷️", color: "text-purple-600" },
+      { text: "Loading supplier data...", icon: "🏢", color: "text-orange-600" },
+      { text: "Calculating stock levels...", icon: "📊", color: "text-teal-600" },
+      { text: "Preparing analytics...", icon: "📈", color: "text-indigo-600" },
+      { text: "Almost ready...", icon: "🎯", color: "text-pink-600" }
+    ]
+  });
 
   return (
     <div className="fixed top-4 right-4 z-50 bg-white/90 backdrop-blur-sm rounded-lg p-4 shadow-lg border border-gray-200">
@@ -52,7 +69,9 @@ const LoadingProgressIndicator: React.FC<{ progress: any }> = ({ progress }) => 
           <div className="w-8 h-8 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
         </div>
         <div className="flex-1">
-          <div className="text-sm font-medium text-gray-700">Loading Data...</div>
+          <div className={`text-sm font-medium ${currentMessage.color || 'text-gray-700'}`}>
+            {currentMessage.icon} {currentMessage.text}
+          </div>
           <div className="w-32 bg-gray-200 rounded-full h-2 mt-1">
             <div 
               className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
@@ -117,6 +136,22 @@ const UnifiedInventoryPage: React.FC = () => {
     deleteProduct,
     adjustStock
   } = useInventoryStore();
+
+  // Debug logging for products state
+  useEffect(() => {
+    console.log('🔍 DEBUG: Products state updated:', {
+      productsCount: products?.length || 0,
+      isLoading,
+      error,
+      firstProduct: products?.[0] ? {
+        id: products[0].id,
+        name: products[0].name,
+        sku: products[0].sku,
+        price: products[0].price,
+        variants: products[0].variants?.length || 0
+      } : null
+    });
+  }, [products, isLoading, error]);
 
   // Database connection status
   const [dbStatus, setDbStatus] = useState<'connected' | 'connecting' | 'error'>('connecting');
@@ -297,6 +332,22 @@ const UnifiedInventoryPage: React.FC = () => {
     }, 0);
     const activeProducts = products.filter(p => p.isActive).length;
     const featuredProducts = products.filter(p => p.isFeatured).length;
+
+    // Debug logging for SKU, price, and stock data
+    if (import.meta.env.MODE === 'development' && products.length > 0) {
+      console.log('🔍 Debug: Product data check for SKU, price, stock:');
+      products.slice(0, 3).forEach((product, index) => {
+        const mainVariant = product.variants?.[0];
+        console.log(`Product ${index + 1}:`, {
+          name: product.name,
+          sku: mainVariant?.sku || 'N/A',
+          price: mainVariant?.sellingPrice || 0,
+          stock: mainVariant?.quantity || 0,
+          variantsCount: product.variants?.length || 0,
+          totalStock: product.variants?.reduce((sum, variant) => sum + (variant.quantity || 0), 0) || 0
+        });
+      });
+    }
 
     return {
       totalItems,
@@ -741,6 +792,33 @@ const UnifiedInventoryPage: React.FC = () => {
                 Retry Connection
               </GlassButton>
             )}
+            {/* Debug Test Button (Development Only) */}
+            {import.meta.env.MODE === 'development' && (
+              <GlassButton
+                onClick={async () => {
+                  console.log('🧪 Debug: Testing data loading...');
+                  console.log('Current products:', products.length);
+                  console.log('Sample product data:', products[0]);
+                  if (products[0]) {
+                    const mainVariant = products[0].variants?.[0];
+                    console.log('Sample variant data:', mainVariant);
+                    console.log('SKU:', mainVariant?.sku);
+                    console.log('Price:', mainVariant?.sellingPrice);
+                    console.log('Stock:', mainVariant?.quantity);
+                  }
+                  // Force reload data
+                  await loadProducts({ page: 1, limit: 10 });
+                  await loadCategories();
+                  await loadBrands();
+                  await loadSuppliers();
+                  console.log('🧪 Debug: Data reload completed');
+                }}
+                icon={<AlertTriangle size={18} />}
+                className="bg-gradient-to-r from-purple-500 to-pink-600 text-white"
+              >
+                Test Data
+              </GlassButton>
+            )}
           </div>
         </div>
 
@@ -760,6 +838,90 @@ const UnifiedInventoryPage: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* Debug Information (Development Only) */}
+        {import.meta.env.MODE === 'development' && products.length > 0 && (
+          <GlassCard className="bg-yellow-50 border-yellow-200">
+            <div className="p-4">
+              <h3 className="text-lg font-semibold text-yellow-800 mb-3">🔍 Debug: Product Data Check</h3>
+              
+              {/* Debug Buttons */}
+              <div className="flex gap-2 mb-4">
+                <GlassButton
+                  onClick={async () => {
+                    console.log('🧪 Debug: Testing image flow...');
+                    const provider = (await import('../lib/data/provider.supabase')).default;
+                    await provider.debugImageFlow();
+                  }}
+                  icon={<AlertTriangle size={18} />}
+                  className="bg-gradient-to-r from-blue-500 to-cyan-600 text-white"
+                >
+                  Test Images
+                </GlassButton>
+                
+                <GlassButton
+                  onClick={async () => {
+                    console.log('🧪 Debug: Testing data reload...');
+                    if (products.length > 0) {
+                      const firstProduct = products[0];
+                      console.log('First product:', firstProduct.name);
+                      console.log('Images:', firstProduct.images);
+                      console.log('Image count:', firstProduct.images?.length || 0);
+                      console.log('Will display image:', firstProduct.images && firstProduct.images.length > 0);
+                    }
+                    // Force reload data
+                    await loadProducts({ page: 1, limit: 10 });
+                    await loadCategories();
+                    await loadBrands();
+                    await loadSuppliers();
+                    console.log('🧪 Debug: Data reload completed');
+                  }}
+                  icon={<AlertTriangle size={18} />}
+                  className="bg-gradient-to-r from-purple-500 to-pink-600 text-white"
+                >
+                  Test Data
+                </GlassButton>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {products.slice(0, 6).map((product, index) => {
+                  const mainVariant = product.variants?.[0];
+                  const totalStock = product.variants?.reduce((sum, variant) => sum + (variant.quantity || 0), 0) || 0;
+                  
+                  // Debug logging for each product card
+                  console.log(`🔍 DEBUG: Rendering product card ${index + 1}:`, {
+                    productId: product.id,
+                    productName: product.name,
+                    mainVariant: mainVariant ? {
+                      sku: mainVariant.sku,
+                      price: mainVariant.sellingPrice,
+                      stock: mainVariant.quantity
+                    } : null,
+                    variantsCount: product.variants?.length || 0,
+                    totalStock,
+                    imagesCount: product.images?.length || 0
+                  });
+                  
+                  return (
+                    <div key={product.id} className="bg-white p-3 rounded-lg border border-yellow-200">
+                      <div className="font-medium text-sm text-gray-900 mb-2">{product.name}</div>
+                      <div className="space-y-1 text-xs">
+                        <div><span className="font-medium">SKU:</span> {mainVariant?.sku || 'N/A'}</div>
+                        <div><span className="font-medium">Price:</span> {formatMoney(mainVariant?.sellingPrice || 0)}</div>
+                        <div><span className="font-medium">Stock:</span> {totalStock} units</div>
+                        <div><span className="font-medium">Variants:</span> {product.variants?.length || 0}</div>
+                        <div><span className="font-medium">Images:</span> {product.images?.length || 0}</div>
+                        <div><span className="font-medium">Has Images:</span> {product.images && product.images.length > 0 ? '✅' : '❌'}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </GlassCard>
+        )}
+
+
 
         {/* Tab Navigation */}
         <div className="bg-white/80 backdrop-blur-sm rounded-xl border border-gray-200/50 p-1">

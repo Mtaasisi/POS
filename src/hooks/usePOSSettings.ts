@@ -167,33 +167,33 @@ const defaultDeliverySettings: DeliverySettings = {
 };
 
 const defaultSearchFilterSettings: SearchFilterSettings = {
-  enable_smart_search: true,
-  enable_auto_complete: true,
-  search_debounce_time: 300,
-  max_search_results: 50,
+  // Search Settings
+  enable_product_search: true,
+  enable_customer_search: true,
+  enable_sales_search: true,
+  search_by_name: true,
+  search_by_barcode: true,
+  search_by_sku: true,
+  search_by_category: true,
+  search_by_brand: true,
+  search_by_supplier: true,
+  search_by_description: false,
+  search_by_tags: false,
+  
+  // Advanced Search
   enable_fuzzy_search: true,
-  enable_exact_match: true,
-  enable_partial_match: true,
-  search_in_description: true,
-  search_in_barcode: true,
-  enable_advanced_filters: true,
-  enable_category_filter: true,
-  enable_brand_filter: true,
-  enable_price_filter: true,
-  enable_stock_filter: true,
+  enable_autocomplete: true,
+  min_search_length: 2,
+  max_search_results: 50,
+  search_timeout: 3000,
+  search_debounce_time: 300,
+  
+  // Search History
   enable_search_history: true,
   max_search_history: 20,
   enable_recent_searches: true,
   enable_popular_searches: true,
-  show_search_suggestions: true,
-  enable_search_caching: true,
-  cache_expiry_time: 300,
-  enable_lazy_loading: true,
-  search_timeout: 5000,
-  enable_voice_search: false,
-  enable_barcode_search: true,
-  enable_image_search: false,
-  enable_synonyms: true
+  enable_search_suggestions: true
 };
 
 const defaultUserPermissionsSettings: UserPermissionsSettings = {
@@ -363,7 +363,16 @@ export function usePOSSettings<T>(
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { isAuthenticated } = useAuth();
+  
+  // Safely get auth context
+  let isAuthenticated = false;
+  try {
+    const auth = useAuth();
+    isAuthenticated = auth?.isAuthenticated || false;
+  } catch (err) {
+    console.warn('useAuth not available, using default authentication state');
+    isAuthenticated = false;
+  }
 
   // Load settings from database
   const loadSettings = useCallback(async () => {

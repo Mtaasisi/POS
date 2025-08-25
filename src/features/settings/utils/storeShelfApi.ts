@@ -3,6 +3,7 @@ import { supabase } from '../../../lib/supabaseClient';
 export interface StoreShelf {
   id: string;
   store_location_id: string;
+  storage_room_id?: string;
   name: string;
   code: string;
   description?: string;
@@ -38,6 +39,7 @@ export interface StoreShelf {
 
 export interface CreateStoreShelfData {
   store_location_id: string;
+  storage_room_id?: string;
   name: string;
   code: string;
   description?: string;
@@ -71,6 +73,7 @@ export interface UpdateStoreShelfData extends Partial<CreateStoreShelfData> {}
 export interface StoreShelfFilters {
   search?: string;
   store_location_id?: string;
+  storage_room_id?: string;
   shelf_type?: string;
   section?: string;
   zone?: string;
@@ -110,6 +113,9 @@ export class StoreShelfApi {
       }
       if (filters.store_location_id) {
         query = query.eq('store_location_id', filters.store_location_id);
+      }
+      if (filters.storage_room_id) {
+        query = query.eq('storage_room_id', filters.storage_room_id);
       }
       if (filters.shelf_type) {
         query = query.eq('shelf_type', filters.shelf_type);
@@ -194,6 +200,22 @@ export class StoreShelfApi {
 
     if (error) {
       throw new Error(`Failed to fetch shelves for location: ${error.message}`);
+    }
+
+    return data || [];
+  }
+
+  async getShelvesByStorageRoom(storageRoomId: string): Promise<StoreShelf[]> {
+    const { data, error } = await supabase
+      .from(this.tableName)
+      .select('*')
+      .eq('storage_room_id', storageRoomId)
+      .eq('is_active', true)
+      .order('row_number', { ascending: true })
+      .order('column_number', { ascending: true });
+
+    if (error) {
+      throw new Error(`Failed to fetch shelves for storage room: ${error.message}`);
     }
 
     return data || [];

@@ -17,6 +17,8 @@ import { Product, Category, Brand, Supplier, ProductImage } from '../../types/in
 import { StoreLocation } from '../../../settings/types/storeLocation';
 import { storeLocationApi } from '../../../settings/utils/storeLocationApi';
 import { useInventoryStore } from '../../stores/useInventoryStore';
+import { storageRoomApi, StorageRoom } from '../../../settings/utils/storageRoomApi';
+import { storeShelfApi, StoreShelf } from '../../../settings/utils/storeShelfApi';
 
 // Validation schema for product editing
 const editProductSchema = z.object({
@@ -29,6 +31,7 @@ const editProductSchema = z.object({
   supplierId: z.string().optional(),
   condition: z.string().min(1, 'Condition is required'),
   storeLocationId: z.string().optional(),
+  storeShelf: z.string().optional(),
 
   price: z.number().min(0, 'Price must be 0 or greater'),
   costPrice: z.number().min(0, 'Cost price must be 0 or greater'),
@@ -58,6 +61,13 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
   const [tagInput, setTagInput] = useState('');
   const [currentTags, setCurrentTags] = useState<string[]>([]);
   const [storeLocations, setStoreLocations] = useState<StoreLocation[]>([]);
+  const [storageRooms, setStorageRooms] = useState<StorageRoom[]>([]);
+  const [loadingStorageRooms, setLoadingStorageRooms] = useState(false);
+  const [shelves, setShelves] = useState<StoreShelf[]>([]);
+  const [loadingShelves, setLoadingShelves] = useState(false);
+  const [selectedStorageRoomId, setSelectedStorageRoomId] = useState<string>('');
+  const [selectedRow, setSelectedRow] = useState<number | undefined>(undefined);
+  const [selectedColumn, setSelectedColumn] = useState<number | undefined>(undefined);
 
   const [loadingLocations, setLoadingLocations] = useState(false);
   
@@ -102,6 +112,7 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
       supplierId: '',
       condition: 'new',
       storeLocationId: '',
+      storeShelf: '',
   
       price: 0,
       costPrice: 0,
@@ -134,24 +145,57 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
     }
   }, [isOpen]);
 
-  // Load shelves when location changes
+  // Load storage rooms when location changes
   useEffect(() => {
-    const loadShelves = async () => {
+    const loadRooms = async () => {
       if (!selectedLocationId) {
+        setStorageRooms([]);
+        setSelectedStorageRoomId('');
+        setShelves([]);
+        setSelectedRow(undefined);
+        setSelectedColumn(undefined);
         return;
       }
 
       try {
-        // TODO: Implement shelf loading logic
-        // const locationShelves = await shelfApi.getByLocation(selectedLocationId);
+        setLoadingStorageRooms(true);
+        const rooms = await storageRoomApi.getByStoreLocation(selectedLocationId);
+        setStorageRooms(rooms);
       } catch (error) {
-        console.error('Error loading shelves:', error);
-        toast.error('Failed to load shelves');
+        console.error('Error loading storage rooms:', error);
+        toast.error('Failed to load storage rooms');
+      } finally {
+        setLoadingStorageRooms(false);
       }
     };
 
-    loadShelves();
+    loadRooms();
   }, [selectedLocationId]);
+
+  // Load shelves when storage room changes
+  useEffect(() => {
+    const loadShelvesForRoom = async () => {
+      if (!selectedStorageRoomId) {
+        setShelves([]);
+        setSelectedRow(undefined);
+        setSelectedColumn(undefined);
+        return;
+      }
+
+      try {
+        setLoadingShelves(true);
+        const roomShelves = await storeShelfApi.getShelvesByStorageRoom(selectedStorageRoomId);
+        setShelves(roomShelves);
+      } catch (error) {
+        console.error('Error loading shelves:', error);
+        toast.error('Failed to load shelves');
+      } finally {
+        setLoadingShelves(false);
+      }
+    };
+
+    loadShelvesForRoom();
+  }, [selectedStorageRoomId]);
 
   // Load categories, brands, and suppliers when modal opens
   useEffect(() => {
@@ -215,12 +259,13 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
   // Find location for existing shelf
   const findLocationForShelf = async (shelfCode: string) => {
     try {
-      // TODO: Implement shelf lookup logic
-      // const allShelves = await shelfApi.getAll();
-      // const shelf = allShelves.find(s => s.code === shelfCode);
-      // if (shelf) {
-      //   setValue('storeLocationId', shelf.store_location_id);
-      // }
+      const shelf = await storeShelfApi.getByCode(shelfCode);
+      if (shelf) {
+        setValue('storeLocationId', shelf.store_location_id);
+        if (shelf.storage_room_id) setSelectedStorageRoomId(shelf.storage_room_id);
+        setSelectedRow(shelf.row_number);
+        setSelectedColumn(shelf.column_number);
+      }
     } catch (error) {
       console.error('Error finding location for shelf:', error);
     }
@@ -255,7 +300,7 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
     setCurrentTags([]);
     setTagInput('');
     setStoreLocations([]);
-    ;
+    
     onClose();
   };
 
@@ -379,7 +424,7 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
               />
             </div>
 
-            {/* Store Location and Shelf Selection */}
+            {/* Store Location and Storage Room */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Controller
                 name="storeLocationId"
@@ -406,47 +451,108 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
                 )}
               />
 
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <Layers className="w-4 h-4 inline mr-2" />
+                  {t('Storage Room')}
+                </label>
+                <select
+                  value={selectedStorageRoomId}
+                  onChange={(e) => {
+                    setSelectedStorageRoomId(e.target.value);
+                    setSelectedRow(undefined);
+                    setSelectedColumn(undefined);
+                    // Clear storeShelf when changing room
+                    setValue('storeShelf', '');
+                  }}
+                  disabled={!selectedLocationId || loadingStorageRooms}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">
+                    {!selectedLocationId
+                      ? t('Select Location First')
+                      : loadingStorageRooms
+                        ? t('Loading...')
+                        : t('Select Storage Room')}
+                  </option>
+                  {(storageRooms || []).map((room) => (
+                    <option key={room.id} value={room.id}>
+                      {room.name} ({room.code})
+                    </option>
+                  ))}
+                </select>
+                {selectedLocationId && (storageRooms || []).length === 0 && !loadingStorageRooms && (
+                  <p className="text-sm text-gray-500 mt-1">
+                    {t('No storage rooms found for this location.')} 
+                    <button
+                      type="button"
+                      onClick={() => window.open('/lats/storage-rooms', '_blank')}
+                      className="text-blue-600 hover:text-blue-800 ml-1 underline"
+                    >
+                      {t('Manage storage rooms')}
+                    </button>
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Shelf Row and Column within selected Storage Room */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {t('Shelf row')}
+                </label>
+                <select
+                  value={selectedRow ?? ''}
+                  onChange={(e) => {
+                    const row = e.target.value ? parseInt(e.target.value, 10) : undefined;
+                    setSelectedRow(row);
+                    // Update composed code if possible
+                    const shelf = shelves.find(s => s.row_number === row && s.column_number === selectedColumn);
+                    setValue('storeShelf', shelf?.code || '');
+                  }}
+                  disabled={!selectedStorageRoomId || loadingShelves}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">{!selectedStorageRoomId ? t('Select storage room first') : loadingShelves ? t('Loading...') : t('Select row')}</option>
+                  {Array.from(new Set((shelves || []).map(s => s.row_number).filter(Boolean))).map((row) => (
+                    <option key={`row-${row}`} value={row as number}>{row as number}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {t('Shelf column')}
+                </label>
+                <select
+                  value={selectedColumn ?? ''}
+                  onChange={(e) => {
+                    const col = e.target.value ? parseInt(e.target.value, 10) : undefined;
+                    setSelectedColumn(col);
+                    const shelf = shelves.find(s => s.row_number === selectedRow && s.column_number === col);
+                    setValue('storeShelf', shelf?.code || '');
+                  }}
+                  disabled={!selectedStorageRoomId || loadingShelves}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">{!selectedStorageRoomId ? t('Select storage room first') : loadingShelves ? t('Loading...') : t('Select column')}</option>
+                  {Array.from(new Set((shelves || []).map(s => s.column_number).filter(Boolean))).map((col) => (
+                    <option key={`col-${col}`} value={col as number}>{col as number}</option>
+                  ))}
+                </select>
+              </div>
+
               <Controller
                 name="storeShelf"
                 control={control}
                 render={({ field }) => (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      <Layers className="w-4 h-4 inline mr-2" />
-                      {t('Shelf')}
-                    </label>
-                    <GlassSelect
-                      {...field}
-                      disabled={!selectedLocationId || loadingShelves}
-                      error={errors.storeShelf?.message}
-                    >
-                      <option value="">
-                        {!selectedLocationId 
-                          ? t('Select Location First') 
-                          : loadingShelves 
-                            ? t('Loading...') 
-                            : t('Select Shelf')
-                        }
-                      </option>
-                      {(shelves || [])?.map((shelf) => (
-                        <option key={shelf.id} value={shelf.code}>
-                          {shelf.name} ({shelf.code}) - {shelf.current_capacity}/{shelf.max_capacity || '∞'}
-                        </option>
-                      ))}
-                    </GlassSelect>
-                    {selectedLocationId && (shelves || []).length === 0 && !loadingShelves && (
-                      <p className="text-sm text-gray-500 mt-1">
-                        No shelves found for this location. 
-                        <button
-                          type="button"
-                          onClick={() => window.open('/lats/inventory-management?shelves', '_blank')}
-                          className="text-blue-600 hover:text-blue-800 ml-1 underline"
-                                                  >
-                            Manage shelves
-                          </button>
-                      </p>
-                    )}
-                  </div>
+                  <GlassInput
+                    {...field}
+                    label={t('Shelf code')}
+                    placeholder={t('Auto-filled from row/column')}
+                    readOnly
+                  />
                 )}
               />
             </div>

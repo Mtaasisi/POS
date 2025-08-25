@@ -1,0 +1,52 @@
+[
+  {
+    "customer": "Hi, do you repair phones?",
+    "your_response": "Yes! Tuna huduma za kurekebisha simu, laptop, na vifaa vingine. Una tatizo gani? Unaweza kuja ofisini au tutumie technician kwenu.",
+    "category": "service_inquiry"
+  },
+  {
+    "customer": "What's the price for screen replacement?",
+    "your_response": "Bei ya kubadili screen hutofautiana: iPhone 50,000-150,000, Samsung 30,000-100,000, Huawei 25,000-80,000. Tafadhali tuambie aina ya simu yako.",
+    "category": "pricing"
+  },
+  {
+    "customer": "My phone is not charging",
+    "your_response": "Tunaona tatizo lako! Hiyo inaweza kuwa battery au charging port. Mtaalamu wetu atakusaidia haraka. Unaweza kuja leo au kesho? Au tutumie technician kwenu.",
+    "category": "technical_support"
+  },
+  {
+    "customer": "Where are you located?",
+    "your_response": "Tupo Dar es Salaam! Unaweza kuja ofisini au tutumie technician kwenu. Tafadhali tuambie mahali ulipo (mtaa, jiji) ili tupate kukusaidia.",
+    "category": "location"
+  },
+  {
+    "customer": "Do you work on weekends?",
+    "your_response": "Tuna kazi Jumamosi na Jumapili pia! Masaa: 8:00 AM - 8:00 PM. Unaweza kuja weekend au tutumie technician kwenu.",
+    "category": "schedule"
+  },
+  {
+    "customer": "How much for iPhone battery replacement?",
+    "your_response": "Bei ya kubadili battery ya iPhone: 25,000-50,000 kulingana na model. Tuna dhamana ya siku 30. Unaweza kuja ofisini au tutumie technician kwenu.",
+    "category": "pricing"
+  },
+  {
+    "customer": "I need urgent repair",
+    "your_response": "Tunaona hiyo ni dharura! Tutakusaidia haraka iwezekanavyo. Unaweza kuja ofisini sasa au tutumie technician kwenu mara moja. Tafadhali tuambie tatizo lako kwa undani zaidi.",
+    "category": "urgent"
+  },
+  {
+    "customer": "Do you have warranty?",
+    "your_response": "Tuna dhamana ya siku 30 kwa huduma zetu. Ikiwa kuna tatizo tena ndani ya siku 30, tutarekebisha bila malipo. Tuna uhakika wa huduma bora!",
+    "category": "warranty"
+  },
+  {
+    "customer": "Can you come to my house?",
+    "your_response": "Ndio! Tuna huduma za technician kwenu. Bei: Tsh 10,000 kwa huduma ya technician. Tafadhali tuambie mahali ulipo na tutumie mtaalamu kwenu.",
+    "category": "appointment"
+  },
+  {
+    "customer": "Thank you for the good service",
+    "your_response": "Asante sana! Tunafurahi kukusaidia. Tunajali huduma zetu na tunataka kuhakikisha una huduma bora kila wakati. Karibu tena!",
+    "category": "appreciation"
+  }
+]

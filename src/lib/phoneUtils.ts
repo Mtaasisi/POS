@@ -54,57 +54,7 @@ export const formatTanzaniaPhoneNumber = (phone: string): string => {
   return '+255' + cleanPhone;
 };
 
-/**
- * Format WhatsApp number with Tanzania country code (+255)
- * Similar to phone number formatting but specifically for WhatsApp
- * Handles various input formats and always returns +255XXXXXXXXX format
- */
-export const formatTanzaniaWhatsAppNumber = (whatsapp: string): string => {
-  if (!whatsapp) return '';
-  
-  // Remove all spaces, dashes, parentheses, dots, and other formatting
-  const cleanWhatsApp = whatsapp.replace(/[\s\-().]/g, '');
-  
-  // If already has +255 prefix, return as is
-  if (cleanWhatsApp.startsWith('+255')) {
-    return cleanWhatsApp;
-  }
-  
-  // If has 255 prefix without +, add the +
-  if (cleanWhatsApp.startsWith('255')) {
-    return '+' + cleanWhatsApp;
-  }
-  
-  // If starts with 0 (Tanzania mobile format), remove 0 and add +255
-  if (cleanWhatsApp.startsWith('0')) {
-    return '+255' + cleanWhatsApp.substring(1);
-  }
-  
-  // If it's a 9-digit number (Tanzania mobile format), add +255
-  if (cleanWhatsApp.length === 9 && /^\d+$/.test(cleanWhatsApp)) {
-    return '+255' + cleanWhatsApp;
-  }
-  
-  // If it's a 10-digit number starting with 255, add +
-  if (cleanWhatsApp.length === 10 && cleanWhatsApp.startsWith('255')) {
-    return '+' + cleanWhatsApp;
-  }
-  
-  // For any other format, try to add +255 prefix
-  // Remove any existing country code patterns and add +255
-  const withoutCountryCode = cleanWhatsApp.replace(/^(\+?255|\+?1|\+?44|\+?91|\+?86)/, '');
-  if (withoutCountryCode.length === 9 && /^\d+$/.test(withoutCountryCode)) {
-    return '+255' + withoutCountryCode;
-  }
-  
-  // If it's already a valid Tanzania number format, just add +255
-  if (cleanWhatsApp.length >= 9 && /^\d+$/.test(cleanWhatsApp)) {
-    return '+255' + cleanWhatsApp.slice(-9); // Take last 9 digits
-  }
-  
-  // Default: add +255 prefix
-  return '+255' + cleanWhatsApp;
-};
+
 
 /**
  * Clean phone number for SMS service (removes + and formats as 255XXXXXXXXX)
@@ -155,6 +105,14 @@ export const formatPhoneForDisplay = (phone: string): string => {
   }
   
   return formatted;
+};
+
+/**
+ * Format phone number for WhatsApp (same as regular phone formatting)
+ * This function is kept for compatibility with existing code
+ */
+export const formatTanzaniaWhatsAppNumber = (phone: string): string => {
+  return formatTanzaniaPhoneNumber(phone);
 };
 
 /**

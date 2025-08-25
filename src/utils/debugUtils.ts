@@ -97,22 +97,12 @@ class DebugUtils {
   }
 
   /**
-   * Debug WhatsApp service initialization
+   * Debug WhatsApp service initialization (disabled)
    */
   static debugWhatsAppService() {
     if (!import.meta.env.DEV) return;
     
-    try {
-      // Import the service dynamically to avoid circular dependencies
-      import('../services/whatsappService').then(({ whatsappService }) => {
-        const status = whatsappService.getInitializationStatus();
-        console.log('🔍 WhatsApp Service Debug Info:', status);
-      }).catch(err => {
-        console.log('🔍 Could not access WhatsApp service:', err.message);
-      });
-    } catch (error) {
-      console.log('🔍 Error debugging WhatsApp service:', error);
-    }
+    console.log('🔍 WhatsApp service has been removed from the application');
   }
 
   /**

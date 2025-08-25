@@ -25,7 +25,7 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
   // In development, unregister any existing service workers
   window.addEventListener('load', () => {
     navigator.serviceWorker.getRegistrations().then((registrations) => {
-      for (let registration of registrations) {
+      for (const registration of registrations) {
         registration.unregister();
         console.log('Service Worker unregistered for development');
       }

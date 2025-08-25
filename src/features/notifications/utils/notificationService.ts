@@ -279,12 +279,67 @@ export class NotificationService {
         .eq('user_id', userId)
         .single();
 
-      if (error && error.code !== 'PGRST116') throw error;
+      if (error) {
+        // Handle 406 Not Acceptable errors (RLS policy issues)
+        if (error.code === '406' || error.message?.includes('Not Acceptable')) {
+          console.log('⚠️ 406 error for notification settings - RLS policy issue, returning default settings');
+          return this.getDefaultSettings(userId);
+        }
+        
+        // Handle no rows returned
+        if (error.code === 'PGRST116') {
+          console.log('📝 No notification settings found, creating default settings');
+          return this.getDefaultSettings(userId);
+        }
+        
+        // Handle any other database errors gracefully
+        console.warn('⚠️ Database error for notification settings, using default settings:', error.message);
+        return this.getDefaultSettings(userId);
+      }
+      
       return data;
     } catch (error) {
       console.error('Error fetching user notification settings:', error);
-      return null;
+      // Return default settings on any error
+      return this.getDefaultSettings(userId);
     }
+  }
+
+  // Get default notification settings
+  private static getDefaultSettings(userId: string): NotificationSettings {
+    return {
+      id: '',
+      userId: userId,
+      emailNotifications: true,
+      pushNotifications: true,
+      smsNotifications: false,
+      whatsappNotifications: true,
+      deviceNotifications: true,
+      customerNotifications: true,
+      paymentNotifications: true,
+      inventoryNotifications: true,
+      systemNotifications: true,
+      appointmentNotifications: true,
+      diagnosticNotifications: true,
+      loyaltyNotifications: true,
+      communicationNotifications: true,
+      backupNotifications: true,
+      securityNotifications: true,
+      goalNotifications: true,
+      lowPriorityNotifications: true,
+      normalPriorityNotifications: true,
+      highPriorityNotifications: true,
+      urgentPriorityNotifications: true,
+      quietHoursEnabled: false,
+      quietHoursStart: '22:00',
+      quietHoursEnd: '08:00',
+      timezone: 'UTC',
+      digestEnabled: false,
+      digestFrequency: 'daily',
+      digestTime: '09:00',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
   }
 
   // Check if user should receive notification based on settings

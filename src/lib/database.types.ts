@@ -55,8 +55,10 @@ export interface Database {
           total_spent: number
           points: number
           last_visit: string
+          last_purchase_date: string | null
+          total_purchases: number
+          birthday: string | null
           is_active: boolean
-          whatsapp: string | null
 
           referral_source: string | null
           birth_month: string | null
@@ -83,6 +85,9 @@ export interface Database {
           total_spent?: number
           points?: number
           last_visit?: string
+          last_purchase_date?: string | null
+          total_purchases?: number
+          birthday?: string | null
           is_active?: boolean
           whatsapp?: string | null
           referral_source?: string | null
@@ -111,7 +116,6 @@ export interface Database {
           points?: number
           last_visit?: string
           is_active?: boolean
-          whatsapp?: string | null
           referral_source?: string | null
           birth_month?: string | null
           birth_day?: string | null

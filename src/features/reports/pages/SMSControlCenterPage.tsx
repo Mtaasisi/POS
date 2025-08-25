@@ -36,7 +36,9 @@ import {
   Calendar,
   Filter,
   Zap,
-  Play
+  Play,
+  MessageSquare,
+  Brain
 } from 'lucide-react';
 import Papa from 'papaparse';
 import { toast } from 'react-hot-toast';
@@ -44,6 +46,7 @@ import { Customer, LoyaltyLevel, CustomerTag } from '../../../types';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import SMSLogDetailsModal from '../components/SMSLogDetailsModal';
+// WhatsApp component import removed
 import { DeviceStatus } from '../../../types';
 
 // Type definitions
@@ -193,6 +196,9 @@ const SMSControlCenterPage: React.FC = () => {
   const [showCustomerSelector, setShowCustomerSelector] = useState(false);
   const [bulkSmsMode, setBulkSmsMode] = useState<'manual' | 'segmented' | 'csv'>('manual');
   const [selectedCustomers, setSelectedCustomers] = useState<string[]>([]);
+  
+  // WhatsApp integration removed
+  const [whatsappStatus, setWhatsappStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking');
 
   // Enhanced customer segmentation for bulk SMS
   const getCustomerSegments = () => {
@@ -1641,6 +1647,8 @@ const SMSControlCenterPage: React.FC = () => {
           <GlassButton type="button" variant="danger" onClick={confirmDeleteTrigger}>Yes, Delete</GlassButton>
         </div>
       </Modal>
+
+      {/* WhatsApp Bulk Sender Modal - Removed */}
 
       {/* Toast component */}
       {toast.open && (

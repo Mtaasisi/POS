@@ -122,9 +122,15 @@ async function handleApiRequest(request) {
     const networkResponse = await fetch(request);
     
     if (networkResponse.ok) {
-      // Cache successful responses
-      const cache = await caches.open(DYNAMIC_CACHE);
-      cache.put(request, networkResponse.clone());
+      // Only cache GET requests - POST requests cannot be cached
+      if (request.method === 'GET') {
+        try {
+          const cache = await caches.open(DYNAMIC_CACHE);
+          await cache.put(request, networkResponse.clone());
+        } catch (cacheError) {
+          console.log('Service Worker: Failed to cache response', cacheError);
+        }
+      }
       return networkResponse;
     }
     
@@ -132,10 +138,12 @@ async function handleApiRequest(request) {
   } catch (error) {
     console.log('Service Worker: Network failed, trying cache', error);
     
-    // Fallback to cache
-    const cachedResponse = await caches.match(request);
-    if (cachedResponse) {
-      return cachedResponse;
+    // Only try cache for GET requests
+    if (request.method === 'GET') {
+      const cachedResponse = await caches.match(request);
+      if (cachedResponse) {
+        return cachedResponse;
+      }
     }
     
     // Return offline response for API calls
@@ -167,10 +175,25 @@ async function handleStaticRequest(request) {
     // Fallback to network
     const networkResponse = await fetch(request);
     
-    if (networkResponse.ok) {
-      // Cache new responses
-      const cache = await caches.open(STATIC_CACHE);
-      cache.put(request, networkResponse.clone());
+    // Only cache successful responses that are not partial content
+    if (networkResponse.ok && networkResponse.status !== 206) {
+      // Check if response is cacheable
+      const contentType = networkResponse.headers.get('content-type');
+      const isCacheable = contentType && (
+        contentType.includes('text/') ||
+        contentType.includes('application/') ||
+        contentType.includes('image/') ||
+        contentType.includes('font/')
+      );
+      
+      if (isCacheable) {
+        try {
+          const cache = await caches.open(STATIC_CACHE);
+          await cache.put(request, networkResponse.clone());
+        } catch (cacheError) {
+          console.log('Service Worker: Failed to cache response', cacheError);
+        }
+      }
     }
     
     return networkResponse;

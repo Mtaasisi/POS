@@ -70,7 +70,7 @@ const SparePartsPage: React.FC = () => {
 
   // Filter and sort spare parts
   const filteredSpareParts = React.useMemo(() => {
-    let filtered = spareParts.filter(part => {
+    const filtered = spareParts.filter(part => {
       const matchesSearch = part.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            part.partNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            part.description?.toLowerCase().includes(searchTerm.toLowerCase());

@@ -54,7 +54,7 @@ class POSPriceService {
       console.log('💰 POSPriceService: Need to fetch prices for', uncachedProductIds.length, 'uncached products');
 
       // Implement batching to avoid URL length issues
-      const BATCH_SIZE = 20; // Process 20 products at a time
+      const BATCH_SIZE = 5; // Reduced from 20 to 5 to avoid URL length issues
       const allNewPrices: POSPriceData[] = [];
       const totalBatches = Math.ceil(uncachedProductIds.length / BATCH_SIZE);
       
@@ -63,30 +63,60 @@ class POSPriceService {
         const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
         console.log(`💰 POSPriceService: Processing batch ${batchNumber}/${totalBatches} (${batch.length} products)`);
         
-        try {
-          const { data: variants, error } = await supabase
-            .from('lats_product_variants')
-            .select(`
-              id,
-              product_id,
-              sku,
-              name,
-              selling_price,
-              cost_price,
-              quantity,
-              barcode
-            `)
-            .in('product_id', batch)
-            .order('name');
+        // Retry logic for failed batch queries
+        let retryCount = 0;
+        const maxRetries = 3;
+        let variants = null;
+        let batchError = null;
+        
+        while (retryCount < maxRetries && !variants) {
+          try {
+            const { data, error } = await supabase
+              .from('lats_product_variants')
+              .select(`
+                id,
+                product_id,
+                sku,
+                name,
+                selling_price,
+                cost_price,
+                quantity,
+                barcode
+              `)
+              .in('product_id', batch)
+              .order('name');
 
-          if (error) {
-            console.error(`❌ POSPriceService: Error fetching prices for batch ${batchNumber}:`, error);
-            console.error(`❌ Batch product IDs:`, batch);
-            continue; // Skip this batch and continue with others
+            if (error) {
+              console.error(`❌ POSPriceService: Error fetching prices for batch ${batchNumber} (attempt ${retryCount + 1}):`, error);
+              batchError = error;
+              retryCount++;
+              
+              if (retryCount < maxRetries) {
+                // Exponential backoff
+                const delay = Math.pow(2, retryCount) * 1000;
+                console.log(`⏳ POSPriceService: Retrying batch ${batchNumber} in ${delay}ms...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+              }
+            } else {
+              variants = data;
+              break;
+            }
+          } catch (exception) {
+            console.error(`❌ POSPriceService: Exception processing batch ${batchNumber} (attempt ${retryCount + 1}):`, exception);
+            batchError = exception;
+            retryCount++;
+            
+            if (retryCount < maxRetries) {
+              const delay = Math.pow(2, retryCount) * 1000;
+              console.log(`⏳ POSPriceService: Retrying batch ${batchNumber} in ${delay}ms...`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+            }
           }
-
+        }
+        
+        if (variants) {
           // Transform the batch results
-          const batchPrices: POSPriceData[] = (variants || []).map((variant: any) => ({
+          const batchPrices: POSPriceData[] = variants.map((variant: any) => ({
             productId: variant.product_id,
             variantId: variant.id,
             sku: variant.sku || '',
@@ -99,10 +129,48 @@ class POSPriceService {
 
           console.log(`✅ POSPriceService: Batch ${batchNumber} returned ${batchPrices.length} variants`);
           allNewPrices.push(...batchPrices);
-        } catch (batchError) {
-          console.error(`❌ POSPriceService: Exception processing batch ${batchNumber}:`, batchError);
-          console.error(`❌ Batch product IDs:`, batch);
-          continue; // Skip this batch and continue with others
+        } else {
+          console.error(`❌ POSPriceService: Failed to fetch batch ${batchNumber} after ${maxRetries} attempts`);
+          
+          // Fallback: fetch variants individually for this batch
+          console.log(`🔄 POSPriceService: Falling back to individual queries for batch ${batchNumber}...`);
+          for (const productId of batch) {
+            try {
+              const { data: individualVariants, error: individualError } = await supabase
+                .from('lats_product_variants')
+                .select(`
+                  id,
+                  product_id,
+                  sku,
+                  name,
+                  selling_price,
+                  cost_price,
+                  quantity,
+                  barcode
+                `)
+                .eq('product_id', productId)
+                .order('name');
+                
+              if (!individualError && individualVariants) {
+                const individualPrices: POSPriceData[] = individualVariants.map((variant: any) => ({
+                  productId: variant.product_id,
+                  variantId: variant.id,
+                  sku: variant.sku || '',
+                  name: variant.name || '',
+                  sellingPrice: variant.selling_price || 0,
+                  costPrice: variant.cost_price || 0,
+                  quantity: variant.quantity || 0,
+                  barcode: variant.barcode || undefined
+                }));
+                allNewPrices.push(...individualPrices);
+                console.log(`✅ POSPriceService: Individual query for product ${productId}: ${individualPrices.length} variants`);
+              } else {
+                console.error(`❌ POSPriceService: Individual query failed for product ${productId}:`, individualError);
+              }
+            } catch (individualException) {
+              console.error(`❌ POSPriceService: Exception in individual query for product ${productId}:`, individualException);
+            }
+          }
         }
       }
 

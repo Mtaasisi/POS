@@ -6,10 +6,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 export default defineConfig({
   plugins: [
     react({
-      // Ensure proper TypeScript handling
-      include: "**/*.{tsx,ts}",
-      // Add JSX runtime
-      jsxRuntime: 'automatic',
+      jsxRuntime: 'automatic'
     }),
     // Temporarily disabled PWA plugin to fix build issues
     // ...(process.env.NODE_ENV === 'production' ? [
@@ -123,7 +120,8 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
         rewrite: (path) => path
-      }
+      },
+
     },
     // Add better error handling for development
     middlewareMode: false,

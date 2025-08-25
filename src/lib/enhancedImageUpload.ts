@@ -571,8 +571,7 @@ export class EnhancedImageUploadService {
         .from('product_images')
         .select('*')
         .eq('product_id', productId)
-        .order('is_primary', { ascending: false })
-        .order('created_at', { ascending: true });
+        .order('is_primary', { ascending: false });
 
       if (error) {
         console.error('❌ Get images failed:', error);

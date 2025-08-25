@@ -482,7 +482,7 @@ export class RealTimeStockService {
       console.log('📊 RealTimeStock: Getting stock levels for', productIds.length, 'products');
       
       // Implement batching to avoid URL length issues
-      const BATCH_SIZE = 20; // Process 20 products at a time
+      const BATCH_SIZE = 5; // Reduced from 20 to 5 to avoid URL length issues
       const stockMap = new Map<string, number>();
       const totalBatches = Math.ceil(productIds.length / BATCH_SIZE);
       
@@ -491,30 +491,80 @@ export class RealTimeStockService {
         const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
         console.log(`📊 RealTimeStock: Processing batch ${batchNumber}/${totalBatches} (${batch.length} products)`);
         
-        try {
-          const { data, error } = await supabase
-            .from('lats_product_variants')
-            .select('product_id, quantity')
-            .in('product_id', batch);
+        // Retry logic for failed batch queries
+        let retryCount = 0;
+        const maxRetries = 3;
+        let batchData = null;
+        let batchError = null;
+        
+        while (retryCount < maxRetries && !batchData) {
+          try {
+            const { data, error } = await supabase
+              .from('lats_product_variants')
+              .select('product_id, quantity')
+              .in('product_id', batch);
 
-          if (error) {
-            console.error(`❌ RealTimeStock: Error getting stock levels for batch ${batchNumber}:`, error);
-            console.error(`❌ Batch product IDs:`, batch);
-            continue; // Skip this batch and continue with others
+            if (error) {
+              console.error(`❌ RealTimeStock: Error getting stock levels for batch ${batchNumber} (attempt ${retryCount + 1}):`, error);
+              batchError = error;
+              retryCount++;
+              
+              if (retryCount < maxRetries) {
+                // Exponential backoff
+                const delay = Math.pow(2, retryCount) * 1000;
+                console.log(`⏳ RealTimeStock: Retrying batch ${batchNumber} in ${delay}ms...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+              }
+            } else {
+              batchData = data;
+              break;
+            }
+          } catch (exception) {
+            console.error(`❌ RealTimeStock: Exception processing stock levels batch ${batchNumber} (attempt ${retryCount + 1}):`, exception);
+            batchError = exception;
+            retryCount++;
+            
+            if (retryCount < maxRetries) {
+              const delay = Math.pow(2, retryCount) * 1000;
+              console.log(`⏳ RealTimeStock: Retrying batch ${batchNumber} in ${delay}ms...`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+            }
           }
-
+        }
+        
+        if (batchData) {
           // Process the batch results
-          const batchResults = (data || []);
-          console.log(`✅ RealTimeStock: Batch ${batchNumber} returned ${batchResults.length} variants`);
+          console.log(`✅ RealTimeStock: Batch ${batchNumber} returned ${batchData.length} variants`);
           
-          batchResults.forEach(variant => {
+          batchData.forEach(variant => {
             const currentStock = stockMap.get(variant.product_id) || 0;
             stockMap.set(variant.product_id, currentStock + (variant.quantity || 0));
           });
-        } catch (batchError) {
-          console.error(`❌ RealTimeStock: Exception processing stock levels batch ${batchNumber}:`, batchError);
-          console.error(`❌ Batch product IDs:`, batch);
-          continue; // Skip this batch and continue with others
+        } else {
+          console.error(`❌ RealTimeStock: Failed to fetch batch ${batchNumber} after ${maxRetries} attempts`);
+          
+          // Fallback: fetch variants individually for this batch
+          console.log(`🔄 RealTimeStock: Falling back to individual queries for batch ${batchNumber}...`);
+          for (const productId of batch) {
+            try {
+              const { data: individualData, error: individualError } = await supabase
+                .from('lats_product_variants')
+                .select('product_id, quantity')
+                .eq('product_id', productId);
+                
+              if (!individualError && individualData) {
+                individualData.forEach(variant => {
+                  const currentStock = stockMap.get(variant.product_id) || 0;
+                  stockMap.set(variant.product_id, currentStock + (variant.quantity || 0));
+                });
+                console.log(`✅ RealTimeStock: Individual query for product ${productId}: ${individualData.length} variants`);
+              } else {
+                console.error(`❌ RealTimeStock: Individual query failed for product ${productId}:`, individualError);
+              }
+            } catch (individualException) {
+              console.error(`❌ RealTimeStock: Exception in individual query for product ${productId}:`, individualException);
+            }
+          }
         }
       }
 

@@ -2,8 +2,6 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 
-console.log('BackButton component loading...');
-
 interface BackButtonProps {
   to?: string;
   label?: string;
@@ -17,7 +15,6 @@ export const BackButton: React.FC<BackButtonProps> = ({
   className = '',
   onClick 
 }) => {
-  console.log('BackButton component rendered');
   const navigate = useNavigate();
 
   const handleClick = () => {

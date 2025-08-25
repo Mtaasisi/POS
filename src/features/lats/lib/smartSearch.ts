@@ -70,6 +70,12 @@ export class SmartSearchService {
     const trimmedQuery = query.trim().toLowerCase();
     if (!trimmedQuery) return [];
 
+    // Limit query length to prevent performance issues with extremely long barcodes
+    if (trimmedQuery.length > 100) {
+      console.warn('Search query too long, truncating:', trimmedQuery.length);
+      return [];
+    }
+
     const results: SearchResult[] = [];
 
     try {
@@ -113,7 +119,11 @@ export class SmartSearchService {
   }
 
   private async searchExactMatches(query: string): Promise<SearchResult[]> {
-    const { data, error } = await supabase
+    // Use proper Supabase query methods instead of string interpolation
+    // This prevents 400 errors with long barcodes or special characters
+    
+    // First, search by product name
+    const { data: nameMatches, error: nameError } = await supabase
       .from('lats_products')
       .select(`
         *,
@@ -121,12 +131,66 @@ export class SmartSearchService {
         lats_categories(name),
         lats_brands(name)
       `)
-      .or(`name.eq.${query},lats_product_variants.sku.eq.${query},lats_product_variants.barcode.eq.${query}`)
+      .eq('name', query)
       .eq('is_active', true);
 
-    if (error) throw error;
+    if (nameError) {
+      console.error('Error searching by name:', nameError);
+    }
 
-    return (data || []).map(product => ({
+    // Search by variant SKU
+    const { data: skuMatches, error: skuError } = await supabase
+      .from('lats_products')
+      .select(`
+        *,
+        lats_product_variants(id, sku, barcode, selling_price, quantity, name),
+        lats_categories(name),
+        lats_brands(name)
+      `)
+      .eq('is_active', true);
+
+    if (skuError) {
+      console.error('Error searching by SKU:', skuError);
+    }
+
+    // Filter SKU matches manually to avoid complex joins
+    const skuFilteredMatches = skuMatches?.filter(product => 
+      product.lats_product_variants?.some(variant => variant.sku === query)
+    ) || [];
+
+    // Search by variant barcode
+    const { data: barcodeMatches, error: barcodeError } = await supabase
+      .from('lats_products')
+      .select(`
+        *,
+        lats_product_variants(id, sku, barcode, selling_price, quantity, name),
+        lats_categories(name),
+        lats_brands(name)
+      `)
+      .eq('is_active', true);
+
+    if (barcodeError) {
+      console.error('Error searching by barcode:', barcodeError);
+    }
+
+    // Filter barcode matches manually to avoid complex joins
+    const barcodeFilteredMatches = barcodeMatches?.filter(product => 
+      product.lats_product_variants?.some(variant => variant.barcode === query)
+    ) || [];
+
+    // Combine all matches and remove duplicates
+    const allMatches = [
+      ...(nameMatches || []),
+      ...skuFilteredMatches,
+      ...barcodeFilteredMatches
+    ];
+
+    // Remove duplicates based on product ID
+    const uniqueMatches = allMatches.filter((product, index, self) => 
+      index === self.findIndex(p => p.id === product.id)
+    );
+
+    return uniqueMatches.map(product => ({
       product,
       relevance: 1.0,
       matchType: 'exact' as const,

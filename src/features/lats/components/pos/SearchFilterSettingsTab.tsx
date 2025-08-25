@@ -87,13 +87,13 @@ const SearchFilterSettingsTab = forwardRef<SearchFilterSettingsTabRef>((props, r
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <ToggleSwitch
             label="Enable Smart Search"
-            checked={settings.enable_smart_search}
-            onChange={(checked) => handleSettingChange('enable_smart_search', checked)}
+                          checked={settings.enable_product_search}
+              onChange={(checked) => handleSettingChange('enable_product_search', checked)}
           />
           <ToggleSwitch
             label="Enable Auto Complete"
-            checked={settings.enable_auto_complete}
-            onChange={(checked) => handleSettingChange('enable_auto_complete', checked)}
+                          checked={settings.enable_autocomplete}
+              onChange={(checked) => handleSettingChange('enable_autocomplete', checked)}
           />
           <NumberInput
             label="Search Debounce Time (ms)"

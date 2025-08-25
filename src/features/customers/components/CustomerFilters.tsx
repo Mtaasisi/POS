@@ -264,14 +264,7 @@ const CustomerFilters: React.FC<CustomerFiltersProps> = ({
               </label>
               
               <label className="flex items-center gap-3 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  checked={whatsappFilter}
-                  onChange={(e) => onWhatsappFilterChange(e.target.checked)}
-                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                />
-                <MessageSquare size={16} className="text-green-500" />
-                <span className="text-sm text-gray-700 group-hover:text-gray-900">Has WhatsApp</span>
+                
               </label>
               
               <label className="flex items-center gap-3 cursor-pointer group">

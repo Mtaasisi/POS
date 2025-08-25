@@ -72,7 +72,11 @@ class SalesAnalyticsService {
         .from('lats_sales')
         .select(`
           *,
-          lats_sale_items(*)
+          lats_sale_items(
+            *,
+            lats_products(name, description),
+            lats_product_variants(name, sku, attributes)
+          )
         `)
         .gte('created_at', startDate.toISOString())
         .lte('created_at', endDate.toISOString())
@@ -184,15 +188,9 @@ class SalesAnalyticsService {
       .sort((a, b) => b.sales - a.sales)
       .slice(0, 5);
     
-    // If no products found, return demo data
+    // If no products found, return empty array
     if (processedProducts.length === 0) {
-      return [
-        { name: 'iPhone 14 Pro', sales: 45000, quantity: 2, percentage: 25 },
-        { name: 'Samsung Galaxy S23', sales: 38000, quantity: 3, percentage: 21 },
-        { name: 'MacBook Pro 14"', sales: 32000, quantity: 1, percentage: 18 },
-        { name: 'AirPods Pro', sales: 28000, quantity: 4, percentage: 16 },
-        { name: 'iPad Air', sales: 22000, quantity: 2, percentage: 12 }
-      ];
+      return [];
     }
     
     return processedProducts;
@@ -217,14 +215,9 @@ class SalesAnalyticsService {
       }))
       .sort((a, b) => b.amount - a.amount);
     
-    // If no payment methods found, return demo data
+    // If no payment methods found, return empty array
     if (processedMethods.length === 0) {
-      return [
-        { method: 'cash', amount: 80000, percentage: 45 },
-        { method: 'mpesa', amount: 60000, percentage: 34 },
-        { method: 'card', amount: 25000, percentage: 14 },
-        { method: 'zenopay', amount: 15000, percentage: 8 }
-      ];
+      return [];
     }
     
     return processedMethods;
@@ -272,13 +265,9 @@ class SalesAnalyticsService {
       }))
       .filter(segment => segment.sales > 0);
     
-    // If no customer segments found, return demo data
+    // If no customer segments found, return empty array
     if (processedSegments.length === 0) {
-      return [
-        { segment: 'Walk-in Customers', sales: 120000, customers: 15, percentage: 67 },
-        { segment: 'Regular Customers', sales: 45000, customers: 8, percentage: 25 },
-        { segment: 'VIP Customers', sales: 15000, customers: 2, percentage: 8 }
-      ];
+      return [];
     }
     
     return processedSegments;
@@ -308,52 +297,16 @@ class SalesAnalyticsService {
   }
 
   private getEmptyData(): SalesAnalyticsData {
-    console.log('📊 Returning demo data structure for testing');
-    
-    // Generate demo data for the last 7 days
-    const dailySales = [];
-    const now = new Date();
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date(now);
-      date.setDate(date.getDate() - i);
-      const sales = Math.floor(Math.random() * 50000) + 10000; // 10k to 60k per day
-      const transactions = Math.floor(Math.random() * 10) + 2; // 2-12 transactions per day
-      
-      dailySales.push({
-        date: date.toISOString().split('T')[0],
-        sales: sales,
-        transactions: transactions
-      });
-    }
-    
-    const totalSales = dailySales.reduce((sum, day) => sum + day.sales, 0);
-    const totalTransactions = dailySales.reduce((sum, day) => sum + day.transactions, 0);
-    
     return {
-      dailySales: dailySales,
-      topProducts: [
-        { name: 'iPhone 14 Pro', sales: 45000, quantity: 2, percentage: 25 },
-        { name: 'Samsung Galaxy S23', sales: 38000, quantity: 3, percentage: 21 },
-        { name: 'MacBook Pro 14"', sales: 32000, quantity: 1, percentage: 18 },
-        { name: 'AirPods Pro', sales: 28000, quantity: 4, percentage: 16 },
-        { name: 'iPad Air', sales: 22000, quantity: 2, percentage: 12 }
-      ],
-      paymentMethods: [
-        { method: 'cash', amount: 80000, percentage: 45 },
-        { method: 'mpesa', amount: 60000, percentage: 34 },
-        { method: 'card', amount: 25000, percentage: 14 },
-        { method: 'zenopay', amount: 15000, percentage: 8 }
-      ],
-      customerSegments: [
-        { segment: 'Walk-in Customers', sales: 120000, customers: 15, percentage: 67 },
-        { segment: 'Regular Customers', sales: 45000, customers: 8, percentage: 25 },
-        { segment: 'VIP Customers', sales: 15000, customers: 2, percentage: 8 }
-      ],
+      dailySales: [],
+      topProducts: [],
+      paymentMethods: [],
+      customerSegments: [],
       metrics: {
-        totalSales: totalSales,
-        totalTransactions: totalTransactions,
-        averageTransaction: totalTransactions > 0 ? totalSales / totalTransactions : 0,
-        growthRate: 12.5 // Demo growth rate
+        totalSales: 0,
+        totalTransactions: 0,
+        averageTransaction: 0,
+        growthRate: 0
       }
     };
   }

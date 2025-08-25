@@ -12,7 +12,7 @@ import { BackButton } from '../../../features/shared/components/ui/BackButton';
 import LATSBreadcrumb from '../components/ui/LATSBreadcrumb';
 import POSTopBar from '../components/pos/POSTopBar';
 import {
-  ShoppingCart, Search, Barcode, CreditCard, Receipt, Plus, Minus, Trash2, DollarSign, Package, TrendingUp, Users, Activity, Calculator, Scan, ArrowLeft, ArrowRight, CheckCircle, XCircle, RefreshCw, AlertCircle, User, Phone, Mail, Crown, ChevronDown, ChevronUp, Clock, Smartphone, Warehouse, Command, FileText, BarChart3, Settings, Truck, Zap, Star, Gift, Clock as ClockIcon, Hash as HashIcon
+  ShoppingCart, Search, Barcode, CreditCard, Receipt, Plus, Minus, Trash2, DollarSign, Package, TrendingUp, Users, Activity, Calculator, Scan, ArrowLeft, ArrowRight, CheckCircle, XCircle, RefreshCw, AlertCircle, User, Phone, Mail, Crown, ChevronDown, ChevronUp, Clock, Smartphone, Warehouse, Command, FileText, BarChart3, Settings, Truck, Zap, Star, Gift, Clock as ClockIcon, Hash as HashIcon, TestTube, Camera
 } from 'lucide-react';
 import { useDynamicDataStore, simulateSale } from '../lib/data/dynamicDataStore';
 import { useInventoryStore } from '../stores/useInventoryStore';
@@ -31,6 +31,9 @@ import {
 // Import new smart services
 import { smartSearchService } from '../lib/smartSearch';
 import { realTimeStockService } from '../lib/realTimeStock';
+
+// Import external barcode scanner
+import { useExternalBarcodeScanner } from '../hooks/useExternalBarcodeScanner';
 
 import { dynamicPricingService } from '../lib/dynamicPricing';
 
@@ -64,12 +67,20 @@ import GeneralSettingsTab from '../components/pos/GeneralSettingsTab';
 import DynamicPricingSettingsTab from '../components/pos/DynamicPricingSettingsTab';
 import ReceiptSettingsTab from '../components/pos/ReceiptSettingsTab';
 
+// Import lazy-loaded modal wrappers
+import { 
+  POSSettingsModalWrapper, 
+  POSDiscountModalWrapper, 
+  POSReceiptModalWrapper,
+  type POSSettingsModalRef 
+} from '../components/pos/POSModals';
+
 // Import draft functionality
 import { useDraftManager } from '../hooks/useDraftManager';
 import DraftManagementModal from '../components/pos/DraftManagementModal';
 import DraftNotification from '../components/pos/DraftNotification';
 import { POSSettingsService } from '../../../lib/posSettingsApi';
-import { toast } from 'react-hot-toast';
+import { toast } from '../../../lib/toastUtils';
 import { 
   useDynamicPricingSettings,
   useGeneralSettings,
@@ -404,6 +415,9 @@ const POSPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const debounceTime = searchFilterSettings?.search_debounce_time || SEARCH_DEBOUNCE_MS;
   const debouncedSearchQuery = useDebounce(searchQuery, debounceTime);
+  
+  // Ref for search input to enable keyboard shortcuts
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Function to save current active tab settings
   const saveCurrentTabSettings = async () => {
@@ -490,6 +504,8 @@ const POSPage: React.FC = () => {
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [sortBy, setSortBy] = useState<'name' | 'price' | 'stock' | 'recent' | 'sales'>('sales');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
 
   // Settings refs to access current settings from tabs
   const generalSettingsRef = useRef<any>(null);
@@ -519,20 +535,31 @@ const POSPage: React.FC = () => {
 
   // Optimized filtered products with pagination
   const filteredProducts = useMemo(() => {
+    // If search is active and we have search results, use those
+    if (showSearchResults && searchResults.length > 0) {
+      return searchResults;
+    }
+    
     let filtered = products;
     
-    // Basic search filter
-    if (debouncedSearchQuery.trim()) {
+    // Basic search filter (only used when not using unified search)
+    if (debouncedSearchQuery.trim() && !showSearchResults) {
       const query = debouncedSearchQuery.toLowerCase();
       filtered = filtered.filter(product => {
         const mainVariant = product.variants?.[0];
         const category = categories.find(c => c.id === product.categoryId)?.name || '';
         const brand = product.brand?.name || '';
         
+        // Enhanced barcode search - check all variants for barcode matches
+        const hasBarcodeMatch = product.variants?.some(variant => 
+          variant.barcode && variant.barcode.includes(query)
+        ) || false;
+        
         return (product.name?.toLowerCase() || '').includes(query) ||
                (mainVariant?.sku?.toLowerCase() || '').includes(query) ||
                (brand.toLowerCase() || '').includes(query) ||
-               (category.toLowerCase() || '').includes(query);
+               (category.toLowerCase() || '').includes(query) ||
+               hasBarcodeMatch;
       });
     }
     
@@ -620,7 +647,7 @@ const POSPage: React.FC = () => {
     });
     
     return filtered;
-  }, [products, categories, brands, debouncedSearchQuery, selectedCategory, selectedBrand, priceRange, stockFilter, sortBy, sortOrder]);
+  }, [products, categories, brands, debouncedSearchQuery, selectedCategory, selectedBrand, priceRange, stockFilter, sortBy, sortOrder, showSearchResults, searchResults]);
 
   // Paginated products
   const paginatedProducts = useMemo(() => {
@@ -714,7 +741,6 @@ const POSPage: React.FC = () => {
   const [showReceipt, setShowReceipt] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
-  const [showSearchResults, setShowSearchResults] = useState(false);
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [showCustomerSearchModal, setShowCustomerSearchModal] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -805,6 +831,52 @@ const POSPage: React.FC = () => {
   const [isScanning, setIsScanning] = useState(false);
   const [scannedBarcodes, setScannedBarcodes] = useState<string[]>([]);
   const isBarcodeScannerEnabled = barcodeScannerSettings?.enable_barcode_scanner;
+
+  // External barcode scanner configuration - Optimized for USB/Bluetooth scanners
+  const externalBarcodeConfig = {
+    enableAutoScan: true, // Always enable automatic scanning
+    enableKeyboard: true, // Enable keyboard input from external scanner
+    autoAddToCart: true, // Auto-add to cart for single matches
+    playSound: true, // Play beep sound on detection
+    vibrate: true, // Vibrate on detection
+    scanTimeout: 1000, // 1 second timeout between characters
+    barcodeLength: {
+      min: 8, // Minimum barcode length
+      max: 20 // Maximum barcode length
+    },
+    endCharacter: 'Enter', // Most scanners send Enter key
+    startCharacter: undefined // Some scanners send start character
+  };
+
+
+
+  // Handle barcode detection
+  const handleBarcodeDetected = useCallback((barcode: string) => {
+    console.log('🔍 Auto barcode detected:', barcode);
+    
+    // Set the search query with the detected barcode
+    setSearchQuery(barcode);
+    
+    // Trigger the unified search
+    handleUnifiedSearch(barcode);
+    
+    // Focus on the search input to show the barcode
+    if (searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, []);
+
+
+
+  // Initialize external barcode scanner
+  const {
+    isScanning: isExternalScanning,
+    scannerError: externalScannerError,
+    scanHistory: externalScanHistory,
+    isInitialized: isScannerInitialized,
+    startExternalScanning,
+    stopExternalScanning
+  } = useExternalBarcodeScanner(handleBarcodeDetected, externalBarcodeConfig);
 
   // Add state for receipt management - use settings for default values
   const [receiptTemplate, setReceiptTemplate] = useState({
@@ -1205,6 +1277,7 @@ const POSPage: React.FC = () => {
     if (!trimmedQuery) {
       setSearchQuery('');
       setShowSearchResults(false);
+      setSearchResults([]);
       setSearchSuggestions([]);
       return;
     }
@@ -1214,61 +1287,95 @@ const POSPage: React.FC = () => {
     setIsSearching(true);
 
     try {
-    // Check if input looks like a barcode (long numeric/alphanumeric string)
-    const isBarcodeLike = trimmedQuery.length >= 8 && /^[A-Za-z0-9]+$/.test(trimmedQuery);
-    
-      // Use smart search service for better results if enabled
-      const searchResults = isSmartSearchEnabled 
-        ? await smartSearchService.searchProducts(trimmedQuery, 20)
-        : [];
+      // Check if input looks like a barcode (long numeric/alphanumeric string)
+      const isBarcodeLike = trimmedQuery.length >= 8 && /^[A-Za-z0-9]+$/.test(trimmedQuery);
       
-              if (searchResults.length > 0) {
+      // For barcode searches, use direct local search first to avoid 400 errors
+      if (isBarcodeLike) {
+        console.log('🔍 Performing barcode search for:', trimmedQuery);
+        
+        // Direct barcode search in local products
+        const barcodeMatches = products.filter(product => 
+          product.variants?.some(variant => 
+            variant.barcode && variant.barcode === trimmedQuery
+          )
+        );
+        
+        if (barcodeMatches.length > 0) {
+          console.log('✅ Found barcode matches:', barcodeMatches.length);
+          setSearchResults(barcodeMatches);
+          setSearchSuggestions([]);
+          
+          // Show success message
+          toast.success(`Found ${barcodeMatches.length} product(s) for barcode: ${trimmedQuery}`);
+          
+          // Auto-add to cart for single exact barcode match
+          if (barcodeMatches.length === 1) {
+            const product = barcodeMatches[0];
+            const matchingVariant = product.variants?.find(variant => 
+              variant.barcode === trimmedQuery
+            );
+            if (matchingVariant) {
+              handleAddToCart(product, matchingVariant);
+              setSearchQuery('');
+              setShowSearchResults(false);
+              setSearchResults([]);
+              setSearchSuggestions([]);
+              toast.success(`Added ${product.name} to cart`);
+              return;
+            }
+          }
+        } else {
+          console.log('❌ No barcode matches found');
+          setSearchResults([]);
+          setSearchSuggestions([]);
+          toast.error(`No products found for barcode: ${trimmedQuery}`);
+        }
+      } else {
+        // Regular search - use smart search service if enabled
+        const smartSearchResults = isSmartSearchEnabled 
+          ? await smartSearchService.searchProducts(trimmedQuery, 20)
+          : [];
+        
+        if (smartSearchResults.length > 0) {
           // Get suggestions for better UX if enabled
           if (searchFilterSettings?.show_search_suggestions) {
             const suggestions = await smartSearchService.getSearchSuggestions(trimmedQuery, 5);
             setSearchSuggestions(suggestions);
           }
-        
-        // Check for exact matches first
-        const exactMatches = searchResults.filter(result => result.relevance === 1.0);
-        
-        if (exactMatches.length === 1 && isBarcodeLike) {
-          // Auto-add to cart for single exact barcode match
-          handleAddToCart(exactMatches[0].product);
-      setSearchQuery('');
-      setShowSearchResults(false);
+          
+          // Set search results for display
+          setSearchResults(smartSearchResults.map(result => result.product));
+        } else {
           setSearchSuggestions([]);
-      return;
-    }
-
-        // Add to scan history if it's barcode-like and found
-        if (isBarcodeLike && exactMatches.length > 0) {
-          setScanHistory(prev => [
-            { barcode: trimmedQuery, product: exactMatches[0].product, timestamp: new Date() },
-            ...prev.slice(0, 9) // Keep last 10 scans
-          ]);
+          setSearchResults([]);
         }
-      } else {
-        setSearchSuggestions([]);
       }
     } catch (error) {
-      console.error('Error in smart search:', error);
+      console.error('Error in search:', error);
       // Fallback to basic search
-    const filtered = products.filter(product => {
-      const mainVariant = product.variants?.[0];
-      const category = categories.find(c => c.id === product.categoryId)?.name || '';
-              const brand = product.brand?.name || '';
+      const filtered = products.filter(product => {
+        const mainVariant = product.variants?.[0];
+        const category = categories.find(c => c.id === product.categoryId)?.name || '';
+        const brand = product.brand?.name || '';
+        
+        // Enhanced barcode search - check all variants for barcode matches
+        const hasBarcodeMatch = product.variants?.some(variant => 
+          variant.barcode && variant.barcode.includes(trimmedQuery)
+        ) || false;
+        
+        return (product.name?.toLowerCase() || '').includes(trimmedQuery.toLowerCase()) ||
+               (mainVariant?.sku?.toLowerCase() || '').includes(trimmedQuery.toLowerCase()) ||
+               (brand.toLowerCase() || '').includes(trimmedQuery.toLowerCase()) ||
+               (category.toLowerCase() || '').includes(trimmedQuery.toLowerCase()) ||
+               hasBarcodeMatch;
+      });
       
-      return (product.name?.toLowerCase() || '').includes(trimmedQuery.toLowerCase()) ||
-             (mainVariant?.sku?.toLowerCase() || '').includes(trimmedQuery.toLowerCase()) ||
-             (brand.toLowerCase() || '').includes(trimmedQuery.toLowerCase()) ||
-             (category.toLowerCase() || '').includes(trimmedQuery.toLowerCase()) ||
-             (mainVariant?.barcode && mainVariant.barcode.includes(trimmedQuery));
-    });
+      setSearchResults(filtered);
     } finally {
       setIsSearching(false);
     }
-  }, [products, handleAddToCart, categories, brands]);
+  }, [products, handleAddToCart, categories, brands, isSmartSearchEnabled, searchFilterSettings]);
 
   // Handle search input changes
   const handleSearchInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1280,6 +1387,8 @@ const POSPage: React.FC = () => {
       setShowSearchResults(true);
     } else {
       setShowSearchResults(false);
+      setSearchResults([]);
+      setSearchSuggestions([]);
     }
   }, []);
 
@@ -1288,7 +1397,38 @@ const POSPage: React.FC = () => {
     if (e.key === 'Enter' && searchQuery.trim()) {
       handleUnifiedSearch(searchQuery.trim());
     }
-  }, [searchQuery, handleUnifiedSearch]);
+  }, [searchQuery]);
+
+  // Handle global keyboard shortcuts
+  const handleGlobalKeyDown = useCallback((e: KeyboardEvent) => {
+    // Ctrl+F to focus search input
+    if (e.ctrlKey && e.key === 'f') {
+      e.preventDefault();
+      searchInputRef.current?.focus();
+    }
+    // Ctrl+B to focus search input (alternative for barcode scanning)
+    if (e.ctrlKey && e.key === 'b') {
+      e.preventDefault();
+      searchInputRef.current?.focus();
+    }
+    // Ctrl+S to toggle external scanning
+    if (e.ctrlKey && e.key === 's' && isScannerInitialized && externalBarcodeConfig.enableAutoScan) {
+      e.preventDefault();
+      if (isExternalScanning) {
+        stopExternalScanning();
+      } else {
+        startExternalScanning();
+      }
+    }
+  }, [isScannerInitialized, externalBarcodeConfig.enableAutoScan, isExternalScanning, startExternalScanning, stopExternalScanning]);
+
+  // Add global keyboard event listener
+  useEffect(() => {
+    document.addEventListener('keydown', handleGlobalKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleGlobalKeyDown);
+    };
+  }, [handleGlobalKeyDown]);
 
   // Handle customer search
   const handleCustomerSearch = useCallback((query: string) => {
@@ -2091,6 +2231,30 @@ const POSPage: React.FC = () => {
 
   return (
     <div className="min-h-screen">
+      {/* External scanner status indicator */}
+      {isExternalScanning && (
+        <div className="fixed top-4 right-4 z-50 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 animate-pulse">
+          <div className="w-2 h-2 bg-white rounded-full animate-ping" />
+          <span className="text-sm font-medium">External scanner active</span>
+        </div>
+      )}
+      
+      {/* Scanner ready indicator */}
+      {isScannerInitialized && externalBarcodeConfig.enableAutoScan && !isExternalScanning && (
+        <div className="fixed top-4 right-4 z-50 bg-blue-500 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2">
+          <div className="w-2 h-2 bg-white rounded-full" />
+          <span className="text-sm font-medium">External scanner ready</span>
+        </div>
+      )}
+      
+      {/* Scanner error indicator */}
+      {externalScannerError && (
+        <div className="fixed top-4 right-4 z-50 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2">
+          <div className="w-2 h-2 bg-white rounded-full" />
+          <span className="text-sm font-medium">Scanner error</span>
+        </div>
+      )}
+      
       {/* POS Top Bar */}
       <POSTopBar
         cartItemsCount={cartItems.length}
@@ -2114,7 +2278,7 @@ const POSPage: React.FC = () => {
         }}
         onAddProduct={userPermissionsSettings?.enable_product_creation ? () => {
           // TODO: Navigate to add product page
-          navigate('/lats/inventory/products/new');
+          navigate('/lats/add-product');
         } : undefined}
         onViewReceipts={() => {
           // TODO: Navigate to receipts page
@@ -2145,8 +2309,9 @@ const POSPage: React.FC = () => {
               <div className="relative">
                 <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-6 h-6 text-blue-500" />
                 <input
+                  ref={searchInputRef}
                   type="text"
-                  placeholder="Search products by name, SKU, brand, category, or scan barcode..."
+                  placeholder="Search products or scan with external device... (Ctrl+F focus, Ctrl+S toggle scanner)"
                   value={searchQuery}
                   onChange={handleSearchInputChange}
                   onKeyPress={handleSearchInputKeyPress}
@@ -2158,6 +2323,34 @@ const POSPage: React.FC = () => {
                 {isSearching && (
                   <div className="absolute left-14 top-1/2 transform -translate-y-1/2">
                     <RefreshCw className="w-4 h-4 text-blue-500 animate-spin" />
+                  </div>
+                )}
+                
+                {/* Barcode indicator */}
+                {searchQuery.trim() && searchQuery.length >= 8 && /^[A-Za-z0-9]+$/.test(searchQuery) && (
+                  <div className="absolute left-14 top-1/2 transform -translate-y-1/2">
+                    <Barcode className="w-4 h-4 text-green-500" />
+                  </div>
+                )}
+                
+                {/* External scanner indicator */}
+                {isExternalScanning && (
+                  <div className="absolute left-14 top-1/2 transform -translate-y-1/2">
+                    <div className="w-4 h-4 bg-green-500 rounded-full animate-ping" />
+                  </div>
+                )}
+                
+                {/* Scanner ready indicator */}
+                {isScannerInitialized && externalBarcodeConfig.enableAutoScan && !isExternalScanning && (
+                  <div className="absolute left-14 top-1/2 transform -translate-y-1/2">
+                    <div className="w-4 h-4 bg-blue-500 rounded-full" title="External scanner ready" />
+                  </div>
+                )}
+                
+                {/* Scanner error indicator */}
+                {externalScannerError && (
+                  <div className="absolute left-14 top-1/2 transform -translate-y-1/2">
+                    <div className="w-4 h-4 bg-red-500 rounded-full" title={`Scanner error: ${externalScannerError}`} />
                   </div>
                 )}
                 
@@ -2189,6 +2382,30 @@ const POSPage: React.FC = () => {
                   >
                     <Barcode className="w-5 h-5" />
                   </button>
+                  
+                  {/* External scanner toggle button */}
+                  {isScannerInitialized && externalBarcodeConfig.enableAutoScan && (
+                    <button
+                      onClick={() => {
+                        if (isExternalScanning) {
+                          stopExternalScanning();
+                        } else {
+                          startExternalScanning();
+                        }
+                      }}
+                      className={`p-3 rounded-lg transition-colors duration-200 shadow-md hover:shadow-lg active:scale-95 ${
+                        isExternalScanning 
+                          ? 'bg-red-500 hover:bg-red-600 text-white' 
+                          : 'bg-green-500 hover:bg-green-600 text-white'
+                      }`}
+                      title={isExternalScanning ? 'Stop external scanner' : 'Start external scanner'}
+                      style={{ minWidth: '44px', minHeight: '44px' }}
+                    >
+                      <Scan className="w-5 h-5" />
+                    </button>
+                  )}
+                  
+
                 </div>
                 
                 {/* Smart Search Suggestions - Only show if enabled */}
@@ -2231,6 +2448,8 @@ const POSPage: React.FC = () => {
                     ))}
                   </div>
                 )}
+                
+
               </div>
 
               {/* Advanced Filters */}
@@ -2361,7 +2580,7 @@ const POSPage: React.FC = () => {
             {/* Scrollable Products Section */}
             <div className="flex-1 overflow-y-auto">
             {/* Recent Scans History */}
-            {scanHistory.length > 0 && (
+                             {autoScanHistory.length > 0 && (
               <div className="mb-6 p-4 bg-gradient-to-br from-purple-50 to-indigo-100 rounded-xl border border-purple-200">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="p-2 bg-purple-100 rounded-lg">
@@ -2393,13 +2612,13 @@ const POSPage: React.FC = () => {
                   ))}
                 </div>
                 
-                {scanHistory.length > 6 && (
+                                 {autoScanHistory.length > 6 && (
                   <div className="mt-3 text-center">
                     <button
                       onClick={() => setScanHistory([])}
                       className="text-xs text-purple-600 hover:text-purple-800"
                     >
-                      Clear History ({scanHistory.length} items)
+                      Clear History ({autoScanHistory.length} items)
                     </button>
                   </div>
                 )}
@@ -2448,6 +2667,19 @@ const POSPage: React.FC = () => {
                 
                 {filteredProducts.length > 0 ? (
                   <>
+                    {/* Search Type Indicator */}
+                    {searchQuery.trim() && searchQuery.length >= 8 && /^[A-Za-z0-9]+$/.test(searchQuery) && (
+                      <div className="mb-4 p-3 bg-green-50 rounded-lg border border-green-200">
+                        <div className="flex items-center gap-2">
+                          <Barcode className="w-4 h-4 text-green-600" />
+                                                    <span className="text-sm font-medium text-green-800">
+                            Barcode Search Active
+                          </span>
+                          <span className="text-xs text-green-600">({searchQuery})</span>
+                        </div>
+                      </div>
+                    )}
+                    
                     {/* Quick Actions */}
                     <div className="mb-4 flex items-center gap-2">
                       <span className="text-sm text-gray-600">Quick actions:</span>
@@ -2485,6 +2717,26 @@ const POSPage: React.FC = () => {
                     <Search className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                     <h3 className="text-lg font-semibold text-gray-900 mb-2">No products found</h3>
                     <p className="text-gray-600 mb-4">No products found for "{searchQuery}"</p>
+                    
+                    {/* Barcode-specific help */}
+                    {searchQuery.trim() && searchQuery.length >= 8 && /^[A-Za-z0-9]+$/.test(searchQuery) && (
+                      <div className="mb-4 p-4 bg-orange-50 rounded-lg border border-orange-200">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Barcode className="w-4 h-4 text-orange-600" />
+                          <span className="text-sm font-medium text-orange-800">Barcode not found</span>
+                        </div>
+                        <div className="text-sm text-orange-700">
+                          <p className="mb-2">This appears to be a barcode search. Try:</p>
+                          <ul className="space-y-1 text-xs">
+                            <li>• Check if the barcode is correctly entered</li>
+                            <li>• Verify the product exists in your inventory</li>
+                            <li>• Try scanning the barcode again</li>
+                            <li>• Search by product name instead</li>
+                          </ul>
+                        </div>
+                      </div>
+                    )}
+                    
                     <div className="text-sm text-gray-500">
                       <p className="mb-2">Try searching by:</p>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">

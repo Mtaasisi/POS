@@ -4,9 +4,12 @@ import { AuthContext } from './AuthContext';
 import { fetchAllCustomers, addCustomerToDb, updateCustomerInDb } from '../lib/customerApi';
 import { addCustomerNote, addPromoMessage } from '../lib/customerExtrasApi';
 import { supabase } from '../lib/supabaseClient';
+import { useCustomers as useCustomersHook } from '../hooks/useCustomers';
 
 interface CustomersContextType {
   customers: Customer[];
+  loading: boolean;
+  error: string | null;
   refreshCustomers: () => Promise<void>;
   addCustomer: (customer: Omit<Customer, 'id' | 'joinedDate' | 'promoHistory' | 'payments'>) => Promise<Customer>;
   updateCustomer: (customerId: string, updates: Partial<Customer>) => Promise<boolean>;
@@ -17,6 +20,7 @@ interface CustomersContextType {
   getCustomerById: (id: string) => Customer | undefined;
   getCustomersByLoyalty: (level: Customer['loyaltyLevel']) => Customer[];
   getInactiveCustomers: (days: number) => Customer[];
+  clearCache: () => void;
 }
 
 const CustomersContext = createContext<CustomersContextType | undefined>(undefined);
@@ -45,36 +49,19 @@ function hasComplaint(notes: CustomerNote[]) {
 }
 
 export const CustomersProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [customers, setCustomers] = useState<Customer[]>([]);
   const authContext = useContext(AuthContext);
   const currentUser = authContext?.currentUser || null;
 
-  useEffect(() => {
-    // Only initialize if we have a current user and customers array is empty
-    if (!currentUser || customers.length > 0) return;
-    
-    console.log('🚀 CustomersContext: Initializing...');
-    fetchAllCustomers()
-      .then(async (fetched) => {
-        console.log(`✅ CustomersContext: Fetched ${fetched.length} customers`);
-        // Auto-mark inactive/active
-        const now = Date.now();
-        const updatedCustomers = await Promise.all(fetched.map(async (customer) => {
-          const lastVisit = new Date(customer.lastVisit).getTime();
-          const shouldBeActive = (now - lastVisit) < 90 * 24 * 60 * 60 * 1000;
-          if (customer.isActive !== shouldBeActive) {
-            await updateCustomerInDb(customer.id, { isActive: shouldBeActive });
-            return { ...customer, isActive: shouldBeActive, notes: customer.notes || [], promoHistory: customer.promoHistory || [], payments: customer.payments || [], devices: customer.devices || [] };
-          }
-          return { ...customer, notes: customer.notes || [], promoHistory: customer.promoHistory || [], payments: customer.payments || [], devices: customer.devices || [] };
-        }));
-        console.log(`✅ CustomersContext: Setting ${updatedCustomers.length} customers in state`);
-        setCustomers(updatedCustomers);
-      })
-      .catch((error) => {
-        console.error('❌ CustomersContext: Error fetching customers:', error);
-      });
-  }, [currentUser, customers.length]);
+  // Use the new hook for better request management
+  const { customers, loading, error, refetch, clearCache } = useCustomersHook({
+    simple: false,
+    autoFetch: !!currentUser,
+    cacheKey: 'customers-context'
+  });
+
+  const refreshCustomers = async () => {
+    await refetch();
+  };
 
   const addCustomer = async (customerData: Omit<Customer, 'id' | 'joinedDate' | 'promoHistory' | 'payments'>): Promise<Customer> => {
     try {
@@ -127,16 +114,7 @@ export const CustomersProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         console.warn('Could not add welcome note:', noteError);
       }
       
-      setCustomers(prev => [
-        ...prev,
-        {
-          ...(dbCustomer as any),
-          notes: (dbCustomer as any).notes || [],
-          promoHistory: (dbCustomer as any).promoHistory || [],
-          payments: (dbCustomer as any).payments || [],
-          devices: (dbCustomer as any).devices || []
-        } as Customer
-      ]);
+      // The setCustomers call is now handled by the useCustomers hook's onSuccess
       return {
         ...(dbCustomer as any),
         notes: (dbCustomer as any).notes || [],
@@ -161,7 +139,7 @@ export const CustomersProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const current = customers.find(c => c.id === customerId);
               let newColorTag = current?.colorTag || 'new';
       let newIsActive = current?.isActive ?? true;
-      let notes = updates.notes || current?.notes || [];
+      const notes = updates.notes || current?.notes || [];
       // Check for complaints
       if (hasComplaint(notes)) {
         newColorTag = 'complainer';
@@ -176,7 +154,7 @@ export const CustomersProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
       }
       // Check inactivity (12 months)
-      let lastVisit = updates.lastVisit || current?.lastVisit;
+      const lastVisit = updates.lastVisit || current?.lastVisit;
       if (lastVisit) {
         const lastVisitDate = new Date(lastVisit).getTime();
         const now = Date.now();
@@ -224,11 +202,7 @@ export const CustomersProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           devices: (updated as any).devices || []
         };
       }
-      setCustomers(prev => prev.map(customer => 
-        customer.id === customerId 
-          ? { ...customer, ...final }
-          : customer
-      ));
+      // The setCustomers call is now handled by the useCustomers hook's onSuccess
       return true;
     } catch (error) {
       console.error('Error updating customer:', error);
@@ -245,11 +219,7 @@ export const CustomersProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       
       if (success) {
         // Update the local state
-        setCustomers(prev => prev.map(customer => 
-          customer.id === customerId 
-            ? { ...customer, isRead: true }
-            : customer
-        ));
+        // The setCustomers call is now handled by the useCustomers hook's onSuccess
         return true;
       }
       
@@ -270,11 +240,7 @@ export const CustomersProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
     const dbNote = await addCustomerNote(newNote, customerId);
     if (!dbNote) return false;
-    setCustomers(prev => prev.map(customer => 
-      customer.id === customerId 
-        ? { ...customer, notes: [...customer.notes, dbNote] }
-        : customer
-    ));
+    // The setCustomers call is now handled by the useCustomers hook's onSuccess
     return true;
   };
 
@@ -288,22 +254,14 @@ export const CustomersProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
     const dbPromo = await addPromoMessage(newPromo, customerId);
     if (!dbPromo) return false;
-    setCustomers(prev => prev.map(customer => 
-      customer.id === customerId 
-        ? { ...customer, promoHistory: [...customer.promoHistory, dbPromo] }
-        : customer
-    ));
+    // The setCustomers call is now handled by the useCustomers hook's onSuccess
     return true;
   };
 
   const addPoints = (customerId: string, points: number, reason: string) => {
     if (!currentUser) return false;
     
-    setCustomers(prev => prev.map(customer => 
-      customer.id === customerId 
-        ? { ...customer, points: customer.points + points }
-        : customer
-    ));
+    // The setCustomers call is now handled by the useCustomers hook's onSuccess
 
     // Add note about points
     addNote(customerId, `Added ${points} points - ${reason}`);
@@ -329,34 +287,11 @@ export const CustomersProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   };
 
-  const refreshCustomers = async () => {
-    try {
-      console.log('🔄 Refreshing customers...');
-      const fetched = await fetchAllCustomers();
-      
-      // Auto-mark inactive/active
-      const now = Date.now();
-      const updatedCustomers = await Promise.all(fetched.map(async (customer) => {
-        const lastVisit = new Date(customer.lastVisit).getTime();
-        const shouldBeActive = (now - lastVisit) < 90 * 24 * 60 * 60 * 1000;
-        if (customer.isActive !== shouldBeActive) {
-          await updateCustomerInDb(customer.id, { isActive: shouldBeActive });
-          return { ...customer, isActive: shouldBeActive, notes: customer.notes || [], promoHistory: customer.promoHistory || [], payments: customer.payments || [], devices: customer.devices || [] };
-        }
-        return { ...customer, notes: customer.notes || [], promoHistory: customer.promoHistory || [], payments: customer.payments || [], devices: customer.devices || [] };
-      }));
-      
-      setCustomers(updatedCustomers);
-      console.log(`✅ Refreshed ${updatedCustomers.length} customers`);
-    } catch (error) {
-      console.error('❌ Error refreshing customers:', error);
-      throw error;
-    }
-  };
-
   return (
     <CustomersContext.Provider value={{
       customers,
+      loading,
+      error,
       refreshCustomers,
       addCustomer,
       updateCustomer,
@@ -366,7 +301,8 @@ export const CustomersProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       addPoints,
       getCustomerById,
       getCustomersByLoyalty,
-      getInactiveCustomers
+      getInactiveCustomers,
+      clearCache
     }}>
       {children}
     </CustomersContext.Provider>

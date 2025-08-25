@@ -310,10 +310,103 @@ function mapBeemStatus(beemStatus) {
   }
 }
 
+// Green API Proxy Routes
+app.all('/api/green-api-proxy.php/*', async (req, res) => {
+  try {
+    console.log('🔍 Green API proxy request:', req.method, req.path);
+    
+    // Extract instance ID from path
+    const pathMatch = req.path.match(/\/waInstance(\d+)\/(.+)/);
+    if (!pathMatch) {
+      return res.status(400).json({
+        error: 'Invalid endpoint',
+        message: 'Could not extract instance ID from path'
+      });
+    }
+    
+    const [, instanceId, endpoint] = pathMatch;
+    console.log(`📱 Instance ID: ${instanceId}, Endpoint: ${endpoint}`);
+    
+    // Get instance credentials from database
+    const { data: instances, error: dbError } = await supabase
+      .from('whatsapp_instances')
+      .select('instance_id, api_token, green_api_host')
+      .eq('instance_id', instanceId)
+      .limit(1);
+    
+    if (dbError) {
+      console.error('❌ Database error:', dbError);
+      return res.status(500).json({
+        error: 'Database error',
+        message: dbError.message
+      });
+    }
+    
+    if (!instances || instances.length === 0) {
+      console.error(`❌ Instance not found: ${instanceId}`);
+      return res.status(404).json({
+        error: 'Instance not found',
+        message: `Instance ID ${instanceId} not found in database`
+      });
+    }
+    
+    const instance = instances[0];
+    const apiToken = instance.api_token;
+    const apiUrl = instance.green_api_host || 'https://api.green-api.com';
+    
+    console.log(`🔑 Using API URL: ${apiUrl}`);
+    
+    // Build target URL
+    const targetUrl = `${apiUrl}/waInstance${instanceId}/${endpoint}`;
+    console.log(`🎯 Target URL: ${targetUrl}`);
+    
+    // Prepare headers
+    const headers = {
+      'Authorization': `Bearer ${apiToken}`,
+      'Content-Type': 'application/json'
+    };
+    
+    // Prepare request options
+    const requestOptions = {
+      method: req.method,
+      headers,
+      timeout: 30000
+    };
+    
+    // Add body for POST/PUT requests
+    if (['POST', 'PUT', 'PATCH'].includes(req.method) && req.body) {
+      requestOptions.body = JSON.stringify(req.body);
+    }
+    
+    console.log(`📤 Forwarding request to Green API...`);
+    
+    // Make request to Green API
+    const response = await fetch(targetUrl, requestOptions);
+    const responseText = await response.text();
+    
+    console.log(`📥 Green API response: ${response.status} ${response.statusText}`);
+    
+    // Set response headers
+    res.set('Content-Type', 'application/json');
+    
+    // Forward the response
+    res.status(response.status).send(responseText);
+    
+  } catch (error) {
+    console.error('❌ Green API proxy error:', error);
+    res.status(500).json({
+      error: 'Proxy error',
+      message: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`🚀 LATS CHANCE API Server running on port ${PORT}`);
   console.log(`💳 Beem Payment API: http://localhost:${PORT}/api/beem-payment`);
   console.log(`🔗 Beem Webhook: http://localhost:${PORT}/api/beem-webhook`);
+  console.log(`📱 Green API Proxy: http://localhost:${PORT}/api/green-api-proxy.php/*`);
   console.log(`❤️  Health check: http://localhost:${PORT}/health`);
 });

@@ -8,7 +8,7 @@ import {
   Cart, Sale, CartItem, ProcessSaleData, ProductSearchResult,
   InsufficientStockError, POSSettings
 } from '../../types/pos';
-import demoProvider from './provider.demo';
+
 import supabaseProvider from './provider.supabase';
 
 // Data Provider Interface
@@ -98,11 +98,6 @@ export const getLatsProvider = (): LatsDataProvider => {
   
   console.log('🔧 LATS Data Provider Mode:', mode);
   
-  if (mode === 'supabase') {
-    console.log('📊 Using Supabase provider for real database');
-    return supabaseProvider;
-  } else {
-    console.log('🎭 Using Demo provider for test data');
-    return demoProvider;
-  }
+  console.log('📊 Using Supabase provider for real database');
+  return supabaseProvider;
 };

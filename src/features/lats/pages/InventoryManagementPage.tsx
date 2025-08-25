@@ -16,10 +16,10 @@ import BrandsTab from '../components/inventory-management/BrandsTab';
 import CategoriesTab from '../components/inventory-management/CategoriesTab';
 import SuppliersTab from '../components/inventory-management/SuppliersTab';
 import StoreLocationsTab from '../components/inventory-management/StoreLocationsTab';
-import ShelvesTab from '../components/inventory-management/ShelvesTab';
+import StorageRoomManagementPage from './StorageRoomManagementPage';
 import SystemSettingsTab from '../components/inventory-management/SystemSettingsTab';
 
-type TabType = 'brands' | 'categories' | 'suppliers' | 'store-locations' | 'shelves' | 'system-settings';
+type TabType = 'brands' | 'categories' | 'suppliers' | 'store-locations' | 'storage-room' | 'system-settings';
 
 interface TabConfig {
   id: TabType;
@@ -59,11 +59,11 @@ const TAB_CONFIGS: TabConfig[] = [
     description: 'Manage store locations and branches'
   },
   {
-    id: 'shelves',
-    label: 'Shelves',
-    icon: Package,
+    id: 'storage-room',
+    label: 'Storage Room',
+    icon: Building,
     color: 'indigo',
-    description: 'Manage storage shelves and capacity'
+    description: 'Manage storage rooms and capacity'
   },
   {
     id: 'system-settings',
@@ -96,9 +96,10 @@ const InventoryManagementPage: React.FC = () => {
     }
 
     // Handle URL parameter for tab selection
-    const tabParam = searchParams.get('shelves');
-    if (tabParam) {
-      setActiveTab('shelves');
+    const storageRoomParam = searchParams.get('storage-room');
+    const shelvesParam = searchParams.get('shelves'); // backward compatibility
+    if (storageRoomParam || shelvesParam) {
+      setActiveTab('storage-room');
     }
   }, [currentUser, navigate, searchParams]);
 
@@ -116,8 +117,8 @@ const InventoryManagementPage: React.FC = () => {
         return <SuppliersTab />;
       case 'store-locations':
         return <StoreLocationsTab />;
-      case 'shelves':
-        return <ShelvesTab />;
+      case 'storage-room':
+        return <StorageRoomManagementPage />;
       case 'system-settings':
         return <SystemSettingsTab />;
       default:

@@ -85,7 +85,7 @@ const DevicesPage: React.FC = () => {
 
   // Filter and sort devices
   const filteredAndSortedDevices = useMemo(() => {
-    let filtered = devices.filter(device => {
+    const filtered = devices.filter(device => {
       // Search filter
       const searchMatch = searchQuery === '' || 
         device.brand.toLowerCase().includes(searchQuery.toLowerCase()) ||

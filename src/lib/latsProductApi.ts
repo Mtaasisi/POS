@@ -247,7 +247,7 @@ export async function getProducts(): Promise<LatsProduct[]> {
     const productIds = products.map(product => product.id);
     
     // Fetch variants in batches to avoid URL length issues
-    const BATCH_SIZE = 20;
+    const BATCH_SIZE = 5; // Reduced from 20 to 5 to avoid URL length issues
     const allVariants: any[] = [];
     
     for (let i = 0; i < productIds.length; i += BATCH_SIZE) {
@@ -257,23 +257,74 @@ export async function getProducts(): Promise<LatsProduct[]> {
       
       console.log(`📦 Fetching variants batch ${batchNumber}/${totalBatches} (${batch.length} products)`);
       
-      try {
-        const { data: batchVariants, error: batchError } = await supabase
-          .from('lats_product_variants')
-          .select('*')
-          .in('product_id', batch)
-          .order('name');
+      // Retry logic for failed batch queries
+      let retryCount = 0;
+      const maxRetries = 3;
+      let batchVariants = null;
+      let batchError = null;
+      
+      while (retryCount < maxRetries && !batchVariants) {
+        try {
+          const { data, error } = await supabase
+            .from('lats_product_variants')
+            .select('id, product_id, name, sku, barcode, cost_price, selling_price, quantity, min_quantity, attributes, created_at, updated_at')
+            .in('product_id', batch)
+            .order('name');
 
-        if (batchError) {
-          console.error(`❌ Error fetching variants batch ${batchNumber}:`, batchError);
-          continue; // Skip this batch and continue with others
+          if (error) {
+            console.error(`❌ Error fetching variants batch ${batchNumber} (attempt ${retryCount + 1}):`, error);
+            batchError = error;
+            retryCount++;
+            
+            if (retryCount < maxRetries) {
+              // Exponential backoff
+              const delay = Math.pow(2, retryCount) * 1000;
+              console.log(`⏳ Retrying batch ${batchNumber} in ${delay}ms...`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+            }
+          } else {
+            batchVariants = data;
+            break;
+          }
+        } catch (exception) {
+          console.error(`❌ Exception processing variants batch ${batchNumber} (attempt ${retryCount + 1}):`, exception);
+          batchError = exception;
+          retryCount++;
+          
+          if (retryCount < maxRetries) {
+            const delay = Math.pow(2, retryCount) * 1000;
+            console.log(`⏳ Retrying batch ${batchNumber} in ${delay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
         }
-
-        allVariants.push(...(batchVariants || []));
-        console.log(`✅ Batch ${batchNumber} returned ${batchVariants?.length || 0} variants`);
-      } catch (batchError) {
-        console.error(`❌ Exception processing variants batch ${batchNumber}:`, batchError);
-        continue; // Skip this batch and continue with others
+      }
+      
+      if (batchVariants) {
+        allVariants.push(...batchVariants);
+        console.log(`✅ Batch ${batchNumber} returned ${batchVariants.length} variants`);
+      } else {
+        console.error(`❌ Failed to fetch batch ${batchNumber} after ${maxRetries} attempts`);
+        
+        // Fallback: fetch variants individually for this batch
+        console.log(`🔄 Falling back to individual queries for batch ${batchNumber}...`);
+        for (const productId of batch) {
+          try {
+            const { data: individualVariants, error: individualError } = await supabase
+              .from('lats_product_variants')
+              .select('id, product_id, name, sku, barcode, cost_price, selling_price, quantity, min_quantity, attributes, created_at, updated_at')
+              .eq('product_id', productId)
+              .order('name');
+              
+            if (!individualError && individualVariants) {
+              allVariants.push(...individualVariants);
+              console.log(`✅ Individual query for product ${productId}: ${individualVariants.length} variants`);
+            } else {
+              console.error(`❌ Individual query failed for product ${productId}:`, individualError);
+            }
+          } catch (individualException) {
+            console.error(`❌ Exception in individual query for product ${productId}:`, individualException);
+          }
+        }
       }
     }
 
@@ -312,8 +363,8 @@ export async function getProducts(): Promise<LatsProduct[]> {
         quantity: variant.quantity,
         minQuantity: variant.min_quantity,
         barcode: variant.barcode,
-        weight: variant.weight,
-        dimensions: variant.dimensions,
+        weight: null, // Column was removed in migration
+        dimensions: null, // Column was removed in migration
         createdAt: variant.created_at,
         updatedAt: variant.updated_at
       }))

@@ -106,6 +106,24 @@ const QUICK_ACTIONS: QuickAction[] = [
     category: 'inventory'
   },
   {
+    id: 'green-api-management',
+    name: 'Green API',
+    description: 'Manage WhatsApp integration',
+    icon: MessageCircle,
+    path: '/lats/whatsapp-hub',
+    color: 'from-green-500 to-green-600',
+    category: 'integration'
+  },
+  {
+    id: 'whatsapp-hub',
+    name: 'WhatsApp Hub',
+    description: 'Centralized WhatsApp messaging',
+    icon: MessageCircle,
+    path: '/lats/whatsapp-hub',
+    color: 'from-green-500 to-green-600',
+    category: 'integration'
+  },
+  {
     id: 'export-data',
     name: 'Export Data',
     description: 'Export reports and data',

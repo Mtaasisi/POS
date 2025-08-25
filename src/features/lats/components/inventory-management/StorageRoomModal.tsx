@@ -3,8 +3,9 @@ import GlassCard from '../../../../features/shared/components/ui/GlassCard';
 import GlassButton from '../../../../features/shared/components/ui/GlassButton';
 import { toast } from 'react-hot-toast';
 import { X, Building, MapPin, Tag, Users, Home } from 'lucide-react';
-import { storeLocationApi } from '../../../../settings/utils/storeLocationApi';
-import { storageRoomApi, StorageRoom as StorageRoomType } from '../../../../settings/utils/storageRoomApi';
+import { storeLocationApi } from '../../../../features/settings/utils/storeLocationApi';
+import { storageRoomApi, StorageRoom as StorageRoomType } from '../../../../features/settings/utils/storageRoomApi';
+import { storeShelfApi } from '../../../../features/settings/utils/storeShelfApi';
 
 type StorageRoom = StorageRoomType;
 
@@ -30,19 +31,21 @@ const StorageRoomModal: React.FC<StorageRoomModalProps> = ({ isOpen, onClose, st
     color_code: '',
     notes: '',
     descriptionExpanded: false,
-    advancedExpanded: false
+    advancedExpanded: false,
+    rowsPerColumn: 3,
+    columnsPerRow: 3
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [storeLocations, setStoreLocations] = useState<any[]>([]);
-  const [loadingLocations, setLoadingLocations] = useState(false);
-
 
 
   useEffect(() => {
-    loadStoreLocations();
-  }, []);
+    if (isOpen) {
+      loadStoreLocations();
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (storageRoom) {
@@ -60,7 +63,10 @@ const StorageRoomModal: React.FC<StorageRoomModalProps> = ({ isOpen, onClose, st
         color_code: storageRoom.color_code || '',
         notes: storageRoom.notes || '',
         descriptionExpanded: false,
-        advancedExpanded: false
+        advancedExpanded: false,
+        createShelves: 0,
+        rowsPerColumn: 3,
+        columnsPerRow: 3
       });
     } else {
       setFormData({
@@ -77,7 +83,10 @@ const StorageRoomModal: React.FC<StorageRoomModalProps> = ({ isOpen, onClose, st
         color_code: '',
         notes: '',
         descriptionExpanded: false,
-        advancedExpanded: false
+        advancedExpanded: false,
+        createShelves: 0,
+        rowsPerColumn: 3,
+        columnsPerRow: 3
       });
     }
     setErrors({});
@@ -85,7 +94,6 @@ const StorageRoomModal: React.FC<StorageRoomModalProps> = ({ isOpen, onClose, st
 
   const loadStoreLocations = async () => {
     try {
-      setLoadingLocations(true);
       const locations = await storeLocationApi.getAll();
       setStoreLocations(locations);
       
@@ -95,9 +103,7 @@ const StorageRoomModal: React.FC<StorageRoomModalProps> = ({ isOpen, onClose, st
       }
     } catch (error) {
       console.error('Error loading store locations:', error);
-      toast.error('Failed to load store locations');
-    } finally {
-      setLoadingLocations(false);
+      // Silent error handling - no toast notification
     }
   };
 
@@ -153,6 +159,8 @@ const StorageRoomModal: React.FC<StorageRoomModalProps> = ({ isOpen, onClose, st
         notes: formData.notes
       };
 
+      let createdRoomId: string | undefined;
+
       if (storageRoom) {
         // Update existing storage room
         await storageRoomApi.update({
@@ -162,10 +170,49 @@ const StorageRoomModal: React.FC<StorageRoomModalProps> = ({ isOpen, onClose, st
         toast.success('Storage room updated successfully');
       } else {
         // Create new storage room
-        await storageRoomApi.create(storageRoomData);
+        const result = await storageRoomApi.create(storageRoomData);
+        createdRoomId = result?.id;
         toast.success('Storage room created successfully');
+        
+        // Create shelves based on rows and columns
+        if (formData.rowsPerColumn > 0 && formData.columnsPerRow > 0 && createdRoomId) {
+          const shelfPromises = [];
+          const rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+          const totalShelves = formData.rowsPerColumn * formData.columnsPerRow;
+          
+          for (let rowIndex = 0; rowIndex < formData.rowsPerColumn; rowIndex++) {
+            for (let colIndex = 0; colIndex < formData.columnsPerRow; colIndex++) {
+              const row = rows[rowIndex];
+              const column = colIndex + 1;
+              
+              const shelfData = {
+                store_location_id: formData.store_location_id,
+                storage_room_id: createdRoomId,
+                name: `${formData.code}${row}${column}`,
+                code: `${formData.code}${row}${column}`,
+                shelf_type: 'standard',
+                floor_level: formData.floor_level,
+                is_active: true,
+                is_accessible: true,
+                requires_ladder: false,
+                is_refrigerated: false,
+                priority_order: (rowIndex * formData.columnsPerRow) + colIndex + 1
+              };
+              shelfPromises.push(storeShelfApi.create(shelfData));
+            }
+          }
+          
+          try {
+            await Promise.all(shelfPromises);
+            toast.success(`${formData.rowsPerColumn * formData.columnsPerRow} shelves created successfully`);
+          } catch (shelfError) {
+            console.error('Error creating shelves:', shelfError);
+            toast.error('Storage room created but failed to create some shelves');
+          }
+        }
       }
       
+      onSave(storageRoomData);
       onClose();
     } catch (error) {
       console.error('Error saving storage room:', error);
@@ -182,7 +229,9 @@ const StorageRoomModal: React.FC<StorageRoomModalProps> = ({ isOpen, onClose, st
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen) {
+    return null;
+  }
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[9999]">
@@ -197,10 +246,12 @@ const StorageRoomModal: React.FC<StorageRoomModalProps> = ({ isOpen, onClose, st
               </h2>
             </div>
             <button
-              onClick={onClose}
+              onClick={() => {
+                onClose();
+              }}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
             >
-              <X size={20} />
+              <X className="h-5 w-5 text-gray-500" />
             </button>
           </div>
 
@@ -208,63 +259,7 @@ const StorageRoomModal: React.FC<StorageRoomModalProps> = ({ isOpen, onClose, st
           <div className="flex-1 overflow-y-auto p-6">
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Basic Information */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Store Location */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Store Location *
-                  </label>
-                  {loadingLocations ? (
-                    <div className="text-gray-500 text-sm">Loading locations...</div>
-                  ) : (
-                    <div className="flex gap-2 flex-wrap">
-                      {storeLocations.map((location) => (
-                        <button
-                          key={location.id}
-                          type="button"
-                          onClick={() => handleInputChange('store_location_id', location.id)}
-                          className={`px-4 py-2 rounded-lg border transition-colors ${
-                            formData.store_location_id === location.id
-                              ? 'bg-blue-500 text-white border-blue-500'
-                              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                          }`}
-                        >
-                          {location.name} ({location.city})
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {errors.store_location_id && (
-                    <p className="mt-1 text-sm text-red-600">{errors.store_location_id}</p>
-                  )}
-                </div>
-
-                {/* Room Type */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Room Type
-                  </label>
-                  <div className="flex gap-2 flex-wrap">
-                    {roomTypes.map((type) => (
-                      <button
-                        key={type.value}
-                        type="button"
-                        onClick={() => handleInputChange('room_type', type.value)}
-                        className={`px-4 py-2 rounded-lg border transition-colors ${
-                          formData.room_type === type.value
-                            ? 'bg-blue-500 text-white border-blue-500'
-                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                        }`}
-                      >
-                        {type.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Room Name and Code */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Room Name */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -277,11 +272,9 @@ const StorageRoomModal: React.FC<StorageRoomModalProps> = ({ isOpen, onClose, st
                     className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                       errors.name ? 'border-red-500' : 'border-gray-300'
                     }`}
-                    placeholder="e.g., Main Storage, Electronics Room, Cold Storage"
+                    placeholder="Enter room name"
                   />
-                  {errors.name && (
-                    <p className="mt-1 text-sm text-red-600">{errors.name}</p>
-                  )}
+                  {errors.name && <p className="text-red-500 text-sm mt-1">{errors.name}</p>}
                 </div>
 
                 {/* Room Code */}
@@ -292,230 +285,222 @@ const StorageRoomModal: React.FC<StorageRoomModalProps> = ({ isOpen, onClose, st
                   <input
                     type="text"
                     value={formData.code}
-                    onChange={(e) => handleInputChange('code', e.target.value.toUpperCase())}
+                    onChange={(e) => handleInputChange('code', e.target.value)}
                     className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                       errors.code ? 'border-red-500' : 'border-gray-300'
                     }`}
-                    placeholder="e.g., STOR01, COLD01, SEC01"
+                    placeholder="e.g., STOR001"
                   />
-                  {errors.code && (
-                    <p className="mt-1 text-sm text-red-600">{errors.code}</p>
-                  )}
+                  {errors.code && <p className="text-red-500 text-sm mt-1">{errors.code}</p>}
+                </div>
+
+                {/* Store Location */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Store Location *
+                  </label>
+                  <select
+                    value={formData.store_location_id}
+                    onChange={(e) => handleInputChange('store_location_id', e.target.value)}
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      errors.store_location_id ? 'border-red-500' : 'border-gray-300'
+                    }`}
+
+                  >
+                    <option value="">Select a store location</option>
+                    {storeLocations.map(location => (
+                      <option key={location.id} value={location.id}>
+                        {location.name}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.store_location_id && <p className="text-red-500 text-sm mt-1">{errors.store_location_id}</p>}
+                </div>
+
+                {/* Floor Level */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Floor Level
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={formData.floor_level}
+                    onChange={(e) => handleInputChange('floor_level', parseInt(e.target.value) || 1)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
                 </div>
               </div>
 
-              {/* Advanced Fields */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-sm font-medium text-gray-700">
-                    Advanced Fields
+              {/* Physical Details */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Area */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Area (sqm)
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => setFormData(prev => ({ ...prev, advancedExpanded: !prev.advancedExpanded }))}
-                    className="p-1 rounded-full hover:bg-gray-100 transition-colors"
-                  >
-                    {formData.advancedExpanded ? (
-                      <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-                      </svg>
-                    ) : (
-                      <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                    )}
-                  </button>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.area_sqm || ''}
+                    onChange={(e) => handleInputChange('area_sqm', e.target.value ? parseFloat(e.target.value) : undefined)}
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      errors.area_sqm ? 'border-red-500' : 'border-gray-300'
+                    }`}
+                    placeholder="Enter area in square meters"
+                  />
+                  {errors.area_sqm && <p className="text-red-500 text-sm mt-1">{errors.area_sqm}</p>}
                 </div>
-                {formData.advancedExpanded ? (
-                  <div className="space-y-4">
-                    {/* Capacity and Physical Details */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      {/* Max Capacity */}
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Max Capacity
-                        </label>
-                        <input
-                          type="number"
-                          min="1"
-                          value={formData.max_capacity || ''}
-                          onChange={(e) => handleInputChange('max_capacity', e.target.value ? parseInt(e.target.value) : undefined)}
-                          className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                            errors.max_capacity ? 'border-red-500' : 'border-gray-300'
-                          }`}
-                          placeholder="1000"
-                        />
-                        {errors.max_capacity && (
-                          <p className="mt-1 text-sm text-red-600">{errors.max_capacity}</p>
-                        )}
-                      </div>
 
-                      {/* Area */}
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Area (sqm)
-                        </label>
-                        <input
-                          type="number"
-                          min="1"
-                          step="0.1"
-                          value={formData.area_sqm || ''}
-                          onChange={(e) => handleInputChange('area_sqm', e.target.value ? parseFloat(e.target.value) : undefined)}
-                          className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                            errors.area_sqm ? 'border-red-500' : 'border-gray-300'
-                          }`}
-                          placeholder="50.0"
-                        />
-                        {errors.area_sqm && (
-                          <p className="mt-1 text-sm text-red-600">{errors.area_sqm}</p>
-                        )}
-                      </div>
+                {/* Max Capacity */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Max Capacity
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={formData.max_capacity || ''}
+                    onChange={(e) => handleInputChange('max_capacity', e.target.value ? parseInt(e.target.value) : undefined)}
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      errors.max_capacity ? 'border-red-500' : 'border-gray-300'
+                    }`}
+                    placeholder="Enter maximum capacity"
+                  />
+                  {errors.max_capacity && <p className="text-red-500 text-sm mt-1">{errors.max_capacity}</p>}
+                </div>
 
-                      {/* Floor Level */}
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Floor Level
-                        </label>
-                        <input
-                          type="number"
-                          min="1"
-                          value={formData.floor_level}
-                          onChange={(e) => handleInputChange('floor_level', parseInt(e.target.value) || 1)}
-                          className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          placeholder="1"
-                        />
-                      </div>
+                {/* Shelf Layout (only for new rooms) */}
+                {!storageRoom && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Number of Rows */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Number of Rows (A, B, C...)
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="10"
+                        value={formData.rowsPerColumn}
+                        onChange={(e) => handleInputChange('rowsPerColumn', parseInt(e.target.value) || 3)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Number of rows (1-10)"
+                      />
                     </div>
 
-
+                    {/* Number of Columns */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Number of Columns (1, 2, 3...)
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="20"
+                        value={formData.columnsPerRow}
+                        onChange={(e) => handleInputChange('columnsPerRow', parseInt(e.target.value) || 3)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Number of columns (1-20)"
+                      />
+                    </div>
                   </div>
-                ) : (
-                  <div className="flex items-center justify-between p-2 border border-gray-300 rounded-lg bg-gray-50">
-                    <span className="text-sm text-gray-500">
-                      Capacity, area, and floor level settings
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setFormData(prev => ({ ...prev, advancedExpanded: true }))}
-                      className="p-1 rounded-full hover:bg-gray-200 transition-colors"
-                    >
-                      <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                    </button>
+                )}
+
+                {/* Shelf Layout Preview */}
+                {!storageRoom && formData.rowsPerColumn > 0 && formData.columnsPerRow > 0 && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Shelf Layout Preview
+                    </label>
+                    <div className="p-3 bg-gray-50 rounded-lg border">
+                      <p className="text-sm text-gray-700 mb-2">
+                        <strong>Layout:</strong> {formData.rowsPerColumn} rows × {formData.columnsPerRow} columns = {formData.rowsPerColumn * formData.columnsPerRow} total shelves
+                      </p>
+                      <p className="text-xs text-gray-600">
+                        <strong>Naming Pattern:</strong> {formData.code}[Row][Column]
+                        <br />
+                        <strong>Example:</strong> {formData.code}A1, {formData.code}A2, {formData.code}A3, {formData.code}B1, {formData.code}B2, {formData.code}B3, etc.
+                      </p>
+                    </div>
                   </div>
                 )}
               </div>
 
-              {/* Room Features */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-3">Room Features</label>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="flex flex-col items-center space-y-2">
-                    <span className="text-sm font-medium text-gray-700">Active</span>
-                    <button
-                      type="button"
-                      onClick={() => handleInputChange('is_active', !formData.is_active)}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                        formData.is_active ? 'bg-blue-500' : 'bg-gray-300'
+              {/* Security Settings */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="flex flex-col items-center space-y-2">
+                  <span className="text-sm font-medium text-gray-700">Active</span>
+                  <button
+                    type="button"
+                    onClick={() => handleInputChange('is_active', !formData.is_active)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      formData.is_active ? 'bg-green-500' : 'bg-gray-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        formData.is_active ? 'translate-x-6' : 'translate-x-1'
                       }`}
-                    >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          formData.is_active ? 'translate-x-6' : 'translate-x-1'
-                        }`}
-                      />
-                    </button>
-                  </div>
-                  <div className="flex flex-col items-center space-y-2">
-                    <span className="text-sm font-medium text-gray-700">Secure</span>
-                    <button
-                      type="button"
-                      onClick={() => handleInputChange('is_secure', !formData.is_secure)}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                        formData.is_secure ? 'bg-blue-500' : 'bg-gray-300'
+                    />
+                  </button>
+                </div>
+                <div className="flex flex-col items-center space-y-2">
+                  <span className="text-sm font-medium text-gray-700">Secure</span>
+                  <button
+                    type="button"
+                    onClick={() => handleInputChange('is_secure', !formData.is_secure)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      formData.is_secure ? 'bg-red-500' : 'bg-gray-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        formData.is_secure ? 'translate-x-6' : 'translate-x-1'
                       }`}
-                    >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          formData.is_secure ? 'translate-x-6' : 'translate-x-1'
-                        }`}
-                      />
-                    </button>
-                  </div>
-                  <div className="flex flex-col items-center space-y-2">
-                    <span className="text-sm font-medium text-gray-700">Access Card</span>
-                    <button
-                      type="button"
-                      onClick={() => handleInputChange('requires_access_card', !formData.requires_access_card)}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                        formData.requires_access_card ? 'bg-blue-500' : 'bg-gray-300'
+                    />
+                  </button>
+                </div>
+                <div className="flex flex-col items-center space-y-2">
+                  <span className="text-sm font-medium text-gray-700">Access Card</span>
+                  <button
+                    type="button"
+                    onClick={() => handleInputChange('requires_access_card', !formData.requires_access_card)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      formData.requires_access_card ? 'bg-blue-500' : 'bg-gray-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        formData.requires_access_card ? 'translate-x-6' : 'translate-x-1'
                       }`}
-                    >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          formData.requires_access_card ? 'translate-x-6' : 'translate-x-1'
-                        }`}
-                      />
-                    </button>
-                  </div>
-
+                    />
+                  </button>
                 </div>
               </div>
 
               {/* Description */}
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-sm font-medium text-gray-700">
-                    Description
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setFormData(prev => ({ ...prev, descriptionExpanded: !prev.descriptionExpanded }))}
-                    className="p-1 rounded-full hover:bg-gray-100 transition-colors"
-                  >
-                    {formData.descriptionExpanded ? (
-                      <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-                      </svg>
-                    ) : (
-                      <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                    )}
-                  </button>
-                </div>
-                {formData.descriptionExpanded ? (
-                  <textarea
-                    value={formData.description}
-                    onChange={(e) => handleInputChange('description', e.target.value)}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Describe the storage room's purpose, contents, or special requirements..."
-                  />
-                ) : (
-                  <div className="flex items-center justify-between p-2 border border-gray-300 rounded-lg bg-gray-50">
-                    <span className="text-sm text-gray-500">
-                      {formData.description || "Click + to add description"}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setFormData(prev => ({ ...prev, descriptionExpanded: true }))}
-                      className="p-1 rounded-full hover:bg-gray-200 transition-colors"
-                    >
-                      <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                    </button>
-                  </div>
-                )}
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Description
+                </label>
+                <textarea
+                  value={formData.description}
+                  onChange={(e) => handleInputChange('description', e.target.value)}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Describe the storage room's purpose, contents, or special requirements..."
+                />
               </div>
 
               {/* Action Buttons */}
               <div className="flex gap-3 justify-end pt-6">
                 <GlassButton
                   type="button"
-                  onClick={onClose}
+                  onClick={() => {
+                    onClose();
+                  }}
                   variant="secondary"
                   disabled={isSubmitting}
                 >

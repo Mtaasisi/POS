@@ -160,7 +160,7 @@ class PaymentTrackingService {
   ): Promise<PaymentTransaction[]> {
     try {
       console.log('🔍 PaymentTrackingService: Fetching payment transactions...');
-      let allPayments: PaymentTransaction[] = [];
+      const allPayments: PaymentTransaction[] = [];
 
       // Fetch device payments (repair payments)
       const { data: devicePayments, error: devicePaymentsError } = await supabase

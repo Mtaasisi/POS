@@ -335,44 +335,42 @@ export const useInventoryStore = create<InventoryState>()(
         
         // Check cache first
         if (state.isCacheValid('categories')) {
-          console.log('📋 Using cached categories');
           set({ categories: state.dataCache.categories || [] });
           return;
         }
 
         // Prevent multiple simultaneous loads
         if (state.isDataLoading) {
-          console.log('⏳ Categories loading already in progress, skipping...');
           return;
         }
 
         set({ isLoading: true, isDataLoading: true, error: null });
         try {
-          console.log('🔧 Loading categories from LATS provider...');
           const provider = getLatsProvider();
           const response = await provider.getCategories();
           
           if (response.ok) {
             const rawCategories = response.data || [];
-            console.log('📂 Raw categories loaded:', rawCategories.length);
             
             // Validate and process categories
-            validateDataIntegrity(rawCategories, 'Categories');
+            if (rawCategories.length > 0) {
+              validateDataIntegrity(rawCategories, 'Categories');
+            }
             const processedCategories = processLatsData({ categories: rawCategories }).categories;
             
             set({ 
               categories: processedCategories, 
-              lastDataLoadTime: Date.now() 
+              lastDataLoadTime: Date.now(),
+              error: null // Clear any previous errors
             });
             get().updateCache('categories', processedCategories);
             latsAnalytics.track('categories_loaded', { count: processedCategories.length });
-            console.log('✅ Categories processed and loaded:', processedCategories.length);
           } else {
-            console.error('❌ Categories error:', response.message);
+            console.error('Categories error:', response.message);
             set({ error: response.message || 'Failed to load categories' });
           }
         } catch (error) {
-          console.error('💥 Categories exception:', error);
+          console.error('Categories exception:', error);
           set({ error: 'Failed to load categories' });
         } finally {
           set({ isLoading: false, isDataLoading: false });
@@ -448,44 +446,42 @@ export const useInventoryStore = create<InventoryState>()(
         
         // Check cache first
         if (state.isCacheValid('brands')) {
-          console.log('📋 Using cached brands');
           set({ brands: state.dataCache.brands || [] });
           return;
         }
 
         // Prevent multiple simultaneous loads
         if (state.isDataLoading) {
-          console.log('⏳ Brands loading already in progress, skipping...');
           return;
         }
 
         set({ isLoading: true, isDataLoading: true, error: null });
         try {
-          console.log('🔧 Loading brands from LATS provider...');
           const provider = getLatsProvider();
           const response = await provider.getBrands();
           
           if (response.ok) {
             const rawBrands = response.data || [];
-            console.log('🏷️ Raw brands loaded:', rawBrands.length);
             
             // Validate and process brands
-            validateDataIntegrity(rawBrands, 'Brands');
+            if (rawBrands.length > 0) {
+              validateDataIntegrity(rawBrands, 'Brands');
+            }
             const processedBrands = processLatsData({ brands: rawBrands }).brands;
             
             set({ 
               brands: processedBrands, 
-              lastDataLoadTime: Date.now() 
+              lastDataLoadTime: Date.now(),
+              error: null // Clear any previous errors
             });
             get().updateCache('brands', processedBrands);
             latsAnalytics.track('brands_loaded', { count: processedBrands.length });
-            console.log('✅ Brands processed and loaded:', processedBrands.length);
           } else {
-            console.error('❌ Brands error:', response.message);
+            console.error('Brands error:', response.message);
             set({ error: response.message || 'Failed to load brands' });
           }
         } catch (error) {
-          console.error('💥 Brands exception:', error);
+          console.error('Brands exception:', error);
           set({ error: 'Failed to load brands' });
         } finally {
           set({ isLoading: false, isDataLoading: false });
@@ -558,14 +554,12 @@ export const useInventoryStore = create<InventoryState>()(
         
         // Check cache first with shorter cache duration for suppliers
         if (state.isCacheValid('suppliers')) {
-          console.log('📋 Using cached suppliers');
           set({ suppliers: state.dataCache.suppliers || [] });
           return;
         }
 
         // Use a supplier-specific loading flag to avoid conflicts with other loads
         if (state.isSuppliersLoading) {
-          console.log('⏳ Suppliers loading already in progress, skipping...');
           return;
         }
 
@@ -577,15 +571,11 @@ export const useInventoryStore = create<InventoryState>()(
         );
 
         try {
-          console.log('🔧 Loading suppliers from new supplier API...');
-          
           // Race between actual fetch and timeout
           const suppliers = await Promise.race([
             getActiveSuppliersApi(),
             timeoutPromise
           ]);
-          
-          console.log('🏢 Raw suppliers loaded:', suppliers.length);
           
           // Optimized processing - minimal validation for suppliers
           const processedSuppliers = suppliers.map(supplier => ({
@@ -601,9 +591,8 @@ export const useInventoryStore = create<InventoryState>()(
           // Update cache with longer duration for suppliers (5 minutes)
           get().updateCache('suppliers', processedSuppliers);
           latsAnalytics.track('suppliers_loaded', { count: processedSuppliers.length });
-          console.log('✅ Suppliers processed and loaded:', processedSuppliers.length);
         } catch (error) {
-          console.error('💥 Suppliers exception:', error);
+          console.error('Suppliers exception:', error);
           set({ error: 'Failed to load suppliers' });
         } finally {
           set({ isSuppliersLoading: false });
@@ -666,11 +655,12 @@ export const useInventoryStore = create<InventoryState>()(
 
       // Products
       loadProducts: async (filters?: any) => {
+        console.log('🔍 DEBUG: loadProducts called with filters:', filters);
         const state = get();
 
         // Prevent multiple simultaneous loads
         if (state.isDataLoading) {
-          console.log('⏳ Products loading already in progress, skipping...');
+          console.log('🔍 DEBUG: Data already loading, skipping...');
           return;
         }
 
@@ -680,44 +670,61 @@ export const useInventoryStore = create<InventoryState>()(
           limit: 50,
           ...filters
         };
+        console.log('🔍 DEBUG: Safe filters:', safeFilters);
 
-        // Check cache if no filters applied
-        if (!filters && state.dataCache.products && (Date.now() - state.cacheTimestamp) < state.CACHE_DURATION) {
-          console.log('📦 Using cached products data');
-          set({ products: state.dataCache.products });
+        // Check cache if no filters applied and cache is valid
+        if (!filters && state.isCacheValid('products')) {
+          console.log('🔍 DEBUG: Using cached products');
+          set({ products: state.dataCache.products || [] });
           return;
         }
 
+        console.log('🔍 DEBUG: Loading products from provider...');
         set({ isLoading: true, error: null, isDataLoading: true });
         try {
-          console.log('🔧 Loading products from LATS provider...');
           const provider = getLatsProvider();
           
+          console.log('🔍 DEBUG: Calling provider.getProducts...');
           const response = await provider.getProducts(safeFilters);
+          console.log('🔍 DEBUG: Provider response:', {
+            ok: response.ok,
+            message: response.message,
+            dataLength: response.data?.data?.length || response.data?.length || 0
+          });
           
           if (response.ok) {
             // Handle paginated response structure
-            const rawProducts = response.data?.data || [];
-            console.log('📦 Raw products extracted:', rawProducts.length);
+            const rawProducts = response.data?.data || response.data || [];
+            console.log('🔍 DEBUG: Raw products from response:', rawProducts.length);
             
             // Validate data integrity before processing
-            validateDataIntegrity(rawProducts, 'Products');
+            if (rawProducts.length > 0) {
+              console.log('🔍 DEBUG: Validating data integrity...');
+              validateDataIntegrity(rawProducts, 'Products');
+            }
             
             // Process and clean up product data to prevent HTTP 431 errors
+            console.log('🔍 DEBUG: Processing products...');
             const processedProducts = processLatsData({ products: rawProducts }).products;
-            console.log('🧹 Products processed and cleaned:', processedProducts.length);
+            console.log('🔍 DEBUG: Processed products:', processedProducts.length);
             
             // Update pagination info
             const paginationInfo = {
               currentPage: response.data?.page || 1,
-              totalItems: response.data?.total || 0,
+              totalItems: response.data?.total || processedProducts.length,
               totalPages: response.data?.totalPages || 1,
               itemsPerPage: response.data?.limit || 50
             };
             
+            console.log('🔍 DEBUG: Setting store state with products:', {
+              productsCount: processedProducts.length,
+              paginationInfo
+            });
+            
             set({ 
               products: processedProducts,
-              ...paginationInfo
+              ...paginationInfo,
+              error: null // Clear any previous errors
             });
             
             // Only cache if no filters applied
@@ -730,15 +737,17 @@ export const useInventoryStore = create<InventoryState>()(
               page: paginationInfo.currentPage,
               total: paginationInfo.totalItems
             });
-            console.log('✅ Products loaded and processed:', processedProducts.length);
           } else {
-            console.error('❌ Provider returned error:', response.message);
+            console.error('Provider returned error:', response.message);
+            console.log('🔍 DEBUG: Setting error state:', response.message);
             set({ error: response.message || 'Failed to load products' });
           }
         } catch (error) {
-          console.error('💥 Exception in loadProducts:', error);
+          console.error('Exception in loadProducts:', error);
+          console.log('🔍 DEBUG: Setting error state due to exception');
           set({ error: 'Failed to load products' });
         } finally {
+          console.log('🔍 DEBUG: Finishing loadProducts, setting loading to false');
           set({ isLoading: false, isDataLoading: false });
         }
       },
@@ -746,20 +755,18 @@ export const useInventoryStore = create<InventoryState>()(
       // Load product variants separately when needed
       loadProductVariants: async (productId: string) => {
         try {
-          console.log('🔧 Loading variants for product:', productId);
           const provider = getLatsProvider();
           
           const response = await provider.getProductVariants(productId);
           
           if (response.ok) {
-            console.log('✅ Product variants loaded:', response.data.length);
             return { ok: true, data: response.data };
           } else {
-            console.error('❌ Failed to load product variants:', response.message);
+            console.error('Failed to load product variants:', response.message);
             return { ok: false, message: response.message };
           }
         } catch (error) {
-          console.error('💥 Exception in loadProductVariants:', error);
+          console.error('Exception in loadProductVariants:', error);
           return { ok: false, message: 'Failed to load product variants' };
         }
       },
@@ -775,26 +782,23 @@ export const useInventoryStore = create<InventoryState>()(
       },
 
       createProduct: async (product) => {
-        console.log('🚀 Creating product:', product.name);
-        
         set({ isCreating: true, error: null });
         try {
           const provider = getLatsProvider();
           const response = await provider.createProduct(product);
           
           if (response.ok) {
-            console.log('✅ Product created successfully');
             // Clear products cache to force reload
             get().clearCache('products');
             await get().loadProducts();
             latsAnalytics.track('product_created', { productId: response.data?.id });
           } else {
-            console.log('❌ Product creation failed:', response.message);
+            set({ error: response.message || 'Failed to create product' });
           }
           return response;
         } catch (error) {
           const errorMsg = 'Failed to create product';
-          console.error('💥 Exception in createProduct:', error);
+          console.error('Exception in createProduct:', error);
           set({ error: errorMsg });
           return { ok: false, message: errorMsg };
         } finally {
@@ -803,40 +807,26 @@ export const useInventoryStore = create<InventoryState>()(
       },
 
       updateProduct: async (id, product) => {
-        console.log('🔄 [DEBUG] useInventoryStore.updateProduct called');
-        console.log('📋 [DEBUG] Product ID:', id);
-        console.log('📦 [DEBUG] Product data:', product);
-        
         set({ isUpdating: true, error: null });
-        console.log('🔄 [DEBUG] Set isUpdating to true');
         
         try {
-          console.log('🚀 [DEBUG] Getting LATS provider...');
           const provider = getLatsProvider();
-          console.log('✅ [DEBUG] Provider obtained');
-          
-          console.log('🚀 [DEBUG] Calling provider.updateProduct...');
           const response = await provider.updateProduct(id, product);
-          console.log('📊 [DEBUG] Provider response:', response);
           
           if (response.ok) {
-            console.log('✅ [DEBUG] Update successful, reloading products...');
             await get().loadProducts();
-            console.log('✅ [DEBUG] Products reloaded');
             latsAnalytics.track('product_updated', { productId: id });
-            console.log('📊 [DEBUG] Analytics tracked');
           } else {
-            console.log('❌ [DEBUG] Update failed:', response.message);
+            set({ error: response.message || 'Failed to update product' });
           }
           
           return response;
         } catch (error) {
           const errorMsg = 'Failed to update product';
-          console.error('💥 [DEBUG] Exception in updateProduct:', error);
+          console.error('Error updating product:', error);
           set({ error: errorMsg });
           return { ok: false, message: errorMsg };
         } finally {
-          console.log('🔄 [DEBUG] Setting isUpdating to false');
           set({ isUpdating: false });
         }
       },
@@ -877,7 +867,6 @@ export const useInventoryStore = create<InventoryState>()(
         
         // Check cache first
         if (state.isCacheValid('stockMovements')) {
-          console.log('📋 Using cached stock movements');
           set({ stockMovements: state.dataCache.stockMovements || [] });
           return;
         }
@@ -891,7 +880,6 @@ export const useInventoryStore = create<InventoryState>()(
             set({ stockMovements });
             get().updateCache('stockMovements', stockMovements);
             latsAnalytics.track('stock_movements_loaded', { count: stockMovements.length });
-            console.log('✅ Stock movements loaded:', stockMovements.length);
           } else {
             set({ error: response.message || 'Failed to load stock movements' });
           }
@@ -930,7 +918,6 @@ export const useInventoryStore = create<InventoryState>()(
         
         // Check cache first
         if (state.isCacheValid('sales')) {
-          console.log('📋 Using cached sales');
           set({ sales: state.dataCache.sales || [] });
           return;
         }
@@ -944,7 +931,6 @@ export const useInventoryStore = create<InventoryState>()(
             set({ sales });
             get().updateCache('sales', sales);
             latsAnalytics.track('sales_loaded', { count: sales.length });
-            console.log('✅ Sales loaded:', sales.length);
           } else {
             set({ error: response.message || 'Failed to load sales' });
           }
@@ -1366,7 +1352,6 @@ latsEventBus.subscribeToAll((event) => {
   
   // Prevent infinite loops by checking if data is already loading
   if (store.isDataLoading) {
-    console.log('⏳ Skipping event handling - data already loading:', event.type);
     return;
   }
   
@@ -1423,7 +1408,6 @@ latsEventBus.subscribeToAll((event) => {
     case 'lats:purchase-order.deleted':
       // Temporarily disable purchase orders loading to prevent 400 errors
       // TODO: Re-enable when purchase orders tables are properly set up
-      console.log('📝 Purchase orders event handling temporarily disabled');
       // store.loadPurchaseOrders();
       break;
       
