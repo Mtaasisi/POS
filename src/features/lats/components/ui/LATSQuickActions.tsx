@@ -116,8 +116,8 @@ const QUICK_ACTIONS: QuickAction[] = [
   },
   {
     id: 'whatsapp-hub',
-    name: 'WhatsApp Hub',
-    description: 'Centralized WhatsApp messaging',
+    name: 'WhatsApp Manager',
+    description: 'Comprehensive WhatsApp connection management',
     icon: MessageCircle,
     path: '/lats/whatsapp-hub',
     color: 'from-green-500 to-green-600',

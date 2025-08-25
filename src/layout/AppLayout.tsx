@@ -328,7 +328,7 @@ const AppLayout: React.FC = () => {
       // Communication & Integration
       {
         path: '/lats/whatsapp-hub',
-        label: 'WhatsApp Hub',
+        label: 'WhatsApp Manager',
         icon: <MessageCircle size={20} />,
         roles: ['admin'],
         count: Math.floor(Math.random() * 2) // Placeholder for WhatsApp alerts

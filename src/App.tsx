@@ -92,7 +92,7 @@ const StorageRoomManagementPage = lazy(() => import('./features/lats/pages/Stora
 import StorageRoomDetailPage from './features/lats/pages/StorageRoomDetailPage';
 import BeemTestPage from './features/lats/pages/BeemTestPage';
 
-const WhatsAppHubPage = lazy(() => import('./features/lats/pages/WhatsAppHubPage'));
+const WhatsAppConnectionManager = lazy(() => import('./features/lats/pages/WhatsAppConnectionManager'));
 const WhatsAppSettingsPage = lazy(() => import('./features/lats/pages/WhatsAppSettingsPage'));
 const BluetoothPrinterPage = lazy(() => import('./pages/BluetoothPrinterPage'));
 
@@ -356,7 +356,7 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
           <Route path="/lats/beem-test" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><BeemTestPage /></RoleProtectedRoute>} />
           
 
-        <Route path="/lats/whatsapp-hub" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><WhatsAppHubPage /></Suspense></RoleProtectedRoute>} />
+        <Route path="/lats/whatsapp-hub" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><WhatsAppConnectionManager /></Suspense></RoleProtectedRoute>} />
         <Route path="/lats/whatsapp-settings/:instanceId" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><WhatsAppSettingsPage /></Suspense></RoleProtectedRoute>} />
 
         {/* Bluetooth Printer Management Route */}
