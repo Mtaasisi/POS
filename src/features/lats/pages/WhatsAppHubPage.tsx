@@ -55,7 +55,7 @@ import WhatsAppMessagingPage from './WhatsAppMessagingPage';
 import WhatsAppBulkPage from './WhatsAppBulkPage';
 import WhatsAppTemplatesPage from './WhatsAppTemplatesPage';
 import WhatsAppAnalyticsPage from './WhatsAppAnalyticsPage';
-import WhatsAppChatPage from './WhatsAppChatPage';
+import WhatsAppChatPageTest from './WhatsAppChatPageTest';
 
 // Types
 interface WhatsAppInstance {
@@ -1431,7 +1431,7 @@ const WhatsAppHubPage: React.FC = () => {
 
         {/* Content Area */}
         {activeSection === 'chat' ? (
-          <WhatsAppChatPage
+          <WhatsAppChatPageTest
             instances={instances}
             isDark={isDark}
           />
