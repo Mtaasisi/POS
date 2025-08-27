@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   MessageCircle, 
   Send, 
@@ -29,6 +29,58 @@ import {
 import { supabase } from '../../../lib/supabaseClient';
 import { toast } from '../../../lib/toastUtils';
 import { greenApiService } from '../../../services/greenApiService';
+import CustomerList from '../components/CustomerList';
+import MessageInput from '../components/MessageInput';
+
+// Static data moved outside component for performance
+const EMOJIS = ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '🤑', '🤠', '💩', '👻', '💀', '☠️', '👽', '👾', '🤖', '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾', '🙈', '🙉', '🙊', '👶', '👧', '🧒', '👦', '👩', '🧑', '👨', '👵', '🧓', '👴', '👮‍♀️', '👮', '👮‍♂️', '🕵️‍♀️', '🕵️', '🕵️‍♂️', '💂‍♀️', '💂', '💂‍♂️', '👷‍♀️', '👷', '👷‍♂️', '🤴', '👸', '👳‍♀️', '👳', '👳‍♂️', '👲', '🧕', '🤵‍♀️', '🤵', '🤵‍♂️', '👰‍♀️', '👰', '👰‍♂️', '🤰', '🤱', '👼', '🎅', '🤶', '🧙‍♀️', '🧙', '🧙‍♂️', '🧝‍♀️', '🧝', '🧝‍♂️', '🧛‍♀️', '🧛', '🧛‍♂️', '🧟‍♀️', '🧟', '🧟‍♂️', '🧞‍♀️', '🧞', '🧞‍♂️', '🧜‍♀️', '🧜', '🧜‍♂️', '🧚‍♀️', '🧚', '🧚‍♂️', '👼', '🤰', '🤱', '👼', '🎅', '🤶', '🧙‍♀️', '🧙', '🧙‍♂️', '🧝‍♀️', '🧝', '🧝‍♂️', '🧛‍♀️', '🧛', '🧛‍♂️', '🧟‍♀️', '🧟', '🧟‍♂️', '🧞‍♀️', '🧞', '🧞‍♂️', '🧜‍♀️', '🧜', '🧜‍♂️', '🧚‍♀️', '🧚', '🧚‍♂️'];
+
+const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '😡'];
+
+const QUICK_REPLY_CATEGORIES: { [key: string]: string[] } = {
+  'Greetings': [
+    'Hello! How can I help you today?',
+    'Hi there! Welcome to our service.',
+    'Good morning! How may I assist you?',
+    'Hello! Thank you for contacting us.',
+    'Hi! I\'m here to help you.'
+  ],
+  'Customer Service': [
+    'Thank you for your patience.',
+    'I understand your concern.',
+    'Let me check that for you.',
+    'I\'ll get back to you shortly.',
+    'Is there anything else I can help with?'
+  ],
+  'Sales & Orders': [
+    'Your order has been confirmed.',
+    'Your payment has been received.',
+    'Your item is ready for pickup.',
+    'Your delivery is on the way.',
+    'Would you like to place an order?'
+  ],
+  'Technical Support': [
+    'Let me troubleshoot this issue.',
+    'Have you tried restarting?',
+    'I\'ll escalate this to our technical team.',
+    'Can you provide more details?',
+    'This should resolve your issue.'
+  ],
+  'Appointments': [
+    'Your appointment is confirmed.',
+    'Would you like to reschedule?',
+    'What time works best for you?',
+    'I\'ll send you a reminder.',
+    'Your appointment is tomorrow.'
+  ],
+  'Frequently Used': [
+    'Thank you!',
+    'You\'re welcome!',
+    'Have a great day!',
+    'See you soon!',
+    'Take care!'
+  ]
+};
 
 interface WhatsAppChatPageProps {
   instances: any[];
@@ -39,116 +91,160 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
   instances,
   isDark
 }) => {
-  // Chat State
-  const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
-  const [chatMessage, setChatMessage] = useState('');
-  const [customers, setCustomers] = useState<any[]>([]);
-  const [customerSearchTerm, setCustomerSearchTerm] = useState('');
-  const [filteredCustomers, setFilteredCustomers] = useState<any[]>([]);
-  const [isSendingChatMessage, setIsSendingChatMessage] = useState(false);
-  const [chatHistory, setChatHistory] = useState<any[]>([]);
+  // Consolidated Chat State
+  const [chatState, setChatState] = useState({
+    selectedCustomer: null as any,
+    chatMessage: '',
+    customers: [] as any[],
+    customerSearchTerm: '',
+    isSendingMessage: false,
+    chatHistory: [] as any[],
+    isTyping: false,
+    messageType: 'text' as 'text' | 'image' | 'button' | 'template' | 'document' | 'audio'
+  });
   
-  // Enhanced Chat Features
-  const [isTyping, setIsTyping] = useState(false);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
-  const [showQuickReplies, setShowQuickReplies] = useState(false);
-  const [selectedImage, setSelectedImage] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [messageType, setMessageType] = useState<'text' | 'image' | 'button' | 'template' | 'document' | 'audio'>('text');
+  // Consolidated UI State
+  const [uiState, setUiState] = useState({
+    showEmojiPicker: false,
+    showAttachmentMenu: false,
+    showQuickReplies: false,
+    activeTab: 'chat' as 'chat' | 'contacts',
+    showChatSearch: false,
+    showQuickReplyManager: false,
+    showCategoryManager: false,
+    compactView: false
+  });
   
-  // Enhanced Quick Reply states
-  const [quickReplyCategory, setQuickReplyCategory] = useState<string>('Frequently Used');
-  const [favoriteReplies, setFavoriteReplies] = useState<string[]>([]);
-  const [recentReplies, setRecentReplies] = useState<string[]>([]);
-  const [showQuickReplyManager, setShowQuickReplyManager] = useState(false);
-  const [editingReply, setEditingReply] = useState<{index: number, text: string, category: string} | null>(null);
-  const [newReplyText, setNewReplyText] = useState('');
-  const [newReplyCategory, setNewReplyCategory] = useState('Frequently Used');
-  const [showCategoryManager, setShowCategoryManager] = useState(false);
-  const [editingCategory, setEditingCategory] = useState<{oldName: string, newName: string} | null>(null);
-  const [newCategoryName, setNewCategoryName] = useState('');
-  const [compactView, setCompactView] = useState(false);
+  // Consolidated Media State
+  const [mediaState, setMediaState] = useState({
+    selectedImage: null as File | null,
+    imagePreview: null as string | null,
+    selectedFile: null as File | null,
+    filePreview: null as string | null,
+    uploadProgress: 0,
+    isUploading: false,
+    audioBlob: null as Blob | null,
+    audioUrl: null as string | null,
+    isRecording: false,
+    recordingTime: 0
+  });
   
-  // File upload states
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [filePreview, setFilePreview] = useState<string | null>(null);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [isUploading, setIsUploading] = useState(false);
+  // Consolidated Quick Reply State
+  const [quickReplyState, setQuickReplyState] = useState({
+    category: 'Frequently Used',
+    favoriteReplies: [] as string[],
+    recentReplies: [] as string[],
+    editingReply: null as {index: number, text: string, category: string} | null,
+    newReplyText: '',
+    newReplyCategory: 'Frequently Used',
+    editingCategory: null as {oldName: string, newName: string} | null,
+    newCategoryName: ''
+  });
   
-  // Voice message states
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingTime, setRecordingTime] = useState(0);
-  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  // Consolidated Chat Features State
+  const [chatFeaturesState, setChatFeaturesState] = useState({
+    chatSearchTerm: '',
+    messageReactions: {} as {[key: number]: string[]},
+    showReactionPicker: null as number | null,
+    messageStatuses: {} as {[key: number]: 'sending' | 'sent' | 'delivered' | 'read'}
+  });
   
-  // Chat search and reactions
-  const [chatSearchTerm, setChatSearchTerm] = useState('');
-  const [filteredChatHistory, setFilteredChatHistory] = useState<any[]>([]);
-  const [showChatSearch, setShowChatSearch] = useState(false);
-  const [messageReactions, setMessageReactions] = useState<{[key: number]: string[]}>({});
-  const [showReactionPicker, setShowReactionPicker] = useState<number | null>(null);
-  
-  // Message status tracking
-  const [messageStatuses, setMessageStatuses] = useState<{[key: number]: 'sending' | 'sent' | 'delivered' | 'read'}>({});
-  
-  // Emoji picker data
-  const emojis = ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '🤑', '🤠', '💩', '👻', '💀', '☠️', '👽', '👾', '🤖', '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾', '🙈', '🙉', '🙊', '👶', '👧', '🧒', '👦', '👩', '🧑', '👨', '👵', '🧓', '👴', '👮‍♀️', '👮', '👮‍♂️', '🕵️‍♀️', '🕵️', '🕵️‍♂️', '💂‍♀️', '💂', '💂‍♂️', '👷‍♀️', '👷', '👷‍♂️', '🤴', '👸', '👳‍♀️', '👳', '👳‍♂️', '👲', '🧕', '🤵‍♀️', '🤵', '🤵‍♂️', '👰‍♀️', '👰', '👰‍♂️', '🤰', '🤱', '👼', '🎅', '🤶', '🧙‍♀️', '🧙', '🧙‍♂️', '🧝‍♀️', '🧝', '🧝‍♂️', '🧛‍♀️', '🧛', '🧛‍♂️', '🧟‍♀️', '🧟', '🧟‍♂️', '🧞‍♀️', '🧞', '🧞‍♂️', '🧜‍♀️', '🧜', '🧜‍♂️', '🧚‍♀️', '🧚', '🧚‍♂️', '👼', '🤰', '🤱', '👼', '🎅', '🤶', '🧙‍♀️', '🧙', '🧙‍♂️', '🧝‍♀️', '🧝', '🧝‍♂️', '🧛‍♀️', '🧛', '🧛‍♂️', '🧟‍♀️', '🧟', '🧟‍♂️', '🧞‍♀️', '🧞', '🧞‍♂️', '🧜‍♀️', '🧜', '🧜‍♂️', '🧚‍♀️', '🧚', '🧚‍♂️'];
-  
-  // Quick reaction emojis
-  const quickReactions = ['👍', '❤️', '😂', '😮', '😢', '😡'];
-  
-  // Enhanced Quick Replies with categories
-  const quickReplyCategories: { [key: string]: string[] } = {
-    'Greetings': [
-      'Hello! How can I help you today?',
-      'Hi there! Welcome to our service.',
-      'Good morning! How may I assist you?',
-      'Hello! Thank you for contacting us.',
-      'Hi! I\'m here to help you.'
-    ],
-    'Customer Service': [
-      'Thank you for your patience.',
-      'I understand your concern.',
-      'Let me check that for you.',
-      'I\'ll get back to you shortly.',
-      'Is there anything else I can help with?'
-    ],
-    'Sales & Orders': [
-      'Your order has been confirmed.',
-      'Your payment has been received.',
-      'Your item is ready for pickup.',
-      'Your delivery is on the way.',
-      'Would you like to place an order?'
-    ],
-    'Technical Support': [
-      'Let me troubleshoot this issue.',
-      'Have you tried restarting?',
-      'I\'ll escalate this to our technical team.',
-      'Can you provide more details?',
-      'This should resolve your issue.'
-    ],
-    'Appointments': [
-      'Your appointment is confirmed.',
-      'Would you like to reschedule?',
-      'What time works best for you?',
-      'I\'ll send you a reminder.',
-      'Your appointment is tomorrow.'
-    ],
-    'Frequently Used': [
-      'Thank you!',
-      'You\'re welcome!',
-      'Have a great day!',
-      'See you soon!',
-      'Take care!'
-    ]
-  };
-  
-  // Tab state
-  const [activeTab, setActiveTab] = useState<'chat' | 'contacts'>('chat');
+  // Memoized computed values for performance
+  const filteredCustomers = useMemo(() => {
+    if (!chatState.customerSearchTerm.trim()) {
+      return chatState.customers;
+    }
+    return chatState.customers.filter(customer =>
+      customer.name?.toLowerCase().includes(chatState.customerSearchTerm.toLowerCase()) ||
+      customer.phone?.includes(chatState.customerSearchTerm) ||
+      customer.email?.toLowerCase().includes(chatState.customerSearchTerm.toLowerCase())
+    );
+  }, [chatState.customerSearchTerm, chatState.customers]);
 
-  // Load customers
-  const loadCustomers = async () => {
+  const filteredChatHistory = useMemo(() => {
+    if (!chatFeaturesState.chatSearchTerm.trim()) {
+      return chatState.chatHistory;
+    }
+    return chatState.chatHistory.filter(message =>
+      message.content?.toLowerCase().includes(chatFeaturesState.chatSearchTerm.toLowerCase()) ||
+      message.customer?.name?.toLowerCase().includes(chatFeaturesState.chatSearchTerm.toLowerCase())
+    );
+  }, [chatFeaturesState.chatSearchTerm, chatState.chatHistory]);
+
+  const quickRepliesToShow = useMemo(() => {
+    if (quickReplyState.category === 'Favorites') {
+      return quickReplyState.favoriteReplies;
+    } else if (quickReplyState.category === 'Recent') {
+      return quickReplyState.recentReplies;
+    } else {
+      return QUICK_REPLY_CATEGORIES[quickReplyState.category] || [];
+    }
+  }, [quickReplyState.category, quickReplyState.favoriteReplies, quickReplyState.recentReplies]);
+
+  // Debounced search to prevent excessive filtering
+  const debouncedSetCustomerSearch = useCallback(
+    ((term: string) => {
+      const timeoutId = setTimeout(() => {
+        setChatState(prev => ({ ...prev, customerSearchTerm: term }));
+      }, 300);
+      return () => clearTimeout(timeoutId);
+    }),
+    []
+  );
+
+  const debouncedSetChatSearch = useCallback(
+    ((term: string) => {
+      const timeoutId = setTimeout(() => {
+        setChatFeaturesState(prev => ({ ...prev, chatSearchTerm: term }));
+      }, 300);
+      return () => clearTimeout(timeoutId);
+    }),
+    []
+  );
+
+  // Optimized event handlers with useCallback
+  const handleCustomerSelect = useCallback((customer: any) => {
+    setChatState(prev => ({
+      ...prev,
+      selectedCustomer: customer,
+      chatMessage: '',
+      chatHistory: []
+    }));
+  }, []);
+
+  const handleTabChange = useCallback((tab: 'chat' | 'contacts') => {
+    setUiState(prev => ({ ...prev, activeTab: tab }));
+  }, []);
+
+  const toggleEmojiPicker = useCallback(() => {
+    setUiState(prev => ({ 
+      ...prev, 
+      showEmojiPicker: !prev.showEmojiPicker,
+      showAttachmentMenu: false,
+      showQuickReplies: false 
+    }));
+  }, []);
+
+  const toggleAttachmentMenu = useCallback(() => {
+    setUiState(prev => ({ 
+      ...prev, 
+      showAttachmentMenu: !prev.showAttachmentMenu,
+      showEmojiPicker: false,
+      showQuickReplies: false 
+    }));
+  }, []);
+
+  const toggleQuickReplies = useCallback(() => {
+    setUiState(prev => ({ 
+      ...prev, 
+      showQuickReplies: !prev.showQuickReplies,
+      showEmojiPicker: false,
+      showAttachmentMenu: false 
+    }));
+  }, []);
+
+  // Load customers - optimized to use consolidated state
+  const loadCustomers = useCallback(async () => {
     try {
       if (!supabase) {
         toast.error('Database connection not available');
@@ -161,27 +257,14 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
         .order('name', { ascending: true });
       
       if (error) throw error;
-      setCustomers(data || []);
-      setFilteredCustomers(data || []);
+      setChatState(prev => ({ ...prev, customers: data || [] }));
     } catch (error) {
       console.error('Error loading customers:', error);
       toast.error('Failed to load customers');
     }
-  };
+  }, []);
 
-  // Filter customers based on search term
-  useEffect(() => {
-    if (customerSearchTerm.trim() === '') {
-      setFilteredCustomers(customers);
-    } else {
-      const filtered = customers.filter(customer =>
-        customer.name?.toLowerCase().includes(customerSearchTerm.toLowerCase()) ||
-        customer.phone?.includes(customerSearchTerm) ||
-        customer.email?.toLowerCase().includes(customerSearchTerm.toLowerCase())
-      );
-      setFilteredCustomers(filtered);
-    }
-  }, [customerSearchTerm, customers]);
+  // Customer filtering is now handled by memoized filteredCustomers
 
   // Load customers on mount
   useEffect(() => {
@@ -198,58 +281,67 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
     return cleaned;
   };
 
-  // Enhanced chat input functions
-  const handleTyping = (value: string) => {
-    setChatMessage(value);
-    setIsTyping(true);
+  // Enhanced chat input functions - optimized
+  const handleTyping = useCallback((value: string) => {
+    setChatState(prev => ({ 
+      ...prev, 
+      chatMessage: value,
+      isTyping: true 
+    }));
     
     clearTimeout((window as any).typingTimeout);
     (window as any).typingTimeout = setTimeout(() => {
-      setIsTyping(false);
+      setChatState(prev => ({ ...prev, isTyping: false }));
     }, 2000);
-  };
+  }, []);
 
-  const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && file.type.startsWith('image/')) {
-      setSelectedImage(file);
-      setMessageType('image');
+      setMediaState(prev => ({ ...prev, selectedImage: file }));
+      setChatState(prev => ({ ...prev, messageType: 'image' }));
       
       const reader = new FileReader();
       reader.onload = (e) => {
-        setImagePreview(e.target?.result as string);
+        setMediaState(prev => ({ ...prev, imagePreview: e.target?.result as string }));
       };
       reader.readAsDataURL(file);
     }
-  };
+  }, []);
 
-  const removeImage = () => {
-    setSelectedImage(null);
-    setImagePreview(null);
-    setMessageType('text');
-  };
+  const removeImage = useCallback(() => {
+    setMediaState(prev => ({ 
+      ...prev, 
+      selectedImage: null, 
+      imagePreview: null 
+    }));
+    setChatState(prev => ({ ...prev, messageType: 'text' }));
+  }, []);
 
-  // File handling functions
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  // File handling functions - optimized
+  const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      setSelectedFile(file);
-      setMessageType('document');
+      setMediaState(prev => ({ ...prev, selectedFile: file }));
+      setChatState(prev => ({ ...prev, messageType: 'document' }));
       
       // Create file preview
       const reader = new FileReader();
       reader.onload = (e) => {
-        setFilePreview(e.target?.result as string);
+        setMediaState(prev => ({ ...prev, filePreview: e.target?.result as string }));
       };
       reader.readAsDataURL(file);
     }
-  };
+  }, []);
 
-  const removeFile = () => {
-    setSelectedFile(null);
-    setFilePreview(null);
-    setMessageType('text');
-  };
+  const removeFile = useCallback(() => {
+    setMediaState(prev => ({ 
+      ...prev, 
+      selectedFile: null, 
+      filePreview: null 
+    }));
+    setChatState(prev => ({ ...prev, messageType: 'text' }));
+  }, []);
 
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';
@@ -614,33 +706,32 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
 
   // Send chat message
   const handleSendChatMessage = async () => {
-    if (!selectedCustomer || !instances.length) {
+    if (!chatState.selectedCustomer || !instances.length) {
       toast.error('Please select a customer and ensure WhatsApp is connected');
       return;
     }
 
-    if (messageType === 'text' && !chatMessage.trim()) {
+    if (chatState.messageType === 'text' && !chatState.chatMessage.trim()) {
       toast.error('Please enter a message');
       return;
     }
 
-    if (messageType === 'image' && !selectedImage) {
+    if (chatState.messageType === 'image' && !mediaState.selectedImage) {
       toast.error('Please select an image');
       return;
     }
 
-    if (messageType === 'document' && !selectedFile) {
+    if (chatState.messageType === 'document' && !mediaState.selectedFile) {
       toast.error('Please select a file');
       return;
     }
 
-    if (messageType === 'audio' && !audioBlob) {
+    if (chatState.messageType === 'audio' && !mediaState.audioBlob) {
       toast.error('Please record an audio message');
       return;
     }
 
-    setIsSendingChatMessage(true);
-    setIsTyping(false);
+    setChatState(prev => ({ ...prev, isSendingMessage: true, isTyping: false }));
     
     try {
       const connectedInstance = instances.find(i => i.status === 'connected');
@@ -649,39 +740,39 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
         return;
       }
 
-      const customerPhone = formatPhoneNumber(selectedCustomer.phone);
+      const customerPhone = formatPhoneNumber(chatState.selectedCustomer.phone);
       
       let result;
       
-      if (messageType === 'image' && selectedImage) {
+      if (chatState.messageType === 'image' && mediaState.selectedImage) {
         result = await greenApiService.sendMessage({
           instanceId: connectedInstance.instance_id,
           chatId: customerPhone,
-          message: chatMessage || 'Image shared',
+          message: chatState.chatMessage || 'Image shared',
           messageType: 'image',
-          metadata: { imageFile: selectedImage }
+          metadata: { imageFile: mediaState.selectedImage }
         });
-      } else if (messageType === 'document' && selectedFile) {
+      } else if (chatState.messageType === 'document' && mediaState.selectedFile) {
         result = await greenApiService.sendMessage({
           instanceId: connectedInstance.instance_id,
           chatId: customerPhone,
-          message: chatMessage || `File: ${selectedFile.name}`,
+          message: chatState.chatMessage || `File: ${mediaState.selectedFile.name}`,
           messageType: 'document',
-          metadata: { documentFile: selectedFile }
+          metadata: { documentFile: mediaState.selectedFile }
         });
-      } else if (messageType === 'audio' && audioBlob) {
+      } else if (chatState.messageType === 'audio' && mediaState.audioBlob) {
         result = await greenApiService.sendMessage({
           instanceId: connectedInstance.instance_id,
           chatId: customerPhone,
-          message: chatMessage || 'Voice message',
+          message: chatState.chatMessage || 'Voice message',
           messageType: 'audio',
-          metadata: { audioBlob: audioBlob }
+          metadata: { audioBlob: mediaState.audioBlob }
         });
       } else {
         result = await greenApiService.sendMessage({
           instanceId: connectedInstance.instance_id,
           chatId: customerPhone,
-          message: chatMessage,
+          message: chatState.chatMessage,
           messageType: 'text'
         });
       }
@@ -689,47 +780,51 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
       const messageId = Date.now();
       const newMessage = {
         id: messageId,
-        content: messageType === 'image' ? 'Image shared' : 
-                messageType === 'document' ? `File: ${selectedFile?.name}` :
-                messageType === 'audio' ? 'Voice message' : chatMessage,
+        content: chatState.messageType === 'image' ? 'Image shared' : 
+                chatState.messageType === 'document' ? `File: ${mediaState.selectedFile?.name}` :
+                chatState.messageType === 'audio' ? 'Voice message' : chatState.chatMessage,
         sender: 'business',
         timestamp: new Date().toISOString(),
         status: 'sent',
-        customer: selectedCustomer,
-        type: messageType,
-        imageUrl: messageType === 'image' ? imagePreview : null,
-        fileUrl: messageType === 'document' ? filePreview : null,
-        audioUrl: messageType === 'audio' ? audioUrl : null,
-        fileName: selectedFile?.name,
-        fileSize: selectedFile?.size,
-        audioDuration: messageType === 'audio' ? formatRecordingTime(recordingTime) : null
+        customer: chatState.selectedCustomer,
+        type: chatState.messageType,
+        imageUrl: chatState.messageType === 'image' ? mediaState.imagePreview : null,
+        fileUrl: chatState.messageType === 'document' ? mediaState.filePreview : null,
+        audioUrl: chatState.messageType === 'audio' ? mediaState.audioUrl : null,
+        fileName: mediaState.selectedFile?.name,
+        fileSize: mediaState.selectedFile?.size,
+        audioDuration: chatState.messageType === 'audio' ? formatRecordingTime(mediaState.recordingTime) : null
       };
       
       // Set initial status
       updateMessageStatus(messageId, 'sending');
-      setChatHistory(prev => [...prev, newMessage]);
+      setChatState(prev => ({ ...prev, chatHistory: [...prev.chatHistory, newMessage] }));
       
       // Simulate message status progression
       setTimeout(() => updateMessageStatus(messageId, 'sent'), 1000);
       setTimeout(() => updateMessageStatus(messageId, 'delivered'), 2000);
       setTimeout(() => updateMessageStatus(messageId, 'read'), 5000);
-      setChatMessage('');
-      setSelectedImage(null);
-      setImagePreview(null);
-      setSelectedFile(null);
-      setFilePreview(null);
-      setAudioBlob(null);
-      setAudioUrl(null);
-      setRecordingTime(0);
-      setMessageType('text');
       
-      toast.success(`Message sent to ${selectedCustomer.name}`);
+      // Clear message and media state
+      setChatState(prev => ({ ...prev, chatMessage: '', messageType: 'text' }));
+      setMediaState(prev => ({
+        ...prev,
+        selectedImage: null,
+        imagePreview: null,
+        selectedFile: null,
+        filePreview: null,
+        audioBlob: null,
+        audioUrl: null,
+        recordingTime: 0
+      }));
+      
+      toast.success(`Message sent to ${chatState.selectedCustomer.name}`);
       
     } catch (error: any) {
       console.error('Error sending chat message:', error);
       toast.error('Failed to send message: ' + error.message);
     } finally {
-      setIsSendingChatMessage(false);
+      setChatState(prev => ({ ...prev, isSendingMessage: false }));
     }
   };
 
@@ -764,9 +859,9 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
           <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white flex-shrink-0">
             <div className="flex bg-gradient-to-r from-gray-100 to-gray-200 rounded-2xl p-2 mb-4">
               <button
-                onClick={() => setActiveTab('chat')}
+                onClick={() => handleTabChange('chat')}
                 className={`flex-1 py-3 px-6 rounded-xl font-semibold text-base transition-all duration-300 ${
-                  activeTab === 'chat'
+                  uiState.activeTab === 'chat'
                     ? 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg transform scale-105'
                     : 'text-gray-600 hover:text-gray-800 hover:bg-white/50'
                 }`}
@@ -777,9 +872,9 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
                 </div>
               </button>
               <button
-                onClick={() => setActiveTab('contacts')}
+                onClick={() => handleTabChange('contacts')}
                 className={`flex-1 py-3 px-6 rounded-xl font-semibold text-base transition-all duration-300 ${
-                  activeTab === 'contacts'
+                  uiState.activeTab === 'contacts'
                     ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg transform scale-105'
                     : 'text-gray-600 hover:text-gray-800 hover:bg-white/50'
                 }`}
@@ -790,18 +885,14 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
                 </div>
               </button>
             </div>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-              <input
-                type="text"
-                placeholder="Search customers..."
-                value={customerSearchTerm}
-                onChange={(e) => setCustomerSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-xl focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-1 transition-all duration-200 bg-white shadow-sm text-sm"
-              />
-            </div>
-            <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
-              <span>{filteredCustomers.length} customers</span>
+            <CustomerList
+              customers={filteredCustomers}
+              searchTerm={chatState.customerSearchTerm}
+              selectedCustomerId={chatState.selectedCustomer?.id}
+              onSearchChange={debouncedSetCustomerSearch}
+              onCustomerSelect={handleCustomerSelect}
+            />
+            <div className="mt-2 flex items-center justify-end text-xs text-gray-500">
               <span className="bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium">
                 {instances.filter(i => i.status === 'connected').length} Connected
               </span>
@@ -809,7 +900,7 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
           </div>
           
           <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 min-h-0">
-            {activeTab === 'chat' ? (
+            {uiState.activeTab === 'chat' ? (
               // Chat tab content - show recent chats or empty state
               <div className="p-4 text-center text-gray-500">
                 <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
@@ -845,74 +936,37 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
                 </div>
               </div>
             ) : (
-              // Contacts tab content - show customer list
-              <>
-                {filteredCustomers.length === 0 ? (
+              // Contacts tab content - customer list is now rendered above as a shared component
               <div className="p-4 text-center text-gray-500">
-                <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                  <User size={20} className="text-gray-400" />
+                <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
+                  <User size={32} className="text-white" />
                 </div>
-                <p className="text-sm font-medium">No customers found</p>
-                <p className="text-xs mt-1">Try adjusting your search terms</p>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Customer Directory</h3>
+                <p className="text-sm text-gray-600 mb-4">Search and select customers to start conversations</p>
+                <div className="flex items-center justify-center gap-4 text-sm text-gray-500">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                    <span>Available for chat</span>
+                  </div>
+                </div>
               </div>
-            ) : (
-              <div className="divide-y divide-gray-100">
-                {filteredCustomers.map((customer) => (
-                  <button
-                    key={customer.id}
-                    onClick={() => selectCustomerForChat(customer)}
-                    className={`w-full p-4 pl-8 text-left hover:bg-gray-50 transition-all duration-200 group ${
-                      selectedCustomer?.id === customer.id 
-                        ? 'bg-gradient-to-r from-green-50 to-green-100 border-r-4 border-green-500 shadow-sm' 
-                        : ''
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-16 h-16 rounded-full flex items-center justify-center text-white font-bold text-base shadow-lg transition-all duration-200 ${
-                        selectedCustomer?.id === customer.id 
-                          ? 'bg-gradient-to-br from-green-500 to-green-600 scale-110' 
-                          : 'bg-gradient-to-br from-blue-500 to-blue-600 group-hover:scale-105'
-                      }`}>
-                        {customer.name?.charAt(0)?.toUpperCase() || 'C'}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="font-semibold text-gray-900 truncate group-hover:text-green-600 transition-colors text-base">
-                          {customer.name || 'Unknown Customer'}
-                        </h4>
-                        <p className="text-sm text-gray-500 truncate">
-                          {customer.phone || customer.email || 'No contact info'}
-                        </p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <div className="w-2.5 h-2.5 bg-green-500 rounded-full"></div>
-                          <span className="text-sm text-green-600 font-medium">Available</span>
-                        </div>
-                      </div>
-                      <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                        <ChevronRight size={16} className="text-gray-400" />
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-              </>
             )}
           </div>
         </div>
 
         <div className="flex-1 flex flex-col bg-gradient-to-br from-gray-50 to-white h-full min-h-0 rounded-r-2xl">
-          {selectedCustomer ? (
+          {chatState.selectedCustomer ? (
             <>
               {/* Chat Header */}
               <div className="bg-white p-5 border-b border-gray-200 shadow-sm flex-shrink-0 rounded-tr-2xl">
                 <div className="flex items-center gap-5">
                   <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-lg">
-                    {selectedCustomer.name?.charAt(0)?.toUpperCase() || 'C'}
+                    {chatState.selectedCustomer.name?.charAt(0)?.toUpperCase() || 'C'}
                   </div>
                   <div className="flex-1">
-                    <h4 className="font-bold text-gray-900 text-xl">{selectedCustomer.name || 'Unknown Customer'}</h4>
+                    <h4 className="font-bold text-gray-900 text-xl">{chatState.selectedCustomer.name || 'Unknown Customer'}</h4>
                     <p className="text-base text-gray-500 flex items-center gap-2">
-                      <span>{selectedCustomer.phone || selectedCustomer.email}</span>
+                      <span>{chatState.selectedCustomer.phone || chatState.selectedCustomer.email}</span>
                       <span>•</span>
                       <span className="text-green-600 font-medium">Online</span>
                     </p>
@@ -968,7 +1022,7 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
                     </div>
                     <h3 className="text-base font-bold text-gray-900 mb-2">Start a conversation</h3>
                     <p className="text-gray-600 mb-3 max-w-md mx-auto text-sm">
-                      Send your first message to {selectedCustomer.name}. Your messages will appear here.
+                      Send your first message to {chatState.selectedCustomer.name}. Your messages will appear here.
                     </p>
                     <div className="flex items-center justify-center gap-3 text-xs text-gray-500">
                       <div className="flex items-center gap-2">
@@ -1523,15 +1577,15 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
                   <div className="flex-1 relative">
                     <input
                       type="text"
-                      value={chatMessage}
+                      value={chatState.chatMessage}
                       onChange={(e) => handleTyping(e.target.value)}
                       onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSendChatMessage()}
-                      placeholder={`Type a message to ${selectedCustomer.name}...`}
+                      placeholder={`Type a message to ${chatState.selectedCustomer.name}...`}
                       className="w-full px-5 py-4 border border-gray-300 rounded-full focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-1 transition-all duration-200 bg-gray-50 focus:bg-white shadow-sm text-base"
                     />
                                           <div className="absolute right-4 top-1/2 transform -translate-y-1/2 flex items-center gap-2">
                         <button 
-                          onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                          onClick={toggleEmojiPicker}
                           className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
                         >
                           <Smile size={18} />
@@ -1540,10 +1594,10 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
                   </div>
                                       <button
                       onClick={handleSendChatMessage}
-                      disabled={(!chatMessage.trim() && !selectedImage) || isSendingChatMessage}
+                      disabled={(!chatState.chatMessage.trim() && !mediaState.selectedImage) || chatState.isSendingMessage}
                       className="p-4 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-full hover:from-green-600 hover:to-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 hover:scale-110 shadow-lg"
                     >
-                      {isSendingChatMessage ? (
+                      {chatState.isSendingMessage ? (
                         <RefreshCw size={20} className="animate-spin" />
                       ) : (
                         <Send size={20} />
@@ -1552,7 +1606,7 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
                 </div>
                 <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
                   <span>Press Enter to send, Shift+Enter for new line</span>
-                  <span>{chatMessage.length}/1000 characters</span>
+                  <span>{chatState.chatMessage.length}/1000 characters</span>
                 </div>
               </div>
             </>
