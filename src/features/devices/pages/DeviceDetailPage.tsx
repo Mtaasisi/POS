@@ -1016,24 +1016,482 @@ const DeviceDetailPage: React.FC = () => {
     fetchCustomer();
   }, [safeDevice.customerId]);
   return (
-    <>
-      <div className="p-2 sm:p-4 max-w-6xl mx-auto w-full">
-        <div className="space-y-6">
-          {/* Device Header */}
-          <DeviceDetailHeader device={safeDevice} />
+    <div className="p-2 sm:p-4 max-w-6xl mx-auto w-full">
+      {/* Highlight for failed devices */}
+      {safeDevice.status === 'failed' && (
+        <div className="mb-4 sm:mb-6 p-3 sm:p-4 rounded-lg bg-gradient-to-r from-red-600/90 to-pink-500/90 text-white text-lg sm:text-xl font-bold flex flex-col gap-2 shadow-lg">
+          <span>⚠️ This device was marked as <span className="underline">FAILED TO REPAIR</span></span>
+          {(currentUser.role === 'admin' || currentUser.role === 'customer-care') && safeDevice.remarks.length > 0 && (
+            <div className="text-sm sm:text-base font-normal bg-white/20 rounded p-2 mt-2">
+              <span className="font-semibold">Failure Reason:</span> {safeDevice.remarks[safeDevice.remarks.length-1].content}
+            </div>
+          )}
+        </div>
+      )}
+      
+      {/* Debug Panel - Only show for admin users */}
+      {currentUser.role === 'admin' && (
+        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <h3 className="text-sm font-semibold text-yellow-800 mb-2">Debug Info (Admin Only)</h3>
+          <div className="text-xs text-yellow-700 space-y-1">
+            <div>Current User: {currentUser.name} ({currentUser.role})</div>
+            <div>Device Status: {safeDevice.status}</div>
+            <div>Device Assigned To: {safeDevice.assignedTo || 'None'}</div>
+            <div>Is Current User Assigned: {safeDevice.assignedTo === currentUser.id ? 'Yes' : 'No'}</div>
+            <div>Can Show Failed Button: {((safeDevice.status === 'in-repair' || safeDevice.status === 'assigned') && currentUser.role === 'technician' && safeDevice.assignedTo === currentUser.id) ? 'Yes' : 'No'}</div>
+          </div>
+        </div>
+      )}
+      
+      <div className="flex items-center mb-3 sm:mb-4 sm:mb-6">
+        <Link to="/dashboard" className="mr-3 sm:mr-4 text-gray-700 hover:text-gray-900">
+          <ArrowLeft size={18} className="sm:w-5 sm:h-5" />
+        </Link>
+        <h1 className="text-lg sm:text-xl sm:text-2xl font-bold text-gray-900">Device Details</h1>
+      </div>
+      
+      <DeviceDetailHeader device={safeDevice} />
+      
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-2 sm:gap-3 sm:gap-6">
+        {/* Left Column - Details & Checklist */}
+        <div className="lg:col-span-2 space-y-2 sm:space-y-3 sm:space-y-6">
+          <GlassCard>
+            <div className="flex justify-between items-start mb-4 sm:mb-6">
+              <div>
+                <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+                  <h1 className="text-xl sm:text-2xl sm:text-3xl font-bold text-gray-900">{getDeviceName(safeDevice)}</h1>
+                  <StatusBadge status={safeDevice.status} />
+                </div>
+                <div className="space-y-1 sm:space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 sm:p-2 rounded-lg bg-blue-500/10">
+                      <Smartphone size={16} className="sm:w-[18px] sm:h-[18px] text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-blue-600/70">Brand & Model</p>
+                      <p className="text-sm sm:text-base text-gray-900 font-medium truncate">{safeDevice.brand} {safeDevice.model}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 sm:p-2 rounded-lg bg-purple-500/10">
+                      <Barcode size={16} className="sm:w-[18px] sm:h-[18px] text-purple-600" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-purple-600/70">Serial Number</p>
+                      <p className="text-sm sm:text-base text-gray-900 font-mono truncate">{safeDevice.serialNumber || 'Not provided'}</p>
+                    </div>
+                  </div>
+                  {/* IMEI Number - if different from Serial Number */}
+                  {dbDevice?.imei && dbDevice.imei !== safeDevice.serialNumber && (
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 sm:p-2 rounded-lg bg-cyan-500/10">
+                        <Hash size={16} className="sm:w-[18px] sm:h-[18px] text-cyan-600" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-cyan-600/70">IMEI Number</p>
+                        <p className="text-sm sm:text-base text-gray-900 font-mono truncate">{dbDevice.imei}</p>
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 sm:p-2 rounded-lg bg-emerald-500/10">
+                      <Calendar size={16} className="sm:w-[18px] sm:h-[18px] text-emerald-600" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-emerald-600/70">Date Received</p>
+                      <p className="text-sm sm:text-base text-gray-900 font-mono">{formatDate(safeDevice.createdAt || new Date().toISOString())}</p>
+                    </div>
+                  </div>
+                  {/* Est. Completion - Match Date Received Design, with date and time */}
+                  <div className="flex items-center gap-2 mt-2 mb-1">
+                    <div className="p-1.5 sm:p-2 rounded-lg bg-amber-500/10">
+                      <Calendar size={16} className="sm:w-[18px] sm:h-[18px] text-amber-600" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-amber-600/70">Est. Completion</p>
+                      {safeDevice.expectedReturnDate ? (
+                        <>
+                          <p className="text-sm sm:text-base text-gray-900 font-mono font-semibold">{getMinimalCountdown(safeDevice.expectedReturnDate)}</p>
+                          <p className="text-xs text-gray-500">{formatDate(safeDevice.expectedReturnDate, true)}</p>
+                        </>
+                      ) : (
+                        <p className="italic text-gray-400 text-sm">N/A</p>
+                      )}
+                    </div>
+                  </div>
+                  {/* Device Issue Section - Compact Version (moved below Est. Completion) */}
+                  <div className="mt-2 mb-1">
+                    <div className="flex items-start gap-2 p-2 rounded-lg bg-rose-50 border border-rose-100 shadow-sm">
+                      <AlertTriangle size={16} className="sm:w-[18px] sm:h-[18px] text-rose-500 mt-0.5 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <span className="text-xs font-semibold text-rose-700 mr-1">Device Issue:</span>
+                        <span className="text-xs text-gray-900 font-medium break-words leading-relaxed">
+                          {safeDevice.issueDescription || <span className="italic text-gray-400">No issue description provided.</span>}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </GlassCard>
+
+          {/* Status Update Card - Moved from right column */}
+          <GlassCard>
+            {safeDevice.status === 'failed' ? (
+              <div className="text-center text-base sm:text-lg text-red-700 font-semibold p-4 sm:p-6">No further actions are allowed for devices marked as failed to repair.</div>
+            ) : (
+              (currentUser.role === 'admin') && safeDevice.status === 'assigned' ? (
+                <AssignTechnicianForm 
+                  deviceId={safeDevice.id} 
+                  currentTechId={safeDevice.assignedTo}
+                  currentUser={currentUser}
+                />
+              ) : (
+                <StatusUpdateForm
+                  device={safeDevice}
+                  currentUser={currentUser}
+                  onUpdateStatus={handleStatusUpdate}
+                  onAddRemark={handleAddRemark}
+                  onAddRating={safeDevice.assignedTo ? 
+                    (score, comment) => addRating(safeDevice.id, safeDevice.assignedTo!, score, comment)
+                    : undefined
+                  }
+                />
+              )
+            )}
+          </GlassCard>
           
-          {/* Customer Information Section */}
-          {(customer || dbCustomer) && (
+          {/* Device Intake Details Section */}
+          <GlassCard className="bg-gradient-to-br from-indigo-500/10 to-indigo-400/5">
+            <h3 className="text-lg sm:text-xl sm:text-2xl font-bold text-indigo-900 mb-3 sm:mb-4">Device Intake Details</h3>
+            {dbDeviceLoading ? (
+              <div className="flex items-center justify-center py-6 sm:py-8">
+                <Loader2 className="animate-spin h-5 w-5 sm:h-6 sm:w-6 text-indigo-600" />
+                <span className="ml-2 text-indigo-700 text-sm sm:text-base">Loading device details...</span>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                {/* Unlock Code */}
+                {dbDevice?.unlock_code && (
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 sm:p-2 rounded-lg bg-indigo-500/10">
+                      <Key size={16} className="sm:w-[18px] sm:h-[18px] text-indigo-600" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-indigo-600/70">Unlock Code</p>
+                      <p className="text-sm sm:text-base text-gray-900 font-mono truncate">{dbDevice.unlock_code}</p>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Estimated Repair Cost */}
+                {dbDevice?.repair_cost && (
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 sm:p-2 rounded-lg bg-green-500/10">
+                      <DollarSign size={16} className="sm:w-[18px] sm:h-[18px] text-green-600" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-green-600/70">Est. Repair Cost</p>
+                      <p className="text-sm sm:text-base text-gray-900 font-semibold">{formatCurrency(parseFloat(dbDevice.repair_cost))}</p>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Deposit Amount */}
+                {dbDevice?.deposit_amount && (
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 sm:p-2 rounded-lg bg-amber-500/10">
+                      <CreditCard size={16} className="sm:w-[18px] sm:h-[18px] text-amber-600" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-amber-600/70">Deposit Amount</p>
+                      <p className="text-sm sm:text-base text-gray-900 font-semibold">{formatCurrency(parseFloat(dbDevice.deposit_amount))}</p>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Assigned Technician */}
+                {(dbDevice?.assigned_to || safeDevice.assignedTo) && (
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 sm:p-2 rounded-lg bg-blue-500/10">
+                      <User size={16} className="sm:w-[18px] sm:h-[18px] text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-blue-600/70">Assigned Technician</p>
+                      <p className="text-sm sm:text-base text-gray-900 font-semibold">{getUserName(dbDevice?.assigned_to || safeDevice.assignedTo)}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </GlassCard>
+          
+          {/* Timeline & Activity */}
+          <GlassCard>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-gray-900">Activity Timeline</h3>
+              
+              {(currentUser.role === 'admin' || currentUser.role === 'customer-care') && (
+                <GlassButton
+                  onClick={handlePrintReceipt}
+                  variant="secondary"
+                  icon={<Printer size={16} />}
+                  size="sm"
+                >
+                  Print Receipt
+                </GlassButton>
+              )}
+            </div>
+            
+            <div className="space-y-4">
+              {timelineLoading ? (
+                <div className="text-blue-700 flex items-center gap-2"><Loader2 className="animate-spin" size={18}/> Loading timeline...</div>
+              ) : (
+                getTimelineEvents().length === 0 ? (
+                  <p className="text-gray-500 italic">No activity recorded yet</p>
+                ) : (
+                  getTimelineEvents().map((event, idx) => (
+                    <div key={idx} className="relative pb-4"> 
+                      {idx < getTimelineEvents().length - 1 && (
+                        <div className="absolute left-3 top-3 bottom-0 w-0.5 bg-gray-300"></div>
+                      )}
+                      <div className="absolute left-0 top-1 h-6 w-6 rounded-full bg-white flex items-center justify-center border border-gray-300 shadow">
+                        {event.icon}
+                      </div>
+                      <div className="ml-10 rounded-lg p-3 backdrop-blur-sm border bg-blue-50 border-blue-200 shadow-blue-100">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-bold uppercase tracking-wide text-gray-700">{event.typeLabel}</span>
+                          <span className="text-xs text-gray-400">{formatDate(event.timestamp)}</span>
+                        </div>
+                        {event.type === 'status' ? (
+                          <div className="flex items-center justify-between gap-2 p-2">
+                            <div className="flex items-center gap-2">
+                              <StatusBadge status={event.fromStatus} className="opacity-50 scale-90" />
+                              <ArrowRight className="text-blue-400" size={18} />
+                              <StatusBadge status={event.toStatus} className="scale-110 shadow" />
+                            </div>
+                            {event.durationLabel && (
+                              <span className="flex items-center gap-1 text-xs text-gray-500 font-mono">
+                                <Clock className="text-blue-400" size={14} />
+                                {event.durationLabel}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="font-medium text-gray-800">{event.description}</p>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )
+              )}
+            </div>
+          </GlassCard>
+          
+          {/* Remarks Chat Section */}
+          <div className="h-96">
+            <WhatsAppChatUI
+              remarks={safeDevice.remarks || []}
+              activityEvents={getActivityEvents()}
+              onAddRemark={handleAddRemark}
+              currentUserId={currentUser?.id}
+              currentUserName={currentUser?.name || currentUser?.email}
+              isLoading={false}
+            />
+          </div>
+        </div>
+        
+        {/* Right Column - Actions Panel */}
+        <div className="space-y-2 sm:space-y-3 sm:space-y-6">
+          {/* Device Actions Panel */}
+          <GlassCard>
+            <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-3 sm:mb-4 flex items-center gap-2">
+              <Settings size={16} className="sm:w-[18px] sm:h-[18px]" />
+              Device Actions
+            </h3>
+            
+            <div className="grid grid-cols-2 gap-2 sm:gap-3">
+              {/* Print QR Code */}
+              <GlassButton
+                variant="secondary"
+                size="sm"
+                icon={<QrCode size={14} className="sm:w-4 sm:h-4" />}
+                onClick={() => {
+                  const printWindow = window.open('', '_blank');
+                  if (printWindow) {
+                    printWindow.document.write(`
+                      <html>
+                        <head>
+                          <title>Device QR Code</title>
+                          <style>
+                            body {
+                              display: flex;
+                              justify-content: center;
+                              align-items: center;
+                              min-height: 100vh;
+                              margin: 0;
+                              font-family: monospace;
+                            }
+                            .container {
+                              text-align: center;
+                              padding: 20px;
+                              border: 2px solid #000;
+                              border-radius: 8px;
+                            }
+                            .qr-code {
+                              margin-bottom: 15px;
+                              padding: 10px;
+                              background: white;
+                              border-radius: 4px;
+                            }
+                            .device-info {
+                              font-size: 12px;
+                              margin-top: 10px;
+                            }
+                          </style>
+                        </head>
+                        <body>
+                          <div class="container">
+                            <div class="qr-code">
+                              <div style="display: flex; justify-content: center;">
+                                <div style="border: 1px solid #ccc; padding: 10px;">
+                                  <div style="width: 100px; height: 100px; background: #f0f0f0; display: flex; align-items: center; justify-content: center; font-size: 12px;">QR Code</div>
+                                </div>
+                              </div>
+                            </div>
+                            <div class="device-info">
+                              <strong>${safeDevice.brand} ${safeDevice.model}</strong><br>
+                              ID: ${safeDevice.id}<br>
+                              Serial: ${safeDevice.serialNumber || 'N/A'}
+                            </div>
+                          </div>
+                        </body>
+                      </html>
+                    `);
+                    printWindow.document.close();
+                    printWindow.focus();
+                    printWindow.print();
+                  }
+                }}
+                className="w-full text-xs sm:text-sm"
+              >
+                Print QR Code
+              </GlassButton>
+
+              {/* Send SMS */}
+              {currentUser.role === 'customer-care' && (
+                <GlassButton
+                  variant="secondary"
+                  size="sm"
+                  icon={<MessageSquare size={14} className="sm:w-4 sm:h-4" />}
+                  onClick={() => setShowSmsModal(true)}
+                  className="w-full text-xs sm:text-sm"
+                >
+                  Send SMS
+                </GlassButton>
+              )}
+
+              {/* Diagnostic Checklist */}
+              {currentUser.role === 'technician' && (
+                <GlassButton
+                  variant="secondary"
+                  size="sm"
+                  icon={<Stethoscope size={14} className="sm:w-4 sm:h-4" />}
+                  onClick={() => setShowDiagnosticChecklist(true)}
+                  className="w-full text-xs sm:text-sm"
+                >
+                  Diagnostic
+                </GlassButton>
+              )}
+
+              {/* Repair Checklist */}
+              {currentUser.role === 'technician' && (
+                <GlassButton
+                  variant="secondary"
+                  size="sm"
+                  icon={<Wrench size={14} className="sm:w-4 sm:h-4" />}
+                  onClick={() => setShowRepairChecklist(true)}
+                  className="w-full text-xs sm:text-sm"
+                >
+                  Repair
+                </GlassButton>
+              )}
+            </div>
+          </GlassCard>
+          
+          {/* Assigned Technician Information */}
+          {safeDevice.assignedTo && (
             <GlassCard className="bg-gradient-to-br from-blue-500/10 to-blue-400/5">
-              <h3 className="text-lg sm:text-xl font-bold text-blue-900 mb-4">Customer Information</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs sm:text-sm text-gray-500">Name</p>
-                  <p className="text-gray-800 text-sm sm:text-base">{dbCustomer?.name || customer?.name || 'N/A'}</p>
+              <h3 className="text-base sm:text-lg font-bold text-blue-900 mb-3 sm:mb-4">Assigned Technician</h3>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-base sm:text-lg">
+                  {getUserName(safeDevice.assignedTo).slice(0, 2).toUpperCase()}
                 </div>
                 <div>
-                  <p className="text-xs sm:text-sm text-gray-500">Phone</p>
-                  <p className="text-gray-800 text-sm sm:text-base">{dbCustomer?.phone || customer?.phone || 'N/A'}</p>
+                  <p className="font-semibold text-blue-900 text-sm sm:text-base">{getUserName(safeDevice.assignedTo)}</p>
+                  <p className="text-xs sm:text-sm text-blue-700">Technician</p>
+                </div>
+              </div>
+            </GlassCard>
+          )}
+          
+        {(currentUser.role === 'admin' || currentUser.role === 'customer-care') && (
+            <GlassCard>
+              <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-3 sm:mb-4">Customer Information</h3>
+              <div className="space-y-2 sm:space-y-3">
+                <div className="flex items-center gap-2">
+                  <User size={16} className="sm:w-[18px] sm:h-[18px] text-gray-500" />
+                  <span 
+                    className="font-medium text-gray-900 cursor-pointer hover:text-blue-600 transition-colors text-sm sm:text-base truncate"
+                    onClick={() => navigate(`/customers/${safeDevice.customerId}`)}
+                  >
+                    {dbCustomer?.name || customer?.name || safeDevice.customerName || 'N/A'}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-xs sm:text-sm text-gray-500">Phone Number</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <p className="text-gray-800 text-sm sm:text-base">{dbCustomer?.phone || customer?.phone || safeDevice.phoneNumber || 'N/A'}</p>
+                  </div>
+                  <div className="flex gap-2 mt-2 sm:mt-3">
+                    <GlassButton
+                      variant="secondary"
+                      size="sm"
+                      icon={<Phone size={14} className="sm:w-4 sm:h-4" />}
+                      onClick={() => {
+                        const phoneNumber = (dbCustomer?.phone || customer?.phone || safeDevice.phoneNumber || '').replace(/\D/g, '');
+                        if (phoneNumber) window.open(`tel:${phoneNumber}`);
+                      }}
+                      className="text-xs sm:text-sm"
+                    >
+                      Call
+                    </GlassButton>
+                    {/* Only Customer Care can send SMS */}
+                    {currentUser.role === 'customer-care' && (
+                      <GlassButton
+                        variant="secondary"
+                        size="sm"
+                        icon={<MessageSquare size={14} className="sm:w-4 sm:h-4" />}
+                        onClick={() => setShowSmsModal(true)}
+                        className="text-xs sm:text-sm"
+                      >
+                        Text
+                      </GlassButton>
+                    )}
+                    <GlassButton
+                      variant="secondary"
+                      size="sm"
+                      icon={<Send size={14} className="sm:w-4 sm:h-4" />}
+                      onClick={() => {
+                        const phoneNumber = (dbCustomer?.phone || customer?.phone || safeDevice.phoneNumber || '').replace(/\D/g, '');
+                        if (phoneNumber) window.open(`https://wa.me/${phoneNumber}`);
+                      }}
+                      className="text-xs sm:text-sm"
+                    >
+                      WhatsApp
+                    </GlassButton>
+                  </div>
                 </div>
                 <div>
                   <p className="text-xs sm:text-sm text-gray-500">City</p>
@@ -1046,7 +1504,7 @@ const DeviceDetailPage: React.FC = () => {
               </div>
             </GlassCard>
           )}
-            
+          
           {/* Payments Section - Mobile Optimized */}
           {(currentUser.role === 'admin' || currentUser.role === 'customer-care') && (
             <GlassCard className="bg-gradient-to-br from-green-500/10 to-green-400/5">
