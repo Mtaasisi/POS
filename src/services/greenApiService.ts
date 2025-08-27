@@ -1337,6 +1337,544 @@ class GreenApiService {
       throw new Error(`Failed to fetch queue status: ${error.message}`);
     }
   }
+
+  // ====================
+  // New Green API Endpoints - Based on Official Documentation
+  // ====================
+
+  /**
+   * Get WhatsApp account settings and information
+   * GET /waInstance{instanceId}/getWaSettings/{apiToken}
+   * Returns: avatar, phone, stateInstance, deviceId
+   */
+  async getWaSettings(instanceId: string, apiToken: string, host?: string): Promise<any> {
+    try {
+      console.log(`📱 Getting WhatsApp settings for instance: ${instanceId}`);
+      
+      const apiHost = host || this.baseUrl;
+      const url = `${apiHost}/waInstance${instanceId}/getWaSettings/${apiToken}`;
+      
+      const response = await retryWithBackoff(async () => {
+        const res = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        
+        return res.json();
+      }, 3, 1000);
+
+      console.log('✅ Successfully retrieved WhatsApp settings');
+      
+      // Store in database
+      const supabase = ensureSupabase();
+      await supabase
+        .from('whatsapp_instances_comprehensive')
+        .update({
+          phone_number: response.phone,
+          wid: response.deviceId,
+          profile_picture_url: response.avatar,
+          state_instance: response.stateInstance,
+          last_activity_at: new Date().toISOString()
+        })
+        .eq('instance_id', instanceId);
+
+      return response;
+    } catch (error: any) {
+      console.error('❌ Error getting WhatsApp settings:', error);
+      throw new Error(`Failed to get WhatsApp settings: ${error.message}`);
+    }
+  }
+
+  /**
+   * Update API Token for instance
+   * POST /waInstance{instanceId}/updateApiToken/{apiToken}
+   */
+  async updateApiToken(instanceId: string, currentApiToken: string, newApiToken: string, host?: string): Promise<any> {
+    try {
+      console.log(`🔐 Updating API token for instance: ${instanceId}`);
+      
+      const apiHost = host || this.baseUrl;
+      const url = `${apiHost}/waInstance${instanceId}/updateApiToken/${currentApiToken}`;
+      
+      const response = await retryWithBackoff(async () => {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            apiToken: newApiToken
+          }),
+        });
+        
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        
+        return res.json();
+      }, 3, 1000);
+
+      console.log('✅ Successfully updated API token');
+      
+      // Update in database
+      const supabase = ensureSupabase();
+      await supabase
+        .from('whatsapp_instances_comprehensive')
+        .update({
+          api_token: newApiToken,
+          updated_at: new Date().toISOString()
+        })
+        .eq('instance_id', instanceId);
+
+      return response;
+    } catch (error: any) {
+      console.error('❌ Error updating API token:', error);
+      throw new Error(`Failed to update API token: ${error.message}`);
+    }
+  }
+
+  /**
+   * Set profile picture for WhatsApp account
+   * POST /waInstance{instanceId}/setProfilePicture/{apiToken}
+   */
+  async setProfilePicture(instanceId: string, apiToken: string, file: File, host?: string): Promise<any> {
+    try {
+      console.log(`🖼️ Setting profile picture for instance: ${instanceId}`);
+      
+      const apiHost = host || this.baseUrl;
+      const url = `${apiHost}/waInstance${instanceId}/setProfilePicture/${apiToken}`;
+      
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const response = await retryWithBackoff(async () => {
+        const res = await fetch(url, {
+          method: 'POST',
+          body: formData,
+        });
+        
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        
+        return res.json();
+      }, 3, 1000);
+
+      console.log('✅ Successfully set profile picture');
+      
+      // Update in database
+      const supabase = ensureSupabase();
+      await supabase
+        .from('whatsapp_instances_comprehensive')
+        .update({
+          profile_picture_url: response.urlAvatar,
+          updated_at: new Date().toISOString()
+        })
+        .eq('instance_id', instanceId);
+
+      return response;
+    } catch (error: any) {
+      console.error('❌ Error setting profile picture:', error);
+      throw new Error(`Failed to set profile picture: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get authorization code for phone number linking
+   * POST /waInstance{instanceId}/getAuthorizationCode/{apiToken}
+   */
+  async getAuthorizationCode(instanceId: string, apiToken: string, phoneNumber: string, host?: string): Promise<any> {
+    try {
+      console.log(`📞 Getting authorization code for instance: ${instanceId}`);
+      
+      const apiHost = host || this.baseUrl;
+      const url = `${apiHost}/waInstance${instanceId}/getAuthorizationCode/${apiToken}`;
+      
+      const response = await retryWithBackoff(async () => {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            phoneNumber: phoneNumber
+          }),
+        });
+        
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        
+        return res.json();
+      }, 3, 1000);
+
+      console.log('✅ Successfully retrieved authorization code');
+      
+      // Store in database
+      const supabase = ensureSupabase();
+      await supabase
+        .from('whatsapp_authorization_codes')
+        .insert({
+          instance_id: instanceId,
+          phone_number: phoneNumber,
+          authorization_code: response.code,
+          expires_at: new Date(Date.now() + (response.expiresIn || 3600) * 1000).toISOString(),
+          created_at: new Date().toISOString()
+        });
+
+      return response;
+    } catch (error: any) {
+      console.error('❌ Error getting authorization code:', error);
+      throw new Error(`Failed to get authorization code: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get QR code via WebSocket for authorization
+   * WebSocket connection to get QR code updates
+   */
+  async scanQRCodeWebSocket(instanceId: string, apiToken: string, host?: string): Promise<WebSocket | null> {
+    try {
+      console.log(`🔗 Starting WebSocket QR scan for instance: ${instanceId}`);
+      
+      const apiHost = host?.replace('https://', 'wss://').replace('http://', 'ws://') || this.baseUrl.replace('https://', 'wss://');
+      const url = `${apiHost}/waInstance${instanceId}/scanqrcode/${apiToken}`;
+      
+      const ws = new WebSocket(url);
+      
+      ws.onopen = () => {
+        console.log('✅ WebSocket QR connection opened');
+      };
+      
+      ws.onmessage = async (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('📱 QR WebSocket message:', data);
+          
+          // Store QR code updates in database
+          const supabase = ensureSupabase();
+          await supabase
+            .from('whatsapp_qr_codes')
+            .upsert({
+              instance_id: instanceId,
+              qr_code: data.qr || data.message,
+              status: data.type || 'qr_received',
+              expires_at: new Date(Date.now() + 60000).toISOString(), // 1 minute expiry
+              created_at: new Date().toISOString()
+            }, {
+              onConflict: 'instance_id'
+            });
+        } catch (error) {
+          console.error('❌ Error processing QR WebSocket message:', error);
+        }
+      };
+      
+      ws.onerror = (error) => {
+        console.error('❌ WebSocket QR error:', error);
+      };
+      
+      ws.onclose = () => {
+        console.log('🔌 WebSocket QR connection closed');
+      };
+      
+      return ws;
+    } catch (error: any) {
+      console.error('❌ Error starting WebSocket QR scan:', error);
+      throw new Error(`Failed to start WebSocket QR scan: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get QR code via HTTP
+   * GET /waInstance{instanceId}/qr/{apiToken}
+   */
+  async getQRCodeHTTP(instanceId: string, apiToken: string, host?: string): Promise<string | null> {
+    try {
+      console.log(`📱 Getting QR code for instance: ${instanceId}`);
+      
+      const apiHost = host || this.baseUrl;
+      const url = `${apiHost}/waInstance${instanceId}/qr/${apiToken}`;
+      
+      const response = await retryWithBackoff(async () => {
+        const res = await fetch(url, {
+          method: 'GET',
+        });
+        
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        
+        // Check if response is an image
+        const contentType = res.headers.get('content-type');
+        if (contentType && contentType.startsWith('image/')) {
+          const blob = await res.blob();
+          return URL.createObjectURL(blob);
+        } else {
+          const data = await res.json();
+          return data.qr || data.message;
+        }
+      }, 3, 1000);
+
+      console.log('✅ Successfully retrieved QR code');
+      
+      // Store in database
+      const supabase = ensureSupabase();
+      await supabase
+        .from('whatsapp_qr_codes')
+        .upsert({
+          instance_id: instanceId,
+          qr_code: response,
+          status: 'qr_generated',
+          expires_at: new Date(Date.now() + 60000).toISOString(), // 1 minute expiry
+          created_at: new Date().toISOString()
+        }, {
+          onConflict: 'instance_id'
+        });
+
+      return response;
+    } catch (error: any) {
+      console.error('❌ Error getting QR code:', error);
+      throw new Error(`Failed to get QR code: ${error.message}`);
+    }
+  }
+
+  /**
+   * Logout from WhatsApp instance
+   * POST /waInstance{instanceId}/logout/{apiToken}
+   */
+  async logout(instanceId: string, apiToken: string, host?: string): Promise<any> {
+    try {
+      console.log(`🚪 Logging out instance: ${instanceId}`);
+      
+      const apiHost = host || this.baseUrl;
+      const url = `${apiHost}/waInstance${instanceId}/logout/${apiToken}`;
+      
+      const response = await retryWithBackoff(async () => {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        
+        return res.json();
+      }, 3, 1000);
+
+      console.log('✅ Successfully logged out');
+      
+      // Update in database
+      const supabase = ensureSupabase();
+      await supabase
+        .from('whatsapp_instances_comprehensive')
+        .update({
+          state_instance: 'notAuthorized',
+          status: 'disconnected',
+          last_activity_at: new Date().toISOString()
+        })
+        .eq('instance_id', instanceId);
+
+      return response;
+    } catch (error: any) {
+      console.error('❌ Error logging out:', error);
+      throw new Error(`Failed to logout: ${error.message}`);
+    }
+  }
+
+  /**
+   * Reboot WhatsApp instance
+   * POST /waInstance{instanceId}/reboot/{apiToken}
+   */
+  async reboot(instanceId: string, apiToken: string, host?: string): Promise<any> {
+    try {
+      console.log(`🔄 Rebooting instance: ${instanceId}`);
+      
+      const apiHost = host || this.baseUrl;
+      const url = `${apiHost}/waInstance${instanceId}/reboot/${apiToken}`;
+      
+      const response = await retryWithBackoff(async () => {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        
+        return res.json();
+      }, 3, 1000);
+
+      console.log('✅ Successfully initiated reboot');
+      
+      // Update in database
+      const supabase = ensureSupabase();
+      await supabase
+        .from('whatsapp_instances_comprehensive')
+        .update({
+          state_instance: 'starting',
+          status: 'connecting',
+          last_activity_at: new Date().toISOString()
+        })
+        .eq('instance_id', instanceId);
+
+      return response;
+    } catch (error: any) {
+      console.error('❌ Error rebooting:', error);
+      throw new Error(`Failed to reboot: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get instance state
+   * GET /waInstance{instanceId}/getStateInstance/{apiToken}
+   */
+  async getStateInstance(instanceId: string, apiToken: string, host?: string): Promise<any> {
+    try {
+      console.log(`📊 Getting state for instance: ${instanceId}`);
+      
+      const apiHost = host || this.baseUrl;
+      const url = `${apiHost}/waInstance${instanceId}/getStateInstance/${apiToken}`;
+      
+      const response = await retryWithBackoff(async () => {
+        const res = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        
+        return res.json();
+      }, 3, 1000);
+
+      console.log('✅ Successfully retrieved instance state');
+      
+      // Update in database
+      const supabase = ensureSupabase();
+      await supabase
+        .from('whatsapp_instances_comprehensive')
+        .update({
+          state_instance: response.stateInstance,
+          last_activity_at: new Date().toISOString()
+        })
+        .eq('instance_id', instanceId);
+
+      return response;
+    } catch (error: any) {
+      console.error('❌ Error getting instance state:', error);
+      throw new Error(`Failed to get instance state: ${error.message}`);
+    }
+  }
+
+  /**
+   * Set instance settings
+   * POST /waInstance{instanceId}/setSettings/{apiToken}
+   */
+  async setSettings(instanceId: string, apiToken: string, settings: any, host?: string): Promise<any> {
+    try {
+      console.log(`⚙️ Setting instance settings for: ${instanceId}`);
+      
+      const apiHost = host || this.baseUrl;
+      const url = `${apiHost}/waInstance${instanceId}/setSettings/${apiToken}`;
+      
+      const response = await retryWithBackoff(async () => {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(settings),
+        });
+        
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        
+        return res.json();
+      }, 3, 1000);
+
+      console.log('✅ Successfully set instance settings');
+      
+      // Update in database
+      const supabase = ensureSupabase();
+      await supabase
+        .from('whatsapp_connection_settings')
+        .upsert({
+          instance_id: instanceId,
+          ...settings,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'instance_id'
+        });
+
+      return response;
+    } catch (error: any) {
+      console.error('❌ Error setting instance settings:', error);
+      throw new Error(`Failed to set instance settings: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get instance settings
+   * GET /waInstance{instanceId}/getSettings/{apiToken}
+   */
+  async getSettings(instanceId: string, apiToken: string, host?: string): Promise<any> {
+    try {
+      console.log(`📋 Getting settings for instance: ${instanceId}`);
+      
+      const apiHost = host || this.baseUrl;
+      const url = `${apiHost}/waInstance${instanceId}/getSettings/${apiToken}`;
+      
+      const response = await retryWithBackoff(async () => {
+        const res = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        
+        return res.json();
+      }, 3, 1000);
+
+      console.log('✅ Successfully retrieved instance settings');
+      
+      // Store in database
+      const supabase = ensureSupabase();
+      await supabase
+        .from('whatsapp_connection_settings')
+        .upsert({
+          instance_id: instanceId,
+          ...response,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'instance_id'
+        });
+
+      return response;
+    } catch (error: any) {
+      console.error('❌ Error getting instance settings:', error);
+      throw new Error(`Failed to get instance settings: ${error.message}`);
+    }
+  }
 }
 
 export const greenApiService = new GreenApiService();
