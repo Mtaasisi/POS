@@ -1100,6 +1100,309 @@ const DeviceDetailPage: React.FC = () => {
               )}
             </GlassCard>
           )}
+
+          {/* Status Update Form - Only for assigned technicians or admin/customer-care */}
+          {((!isTechnician || isAssignedTechnician) || currentUser.role === 'admin' || currentUser.role === 'customer-care') && (
+            <StatusUpdateForm
+              device={safeDevice}
+              currentUser={currentUser}
+              onUpdateStatus={handleStatusUpdate}
+              onAddRemark={handleAddRemark}
+              onAddRating={addRating}
+              outstanding={outstanding}
+            />
+          )}
+
+          {/* Device Barcode Card */}
+          <DeviceBarcodeCard device={safeDevice} />
+
+          {/* Warranty Information */}
+          {hasWarrantyData() && (
+            <GlassCard className="bg-gradient-to-br from-purple-500/10 to-purple-400/5">
+              <h3 className="text-lg sm:text-xl font-bold text-purple-900 mb-4 flex items-center gap-2">
+                <Award className="w-5 h-5" />
+                Warranty Information
+              </h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs sm:text-sm text-gray-500">Status</p>
+                  <p className="text-gray-800 text-sm sm:text-base font-medium">{warrantyInfo.status}</p>
+                </div>
+                {warrantyInfo.startDate && (
+                  <div>
+                    <p className="text-xs sm:text-sm text-gray-500">Start Date</p>
+                    <p className="text-gray-800 text-sm sm:text-base">{formatDate(warrantyInfo.startDate)}</p>
+                  </div>
+                )}
+                {warrantyInfo.endDate && (
+                  <div>
+                    <p className="text-xs sm:text-sm text-gray-500">End Date</p>
+                    <p className="text-gray-800 text-sm sm:text-base">{formatDate(warrantyInfo.endDate)}</p>
+                  </div>
+                )}
+                {warrantyInfo.durationMonths > 0 && (
+                  <div>
+                    <p className="text-xs sm:text-sm text-gray-500">Duration</p>
+                    <p className="text-gray-800 text-sm sm:text-base">{warrantyInfo.durationMonths} months</p>
+                  </div>
+                )}
+              </div>
+            </GlassCard>
+          )}
+
+          {/* Repair History */}
+          {hasRepairHistory() && (
+            <GlassCard className="bg-gradient-to-br from-orange-500/10 to-orange-400/5">
+              <h3 className="text-lg sm:text-xl font-bold text-orange-900 mb-4 flex items-center gap-2">
+                <History className="w-5 h-5" />
+                Repair History
+              </h3>
+              <div className="space-y-3">
+                {deviceHistory.map((historyDevice) => (
+                  <div key={historyDevice.id} className="bg-white rounded-lg border border-orange-200 p-3 sm:p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <Link 
+                        to={`/devices/${historyDevice.id}`}
+                        className="text-orange-700 hover:text-orange-900 font-medium"
+                      >
+                        {formatDate(historyDevice.createdAt)}
+                      </Link>
+                      <StatusBadge status={historyDevice.status} />
+                    </div>
+                    <p className="text-sm text-gray-600">{historyDevice.issueDescription}</p>
+                    <div className="text-xs text-gray-500 mt-2">
+                      Customer: {historyDevice.customerName}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+          )}
+
+          {/* Attachments Section */}
+          {hasAttachments() && (
+            <GlassCard className="bg-gradient-to-br from-gray-500/10 to-gray-400/5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg sm:text-xl font-bold text-gray-900 flex items-center gap-2">
+                  <Upload className="w-5 h-5" />
+                  Attachments
+                </h3>
+                <div className="flex items-center gap-2">
+                  {selectedAttachmentsForDelete.length > 0 && (
+                    <GlassButton
+                      onClick={() => setShowBulkDeleteModal(true)}
+                      variant="secondary"
+                      size="sm"
+                      className="text-red-600 border-red-200"
+                    >
+                      <Trash2 size={14} />
+                      Delete Selected ({selectedAttachmentsForDelete.length})
+                    </GlassButton>
+                  )}
+                  <label className="cursor-pointer">
+                    <input
+                      type="file"
+                      multiple
+                      onChange={handleAttachmentUpload}
+                      className="hidden"
+                      accept="image/*,.pdf,.doc,.docx,.txt"
+                    />
+                    <GlassButton as="span" variant="primary" size="sm">
+                      <Upload size={14} />
+                      Upload
+                    </GlassButton>
+                  </label>
+                </div>
+              </div>
+
+              {attachmentsLoading && (
+                <div className="text-center py-4">
+                  <Loader2 className="animate-spin h-6 w-6 mx-auto mb-2 text-blue-600" />
+                  <p className="text-sm text-gray-600">
+                    {uploadProgress !== null ? `Uploading... ${uploadProgress}%` : 'Loading attachments...'}
+                  </p>
+                </div>
+              )}
+
+              {attachmentsError && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+                  <p className="text-red-700 text-sm">{attachmentsError}</p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {attachments.filter(att => att.type !== 'invoice').map((att) => (
+                  <div key={att.id} className="bg-white rounded-lg border border-gray-200 p-3 group">
+                    <div className="flex items-center gap-3 mb-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedAttachmentsForDelete.includes(att.id)}
+                        onChange={() => toggleAttachmentSelection(att.id)}
+                        className="rounded"
+                      />
+                      {getFilePreview(att)}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{att.file_name}</p>
+                        <p className="text-xs text-gray-500">{formatRelativeTime(att.uploaded_at)}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <a
+                        href={att.file_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:text-blue-800 text-sm"
+                      >
+                        View
+                      </a>
+                      <button
+                        onClick={() => handleRemoveAttachment(att)}
+                        className="text-red-600 hover:text-red-800 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+          )}
+
+          {/* Timeline/Activity Section */}
+          <GlassCard className="bg-gradient-to-br from-indigo-500/10 to-indigo-400/5">
+            <h3 className="text-lg sm:text-xl font-bold text-indigo-900 mb-6 flex items-center gap-2">
+              <Clock className="w-5 h-5" />
+              Device Timeline
+            </h3>
+
+            {timelineLoading ? (
+              <div className="text-center py-8">
+                <Loader2 className="animate-spin h-8 w-8 mx-auto mb-4 text-indigo-600" />
+                <p className="text-gray-600">Loading timeline...</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Status Timeline */}
+                <div className="relative">
+                  {getTimelineEvents().map((event, index) => (
+                    <div key={index} className="flex items-start gap-4 pb-4">
+                      <div className="flex-shrink-0 w-8 h-8 bg-white rounded-full border-2 border-indigo-200 flex items-center justify-center">
+                        {event.icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-medium text-gray-900">{event.description}</p>
+                          <span className="text-xs text-gray-500">{formatRelativeTime(event.timestamp)}</span>
+                        </div>
+                        <div className="flex items-center gap-4 mt-1">
+                          <span className="text-xs text-gray-500">by {getUserName(event.user)}</span>
+                          {event.durationLabel && (
+                            <span className="text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded">
+                              Duration: {event.durationLabel}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* All Activity (collapsible) */}
+                <details className="border-t pt-4">
+                  <summary className="cursor-pointer text-sm font-medium text-indigo-700 hover:text-indigo-900">
+                    View All Activity ({getActivityEvents().length} events)
+                  </summary>
+                  <div className="mt-4 space-y-3">
+                    {getActivityEvents()
+                      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+                      .map((event, index) => (
+                        <div key={index} className="flex items-start gap-3 p-3 bg-white rounded-lg border border-gray-100">
+                          <div className="flex-shrink-0 w-6 h-6 flex items-center justify-center">
+                            {event.icon}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-gray-800">{event.description}</p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-xs text-gray-500">{formatRelativeTime(event.timestamp)}</span>
+                              <span className="text-xs text-gray-500">•</span>
+                              <span className="text-xs text-gray-500">by {getUserName(event.user)}</span>
+                              <span className="text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-600">
+                                {event.typeLabel}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </details>
+              </div>
+            )}
+          </GlassCard>
+
+          {/* Action Buttons Section */}
+          <GlassCard className="bg-gradient-to-br from-slate-500/10 to-slate-400/5">
+            <h3 className="text-lg sm:text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
+              <Settings className="w-5 h-5" />
+              Actions
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              <GlassButton
+                onClick={handlePrintReceipt}
+                variant="secondary"
+                className="justify-center"
+              >
+                <Printer size={16} />
+                Print Receipt
+              </GlassButton>
+
+              {currentUser.role === 'customer-care' && (
+                <GlassButton
+                  onClick={() => setShowSmsModal(true)}
+                  variant="secondary"
+                  className="justify-center"
+                >
+                  <MessageSquare size={16} />
+                  Send SMS
+                </GlassButton>
+              )}
+
+              <GlassButton
+                onClick={() => setShowDiagnosticChecklist(true)}
+                variant="secondary"
+                className="justify-center"
+              >
+                <Stethoscope size={16} />
+                Diagnostics
+              </GlassButton>
+
+              <GlassButton
+                onClick={() => setShowRepairChecklist(true)}
+                variant="secondary"
+                className="justify-center"
+              >
+                <Wrench size={16} />
+                Repair Tasks
+              </GlassButton>
+
+              <GlassButton
+                onClick={() => navigate(`/devices/${safeDevice.id}/edit`)}
+                variant="secondary"
+                className="justify-center"
+              >
+                <Settings size={16} />
+                Edit Device
+              </GlassButton>
+
+              <GlassButton
+                onClick={handleBackClick}
+                variant="secondary"
+                className="justify-center"
+              >
+                <ArrowLeft size={16} />
+                Back
+              </GlassButton>
+            </div>
+          </GlassCard>
             
         </div>
       </div>
@@ -1160,6 +1463,144 @@ const DeviceDetailPage: React.FC = () => {
           </form>
         </Modal>
       )}
+
+      {/* Payment Recording Modal */}
+      <Modal isOpen={showPaymentModal} onClose={() => setShowPaymentModal(false)} title="Record Payment" maxWidth="400px">
+        <form onSubmit={(e) => { e.preventDefault(); handleRecordPayment(); }} className="space-y-4">
+          <div>
+            <label className="block text-gray-700 mb-1 font-medium">Amount</label>
+            <input
+              type="number"
+              step="0.01"
+              value={paymentAmount}
+              onChange={(e) => setPaymentAmount(e.target.value)}
+              className="w-full py-2 px-4 bg-white/30 backdrop-blur-md border border-white/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+              placeholder="Enter amount"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-gray-700 mb-1 font-medium">Payment Method</label>
+            <select
+              value={paymentMethod}
+              onChange={(e) => setPaymentMethod(e.target.value as 'cash' | 'card' | 'transfer')}
+              className="w-full py-2 px-4 bg-white/30 backdrop-blur-md border border-white/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+            >
+              <option value="cash">Cash</option>
+              <option value="card">Card</option>
+              <option value="transfer">Transfer</option>
+            </select>
+          </div>
+          {paymentError && (
+            <div className="text-red-600 text-sm">{paymentError}</div>
+          )}
+          <div className="flex gap-3 justify-end mt-4">
+            <GlassButton type="button" variant="secondary" onClick={() => setShowPaymentModal(false)}>
+              Cancel
+            </GlassButton>
+            <GlassButton type="submit" variant="primary" disabled={recordingPayment}>
+              {recordingPayment ? 'Recording...' : 'Record Payment'}
+            </GlassButton>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Payment Confirmation Modal */}
+      <Modal 
+        isOpen={showPaymentConfirmation} 
+        onClose={() => setShowPaymentConfirmation(false)} 
+        title="Payment Recorded" 
+        maxWidth="400px"
+      >
+        <div className="text-center py-4">
+          <CheckCircle className="w-16 h-16 text-green-600 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Payment Recorded Successfully!</h3>
+          {lastPayment && (
+            <div className="bg-green-50 rounded-lg p-4 mb-4">
+              <p className="text-sm text-gray-700">
+                <strong>Amount:</strong> {formatCurrency(lastPayment.amount)}
+              </p>
+              <p className="text-sm text-gray-700">
+                <strong>Method:</strong> {lastPayment.method}
+              </p>
+              <p className="text-sm text-gray-700">
+                <strong>Date:</strong> {formatDate(lastPayment.payment_date, true)}
+              </p>
+            </div>
+          )}
+          <GlassButton variant="primary" onClick={() => setShowPaymentConfirmation(false)}>
+            Close
+          </GlassButton>
+        </div>
+      </Modal>
+
+      {/* Delete Attachment Confirmation Modal */}
+      <Modal 
+        isOpen={showDeleteModal} 
+        onClose={() => setShowDeleteModal(false)} 
+        title="Delete Attachment" 
+        maxWidth="400px"
+      >
+        <div className="text-center py-4">
+          <AlertTriangle className="w-16 h-16 text-red-600 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Attachment?</h3>
+          <p className="text-gray-600 mb-4">
+            Are you sure you want to delete "{deleteTarget?.file_name}"? This action cannot be undone.
+          </p>
+          <div className="flex gap-3 justify-center">
+            <GlassButton variant="secondary" onClick={() => setShowDeleteModal(false)}>
+              Cancel
+            </GlassButton>
+            <GlassButton 
+              variant="primary" 
+              onClick={confirmDeleteAttachment}
+              disabled={attachmentsLoading}
+              className="bg-red-600 text-white hover:bg-red-700"
+            >
+              {attachmentsLoading ? 'Deleting...' : 'Delete'}
+            </GlassButton>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Bulk Delete Attachments Modal */}
+      <Modal 
+        isOpen={showBulkDeleteModal} 
+        onClose={() => setShowBulkDeleteModal(false)} 
+        title="Delete Multiple Attachments" 
+        maxWidth="400px"
+      >
+        <div className="text-center py-4">
+          <AlertTriangle className="w-16 h-16 text-red-600 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Selected Attachments?</h3>
+          <p className="text-gray-600 mb-4">
+            Are you sure you want to delete {selectedAttachmentsForDelete.length} attachment(s)? 
+            This action cannot be undone.
+          </p>
+          <div className="bg-gray-50 rounded-lg p-3 mb-4 max-h-32 overflow-y-auto">
+            {attachments
+              .filter(att => selectedAttachmentsForDelete.includes(att.id))
+              .map(att => (
+                <div key={att.id} className="text-sm text-gray-700 py-1">
+                  • {att.file_name}
+                </div>
+              ))}
+          </div>
+          <div className="flex gap-3 justify-center">
+            <GlassButton variant="secondary" onClick={() => setShowBulkDeleteModal(false)}>
+              Cancel
+            </GlassButton>
+            <GlassButton 
+              variant="primary" 
+              onClick={handleBulkDeleteAttachments}
+              disabled={attachmentsLoading}
+              className="bg-red-600 text-white hover:bg-red-700"
+            >
+              {attachmentsLoading ? 'Deleting...' : `Delete ${selectedAttachmentsForDelete.length} Files`}
+            </GlassButton>
+          </div>
+        </div>
+      </Modal>
 
       {/* Diagnostic Checklist Modal */}
       <DiagnosticChecklist
