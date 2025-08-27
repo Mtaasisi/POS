@@ -1,28 +1,26 @@
-import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
-import { useNavigationHistory } from '../../../hooks/useNavigationHistory';
 import { useDevices } from '../../../context/DevicesContext';
 import { useCustomers } from '../../../context/CustomersContext';
 import { usePayments } from '../../../context/PaymentsContext';
 import { QRCodeSVG } from 'qrcode.react';
-import GlassCard from '../../../features/shared/components/ui/GlassCard';
-import CountdownTimer from '../../../features/shared/components/ui/CountdownTimer';
-import StatusBadge from '../../../features/shared/components/ui/StatusBadge';
+import GlassCard from '../../shared/components/ui/GlassCard';
+import CountdownTimer from '../../shared/components/ui/CountdownTimer';
+import StatusBadge from '../../shared/components/ui/StatusBadge';
 import { ChevronDown, CheckCircle, XCircle, Smartphone, Barcode, Calendar, Loader2, Image as ImageIcon, FileText, File as FileIcon, CreditCard, DollarSign, AlertTriangle, Star, Award, Activity, Gift, MessageSquare, Clock, User, Upload, Trash2, ArrowLeft, Phone, Printer, Send, RefreshCw, ArrowRight, Key, Wrench, Hash, Settings, History, QrCode, Stethoscope } from 'lucide-react';
-
+import WhatsAppChatUI from '../../../components/WhatsAppChatUI';
 import DeviceDetailHeader from '../components/DeviceDetailHeader';
 import StatusUpdateForm from '../components/forms/StatusUpdateForm';
-
+import PrintableSlip from '../components/PrintableSlip';
 import AssignTechnicianForm from '../components/forms/AssignTechnicianForm';
 import DeviceBarcodeCard from '../components/DeviceBarcodeCard';
-import DiagnosticChecklist from '../../../features/diagnostics/components/DiagnosticChecklist';
+import DiagnosticChecklist from '../../diagnostics/components/DiagnosticChecklist';
 import RepairChecklist from '../components/RepairChecklist';
-import PrintableSlip from '../components/PrintableSlip';
-import GlassButton from '../../../features/shared/components/ui/GlassButton';
+import GlassButton from '../../shared/components/ui/GlassButton';
 import { DeviceStatus, Payment } from '../../../types';
 import { smsService, logManualSMS } from '../../../services/smsService';
-import Modal from '../../../features/shared/components/ui/Modal';
+import Modal from '../../shared/components/ui/Modal';
 import { uploadAttachment, listAttachments, deleteAttachment } from '../../../lib/attachmentsApi';
 import { logAuditAction } from '../../../lib/auditLogApi';
 import { toast } from 'react-hot-toast';
@@ -36,11 +34,9 @@ const DeviceDetailPage: React.FC = () => {
   const { currentUser } = useAuth();
 
   // All hooks must be called unconditionally before any early returns
-  const { getDeviceById, updateDeviceStatus, addRemark, addRating, devices, loading: devicesLoading } = useDevices();
+  const { getDeviceById, updateDeviceStatus, addRemark, addRating, devices } = useDevices();
   const { getCustomerById } = useCustomers();
-  const { payments } = usePayments();
   const navigate = useNavigate();
-  const { handleBackClick } = useNavigationHistory();
 
   const printRef = useRef<HTMLDivElement>(null);
   const [showSmsModal, setShowSmsModal] = useState(false);
@@ -58,9 +54,11 @@ const DeviceDetailPage: React.FC = () => {
   const [showRepairChecklist, setShowRepairChecklist] = useState(false);
   // Loading state (mock, since data is synchronous in context, but for demo)
   const [loading, setLoading] = useState(true);
-  
-  // Preserve scroll position to prevent auto-scrolling
-  const [scrollPosition, setScrollPosition] = useState(0);
+  useEffect(() => {
+    setLoading(true);
+    const timeout = setTimeout(() => setLoading(false), 500);
+    return () => clearTimeout(timeout);
+  }, [id, currentUser]);
   
   // Payment modal state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -73,9 +71,39 @@ const DeviceDetailPage: React.FC = () => {
   const [selectedAttachmentsForDelete, setSelectedAttachmentsForDelete] = useState<string[]>([]);
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
 
-  // Minimal live countdown state
+  // Minimal live countdown: only two most significant units, monospace, single fading dot
   const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(interval);
+  }, []);
+  // Animated dot state for fade in/out
   const [dotVisible, setDotVisible] = useState(true);
+  useEffect(() => {
+    const interval = setInterval(() => setDotVisible(v => !v), 500);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Add state for audit logs, points transactions, and SMS logs
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [pointsTransactions, setPointsTransactions] = useState<any[]>([]);
+  const [smsLogs, setSmsLogs] = useState<any[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(true);
+
+  // Add state for device checklist and additional device info
+  const [deviceChecklist, setDeviceChecklist] = useState<any>(null);
+  const [deviceChecklistLoading, setDeviceChecklistLoading] = useState(false);
+  const [dbDevice, setDbDevice] = useState<any>(null);
+  const [dbDeviceLoading, setDbDeviceLoading] = useState(false);
+
+  // Add at the top of DeviceDetailPage component:
+  const [allPayments, setAllPayments] = useState<any[]>([]);
+  const [allTransitions, setAllTransitions] = useState<any[]>([]);
+  const [allRemarks, setAllRemarks] = useState<any[]>([]);
+  const [allRatings, setAllRatings] = useState<any[]>([]);
+  const [allAttachments, setAllAttachments] = useState<any[]>([]);
+
+  const [userNames, setUserNames] = useState<{ [id: string]: string }>({});
 
   // Timeline and activity state
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
