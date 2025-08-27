@@ -9,7 +9,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import GlassCard from '../../../features/shared/components/ui/GlassCard';
 import CountdownTimer from '../../../features/shared/components/ui/CountdownTimer';
 import StatusBadge from '../../../features/shared/components/ui/StatusBadge';
-import { ChevronDown, CheckCircle, XCircle, Smartphone, Barcode, Calendar, Loader2, Image as ImageIcon, FileText, File as FileIcon, CreditCard, DollarSign, AlertTriangle, Star, Award, Activity, Gift, MessageSquare, Clock, User, Upload, Trash2, ArrowLeft, Phone, Printer, Send, RefreshCw, ArrowRight, Key, Wrench, Hash, Settings, History, QrCode, Stethoscope } from 'lucide-react';
+import { ChevronDown, CheckCircle, XCircle, Smartphone, Barcode, Calendar, Loader2, Image as ImageIcon, FileText, File as FileIcon, CreditCard, DollarSign, AlertTriangle, Star, Award, Activity, Gift, MessageSquare, Clock, User, Upload, Trash2, ArrowLeft, Phone, Printer, Send, RefreshCw, ArrowRight, Key, Wrench, Hash, Settings, History, QrCode, Stethoscope, Shield } from 'lucide-react';
 
 import DeviceDetailHeader from '../components/DeviceDetailHeader';
 import StatusUpdateForm from '../components/forms/StatusUpdateForm';
@@ -1100,6 +1100,386 @@ const DeviceDetailPage: React.FC = () => {
               )}
             </GlassCard>
           )}
+
+          {/* Device Barcode/QR Code Section */}
+          <GlassCard className="bg-gradient-to-br from-purple-500/10 to-purple-400/5">
+            <h3 className="text-lg sm:text-xl font-bold text-purple-900 mb-4 flex items-center gap-2">
+              <QrCode size={20} />
+              Device QR Code
+            </h3>
+            <DeviceBarcodeCard deviceId={safeDevice.id} onPrint={handlePrintReceipt} />
+          </GlassCard>
+
+          {/* Status Update Section - For Technicians and Admins */}
+          {(currentUser.role === 'technician' || currentUser.role === 'admin' || currentUser.role === 'customer-care') && (
+            <GlassCard className="bg-gradient-to-br from-amber-500/10 to-amber-400/5">
+              <h3 className="text-lg sm:text-xl font-bold text-amber-900 mb-4 flex items-center gap-2">
+                <Wrench size={20} />
+                Status Update
+              </h3>
+              <StatusUpdateForm
+                device={safeDevice}
+                currentUser={currentUser}
+                onUpdateStatus={handleStatusUpdate}
+                onAddRemark={handleAddRemark}
+                onAddRating={addRating}
+                outstanding={outstanding}
+              />
+            </GlassCard>
+          )}
+
+          {/* Technician Assignment Section - For Admins and Customer Care */}
+          {(currentUser.role === 'admin' || currentUser.role === 'customer-care') && (
+            <GlassCard className="bg-gradient-to-br from-blue-500/10 to-blue-400/5">
+              <h3 className="text-lg sm:text-xl font-bold text-blue-900 mb-4 flex items-center gap-2">
+                <User size={20} />
+                Technician Assignment
+              </h3>
+              <AssignTechnicianForm
+                deviceId={safeDevice.id}
+                currentTechId={safeDevice.assignedTo}
+                currentUser={currentUser}
+              />
+            </GlassCard>
+          )}
+
+          {/* Device Details Section */}
+          <GlassCard className="bg-gradient-to-br from-gray-500/10 to-gray-400/5">
+            <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+              <Smartphone size={20} />
+              Device Information
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs sm:text-sm text-gray-500">Brand & Model</p>
+                <p className="text-gray-800 text-sm sm:text-base font-medium">{getDeviceName(safeDevice)}</p>
+              </div>
+              <div>
+                <p className="text-xs sm:text-sm text-gray-500">Serial Number</p>
+                <p className="text-gray-800 text-sm sm:text-base font-mono">{safeDevice.serialNumber || 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-xs sm:text-sm text-gray-500">Status</p>
+                <StatusBadge status={safeDevice.status} />
+              </div>
+              <div>
+                <p className="text-xs sm:text-sm text-gray-500">Assigned To</p>
+                <p className="text-gray-800 text-sm sm:text-base">{getUserName(safeDevice.assignedTo) || 'Unassigned'}</p>
+              </div>
+              {safeDevice.expectedReturnDate && (
+                <div>
+                  <p className="text-xs sm:text-sm text-gray-500">Expected Return</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-gray-800 text-sm sm:text-base">{formatDate(safeDevice.expectedReturnDate)}</p>
+                    <CountdownTimer targetDate={safeDevice.expectedReturnDate} />
+                  </div>
+                </div>
+              )}
+              {safeDevice.estimatedHours && (
+                <div>
+                  <p className="text-xs sm:text-sm text-gray-500">Estimated Hours</p>
+                  <p className="text-gray-800 text-sm sm:text-base">{safeDevice.estimatedHours}h</p>
+                </div>
+              )}
+              {safeDevice.issueDescription && (
+                <div className="sm:col-span-2">
+                  <p className="text-xs sm:text-sm text-gray-500">Issue Description</p>
+                  <p className="text-gray-800 text-sm sm:text-base">{safeDevice.issueDescription}</p>
+                </div>
+              )}
+              {safeDevice.unlockCode && (
+                <div>
+                  <p className="text-xs sm:text-sm text-gray-500">Unlock Code</p>
+                  <p className="text-gray-800 text-sm sm:text-base font-mono">{safeDevice.unlockCode}</p>
+                </div>
+              )}
+              {safeDevice.repairCost && (
+                <div>
+                  <p className="text-xs sm:text-sm text-gray-500">Repair Cost</p>
+                  <p className="text-gray-800 text-sm sm:text-base font-semibold">{formatCurrency(Number(safeDevice.repairCost))}</p>
+                </div>
+              )}
+              {safeDevice.depositAmount && (
+                <div>
+                  <p className="text-xs sm:text-sm text-gray-500">Deposit Amount</p>
+                  <p className="text-gray-800 text-sm sm:text-base font-semibold">{formatCurrency(Number(safeDevice.depositAmount))}</p>
+                </div>
+              )}
+            </div>
+          </GlassCard>
+
+          {/* Attachments Section */}
+          {hasAttachments() && (
+            <GlassCard className="bg-gradient-to-br from-indigo-500/10 to-indigo-400/5">
+              <h3 className="text-lg sm:text-xl font-bold text-indigo-900 mb-4 flex items-center gap-2">
+                <Upload size={20} />
+                Attachments
+              </h3>
+              {attachmentsLoading && (
+                <div className="text-center py-4">
+                  <Loader2 className="animate-spin h-6 w-6 mx-auto mb-2 text-indigo-600" />
+                  <p className="text-indigo-600">Loading attachments...</p>
+                </div>
+              )}
+              {attachmentsError && (
+                <div className="text-red-500 text-sm mb-4 p-3 bg-red-50 rounded-lg">{attachmentsError}</div>
+              )}
+              {uploadProgress !== null && (
+                <div className="mb-4">
+                  <div className="bg-gray-200 rounded-full h-2">
+                    <div className="bg-indigo-600 h-2 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }}></div>
+                  </div>
+                  <p className="text-sm text-gray-600 mt-1">Uploading... {uploadProgress}%</p>
+                </div>
+              )}
+              <div className="space-y-3">
+                {attachments.filter(att => att.type !== 'invoice').map(att => (
+                  <div key={att.id} className="flex items-center gap-3 p-3 bg-white rounded-lg border">
+                    {getFilePreview(att)}
+                    <div className="flex-1">
+                      <p className="font-medium text-gray-900">{att.file_name}</p>
+                      <p className="text-sm text-gray-500">{formatRelativeTime(att.uploaded_at)}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedAttachmentsForDelete.includes(att.id)}
+                        onChange={() => toggleAttachmentSelection(att.id)}
+                        className="rounded"
+                      />
+                      <GlassButton
+                        size="sm"
+                        variant="danger"
+                        icon={<Trash2 size={14} />}
+                        onClick={() => handleRemoveAttachment(att)}
+                      >
+                        Delete
+                      </GlassButton>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 flex gap-2">
+                <input
+                  type="file"
+                  multiple
+                  onChange={handleAttachmentUpload}
+                  className="hidden"
+                  id="attachment-upload"
+                />
+                <GlassButton
+                  onClick={() => document.getElementById('attachment-upload')?.click()}
+                  icon={<Upload size={16} />}
+                  disabled={attachmentsLoading}
+                >
+                  Upload Files
+                </GlassButton>
+                {selectedAttachmentsForDelete.length > 0 && (
+                  <GlassButton
+                    variant="danger"
+                    onClick={() => setShowBulkDeleteModal(true)}
+                    icon={<Trash2 size={16} />}
+                  >
+                    Delete Selected ({selectedAttachmentsForDelete.length})
+                  </GlassButton>
+                )}
+              </div>
+            </GlassCard>
+          )}
+
+          {/* Remarks Section */}
+          {safeDevice.remarks && safeDevice.remarks.length > 0 && (
+            <GlassCard className="bg-gradient-to-br from-green-500/10 to-green-400/5">
+              <h3 className="text-lg sm:text-xl font-bold text-green-900 mb-4 flex items-center gap-2">
+                <MessageSquare size={20} />
+                Remarks & Comments
+              </h3>
+              <div className="space-y-3">
+                {safeDevice.remarks.map((remark, index) => (
+                  <div key={remark.id || index} className="bg-white rounded-lg p-4 border border-green-200">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <p className="text-gray-800 mb-2">{remark.content}</p>
+                        <div className="flex items-center gap-2 text-sm text-gray-500">
+                          <User size={14} />
+                          <span>{getUserName(remark.createdBy || '')}</span>
+                          <span>•</span>
+                          <span>{formatRelativeTime(remark.createdAt)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+          )}
+
+          {/* Timeline Section */}
+          <GlassCard className="bg-gradient-to-br from-slate-500/10 to-slate-400/5">
+            <h3 className="text-lg sm:text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
+              <History size={20} />
+              Device Timeline
+            </h3>
+            {timelineLoading ? (
+              <div className="text-center py-4">
+                <Loader2 className="animate-spin h-6 w-6 mx-auto mb-2 text-slate-600" />
+                <p className="text-slate-600">Loading timeline...</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {getTimelineEvents().map((event, index) => (
+                  <div key={index} className="flex items-start gap-3 p-3 bg-white rounded-lg border">
+                    <div className="p-2 rounded-full bg-slate-100">
+                      {event.icon}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="font-medium text-gray-900">{event.description}</p>
+                        <span className="text-xs text-gray-500">{formatRelativeTime(event.timestamp)}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <span>{getUserName(event.user)}</span>
+                        {event.durationLabel && (
+                          <>
+                            <span>•</span>
+                            <span className="text-blue-600 font-medium">Duration: {event.durationLabel}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {getTimelineEvents().length === 0 && (
+                  <div className="text-center py-6 text-gray-500">
+                    <Clock className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                    <p>No timeline events found</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </GlassCard>
+
+          {/* Warranty Information - Show only if warranty data exists */}
+          {hasWarrantyData() && (
+            <GlassCard className="bg-gradient-to-br from-yellow-500/10 to-yellow-400/5">
+              <h3 className="text-lg sm:text-xl font-bold text-yellow-900 mb-4 flex items-center gap-2">
+                <Shield size={20} />
+                Warranty Information
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs sm:text-sm text-gray-500">Status</p>
+                  <p className="text-gray-800 text-sm sm:text-base font-medium">{warrantyInfo.status}</p>
+                </div>
+                {warrantyInfo.startDate && (
+                  <div>
+                    <p className="text-xs sm:text-sm text-gray-500">Start Date</p>
+                    <p className="text-gray-800 text-sm sm:text-base">{formatDate(warrantyInfo.startDate)}</p>
+                  </div>
+                )}
+                {warrantyInfo.endDate && (
+                  <div>
+                    <p className="text-xs sm:text-sm text-gray-500">End Date</p>
+                    <p className="text-gray-800 text-sm sm:text-base">{formatDate(warrantyInfo.endDate)}</p>
+                  </div>
+                )}
+                {warrantyInfo.durationMonths > 0 && (
+                  <div>
+                    <p className="text-xs sm:text-sm text-gray-500">Duration</p>
+                    <p className="text-gray-800 text-sm sm:text-base">{warrantyInfo.durationMonths} months</p>
+                  </div>
+                )}
+              </div>
+            </GlassCard>
+          )}
+
+          {/* Device History - Show only if there are previous repairs */}
+          {hasRepairHistory() && (
+            <GlassCard className="bg-gradient-to-br from-orange-500/10 to-orange-400/5">
+              <h3 className="text-lg sm:text-xl font-bold text-orange-900 mb-4 flex items-center gap-2">
+                <RefreshCw size={20} />
+                Repair History
+              </h3>
+              <div className="space-y-3">
+                {deviceHistory.map((historyDevice) => (
+                  <div key={historyDevice.id} className="bg-white rounded-lg p-4 border border-orange-200">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <StatusBadge status={historyDevice.status} />
+                        <span className="font-medium text-gray-900">#{historyDevice.id}</span>
+                      </div>
+                      <span className="text-sm text-gray-500">{formatDate(historyDevice.createdAt)}</span>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-2">Customer: {historyDevice.customerName}</p>
+                    {historyDevice.issueDescription && (
+                      <p className="text-sm text-gray-600">Issue: {historyDevice.issueDescription}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+          )}
+
+          {/* Action Buttons Section */}
+          <GlassCard className="bg-gradient-to-br from-emerald-500/10 to-emerald-400/5">
+            <h3 className="text-lg sm:text-xl font-bold text-emerald-900 mb-4 flex items-center gap-2">
+              <Settings size={20} />
+              Actions
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {/* Print Receipt */}
+              <GlassButton
+                onClick={handlePrintReceipt}
+                icon={<Printer size={16} />}
+                className="justify-start"
+              >
+                Print Receipt
+              </GlassButton>
+
+              {/* Send SMS - Customer Care only */}
+              {currentUser.role === 'customer-care' && (
+                <GlassButton
+                  onClick={() => setShowSmsModal(true)}
+                  icon={<Send size={16} />}
+                  className="justify-start"
+                >
+                  Send SMS
+                </GlassButton>
+              )}
+
+              {/* Diagnostic Checklist */}
+              {(currentUser.role === 'technician' || currentUser.role === 'admin') && (
+                <GlassButton
+                  onClick={() => setShowDiagnosticChecklist(true)}
+                  icon={<Stethoscope size={16} />}
+                  className="justify-start"
+                >
+                  Diagnostic Check
+                </GlassButton>
+              )}
+
+              {/* Repair Checklist */}
+              {(currentUser.role === 'technician' || currentUser.role === 'admin') && (
+                <GlassButton
+                  onClick={() => setShowRepairChecklist(true)}
+                  icon={<Wrench size={16} />}
+                  className="justify-start"
+                >
+                  Repair Checklist
+                </GlassButton>
+              )}
+
+              {/* Back Button */}
+              <GlassButton
+                onClick={handleBackClick}
+                icon={<ArrowLeft size={16} />}
+                variant="secondary"
+                className="justify-start"
+              >
+                Back to Devices
+              </GlassButton>
+            </div>
+          </GlassCard>
             
         </div>
       </div>
@@ -1176,6 +1556,64 @@ const DeviceDetailPage: React.FC = () => {
         onClose={() => setShowRepairChecklist(false)}
         onStatusUpdate={handleChecklistStatusUpdate}
       />
+
+      {/* Delete Attachment Confirmation Modal */}
+      <Modal 
+        isOpen={showDeleteModal} 
+        onClose={() => setShowDeleteModal(false)} 
+        title="Delete Attachment"
+        maxWidth="400px"
+      >
+        <div className="space-y-4">
+          <p className="text-gray-700">
+            Are you sure you want to delete "{deleteTarget?.file_name}"? This action cannot be undone.
+          </p>
+          <div className="flex gap-3 justify-end">
+            <GlassButton 
+              variant="secondary" 
+              onClick={() => setShowDeleteModal(false)}
+            >
+              Cancel
+            </GlassButton>
+            <GlassButton 
+              variant="danger" 
+              onClick={confirmDeleteAttachment}
+              disabled={attachmentsLoading}
+            >
+              {attachmentsLoading ? 'Deleting...' : 'Delete'}
+            </GlassButton>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Bulk Delete Attachments Modal */}
+      <Modal 
+        isOpen={showBulkDeleteModal} 
+        onClose={() => setShowBulkDeleteModal(false)} 
+        title="Delete Selected Attachments"
+        maxWidth="400px"
+      >
+        <div className="space-y-4">
+          <p className="text-gray-700">
+            Are you sure you want to delete {selectedAttachmentsForDelete.length} selected attachment(s)? This action cannot be undone.
+          </p>
+          <div className="flex gap-3 justify-end">
+            <GlassButton 
+              variant="secondary" 
+              onClick={() => setShowBulkDeleteModal(false)}
+            >
+              Cancel
+            </GlassButton>
+            <GlassButton 
+              variant="danger" 
+              onClick={handleBulkDeleteAttachments}
+              disabled={attachmentsLoading}
+            >
+              {attachmentsLoading ? 'Deleting...' : `Delete ${selectedAttachmentsForDelete.length} items`}
+            </GlassButton>
+          </div>
+        </div>
+      </Modal>
     </>
   );
 };
