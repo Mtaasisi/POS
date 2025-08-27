@@ -98,6 +98,10 @@ const DeviceDetailPage: React.FC = () => {
 
   // Get device early to avoid temporal dead zone issues
   const device = id ? getDeviceById(id) : null;
+  
+  // State for device fetched directly from database (fallback)
+  const [deviceFromDb, setDeviceFromDb] = useState<any>(null);
+  const [fetchingFromDb, setFetchingFromDb] = useState(false);
 
   // All useEffects must be called before any early returns
   useEffect(() => {
@@ -113,6 +117,45 @@ const DeviceDetailPage: React.FC = () => {
     }, 500);
     return () => clearTimeout(timeout);
   }, [id, currentUser]);
+
+  // Fetch device from database if not available in context (fallback)
+  useEffect(() => {
+    if (id && !device && !devicesLoading && !fetchingFromDb) {
+      setFetchingFromDb(true);
+      const fetchDeviceFromDb = async () => {
+        try {
+          const { data, error } = await supabase
+            .from('devices')
+            .select('*')
+            .eq('id', id)
+            .single();
+          
+          if (!error && data) {
+            // Transform database device to match Device type
+            const transformedDevice = {
+              ...data,
+              transitions: data.transitions || [],
+              remarks: data.remarks || [],
+              deviceCondition: data.device_condition || {},
+              deviceImages: data.device_images || [],
+              warrantyStart: data.warranty_start,
+              warrantyEnd: data.warranty_end,
+              warrantyStatus: data.warranty_status || 'None'
+            };
+            setDeviceFromDb(transformedDevice);
+          } else {
+            console.error('Device not found in database:', error);
+          }
+        } catch (error) {
+          console.error('Error fetching device from database:', error);
+        } finally {
+          setFetchingFromDb(false);
+        }
+      };
+      
+      fetchDeviceFromDb();
+    }
+  }, [id, device, devicesLoading, fetchingFromDb]);
 
   // Fetch attachments on load
   useEffect(() => {
@@ -139,32 +182,40 @@ const DeviceDetailPage: React.FC = () => {
 
   // Warranty expiry notification effect
   useEffect(() => {
-    if (id && currentUser && device) {
+    if (id && currentUser && actualDevice) {
       // Warranty expiry notification (30 days)
-      if (device.warrantyEnd) {
+      const warrantyEnd = actualDevice.warrantyEnd || actualDevice.warranty_end;
+      if (warrantyEnd) {
         const now = new Date();
-        const end = new Date(device.warrantyEnd);
+        const end = new Date(warrantyEnd);
         const diffDays = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
         if (diffDays > 0 && diffDays <= 30) {
           toast(
             `Warranty for this device expires in ${diffDays} day${diffDays === 1 ? '' : 's'}!`,
-            { icon: '⚠️', id: `warranty-expiry-${device.id}` }
+            { icon: '⚠️', id: `warranty-expiry-${actualDevice.id}` }
           );
         }
       }
     }
-  }, [id, currentUser, device]);
+  }, [id, currentUser, actualDevice]);
 
-  // Technician permission check effect
+  // Technician permission check effect - Modified to allow viewing but restrict actions
   useEffect(() => {
-    if (id && currentUser && device) {
+    if (id && currentUser && actualDevice) {
       const isTechnician = currentUser.role === 'technician';
-      const isAssignedTechnician = isTechnician && device.assignedTo === currentUser.id;
+      const assignedTo = actualDevice.assignedTo || actualDevice.assigned_to;
+      const isAssignedTechnician = isTechnician && assignedTo === currentUser.id;
       if (isTechnician && !isAssignedTechnician) {
-        handleBackClick();
+        // Allow viewing but show a notice instead of redirecting
+        console.log('Technician viewing device not assigned to them:', actualDevice.id);
+        // Show a toast notification for awareness
+        toast.info('You are viewing a device not assigned to you. Some actions may be restricted.', {
+          id: `unassigned-device-${actualDevice.id}`,
+          duration: 5000
+        });
       }
     }
-  }, [id, currentUser, device, handleBackClick]);
+  }, [id, currentUser, actualDevice, handleBackClick]);
 
   // Device checklist effect - commented out until device_checklists table is created
   // useEffect(() => {
@@ -210,7 +261,7 @@ const DeviceDetailPage: React.FC = () => {
   }
 
   // Check if devices are still loading
-  if (devicesLoading) {
+  if (devicesLoading || fetchingFromDb) {
     return (
       <div className="p-8 text-center">
         <Loader2 className="animate-spin h-8 w-8 mx-auto mb-4 text-blue-600" />
@@ -219,8 +270,11 @@ const DeviceDetailPage: React.FC = () => {
     );
   }
 
+  // Get the actual device to use (from context or database)
+  const actualDevice = device || deviceFromDb;
+
   // Check if device is not found
-  if (!device && !devicesLoading) {
+  if (!actualDevice && !devicesLoading && !fetchingFromDb) {
     return (
       <div className="p-8 text-center">
         <div className="text-red-500 font-bold text-lg mb-4">Device Not Found</div>
@@ -238,39 +292,39 @@ const DeviceDetailPage: React.FC = () => {
   
   // Defensive: always have transitions and remarks as arrays, and required fields as non-undefined
   const safeDevice = useMemo(() => ({
-    id: device?.id || '',
-    customerId: device?.customerId || '',
-    customerName: device?.customerName || '',
-    phoneNumber: device?.phoneNumber || '',
-    brand: device?.brand || '',
-    model: device?.model || '',
-    serialNumber: device?.serialNumber || '',
-    createdAt: device?.createdAt || '',
-    updatedAt: device?.updatedAt || '',
-    expectedReturnDate: device?.expectedReturnDate || '',
-    estimatedHours: device?.estimatedHours || 0,
-    status: device?.status || 'assigned',
-    assignedTo: device?.assignedTo || '',
-    issueDescription: device?.issueDescription || '',
-    transitions: device?.transitions || [],
-    remarks: device?.remarks || [],
-    warrantyStart: device?.warrantyStart || '',
-    warrantyEnd: device?.warrantyEnd || '',
-    warrantyStatus: device?.warrantyStatus || 'None',
+    id: actualDevice?.id || '',
+    customerId: actualDevice?.customerId || actualDevice?.customer_id || '',
+    customerName: actualDevice?.customerName || actualDevice?.customer_name || '',
+    phoneNumber: actualDevice?.phoneNumber || actualDevice?.phone_number || '',
+    brand: actualDevice?.brand || '',
+    model: actualDevice?.model || '',
+    serialNumber: actualDevice?.serialNumber || actualDevice?.serial_number || '',
+    createdAt: actualDevice?.createdAt || actualDevice?.created_at || '',
+    updatedAt: actualDevice?.updatedAt || actualDevice?.updated_at || '',
+    expectedReturnDate: actualDevice?.expectedReturnDate || actualDevice?.expected_return_date || '',
+    estimatedHours: actualDevice?.estimatedHours || actualDevice?.estimated_hours || 0,
+    status: actualDevice?.status || 'assigned',
+    assignedTo: actualDevice?.assignedTo || actualDevice?.assigned_to || '',
+    issueDescription: actualDevice?.issueDescription || actualDevice?.issue_description || '',
+    transitions: actualDevice?.transitions || [],
+    remarks: actualDevice?.remarks || [],
+    warrantyStart: actualDevice?.warrantyStart || actualDevice?.warranty_start || '',
+    warrantyEnd: actualDevice?.warrantyEnd || actualDevice?.warranty_end || '',
+    warrantyStatus: actualDevice?.warrantyStatus || actualDevice?.warranty_status || 'None',
     // Add missing fields from New Device Form
-    unlockCode: device?.unlockCode || '',
-    repairCost: device?.repairCost || '',
-    depositAmount: device?.depositAmount || '',
-    diagnosisRequired: device?.diagnosisRequired || false,
-    deviceNotes: device?.deviceNotes || '',
-    deviceCost: device?.deviceCost || '',
+    unlockCode: actualDevice?.unlockCode || actualDevice?.unlock_code || '',
+    repairCost: actualDevice?.repairCost || actualDevice?.repair_cost || '',
+    depositAmount: actualDevice?.depositAmount || actualDevice?.deposit_amount || '',
+    diagnosisRequired: actualDevice?.diagnosisRequired || actualDevice?.diagnosis_required || false,
+    deviceNotes: actualDevice?.deviceNotes || actualDevice?.device_notes || '',
+    deviceCost: actualDevice?.deviceCost || actualDevice?.device_cost || '',
     // Add fields for device condition assessment
-    deviceCondition: device?.deviceCondition || {},
-    deviceImages: device?.deviceImages || [],
-    accessoriesConfirmed: device?.accessoriesConfirmed || false,
-    problemConfirmed: device?.problemConfirmed || false,
-    privacyConfirmed: device?.privacyConfirmed || false,
-  }), [device]);
+    deviceCondition: actualDevice?.deviceCondition || actualDevice?.device_condition || {},
+    deviceImages: actualDevice?.deviceImages || actualDevice?.device_images || [],
+    accessoriesConfirmed: actualDevice?.accessoriesConfirmed || actualDevice?.accessories_confirmed || false,
+    problemConfirmed: actualDevice?.problemConfirmed || actualDevice?.problem_confirmed || false,
+    privacyConfirmed: actualDevice?.privacyConfirmed || actualDevice?.privacy_confirmed || false,
+  }), [actualDevice]);
   const customer = getCustomerById(safeDevice.customerId);
 
   // Helper: get file type icon/preview
@@ -431,7 +485,8 @@ const DeviceDetailPage: React.FC = () => {
 
   // Check permissions based on role
   const isTechnician = currentUser.role === 'technician';
-  const isAssignedTechnician = isTechnician && device?.assignedTo === currentUser.id;
+  const assignedTo = actualDevice?.assignedTo || actualDevice?.assigned_to;
+  const isAssignedTechnician = isTechnician && assignedTo === currentUser.id;
   
   const handleStatusUpdate = (newStatus: DeviceStatus, signature: string) => {
     return updateDeviceStatus(id, newStatus, signature);
@@ -506,17 +561,17 @@ const DeviceDetailPage: React.FC = () => {
                     <div class="divider">
                       <div class="row">
                         <span><strong>Device:</strong></span>
-                        <span style="font-size: 18px;">${getDeviceName(device || { brand: '', model: '' })}</span>
+                        <span style="font-size: 18px;">${getDeviceName(actualDevice || { brand: '', model: '' })}</span>
                       </div>
                       
                       <div class="row">
                         <span><strong>Customer:</strong></span>
-                        <span>${device?.customerName || 'N/A'}</span>
+                        <span>${actualDevice?.customerName || actualDevice?.customer_name || 'N/A'}</span>
                       </div>
                       
                       <div class="row">
                         <span><strong>Expected Return:</strong></span>
-                        <span>${new Date(device?.expectedReturnDate || new Date().toISOString()).toLocaleDateString()}</span>
+                        <span>${new Date(actualDevice?.expectedReturnDate || actualDevice?.expected_return_date || new Date().toISOString()).toLocaleDateString()}</span>
                       </div>
                     </div>
                     
@@ -526,8 +581,8 @@ const DeviceDetailPage: React.FC = () => {
                     </div>
                     
                     <div class="dotted-divider small-text">
-                      <p>Device: ${device?.brand || 'N/A'} ${device?.model || 'N/A'}</p>
-                      <p>Received: ${new Date(device?.createdAt || new Date().toISOString()).toLocaleDateString()}</p>
+                      <p>Device: ${actualDevice?.brand || 'N/A'} ${actualDevice?.model || 'N/A'}</p>
+                      <p>Received: ${new Date(actualDevice?.createdAt || actualDevice?.created_at || new Date().toISOString()).toLocaleDateString()}</p>
                     </div>
                   </div>
                 </div>
@@ -665,9 +720,10 @@ const DeviceDetailPage: React.FC = () => {
     return t ? new Date(t.timestamp).getTime() : undefined;
   }
 
-  const inRepairTime = device?.transitions ? getTransitionTime(device.transitions, 'in-repair') : undefined;
-  const repairCompleteTime = device?.transitions ? getTransitionTime(device.transitions, 'repair-complete') : undefined;
-  const doneTime = device?.transitions ? getTransitionTime(device.transitions, 'done') : undefined;
+  const transitions = actualDevice?.transitions || [];
+  const inRepairTime = transitions.length > 0 ? getTransitionTime(transitions, 'in-repair') : undefined;
+  const repairCompleteTime = transitions.length > 0 ? getTransitionTime(transitions, 'repair-complete') : undefined;
+  const doneTime = transitions.length > 0 ? getTransitionTime(transitions, 'done') : undefined;
 
   const technicianDuration = (inRepairTime && repairCompleteTime) ? repairCompleteTime - inRepairTime : undefined;
   const handoverDuration = (repairCompleteTime && doneTime) ? doneTime - repairCompleteTime : undefined;
