@@ -29,6 +29,7 @@ import {
 import { supabase } from '../../../lib/supabaseClient';
 import { toast } from '../../../lib/toastUtils';
 import { greenApiService } from '../../../services/greenApiService';
+import { whatsappChatService, ChatMessage, ChatConversation, QuickReplyTemplate, UserChatSettings } from '../../../services/whatsappChatService';
 
 interface WhatsAppChatPageProps {
   instances: any[];
@@ -46,7 +47,16 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
   const [customerSearchTerm, setCustomerSearchTerm] = useState('');
   const [filteredCustomers, setFilteredCustomers] = useState<any[]>([]);
   const [isSendingChatMessage, setIsSendingChatMessage] = useState(false);
-  const [chatHistory, setChatHistory] = useState<any[]>([]);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  
+  // Database-connected states
+  const [recentConversations, setRecentConversations] = useState<ChatConversation[]>([]);
+  const [quickReplyTemplates, setQuickReplyTemplates] = useState<QuickReplyTemplate[]>([]);
+  const [userChatSettings, setUserChatSettings] = useState<UserChatSettings | null>(null);
+  const [isLoadingChatHistory, setIsLoadingChatHistory] = useState(false);
+  const [isLoadingConversations, setIsLoadingConversations] = useState(false);
+  const [messageSubscription, setMessageSubscription] = useState<any>(null);
+  const [conversationSubscription, setConversationSubscription] = useState<any>(null);
   
   // Enhanced Chat Features
   const [isTyping, setIsTyping] = useState(false);
@@ -98,50 +108,39 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
   // Quick reaction emojis
   const quickReactions = ['👍', '❤️', '😂', '😮', '😢', '😡'];
   
-  // Enhanced Quick Replies with categories
-  const quickReplyCategories: { [key: string]: string[] } = {
-    'Greetings': [
-      'Hello! How can I help you today?',
-      'Hi there! Welcome to our service.',
-      'Good morning! How may I assist you?',
-      'Hello! Thank you for contacting us.',
-      'Hi! I\'m here to help you.'
-    ],
-    'Customer Service': [
-      'Thank you for your patience.',
-      'I understand your concern.',
-      'Let me check that for you.',
-      'I\'ll get back to you shortly.',
-      'Is there anything else I can help with?'
-    ],
-    'Sales & Orders': [
-      'Your order has been confirmed.',
-      'Your payment has been received.',
-      'Your item is ready for pickup.',
-      'Your delivery is on the way.',
-      'Would you like to place an order?'
-    ],
-    'Technical Support': [
-      'Let me troubleshoot this issue.',
-      'Have you tried restarting?',
-      'I\'ll escalate this to our technical team.',
-      'Can you provide more details?',
-      'This should resolve your issue.'
-    ],
-    'Appointments': [
-      'Your appointment is confirmed.',
-      'Would you like to reschedule?',
-      'What time works best for you?',
-      'I\'ll send you a reminder.',
-      'Your appointment is tomorrow.'
-    ],
-    'Frequently Used': [
-      'Thank you!',
-      'You\'re welcome!',
-      'Have a great day!',
-      'See you soon!',
-      'Take care!'
-    ]
+  // Dynamic Quick Reply Categories - loaded from database
+  const getQuickReplyCategories = (): { [key: string]: string[] } => {
+    const categories: { [key: string]: string[] } = {};
+    
+    // Group templates by category
+    quickReplyTemplates.forEach(template => {
+      if (!categories[template.category]) {
+        categories[template.category] = [];
+      }
+      categories[template.category].push(template.template);
+    });
+    
+    // Add special categories for favorites and recent
+    categories['Favorites'] = favoriteReplies;
+    categories['Recent'] = recentReplies;
+    
+    // If no templates loaded, return default categories
+    if (Object.keys(categories).length === 0) {
+      return {
+        'Greetings': [
+          'Hello! How can I help you today?',
+          'Hi there! Welcome to our service.',
+          'Good morning! How may I assist you?'
+        ],
+        'Frequently Used': [
+          'Thank you!',
+          'You\'re welcome!',
+          'Have a great day!'
+        ]
+      };
+    }
+    
+    return categories;
   };
   
   // Tab state
@@ -183,10 +182,154 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
     }
   }, [customerSearchTerm, customers]);
 
+  // Load recent conversations from database
+  const loadRecentConversations = async () => {
+    if (!instances.length) return;
+    
+    setIsLoadingConversations(true);
+    try {
+      const connectedInstance = instances.find(i => i.status === 'connected');
+      if (!connectedInstance) {
+        console.log('⚠️ No connected instance found for loading conversations');
+        setIsLoadingConversations(false);
+        return;
+      }
+
+      const conversations = await whatsappChatService.getRecentConversations(connectedInstance.instance_id, 20);
+      setRecentConversations(conversations);
+      console.log(`✅ Loaded ${conversations.length} recent conversations`);
+    } catch (error) {
+      console.error('❌ Error loading recent conversations:', error);
+      toast.error('Failed to load recent conversations');
+    } finally {
+      setIsLoadingConversations(false);
+    }
+  };
+
+  // Load chat history for selected customer
+  const loadChatHistory = async (customerId: string, customerPhone: string) => {
+    if (!instances.length) return;
+    
+    setIsLoadingChatHistory(true);
+    try {
+      const connectedInstance = instances.find(i => i.status === 'connected');
+      if (!connectedInstance) {
+        console.log('⚠️ No connected instance found for loading chat history');
+        setIsLoadingChatHistory(false);
+        return;
+      }
+
+      const chatId = whatsappChatService.getChatIdFromPhone(customerPhone);
+      const messages = await whatsappChatService.getChatHistory(connectedInstance.instance_id, chatId, 100);
+      setChatHistory(messages);
+      console.log(`✅ Loaded ${messages.length} messages for ${customerPhone}`);
+    } catch (error) {
+      console.error('❌ Error loading chat history:', error);
+      toast.error('Failed to load chat history');
+    } finally {
+      setIsLoadingChatHistory(false);
+    }
+  };
+
+  // Load quick reply templates from database
+  const loadQuickReplyTemplates = async () => {
+    try {
+      const templates = await whatsappChatService.getQuickReplyTemplates();
+      setQuickReplyTemplates(templates);
+      console.log(`✅ Loaded ${templates.length} quick reply templates`);
+    } catch (error) {
+      console.error('❌ Error loading quick reply templates:', error);
+      // Will fall back to default templates
+    }
+  };
+
+  // Load user chat settings
+  const loadUserChatSettings = async () => {
+    try {
+      // For now, we'll use a dummy user ID. In a real app, get this from auth context
+      const userId = 'current-user-id';
+      const settings = await whatsappChatService.getUserChatSettings(userId);
+      setUserChatSettings(settings);
+      
+      if (settings) {
+        console.log('✅ Loaded user chat settings');
+      }
+    } catch (error) {
+      console.error('❌ Error loading user chat settings:', error);
+    }
+  };
+
+  // Setup real-time message subscriptions
+  const setupMessageSubscriptions = (instanceId: string, chatId: string) => {
+    // Clean up existing subscription
+    if (messageSubscription) {
+      messageSubscription.unsubscribe();
+    }
+
+    const subscription = whatsappChatService.subscribeToMessages(instanceId, chatId, (message) => {
+      console.log('📨 Real-time message received:', message);
+      setChatHistory(prev => {
+        // Check if message already exists to avoid duplicates
+        const exists = prev.find(m => m.id === message.id);
+        if (exists) {
+          // Update existing message (status change)
+          return prev.map(m => m.id === message.id ? message : m);
+        } else {
+          // Add new message
+          return [...prev, message];
+        }
+      });
+    });
+
+    setMessageSubscription(subscription);
+  };
+
+  // Setup conversation-level subscriptions
+  const setupConversationSubscriptions = (instanceId: string) => {
+    // Clean up existing subscription
+    if (conversationSubscription) {
+      conversationSubscription.unsubscribe();
+    }
+
+    const subscription = whatsappChatService.subscribeToConversations(instanceId, () => {
+      // Reload conversations when any message changes
+      loadRecentConversations();
+    });
+
+    setConversationSubscription(subscription);
+  };
+
   // Load customers on mount
   useEffect(() => {
     loadCustomers();
+    loadQuickReplyTemplates();
+    loadUserChatSettings();
   }, []);
+
+  // Load conversations when instances change
+  useEffect(() => {
+    if (instances.length > 0) {
+      loadRecentConversations();
+      
+      // Setup conversation subscriptions
+      const connectedInstance = instances.find(i => i.status === 'connected');
+      if (connectedInstance) {
+        setupConversationSubscriptions(connectedInstance.instance_id);
+      }
+    }
+  }, [instances]);
+
+  // Cleanup subscriptions on unmount
+  useEffect(() => {
+    return () => {
+      if (messageSubscription) {
+        messageSubscription.unsubscribe();
+      }
+      if (conversationSubscription) {
+        conversationSubscription.unsubscribe();
+      }
+    };
+  }, [messageSubscription, conversationSubscription]);
 
   // Phone number formatting function
   const formatPhoneNumber = (phone: string) => {
@@ -306,51 +449,81 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
   };
 
   const getQuickRepliesToShow = () => {
+    const categories = getQuickReplyCategories();
     if (quickReplyCategory === 'Favorites') {
       return favoriteReplies;
     } else if (quickReplyCategory === 'Recent') {
       return recentReplies;
     } else {
-      return quickReplyCategories[quickReplyCategory] || [];
+      return categories[quickReplyCategory] || [];
     }
   };
 
   // Quick Reply Management Functions
-  const addQuickReply = (text: string, category: string) => {
+  const addQuickReply = async (text: string, category: string) => {
     if (text.trim()) {
-      const updatedCategories = { ...quickReplyCategories };
-      if (!updatedCategories[category]) {
-        updatedCategories[category] = [];
+      const newTemplate: Omit<QuickReplyTemplate, 'id' | 'created_at' | 'updated_at'> = {
+        name: text.trim().substring(0, 50), // Use first 50 chars as name
+        category: category,
+        template: text.trim(),
+        variables: [],
+        language: 'en',
+        is_active: true
+      };
+
+      const savedTemplate = await whatsappChatService.saveQuickReplyTemplate(newTemplate);
+      if (savedTemplate) {
+        // Reload templates from database
+        await loadQuickReplyTemplates();
+        setNewReplyText('');
+        setNewReplyCategory('Frequently Used');
+        toast.success('Quick reply added successfully!');
       }
-      updatedCategories[category] = [...updatedCategories[category], text.trim()];
-      
-      // Update the categories (in a real app, this would save to database)
-      Object.assign(quickReplyCategories, updatedCategories);
-      
-      setNewReplyText('');
-      setNewReplyCategory('Frequently Used');
-      toast.success('Quick reply added successfully!');
     }
   };
 
-  const editQuickReply = (index: number, newText: string, category: string) => {
+  const editQuickReply = async (index: number, newText: string, category: string) => {
     if (newText.trim()) {
-      const updatedCategories = { ...quickReplyCategories };
-      if (updatedCategories[category]) {
-        updatedCategories[category][index] = newText.trim();
-        Object.assign(quickReplyCategories, updatedCategories);
-        setEditingReply(null);
-        toast.success('Quick reply updated!');
+      // Find the template to edit
+      const templatesInCategory = quickReplyTemplates.filter(t => t.category === category);
+      const templateToEdit = templatesInCategory[index];
+      
+      if (templateToEdit) {
+        // Update template in database
+        const updatedTemplate: Omit<QuickReplyTemplate, 'id' | 'created_at' | 'updated_at'> = {
+          name: newText.trim().substring(0, 50),
+          category: category,
+          template: newText.trim(),
+          variables: templateToEdit.variables,
+          language: templateToEdit.language,
+          is_active: true
+        };
+
+        // Delete old and create new (since we don't have update method)
+        const deleted = await whatsappChatService.deleteQuickReplyTemplate(templateToEdit.id);
+        if (deleted) {
+          const saved = await whatsappChatService.saveQuickReplyTemplate(updatedTemplate);
+          if (saved) {
+            await loadQuickReplyTemplates();
+            setEditingReply(null);
+            toast.success('Quick reply updated!');
+          }
+        }
       }
     }
   };
 
-  const deleteQuickReply = (index: number, category: string) => {
-    const updatedCategories = { ...quickReplyCategories };
-    if (updatedCategories[category]) {
-      updatedCategories[category] = updatedCategories[category].filter((_, i) => i !== index);
-      Object.assign(quickReplyCategories, updatedCategories);
-      toast.success('Quick reply deleted!');
+  const deleteQuickReply = async (index: number, category: string) => {
+    // Find the template to delete
+    const templatesInCategory = quickReplyTemplates.filter(t => t.category === category);
+    const templateToDelete = templatesInCategory[index];
+    
+    if (templateToDelete) {
+      const deleted = await whatsappChatService.deleteQuickReplyTemplate(templateToDelete.id);
+      if (deleted) {
+        await loadQuickReplyTemplates();
+        toast.success('Quick reply deleted!');
+      }
     }
   };
 
@@ -523,16 +696,34 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
 
   // Chat search functions
   useEffect(() => {
-    if (chatSearchTerm.trim() === '') {
-      setFilteredChatHistory(chatHistory);
-    } else {
-      const filtered = chatHistory.filter(message =>
-        message.content?.toLowerCase().includes(chatSearchTerm.toLowerCase()) ||
-        message.customer?.name?.toLowerCase().includes(chatSearchTerm.toLowerCase())
-      );
-      setFilteredChatHistory(filtered);
-    }
-  }, [chatSearchTerm, chatHistory]);
+    const searchMessages = async () => {
+      if (chatSearchTerm.trim() === '') {
+        setFilteredChatHistory(chatHistory);
+      } else {
+        // Search in database for better results
+        if (selectedCustomer && instances.length > 0) {
+          const connectedInstance = instances.find(i => i.status === 'connected');
+          if (connectedInstance) {
+            const chatId = whatsappChatService.getChatIdFromPhone(selectedCustomer.phone);
+            const searchResults = await whatsappChatService.searchMessages(
+              connectedInstance.instance_id, 
+              chatSearchTerm, 
+              chatId
+            );
+            setFilteredChatHistory(searchResults);
+          }
+        } else {
+          // Fallback to local search if no database search possible
+          const filtered = chatHistory.filter(message =>
+            message.content?.toLowerCase().includes(chatSearchTerm.toLowerCase())
+          );
+          setFilteredChatHistory(filtered);
+        }
+      }
+    };
+
+    searchMessages();
+  }, [chatSearchTerm, chatHistory, selectedCustomer, instances]);
 
   // Message reaction functions
   const addReaction = (messageId: number, emoji: string) => {
@@ -606,10 +797,23 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
   };
 
   // Select customer for chat
-  const selectCustomerForChat = (customer: any) => {
+  const selectCustomerForChat = async (customer: any) => {
+    console.log('👤 Selecting customer for chat:', customer);
     setSelectedCustomer(customer);
     setChatMessage('');
     setChatHistory([]);
+    
+    // Load chat history from database
+    if (customer.phone) {
+      await loadChatHistory(customer.id, customer.phone);
+      
+      // Setup real-time message subscriptions for this chat
+      const connectedInstance = instances.find(i => i.status === 'connected');
+      if (connectedInstance) {
+        const chatId = whatsappChatService.getChatIdFromPhone(customer.phone);
+        setupMessageSubscriptions(connectedInstance.instance_id, chatId);
+      }
+    }
   };
 
   // Send chat message
@@ -686,33 +890,64 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
         });
       }
 
-      const messageId = Date.now();
-      const newMessage = {
+      const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const chatId = whatsappChatService.getChatIdFromPhone(selectedCustomer.phone);
+      
+      const newMessage: ChatMessage = {
         id: messageId,
+        instance_id: connectedInstance.instance_id,
+        chat_id: chatId,
+        sender_id: 'business',
+        sender_name: 'Business',
+        type: messageType,
         content: messageType === 'image' ? 'Image shared' : 
                 messageType === 'document' ? `File: ${selectedFile?.name}` :
                 messageType === 'audio' ? 'Voice message' : chatMessage,
-        sender: 'business',
-        timestamp: new Date().toISOString(),
+        direction: 'outgoing',
         status: 'sent',
-        customer: selectedCustomer,
-        type: messageType,
-        imageUrl: messageType === 'image' ? imagePreview : null,
-        fileUrl: messageType === 'document' ? filePreview : null,
-        audioUrl: messageType === 'audio' ? audioUrl : null,
-        fileName: selectedFile?.name,
-        fileSize: selectedFile?.size,
-        audioDuration: messageType === 'audio' ? formatRecordingTime(recordingTime) : null
+        metadata: {
+          customer: selectedCustomer,
+          imageUrl: messageType === 'image' ? imagePreview : null,
+          fileUrl: messageType === 'document' ? filePreview : null,
+          audioUrl: messageType === 'audio' ? audioUrl : null,
+          fileName: selectedFile?.name,
+          fileSize: selectedFile?.size,
+          audioDuration: messageType === 'audio' ? formatRecordingTime(recordingTime) : null
+        },
+        timestamp: new Date().toISOString(),
+        created_at: new Date().toISOString()
       };
       
       // Set initial status
       updateMessageStatus(messageId, 'sending');
       setChatHistory(prev => [...prev, newMessage]);
       
-      // Simulate message status progression
-      setTimeout(() => updateMessageStatus(messageId, 'sent'), 1000);
-      setTimeout(() => updateMessageStatus(messageId, 'delivered'), 2000);
-      setTimeout(() => updateMessageStatus(messageId, 'read'), 5000);
+      // Save message to database
+      try {
+        const savedMessage = await whatsappChatService.saveMessage(newMessage);
+        if (savedMessage) {
+          console.log('✅ Message saved to database:', savedMessage.id);
+          
+          // Update message status in database
+          setTimeout(async () => {
+            await whatsappChatService.updateMessageStatus(messageId, 'sent');
+            updateMessageStatus(messageId, 'sent');
+          }, 1000);
+          
+          setTimeout(async () => {
+            await whatsappChatService.updateMessageStatus(messageId, 'delivered');
+            updateMessageStatus(messageId, 'delivered');
+          }, 2000);
+          
+          setTimeout(async () => {
+            await whatsappChatService.updateMessageStatus(messageId, 'read');
+            updateMessageStatus(messageId, 'read');
+          }, 5000);
+        }
+      } catch (error) {
+        console.error('❌ Failed to save message to database:', error);
+        // Continue anyway - message still sent via API
+      }
       setChatMessage('');
       setSelectedImage(null);
       setImagePreview(null);
@@ -810,39 +1045,85 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
           
           <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 min-h-0">
             {activeTab === 'chat' ? (
-              // Chat tab content - show recent chats or empty state
-              <div className="p-4 text-center text-gray-500">
-                <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
-                  <MessageCircle size={32} className="text-white" />
+              // Chat tab content - show recent conversations from database
+              <div className="p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Recent Chats</h3>
+                  <button 
+                    onClick={loadRecentConversations}
+                    className="p-2 text-green-500 hover:text-green-600 hover:bg-green-50 rounded-full transition-all duration-200"
+                    disabled={isLoadingConversations}
+                  >
+                    <RefreshCw size={16} className={isLoadingConversations ? 'animate-spin' : ''} />
+                  </button>
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">Recent Chats</h3>
-                <p className="text-sm text-gray-600 mb-4">Your recent conversations will appear here</p>
-                <div className="space-y-2">
-                  <div className="p-3 bg-gray-50 rounded-xl border border-gray-200">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-sm">
-                        A
-                      </div>
-                      <div className="flex-1 text-left">
-                        <h4 className="font-medium text-gray-900 text-sm">Abdalah</h4>
-                        <p className="text-xs text-gray-500">Hello! How can I help you?</p>
-                      </div>
-                      <div className="text-xs text-gray-400">2m ago</div>
-                    </div>
+                
+                {isLoadingConversations ? (
+                  <div className="text-center py-8">
+                    <div className="w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                    <p className="text-sm text-gray-500">Loading conversations...</p>
                   </div>
-                  <div className="p-3 bg-gray-50 rounded-xl border border-gray-200">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-sm">
-                        S
-                      </div>
-                      <div className="flex-1 text-left">
-                        <h4 className="font-medium text-gray-900 text-sm">Sarah</h4>
-                        <p className="text-xs text-gray-500">Thank you for your help!</p>
-                      </div>
-                      <div className="text-xs text-gray-400">1h ago</div>
+                ) : recentConversations.length === 0 ? (
+                  <div className="text-center text-gray-500 py-8">
+                    <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
+                      <MessageCircle size={32} className="text-white" />
                     </div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">No Recent Chats</h3>
+                    <p className="text-sm text-gray-600 mb-4">Your recent conversations will appear here when you start chatting</p>
+                    <button 
+                      onClick={() => setActiveTab('contacts')}
+                      className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors text-sm"
+                    >
+                      Browse Contacts
+                    </button>
                   </div>
-                </div>
+                ) : (
+                  <div className="space-y-2">
+                    {recentConversations.map((conversation, index) => (
+                      <button
+                        key={conversation.chat_id}
+                        onClick={() => {
+                          // Find customer by phone or create temporary customer object
+                          const customer = customers.find(c => c.phone?.includes(conversation.customer_phone)) || {
+                            id: conversation.chat_id,
+                            name: conversation.customer_name,
+                            phone: conversation.customer_phone
+                          };
+                          selectCustomerForChat(customer);
+                          setActiveTab('contacts'); // Switch to show chat interface
+                        }}
+                        className="w-full p-3 bg-gray-50 hover:bg-gray-100 rounded-xl border border-gray-200 transition-all duration-200 text-left"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 bg-gradient-to-br ${
+                            index % 3 === 0 ? 'from-blue-500 to-blue-600' :
+                            index % 3 === 1 ? 'from-purple-500 to-purple-600' :
+                            'from-green-500 to-green-600'
+                          } rounded-full flex items-center justify-center text-white font-bold text-sm`}>
+                            {conversation.customer_name?.charAt(0)?.toUpperCase() || conversation.customer_phone?.charAt(0) || 'C'}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-medium text-gray-900 text-sm truncate">
+                              {conversation.customer_name || conversation.customer_phone}
+                            </h4>
+                            <p className="text-xs text-gray-500 truncate">
+                              {conversation.direction === 'outgoing' ? '📤 ' : '📥 '}
+                              {conversation.last_message}
+                            </p>
+                          </div>
+                          <div className="text-xs text-gray-400 flex flex-col items-end">
+                            <span>{formatMessageTime(conversation.last_message_time)}</span>
+                            {conversation.unread_count > 0 && (
+                              <span className="bg-green-500 text-white text-xs rounded-full px-2 py-0.5 mt-1">
+                                {conversation.unread_count}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             ) : (
               // Contacts tab content - show customer list
@@ -961,7 +1242,15 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
 
               {/* Chat Messages */}
               <div className="flex-1 bg-gradient-to-br from-gray-50 to-gray-100 p-3 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent min-h-0">
-                {chatHistory.length === 0 ? (
+                {isLoadingChatHistory ? (
+                  <div className="text-center py-8">
+                    <div className="w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                    <h3 className="text-base font-bold text-gray-900 mb-2">Loading chat history...</h3>
+                    <p className="text-gray-600 max-w-md mx-auto text-sm">
+                      Fetching your conversation with {selectedCustomer.name}
+                    </p>
+                  </div>
+                ) : chatHistory.length === 0 ? (
                   <div className="text-center py-6">
                     <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center mx-auto mb-3 shadow-lg">
                       <MessageCircle size={28} className="text-green-500" />
@@ -1240,7 +1529,7 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
                     {/* Category Tabs */}
                     <div className="bg-gray-50 p-3 border-b border-gray-200">
                       <div className="flex gap-2 overflow-x-auto scrollbar-hide">
-                        {['Frequently Used', 'Recent', 'Favorites', 'Greetings', 'Customer Service', 'Sales & Orders', 'Technical Support', 'Appointments'].map((category) => (
+                        {Object.keys(getQuickReplyCategories()).map((category) => (
                           <button
                             key={category}
                             onClick={() => setQuickReplyCategory(category)}
