@@ -92,6 +92,11 @@ export interface SendMessageParams {
   metadata?: any;
   priority?: number;
   scheduledAt?: string;
+  // Poll-specific parameters
+  pollOptions?: string[];
+  multipleAnswers?: boolean;
+  quotedMessageId?: string;
+  typingTime?: number;
 }
 
 export interface CreateInstanceParams {
@@ -438,6 +443,37 @@ class GreenApiService {
         throw new Error('Instance is not connected');
       }
 
+      // Validate poll parameters if message type is poll
+      if (params.messageType === 'poll') {
+        if (!params.pollOptions || params.pollOptions.length < 2 || params.pollOptions.length > 12) {
+          throw new Error('Poll must have between 2 and 12 options');
+        }
+        if (params.pollOptions.some(option => option.length > 100)) {
+          throw new Error('Poll option text must be 100 characters or less');
+        }
+        if (params.message.length > 255) {
+          throw new Error('Poll message must be 255 characters or less');
+        }
+        // Check for unique options
+        const uniqueOptions = new Set(params.pollOptions);
+        if (uniqueOptions.size !== params.pollOptions.length) {
+          throw new Error('All poll options must be unique');
+        }
+      }
+
+      // Prepare metadata for poll messages
+      const metadata = params.metadata || {};
+      if (params.messageType === 'poll') {
+        metadata.pollOptions = params.pollOptions;
+        metadata.multipleAnswers = params.multipleAnswers || false;
+        if (params.quotedMessageId) {
+          metadata.quotedMessageId = params.quotedMessageId;
+        }
+        if (params.typingTime && params.typingTime >= 1000 && params.typingTime <= 20000) {
+          metadata.typingTime = params.typingTime;
+        }
+      }
+
       // Add message to queue
       const supabase = ensureSupabase();
       const { data: queueData, error: queueError } = await supabase
@@ -447,7 +483,7 @@ class GreenApiService {
           chat_id: params.chatId,
           message_type: params.messageType || 'text',
           content: params.message,
-          metadata: params.metadata || {},
+          metadata: metadata,
           priority: params.priority || 0,
           scheduled_at: params.scheduledAt || new Date().toISOString()
         })
@@ -540,18 +576,21 @@ class GreenApiService {
         console.log(`📱 Instance ID: ${message.instance_id}`);
         console.log(`💬 Chat ID: ${message.chat_id}`);
         
+        // Determine endpoint based on message type
+        const endpoint = message.message_type === 'poll' ? 'sendPoll' : 'sendMessage';
+        
         // Try different endpoint formats
         const endpointFormats = [
           {
             name: 'With Authorization Header',
-            path: `/waInstance${message.instance_id}/sendMessage`,
+            path: `/waInstance${message.instance_id}/${endpoint}`,
             headers: {
               'Authorization': `Bearer ${instance.api_token}`
             }
           },
           {
             name: 'With API Token in URL',
-            path: `/waInstance${message.instance_id}/sendMessage/${instance.api_token}`,
+            path: `/waInstance${message.instance_id}/${endpoint}/${instance.api_token}`,
             headers: {}
           }
         ];
@@ -566,6 +605,36 @@ class GreenApiService {
           try {
             console.log(`🔄 Trying endpoint format: ${format.name}`);
             
+            // Prepare request body based on message type
+            let requestBody: any;
+            const chatId = message.chat_id.includes('@c.us') ? message.chat_id : `${message.chat_id}@c.us`;
+            
+            if (message.message_type === 'poll') {
+              // Poll message body according to Green API documentation
+              requestBody = {
+                chatId: chatId,
+                message: message.content,
+                options: message.metadata?.pollOptions?.map((option: string) => ({ optionName: option })) || [],
+                multipleAnswers: message.metadata?.multipleAnswers || false
+              };
+              
+              // Add optional parameters if present
+              if (message.metadata?.quotedMessageId) {
+                requestBody.quotedMessageId = message.metadata.quotedMessageId;
+              }
+              if (message.metadata?.typingTime) {
+                requestBody.typingTime = message.metadata.typingTime;
+              }
+            } else {
+              // Regular text message body
+              requestBody = {
+                chatId: chatId,
+                message: message.content
+              };
+            }
+
+            console.log(`📦 Request body for ${message.message_type}:`, JSON.stringify(requestBody, null, 2));
+
             const res = await fetch(`${this.proxyUrl}/.netlify/functions/green-api-proxy`, {
               method: 'POST',
               headers: {
@@ -576,10 +645,7 @@ class GreenApiService {
                 method: 'POST',
                 headers: format.headers,
                 baseUrl: apiBaseUrl,
-                body: {
-                  chatId: message.chat_id.includes('@c.us') ? message.chat_id : `${message.chat_id}@c.us`,
-                  message: message.content
-                }
+                body: requestBody
               })
             });
 
@@ -597,6 +663,10 @@ class GreenApiService {
             if (proxyResponse.success && proxyResponse.status === 200) {
               console.log(`✅ ${format.name} successful:`, proxyResponse.data);
               await this.updateMessageStatus(message.id, 'sent', undefined, proxyResponse.data?.idMessage);
+              
+              // Save to whatsapp_messages table for tracking
+              await this.saveMessageToHistory(message, proxyResponse.data?.idMessage);
+              
               return; // Success, exit the loop
             } else {
               console.error(`❌ ${format.name} failed:`, proxyResponse);
@@ -649,6 +719,64 @@ class GreenApiService {
     } catch (error: any) {
       console.error('Error updating message status:', error);
     }
+  }
+
+  private async saveMessageToHistory(message: GreenApiMessage, greenApiMessageId?: string): Promise<void> {
+    try {
+      const supabase = ensureSupabase();
+      
+      // Prepare message data for whatsapp_messages table
+      const messageData = {
+        id: greenApiMessageId || message.id,
+        instance_id: message.instance_id,
+        chat_id: message.chat_id,
+        type: message.message_type,
+        content: message.content,
+        direction: 'outgoing',
+        status: 'sent',
+        metadata: message.metadata || {}
+      };
+
+      const { error } = await supabase
+        .from('whatsapp_messages')
+        .insert(messageData);
+
+      if (error && !error.message.includes('duplicate key')) {
+        console.error('Error saving message to history:', error);
+        // Don't throw - this shouldn't fail the main message sending
+      } else {
+        console.log('✅ Message saved to history table');
+      }
+    } catch (error: any) {
+      console.error('Error saving message to history:', error);
+      // Don't throw - this shouldn't fail the main message sending
+    }
+  }
+
+  // Convenience method for sending polls
+  async sendPoll(
+    instanceId: string,
+    chatId: string,
+    message: string,
+    pollOptions: string[],
+    multipleAnswers: boolean = false,
+    quotedMessageId?: string,
+    typingTime?: number,
+    priority?: number,
+    scheduledAt?: string
+  ): Promise<GreenApiMessage> {
+    return this.sendMessage({
+      instanceId,
+      chatId,
+      message,
+      messageType: 'poll',
+      pollOptions,
+      multipleAnswers,
+      quotedMessageId,
+      typingTime,
+      priority,
+      scheduledAt
+    });
   }
 
   // Test Green API connection
