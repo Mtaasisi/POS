@@ -13,12 +13,12 @@ import { ChevronDown, CheckCircle, XCircle, Smartphone, Barcode, Calendar, Loade
 
 import DeviceDetailHeader from '../components/DeviceDetailHeader';
 import StatusUpdateForm from '../components/forms/StatusUpdateForm';
-
 import AssignTechnicianForm from '../components/forms/AssignTechnicianForm';
 import DeviceBarcodeCard from '../components/DeviceBarcodeCard';
 import DiagnosticChecklist from '../../../features/diagnostics/components/DiagnosticChecklist';
 import RepairChecklist from '../components/RepairChecklist';
 import PrintableSlip from '../components/PrintableSlip';
+import WhatsAppChatUI from '../../../components/WhatsAppChatUI';
 import GlassButton from '../../../features/shared/components/ui/GlassButton';
 import { DeviceStatus, Payment } from '../../../types';
 import { smsService, logManualSMS } from '../../../services/smsService';
@@ -166,41 +166,9 @@ const DeviceDetailPage: React.FC = () => {
     }
   }, [id, currentUser, device, handleBackClick]);
 
-  // Device checklist effect - commented out until device_checklists table is created
-  // useEffect(() => {
-  //   if (id) {
-  //     setDeviceChecklistLoading(true);
-  //     // Fetch device checklist from database
-  //     const fetchDeviceChecklist = async () => {
-  //       try {
-  //         const { data, error } = await supabase
-  //           .from('device_checklists')
-  //           .select('*')
-  //           .eq('device_id', id)
-  //           .single();
-  //         
-  //         if (error && error.code !== 'PGRST116') {
-  //           console.error('Error fetching device checklist:', error);
-  //         } else if (data) {
-  //           setDeviceChecklist(data);
-  //         }
-  //       } catch (err) {
-  //         console.error('Error fetching device checklist:', err);
-  //       } finally {
-  //         setDeviceChecklistLoading(false);
-  //       }
-  //     };
-  //     
-  //     fetchDeviceChecklist();
-  //   }
-  // }, [id]);
 
-  // Fetch all device activity effect
-  useEffect(() => {
-    if (id) {
-      // This will be called after device is loaded
-    }
-  }, [id]);
+
+
 
   // Only static check at the very top
   if (!id || !currentUser) {
@@ -761,19 +729,7 @@ const DeviceDetailPage: React.FC = () => {
     setDbDeviceLoading(true);
     
     try {
-      // Fetch device checklist - commented out until device_checklists table is created
-      // const { data: checklistData, error: checklistError } = await supabase
-      //   .from('device_checklists')
-      //   .select('*')
-      //   .eq('device_id', safeDevice.id)
-      //   .maybeSingle();
-      
-      // if (checklistError) {
-      //   console.error('Error fetching device checklist:', checklistError);
-      //   setDeviceChecklist(null);
-      // } else {
-      //   setDeviceChecklist(checklistData);
-      // }
+
       
       // Fetch additional device info from devices table
       const { data: deviceData, error: deviceError } = await supabase
@@ -989,31 +945,115 @@ const DeviceDetailPage: React.FC = () => {
   }, [safeDevice.customerId]);
   return (
     <>
-      <div className="p-2 sm:p-4 max-w-6xl mx-auto w-full">
-        <div className="space-y-6">
+      <div className="p-3 sm:p-6 max-w-7xl mx-auto w-full min-h-screen">
+        <div className="space-y-6 sm:space-y-8">
           {/* Device Header */}
           <DeviceDetailHeader device={safeDevice} />
+
+          {/* Quick Actions Bar - Mobile Optimized */}
+          <GlassCard className="bg-gradient-to-r from-indigo-500/10 to-purple-500/10">
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
+              <GlassButton
+                variant="primary"
+                size="lg"
+                icon={<QrCode className="w-5 h-5" />}
+                className="h-16 sm:h-20 text-xs sm:text-sm font-medium flex-col gap-1 touch-manipulation"
+                onClick={handlePrintReceipt}
+              >
+                Print Slip
+              </GlassButton>
+              
+              {currentUser.role === 'customer-care' && (
+                <GlassButton
+                  variant="secondary"
+                  size="lg"
+                  icon={<MessageSquare className="w-5 h-5" />}
+                  className="h-16 sm:h-20 text-xs sm:text-sm font-medium flex-col gap-1 touch-manipulation"
+                  onClick={() => setShowSmsModal(true)}
+                >
+                  Send SMS
+                </GlassButton>
+              )}
+
+              {(currentUser.role === 'technician' || currentUser.role === 'admin') && (
+                <GlassButton
+                  variant="success"
+                  size="lg"
+                  icon={<Stethoscope className="w-5 h-5" />}
+                  className="h-16 sm:h-20 text-xs sm:text-sm font-medium flex-col gap-1 touch-manipulation"
+                  onClick={() => setShowDiagnosticChecklist(true)}
+                >
+                  Diagnostic
+                </GlassButton>
+              )}
+
+              {(currentUser.role === 'technician' || currentUser.role === 'admin') && (
+                <GlassButton
+                  variant="warning"
+                  size="lg"
+                  icon={<Wrench className="w-5 h-5" />}
+                  className="h-16 sm:h-20 text-xs sm:text-sm font-medium flex-col gap-1 touch-manipulation"
+                  onClick={() => setShowRepairChecklist(true)}
+                >
+                  Repair
+                </GlassButton>
+              )}
+
+              <GlassButton
+                variant="secondary"
+                size="lg"
+                icon={<ArrowLeft className="w-5 h-5" />}
+                className="h-16 sm:h-20 text-xs sm:text-sm font-medium flex-col gap-1 touch-manipulation"
+                onClick={handleBackClick}
+              >
+                Back
+              </GlassButton>
+            </div>
+          </GlassCard>
           
           {/* Customer Information Section */}
           {(customer || dbCustomer) && (
             <GlassCard className="bg-gradient-to-br from-blue-500/10 to-blue-400/5">
-              <h3 className="text-lg sm:text-xl font-bold text-blue-900 mb-4">Customer Information</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs sm:text-sm text-gray-500">Name</p>
-                  <p className="text-gray-800 text-sm sm:text-base">{dbCustomer?.name || customer?.name || 'N/A'}</p>
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl sm:text-2xl font-bold text-blue-900">Customer Information</h3>
+                {currentUser.role === 'customer-care' && (
+                  <GlassButton
+                    variant="secondary"
+                    size="sm"
+                    icon={<Phone className="w-4 h-4" />}
+                    className="touch-manipulation"
+                    onClick={() => {
+                      const phone = dbCustomer?.phone || customer?.phone;
+                      if (phone) window.open(`tel:${phone}`);
+                    }}
+                  >
+                    Call
+                  </GlassButton>
+                )}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-500 mb-1">Name</p>
+                    <p className="text-gray-800 text-lg font-semibold">{dbCustomer?.name || customer?.name || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-500 mb-1">Phone</p>
+                    <p className="text-gray-800 text-lg">{dbCustomer?.phone || customer?.phone || 'N/A'}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs sm:text-sm text-gray-500">Phone</p>
-                  <p className="text-gray-800 text-sm sm:text-base">{dbCustomer?.phone || customer?.phone || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-xs sm:text-sm text-gray-500">City</p>
-                  <p className="text-gray-800 text-sm sm:text-base">{dbCustomer?.city || customer?.city || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-xs sm:text-sm text-gray-500">Loyalty Level</p>
-                  <p className="text-gray-800 text-sm sm:text-base">{dbCustomer?.loyaltyLevel || customer?.loyaltyLevel || 'N/A'}</p>
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-500 mb-1">City</p>
+                    <p className="text-gray-800 text-lg">{dbCustomer?.city || customer?.city || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-500 mb-1">Loyalty Level</p>
+                    <div className="flex items-center gap-2">
+                      <Star className="w-5 h-5 text-yellow-500" />
+                      <p className="text-gray-800 text-lg font-medium">{dbCustomer?.loyaltyLevel || customer?.loyaltyLevel || 'Standard'}</p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </GlassCard>
@@ -1076,28 +1116,376 @@ const DeviceDetailPage: React.FC = () => {
                 )}
               </div>
               
-              {currentUser.role === 'customer-care' || currentUser.role === 'admin' ? (
-                <GlassButton
-                  variant="primary"
-                  icon={<CreditCard size={16} className="sm:w-[18px] sm:h-[18px]" />}
-                  className="mt-4 w-full sm:w-auto text-sm"
-                  onClick={() => setShowPaymentModal(true)}
-                >
-                  Record Payment
-                </GlassButton>
-              ) : (
-                <div className="mt-4">
+              <div className="flex flex-col sm:flex-row gap-3 mt-6">
+                {currentUser.role === 'customer-care' || currentUser.role === 'admin' ? (
                   <GlassButton
                     variant="primary"
-                    icon={<CreditCard size={16} className="sm:w-[18px] sm:h-[18px]" />}
-                    className="opacity-50 cursor-not-allowed w-full sm:w-auto text-sm"
-                    disabled
+                    size="lg"
+                    icon={<CreditCard className="w-5 h-5" />}
+                    className="w-full sm:w-auto h-12 touch-manipulation font-medium"
+                    onClick={() => setShowPaymentModal(true)}
                   >
                     Record Payment
                   </GlassButton>
-                  <div className="text-xs text-gray-500 mt-2 text-center sm:text-left">Only customer care can record payments.</div>
+                ) : (
+                  <div className="w-full">
+                    <GlassButton
+                      variant="primary"
+                      size="lg"
+                      icon={<CreditCard className="w-5 h-5" />}
+                      className="opacity-50 cursor-not-allowed w-full h-12 font-medium"
+                      disabled
+                    >
+                      Record Payment
+                    </GlassButton>
+                    <div className="text-sm text-gray-500 mt-2 text-center sm:text-left">Only customer care can record payments.</div>
+                  </div>
+                )}
+              </div>
+            </GlassCard>
+          )}
+
+          {/* Device Information & Status Section */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
+            {/* Device Specifications */}
+            <GlassCard className="bg-gradient-to-br from-gray-500/10 to-gray-400/5">
+              <h3 className="text-xl sm:text-2xl font-bold text-gray-900 mb-6">Device Details</h3>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-500 mb-1">Brand</p>
+                    <p className="text-gray-800 text-lg font-semibold">{safeDevice.brand || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-500 mb-1">Model</p>
+                    <p className="text-gray-800 text-lg font-semibold">{safeDevice.model || 'N/A'}</p>
+                  </div>
+                </div>
+                
+                <div>
+                  <p className="text-sm font-medium text-gray-500 mb-1">Serial Number</p>
+                  <div className="flex items-center gap-2">
+                    <Hash className="w-4 h-4 text-gray-500" />
+                    <p className="text-gray-800 text-lg font-mono">{safeDevice.serialNumber || 'N/A'}</p>
+                  </div>
+                </div>
+
+                {safeDevice.unlockCode && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-500 mb-1">Unlock Code</p>
+                    <div className="flex items-center gap-2">
+                      <Key className="w-4 h-4 text-amber-500" />
+                      <p className="text-gray-800 text-lg font-mono bg-amber-50 px-2 py-1 rounded">{safeDevice.unlockCode}</p>
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <p className="text-sm font-medium text-gray-500 mb-1">Issue Description</p>
+                  <p className="text-gray-800 text-base bg-gray-50 p-3 rounded-lg">{safeDevice.issueDescription || 'No description provided'}</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-500 mb-1">Repair Cost</p>
+                    <p className="text-gray-800 text-lg font-semibold">{safeDevice.repairCost ? formatCurrency(Number(safeDevice.repairCost)) : 'TBD'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-500 mb-1">Deposit</p>
+                    <p className="text-gray-800 text-lg font-semibold">{safeDevice.depositAmount ? formatCurrency(Number(safeDevice.depositAmount)) : 'None'}</p>
+                  </div>
+                </div>
+              </div>
+            </GlassCard>
+
+            {/* Status & Timeline */}
+            <GlassCard className="bg-gradient-to-br from-purple-500/10 to-pink-400/5">
+              <h3 className="text-xl sm:text-2xl font-bold text-purple-900 mb-6">Status & Timeline</h3>
+              
+              <div className="space-y-6">
+                {/* Current Status */}
+                <div>
+                  <p className="text-sm font-medium text-gray-500 mb-2">Current Status</p>
+                  <StatusBadge status={safeDevice.status} className="text-lg px-4 py-2" />
+                </div>
+
+                {/* Expected Return Date */}
+                {safeDevice.expectedReturnDate && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-500 mb-2">Expected Return</p>
+                    <div className="bg-white p-4 rounded-lg border-2 border-purple-200">
+                      <div className="flex items-center gap-3 mb-2">
+                        <Calendar className="w-5 h-5 text-purple-600" />
+                        <span className="text-lg font-semibold text-gray-800">
+                          {new Date(safeDevice.expectedReturnDate).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <div className="text-base font-medium">
+                        {getMinimalCountdown(safeDevice.expectedReturnDate)}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Performance Metrics */}
+                {(technicianDuration || handoverDuration) && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-500 mb-3">Performance</p>
+                    <div className="space-y-2">
+                      {technicianDuration && (
+                        <div className="flex justify-between items-center py-2 px-3 bg-white rounded-lg">
+                          <span className="text-sm text-gray-600">Repair Time:</span>
+                          <span className="font-medium text-gray-800">{formatDuration(technicianDuration)}</span>
+                        </div>
+                      )}
+                      {handoverDuration && (
+                        <div className="flex justify-between items-center py-2 px-3 bg-white rounded-lg">
+                          <span className="text-sm text-gray-600">Handover Time:</span>
+                          <span className="font-medium text-gray-800">{formatDuration(handoverDuration)}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Status Update Actions */}
+                {(currentUser.role === 'technician' || currentUser.role === 'admin') && (
+                  <div className="pt-4 border-t border-purple-200">
+                    <StatusUpdateForm
+                      deviceId={safeDevice.id}
+                      currentStatus={safeDevice.status}
+                      onStatusUpdate={handleStatusUpdate}
+                    />
+                  </div>
+                )}
+              </div>
+            </GlassCard>
+          </div>
+
+          {/* Warranty Information */}
+          {hasWarrantyData() && (
+            <GlassCard className="bg-gradient-to-br from-yellow-500/10 to-orange-400/5">
+              <h3 className="text-xl sm:text-2xl font-bold text-yellow-900 mb-6">Warranty Information</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <p className="text-sm font-medium text-gray-500 mb-1">Status</p>
+                  <p className="text-lg font-semibold text-yellow-700">{warrantyInfo.status}</p>
+                </div>
+                {warrantyInfo.startDate && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-500 mb-1">Start Date</p>
+                    <p className="text-gray-800 text-base">{new Date(warrantyInfo.startDate).toLocaleDateString()}</p>
+                  </div>
+                )}
+                {warrantyInfo.endDate && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-500 mb-1">End Date</p>
+                    <p className="text-gray-800 text-base">{new Date(warrantyInfo.endDate).toLocaleDateString()}</p>
+                  </div>
+                )}
+              </div>
+            </GlassCard>
+          )}
+
+          {/* Communication Section */}
+          <GlassCard className="bg-gradient-to-br from-blue-500/10 to-cyan-400/5">
+            <h3 className="text-xl sm:text-2xl font-bold text-blue-900 mb-6">Communication & Remarks</h3>
+            <div style={{ height: '500px' }}>
+              <WhatsAppChatUI
+                remarks={allRemarks.map(r => ({
+                  id: r.id,
+                  content: r.remark,
+                  createdBy: r.created_by,
+                  createdAt: r.created_at
+                }))}
+                activityEvents={getActivityEvents()}
+                onAddRemark={handleAddRemark}
+                currentUserId={currentUser.id}
+                currentUserName={currentUser.username}
+                isLoading={false}
+              />
+            </div>
+          </GlassCard>
+
+          {/* Attachments Section */}
+          {hasAttachments() && (
+            <GlassCard className="bg-gradient-to-br from-emerald-500/10 to-teal-400/5">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl sm:text-2xl font-bold text-emerald-900">Attachments</h3>
+                <div className="flex gap-2">
+                  {selectedAttachmentsForDelete.length > 0 && (
+                    <GlassButton
+                      variant="danger"
+                      size="sm"
+                      icon={<Trash2 className="w-4 h-4" />}
+                      className="touch-manipulation"
+                      onClick={() => setShowBulkDeleteModal(true)}
+                    >
+                      Delete ({selectedAttachmentsForDelete.length})
+                    </GlassButton>
+                  )}
+                  <label className="cursor-pointer">
+                    <GlassButton
+                      variant="primary"
+                      size="sm"
+                      icon={<Upload className="w-4 h-4" />}
+                      className="touch-manipulation"
+                      as="span"
+                    >
+                      Upload
+                    </GlassButton>
+                    <input
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={handleAttachmentUpload}
+                    />
+                  </label>
+                </div>
+              </div>
+              
+              {attachmentsLoading && (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600 mx-auto mb-4"></div>
+                  <p className="text-gray-600">
+                    {uploadProgress !== null ? `Uploading... ${uploadProgress}%` : 'Loading attachments...'}
+                  </p>
                 </div>
               )}
+              
+              {attachmentsError && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                  <p className="text-red-600">{attachmentsError}</p>
+                </div>
+              )}
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {attachments.filter(att => att.type !== 'invoice').map((att) => (
+                  <div key={att.id} className="bg-white rounded-lg border border-emerald-200 p-4 group hover:shadow-md transition-shadow">
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        className="mt-1 w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500"
+                        checked={selectedAttachmentsForDelete.includes(att.id)}
+                        onChange={() => toggleAttachmentSelection(att.id)}
+                      />
+                      <div className="flex-shrink-0">
+                        {getFilePreview(att)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{att.file_name}</p>
+                        <p className="text-xs text-gray-500 mb-2">{formatRelativeTime(att.uploaded_at)}</p>
+                        <div className="flex gap-2">
+                          <a
+                            href={att.file_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded hover:bg-emerald-200 transition-colors"
+                          >
+                            View
+                          </a>
+                          <button
+                            onClick={() => handleRemoveAttachment(att)}
+                            className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded hover:bg-red-200 transition-colors touch-manipulation"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+          )}
+
+          {/* Repair History */}
+          {hasRepairHistory() && (
+            <GlassCard className="bg-gradient-to-br from-amber-500/10 to-orange-400/5">
+              <h3 className="text-xl sm:text-2xl font-bold text-amber-900 mb-6">Device Repair History</h3>
+              <div className="space-y-4">
+                {deviceHistory.map((historyDevice) => (
+                  <div key={historyDevice.id} className="bg-white rounded-lg border border-amber-200 p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <History className="w-5 h-5 text-amber-600" />
+                        <span className="font-semibold text-amber-800">Previous Repair</span>
+                      </div>
+                      <StatusBadge status={historyDevice.status} size="sm" />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="text-gray-500">Date:</span>
+                        <p className="font-medium">{new Date(historyDevice.createdAt).toLocaleDateString()}</p>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Issue:</span>
+                        <p className="font-medium">{historyDevice.issueDescription || 'No description'}</p>
+                      </div>
+                    </div>
+                    <Link
+                      to={`/devices/${historyDevice.id}`}
+                      className="inline-flex items-center gap-1 mt-3 text-sm text-amber-700 hover:text-amber-800 font-medium"
+                    >
+                      View Details <ArrowRight className="w-4 h-4" />
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+          )}
+
+          {/* Invoices Section */}
+          {hasInvoices() && (
+            <GlassCard className="bg-gradient-to-br from-rose-500/10 to-pink-400/5">
+              <h3 className="text-xl sm:text-2xl font-bold text-rose-900 mb-6">Invoices & Estimates</h3>
+              <div className="space-y-4">
+                {invoiceAttachments.map((invoice) => (
+                  <div key={invoice.id} className="bg-white rounded-lg border border-rose-200 p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <FileText className="w-6 h-6 text-rose-600" />
+                        <div>
+                          <p className="font-medium text-gray-900">{invoice.file_name}</p>
+                          <p className="text-sm text-gray-500">{formatRelativeTime(invoice.uploaded_at)}</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <a
+                          href={invoice.file_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-4 py-2 bg-rose-100 text-rose-700 rounded-lg hover:bg-rose-200 transition-colors touch-manipulation"
+                        >
+                          <FileText className="w-4 h-4" />
+                          View Invoice
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+          )}
+
+          {/* Device Barcode & QR */}
+          <GlassCard className="bg-gradient-to-br from-slate-500/10 to-gray-400/5">
+            <h3 className="text-xl sm:text-2xl font-bold text-slate-900 mb-6">Device Codes</h3>
+            <DeviceBarcodeCard device={safeDevice} />
+          </GlassCard>
+
+          {/* Technician Assignment */}
+          {(currentUser.role === 'admin' || currentUser.role === 'customer-care') && (
+            <GlassCard className="bg-gradient-to-br from-indigo-500/10 to-purple-400/5">
+              <h3 className="text-xl sm:text-2xl font-bold text-indigo-900 mb-6">Technician Assignment</h3>
+              <AssignTechnicianForm
+                deviceId={safeDevice.id}
+                currentAssignedTo={safeDevice.assignedTo}
+                onAssignmentUpdate={(deviceId, technicianId) => {
+                  // Handle assignment update
+                  toast.success('Technician assigned successfully!');
+                }}
+              />
             </GlassCard>
           )}
             
@@ -1153,13 +1541,232 @@ const DeviceDetailPage: React.FC = () => {
               />
             </div>
             {smsResult && <div className={`text-sm ${smsResult.startsWith('Failed') ? 'text-red-600' : 'text-green-600'}`}>{smsResult}</div>}
-            <div className="flex gap-3 justify-end mt-4">
-              <GlassButton type="button" variant="secondary" onClick={() => { setShowSmsModal(false); setSmsMessage(''); setSmsResult(null); }}>Cancel</GlassButton>
-              <GlassButton type="submit" variant="primary" disabled={smsSending}>{smsSending ? 'Sending...' : 'Send SMS'}</GlassButton>
+            <div className="flex flex-col sm:flex-row gap-3 justify-end mt-6">
+              <GlassButton 
+                type="button" 
+                variant="secondary" 
+                size="lg"
+                className="w-full sm:w-auto h-12 touch-manipulation font-medium"
+                onClick={() => { setShowSmsModal(false); setSmsMessage(''); setSmsResult(null); }}
+              >
+                Cancel
+              </GlassButton>
+              <GlassButton 
+                type="submit" 
+                variant="primary" 
+                size="lg"
+                className="w-full sm:w-auto h-12 touch-manipulation font-medium"
+                disabled={smsSending}
+              >
+                {smsSending ? 'Sending...' : 'Send SMS'}
+              </GlassButton>
             </div>
           </form>
         </Modal>
       )}
+
+      {/* Payment Modal */}
+      <Modal 
+        isOpen={showPaymentModal} 
+        onClose={() => { setShowPaymentModal(false); setPaymentAmount(''); setPaymentError(null); }} 
+        title="Record Payment" 
+        maxWidth="500px"
+      >
+        <div className="space-y-6">
+          <div>
+            <label className="block text-gray-700 mb-2 font-medium">Amount</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={paymentAmount}
+              onChange={e => setPaymentAmount(e.target.value)}
+              className="w-full py-3 px-4 bg-white/30 backdrop-blur-md border border-white/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-lg"
+              placeholder="Enter amount"
+              required
+            />
+          </div>
+          
+          <div>
+            <label className="block text-gray-700 mb-2 font-medium">Payment Method</label>
+            <div className="grid grid-cols-3 gap-3">
+              {(['cash', 'card', 'transfer'] as const).map(method => (
+                <button
+                  key={method}
+                  type="button"
+                  onClick={() => setPaymentMethod(method)}
+                  className={`py-3 px-4 rounded-lg font-medium capitalize transition-all touch-manipulation ${
+                    paymentMethod === method
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {method}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {paymentError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <p className="text-red-600">{paymentError}</p>
+            </div>
+          )}
+
+          <div className="flex flex-col sm:flex-row gap-3 justify-end mt-8">
+            <GlassButton
+              type="button"
+              variant="secondary"
+              size="lg"
+              className="w-full sm:w-auto h-12 touch-manipulation font-medium"
+              onClick={() => { setShowPaymentModal(false); setPaymentAmount(''); setPaymentError(null); }}
+            >
+              Cancel
+            </GlassButton>
+            <GlassButton
+              type="button"
+              variant="primary"
+              size="lg"
+              className="w-full sm:w-auto h-12 touch-manipulation font-medium"
+              onClick={handleRecordPayment}
+              disabled={recordingPayment || !paymentAmount}
+            >
+              {recordingPayment ? 'Recording...' : 'Record Payment'}
+            </GlassButton>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Payment Confirmation Modal */}
+      <Modal
+        isOpen={showPaymentConfirmation}
+        onClose={() => setShowPaymentConfirmation(false)}
+        title="Payment Recorded"
+        maxWidth="400px"
+      >
+        <div className="text-center space-y-4">
+          <CheckCircle className="w-16 h-16 text-green-500 mx-auto" />
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Payment Successful!</h3>
+            {lastPayment && (
+              <div className="space-y-2 text-sm text-gray-600">
+                <p>Amount: <span className="font-medium">{formatCurrency(lastPayment.amount)}</span></p>
+                <p>Method: <span className="font-medium capitalize">{lastPayment.method}</span></p>
+              </div>
+            )}
+          </div>
+          <GlassButton
+            variant="primary"
+            size="lg"
+            className="w-full h-12 touch-manipulation font-medium"
+            onClick={() => setShowPaymentConfirmation(false)}
+          >
+            Close
+          </GlassButton>
+        </div>
+      </Modal>
+
+      {/* Delete Attachment Confirmation Modal */}
+      <Modal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        title="Delete Attachment"
+        maxWidth="400px"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-8 h-8 text-red-500" />
+            <div>
+              <p className="text-gray-900 font-medium">Are you sure you want to delete this attachment?</p>
+              {deleteTarget && (
+                <p className="text-sm text-gray-600 mt-1">{deleteTarget.file_name}</p>
+              )}
+            </div>
+          </div>
+          
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+            <p className="text-red-800 text-sm">This action cannot be undone.</p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 justify-end mt-6">
+            <GlassButton
+              type="button"
+              variant="secondary"
+              size="lg"
+              className="w-full sm:w-auto h-12 touch-manipulation font-medium"
+              onClick={() => setShowDeleteModal(false)}
+            >
+              Cancel
+            </GlassButton>
+            <GlassButton
+              type="button"
+              variant="danger"
+              size="lg"
+              className="w-full sm:w-auto h-12 touch-manipulation font-medium"
+              onClick={confirmDeleteAttachment}
+              disabled={attachmentsLoading}
+            >
+              {attachmentsLoading ? 'Deleting...' : 'Delete'}
+            </GlassButton>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Bulk Delete Attachments Modal */}
+      <Modal
+        isOpen={showBulkDeleteModal}
+        onClose={() => setShowBulkDeleteModal(false)}
+        title="Delete Multiple Attachments"
+        maxWidth="500px"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-8 h-8 text-red-500" />
+            <div>
+              <p className="text-gray-900 font-medium">
+                Are you sure you want to delete {selectedAttachmentsForDelete.length} attachment(s)?
+              </p>
+            </div>
+          </div>
+          
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <p className="text-red-800 text-sm font-medium mb-2">This will delete:</p>
+            <ul className="text-sm text-red-700 space-y-1 max-h-32 overflow-y-auto">
+              {attachments
+                .filter(att => selectedAttachmentsForDelete.includes(att.id) && att.type !== 'invoice')
+                .map(att => (
+                  <li key={att.id} className="flex items-center gap-2">
+                    <span className="w-1 h-1 bg-red-600 rounded-full"></span>
+                    {att.file_name}
+                  </li>
+                ))}
+            </ul>
+            <p className="text-red-800 text-sm mt-3 font-medium">This action cannot be undone.</p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 justify-end mt-6">
+            <GlassButton
+              type="button"
+              variant="secondary"
+              size="lg"
+              className="w-full sm:w-auto h-12 touch-manipulation font-medium"
+              onClick={() => setShowBulkDeleteModal(false)}
+            >
+              Cancel
+            </GlassButton>
+            <GlassButton
+              type="button"
+              variant="danger"
+              size="lg"
+              className="w-full sm:w-auto h-12 touch-manipulation font-medium"
+              onClick={handleBulkDeleteAttachments}
+              disabled={attachmentsLoading}
+            >
+              {attachmentsLoading ? 'Deleting...' : `Delete ${selectedAttachmentsForDelete.length} Files`}
+            </GlassButton>
+          </div>
+        </div>
+      </Modal>
 
       {/* Diagnostic Checklist Modal */}
       <DiagnosticChecklist
