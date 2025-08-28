@@ -464,6 +464,148 @@ const DeviceDetailPage: React.FC = () => {
             </GlassCard>
           )}
 
+          {/* Parts and Inventory Section - Admin/Customer Care only */}
+          {isAdminOrCustomerCare && (
+            <GlassCard className="bg-gradient-to-br from-purple-500/10 to-purple-400/5">
+              <h3 className="text-lg sm:text-xl sm:text-2xl font-bold text-purple-900 mb-3 sm:mb-4">Parts & Inventory</h3>
+              <div className="text-center py-6">
+                <Wrench className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                <div className="text-gray-700 text-sm sm:text-base">No parts used yet for this repair.</div>
+                <p className="text-xs text-gray-500 mt-2">Parts will be tracked automatically when repair begins</p>
+              </div>
+            </GlassCard>
+          )}
+
+          {/* Device Timeline & Activity */}
+          <GlassCard>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-gray-900">Activity Timeline</h3>
+              <GlassButton
+                onClick={() => {
+                  toast.info('Full activity timeline will show all device events');
+                }}
+                variant="secondary"
+                icon={<History size={16} />}
+                size="sm"
+              >
+                View All
+              </GlassButton>
+            </div>
+            
+            <div className="space-y-4">
+              {safeDevice.transitions && safeDevice.transitions.length > 0 ? (
+                safeDevice.transitions.slice(-3).map((transition, idx) => (
+                  <div key={idx} className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
+                    <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center">
+                      <Clock className="w-4 h-4 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-medium text-gray-900">Status changed to {transition.toStatus?.replace(/-/g, ' ')}</p>
+                      <p className="text-sm text-gray-600">{formatRelativeTime(transition.timestamp)}</p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-gray-500 italic text-center py-4">No status changes recorded yet</p>
+              )}
+            </div>
+          </GlassCard>
+
+          {/* Upselling Opportunities - Sales Workflow Integration */}
+          {isAdminOrCustomerCare && (
+            <GlassCard className="bg-gradient-to-br from-orange-500/10 to-orange-400/5">
+              <h3 className="text-lg sm:text-xl sm:text-2xl font-bold text-orange-900 mb-3 sm:mb-4">Sales Opportunities</h3>
+              <div className="space-y-3">
+                <div className="p-3 bg-white/50 rounded-lg border border-orange-200">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Gift className="w-4 h-4 text-orange-600" />
+                    <span className="text-sm font-semibold text-orange-800">Recommended Accessories</span>
+                  </div>
+                  <p className="text-xs text-gray-700">Screen protector, case, charger accessories</p>
+                </div>
+                <div className="p-3 bg-white/50 rounded-lg border border-orange-200">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Star className="w-4 h-4 text-orange-600" />
+                    <span className="text-sm font-semibold text-orange-800">Warranty Extension</span>
+                  </div>
+                  <p className="text-xs text-gray-700">Offer extended warranty for completed repairs</p>
+                </div>
+              </div>
+              <GlassButton
+                variant="primary"
+                size="sm"
+                icon={<Gift size={14} />}
+                className="mt-3 w-full"
+                onClick={() => {
+                  toast.info('Sales opportunities will integrate with inventory system');
+                }}
+              >
+                View Recommendations
+              </GlassButton>
+            </GlassCard>
+          )}
+
+          {/* Device Attachments Section */}
+          <GlassCard className="bg-gradient-to-br from-gray-500/10 to-gray-400/5">
+            <h3 className="text-lg sm:text-xl sm:text-2xl font-bold text-gray-900 mb-3 sm:mb-4">Device Attachments</h3>
+            {attachmentsLoading ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 className="animate-spin h-5 w-5 sm:h-6 sm:w-6 text-gray-600" />
+                <span className="ml-2 text-gray-700 text-sm sm:text-base">Loading attachments...</span>
+              </div>
+            ) : attachments.length === 0 ? (
+              <div className="text-center py-6">
+                <Upload className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                <div className="text-gray-700 text-sm sm:text-base">No attachments uploaded yet.</div>
+                <p className="text-xs text-gray-500 mt-2">Upload photos, documents, or invoices related to this device</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+                {attachments.map((att) => (
+                  <div key={att.id} className="relative group">
+                    <div className="p-3 bg-white rounded-lg border border-gray-200 hover:border-gray-300 transition-colors">
+                      <div className="flex flex-col items-center">
+                        {getFilePreview(att)}
+                        <p className="text-xs text-center mt-2 text-gray-600 truncate w-full">{att.file_name}</p>
+                        <p className="text-xs text-gray-400">{att.type || 'file'}</p>
+                      </div>
+                      <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button 
+                          onClick={() => handleRemoveAttachment(att)}
+                          className="p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
+                          title="Delete attachment"
+                        >
+                          <XCircle size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            
+            {attachmentsError && (
+              <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-red-600 text-sm">{attachmentsError}</p>
+              </div>
+            )}
+            
+            {uploadProgress !== null && (
+              <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="animate-spin h-4 w-4 text-blue-600" />
+                  <span className="text-blue-700 text-sm">Uploading... {uploadProgress}%</span>
+                </div>
+                <div className="mt-2 w-full bg-blue-200 rounded-full h-2">
+                  <div 
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                    style={{ width: `${uploadProgress}%` }}
+                  ></div>
+                </div>
+              </div>
+            )}
+          </GlassCard>
+
           {/* Chat Interface */}
           <div className="h-96">
             <WhatsAppChatUI
