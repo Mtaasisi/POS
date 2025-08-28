@@ -183,10 +183,196 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
     }
   }, [customerSearchTerm, customers]);
 
-  // Load customers on mount
+  // Load customers and recent chats on mount
   useEffect(() => {
     loadCustomers();
+    loadRecentChats();
   }, []);
+
+  // Reload recent chats when a message is sent
+  useEffect(() => {
+    loadRecentChats();
+  }, [chatHistory]);
+
+  // Real-time message subscription
+  useEffect(() => {
+    if (!supabase) return;
+
+    // Subscribe to new messages
+    const channel = supabase
+      .channel('whatsapp_messages')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'whatsapp_messages'
+        },
+        (payload) => {
+          console.log('New message received:', payload);
+          const newMessage = payload.new as any;
+          
+          // Only add incoming messages to chat history if this customer is selected
+          if (selectedCustomer && newMessage.direction === 'incoming') {
+            const customerPhone = formatPhoneNumber(selectedCustomer.phone);
+            if (newMessage.chat_id === customerPhone) {
+              const formattedMessage = {
+                id: newMessage.id,
+                content: newMessage.content || newMessage.message,
+                sender: 'customer',
+                timestamp: newMessage.timestamp || newMessage.created_at,
+                status: newMessage.status || 'received',
+                customer: selectedCustomer,
+                type: newMessage.type || 'text',
+                imageUrl: newMessage.metadata?.imageUrl || null,
+                fileUrl: newMessage.metadata?.fileUrl || null,
+                audioUrl: newMessage.metadata?.audioUrl || null,
+                fileName: newMessage.metadata?.fileName,
+                fileSize: newMessage.metadata?.fileSize,
+                audioDuration: newMessage.metadata?.audioDuration
+              };
+              
+              setChatHistory(prev => [...prev, formattedMessage]);
+            }
+          }
+          
+          // Refresh recent chats to show new conversations
+          loadRecentChats();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'whatsapp_messages'
+        },
+        (payload) => {
+          console.log('Message updated:', payload);
+          const updatedMessage = payload.new as any;
+          
+          // Update message status in chat history
+          setChatHistory(prev => 
+            prev.map(msg => 
+              msg.id === updatedMessage.id 
+                ? { ...msg, status: updatedMessage.status }
+                : msg
+            )
+          );
+          
+          // Update message status in status tracking
+          setMessageStatuses(prev => ({
+            ...prev,
+            [updatedMessage.id]: updatedMessage.status
+          }));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase, selectedCustomer]);
+
+  // Load chat history for selected customer
+  const loadChatHistory = async (customerId: string, customerPhone: string) => {
+    if (isLoadingHistory) return; // Prevent concurrent loading
+    
+    try {
+      setIsLoadingHistory(true);
+      if (!supabase) {
+        toast.error('Database connection not available');
+        return;
+      }
+
+      // Load messages from database for this customer's phone number
+      const { data, error } = await supabase
+        .from('whatsapp_messages')
+        .select('*')
+        .eq('chat_id', formatPhoneNumber(customerPhone))
+        .order('timestamp', { ascending: true });
+
+      if (error) throw error;
+
+      // Convert database messages to UI format
+      const formattedMessages = (data || []).map(msg => ({
+        id: msg.id,
+        content: msg.content || msg.message,
+        sender: msg.direction === 'outgoing' ? 'business' : 'customer',
+        timestamp: msg.timestamp || msg.created_at,
+        status: msg.status || 'sent',
+        customer: selectedCustomer,
+        type: msg.type || 'text',
+        imageUrl: msg.metadata?.imageUrl || null,
+        fileUrl: msg.metadata?.fileUrl || null,
+        audioUrl: msg.metadata?.audioUrl || null,
+        fileName: msg.metadata?.fileName,
+        fileSize: msg.metadata?.fileSize,
+        audioDuration: msg.metadata?.audioDuration
+      }));
+
+      setChatHistory(formattedMessages);
+    } catch (error) {
+      console.error('Error loading chat history:', error);
+      toast.error('Failed to load chat history');
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  // Load recent chats for the chat tab
+  const [recentChats, setRecentChats] = useState<any[]>([]);
+  const [isLoadingChats, setIsLoadingChats] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  
+  const loadRecentChats = async () => {
+    if (isLoadingChats) return; // Prevent concurrent loading
+    
+    try {
+      setIsLoadingChats(true);
+      if (!supabase) return;
+
+      // Get recent unique conversations
+      const { data, error } = await supabase
+        .from('whatsapp_messages')
+        .select(`
+          chat_id,
+          content,
+          message,
+          timestamp,
+          direction,
+          sender_name
+        `)
+        .order('timestamp', { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+
+      // Group by chat_id and get the latest message for each chat
+      const chatGroups = (data || []).reduce((acc: any, msg: any) => {
+        if (!acc[msg.chat_id] || new Date(msg.timestamp) > new Date(acc[msg.chat_id].timestamp)) {
+          acc[msg.chat_id] = msg;
+        }
+        return acc;
+      }, {});
+
+      // Convert to array and format for UI
+      const formattedChats = Object.values(chatGroups).map((chat: any) => ({
+        id: chat.chat_id,
+        name: chat.sender_name || chat.chat_id.replace('@c.us', ''),
+        lastMessage: chat.content || chat.message,
+        timestamp: chat.timestamp,
+        phone: chat.chat_id.replace('@c.us', '')
+      })).slice(0, 10); // Show top 10 recent chats
+
+      setRecentChats(formattedChats);
+    } catch (error) {
+      console.error('Error loading recent chats:', error);
+      toast.error('Failed to load recent chats');
+    } finally {
+      setIsLoadingChats(false);
+    }
+  };
 
   // Phone number formatting function
   const formatPhoneNumber = (phone: string) => {
@@ -583,11 +769,36 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
   };
 
   // Message status functions
-  const updateMessageStatus = (messageId: number, status: 'sending' | 'sent' | 'delivered' | 'read') => {
+  const updateMessageStatus = async (messageId: string | number, status: 'sending' | 'sent' | 'delivered' | 'read') => {
     setMessageStatuses(prev => ({
       ...prev,
       [messageId]: status
     }));
+
+    // Update status in database
+    try {
+      if (supabase && typeof messageId === 'string') {
+        const updateData: any = {
+          status,
+          updated_at: new Date().toISOString()
+        };
+
+        if (status === 'sent') {
+          updateData.timestamp = new Date().toISOString();
+        }
+
+        const { error } = await supabase
+          .from('whatsapp_messages')
+          .update(updateData)
+          .eq('id', messageId);
+
+        if (error) {
+          console.error('Error updating message status in database:', error);
+        }
+      }
+    } catch (error) {
+      console.error('Database status update error:', error);
+    }
   };
 
   const getMessageStatusIcon = (status: 'sending' | 'sent' | 'delivered' | 'read') => {
@@ -606,10 +817,15 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
   };
 
   // Select customer for chat
-  const selectCustomerForChat = (customer: any) => {
+  const selectCustomerForChat = async (customer: any) => {
     setSelectedCustomer(customer);
     setChatMessage('');
     setChatHistory([]);
+    
+    // Load chat history for this customer
+    if (customer.phone) {
+      await loadChatHistory(customer.id, customer.phone);
+    }
   };
 
   // Send chat message
@@ -686,12 +902,50 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
         });
       }
 
-      const messageId = Date.now();
+      const messageId = `msg_${Date.now()}_${Math.random().toString(36).substring(2)}`;
+      const customerPhone = formatPhoneNumber(selectedCustomer.phone);
+      const messageContent = messageType === 'image' ? 'Image shared' : 
+                            messageType === 'document' ? `File: ${selectedFile?.name}` :
+                            messageType === 'audio' ? 'Voice message' : chatMessage;
+
+      // Save message to database first
+      try {
+        if (supabase) {
+          const { error: dbError } = await supabase
+            .from('whatsapp_messages')
+            .insert({
+              id: messageId,
+              instance_id: connectedInstance.instance_id,
+              chat_id: customerPhone,
+              sender_id: 'business',
+              sender_name: 'Business',
+              type: messageType,
+              content: messageContent,
+              message: messageContent,
+              direction: 'outgoing',
+              status: 'sending',
+              metadata: {
+                imageUrl: messageType === 'image' ? imagePreview : null,
+                fileUrl: messageType === 'document' ? filePreview : null,
+                audioUrl: messageType === 'audio' ? audioUrl : null,
+                fileName: selectedFile?.name,
+                fileSize: selectedFile?.size,
+                audioDuration: messageType === 'audio' ? formatRecordingTime(recordingTime) : null
+              },
+              timestamp: new Date().toISOString()
+            });
+
+          if (dbError) {
+            console.error('Error saving message to database:', dbError);
+          }
+        }
+      } catch (dbError) {
+        console.error('Database save error:', dbError);
+      }
+
       const newMessage = {
         id: messageId,
-        content: messageType === 'image' ? 'Image shared' : 
-                messageType === 'document' ? `File: ${selectedFile?.name}` :
-                messageType === 'audio' ? 'Voice message' : chatMessage,
+        content: messageContent,
         sender: 'business',
         timestamp: new Date().toISOString(),
         status: 'sent',
@@ -810,39 +1064,90 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
           
           <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 min-h-0">
             {activeTab === 'chat' ? (
-              // Chat tab content - show recent chats or empty state
-              <div className="p-4 text-center text-gray-500">
-                <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
-                  <MessageCircle size={32} className="text-white" />
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">Recent Chats</h3>
-                <p className="text-sm text-gray-600 mb-4">Your recent conversations will appear here</p>
-                <div className="space-y-2">
-                  <div className="p-3 bg-gray-50 rounded-xl border border-gray-200">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-sm">
-                        A
-                      </div>
-                      <div className="flex-1 text-left">
-                        <h4 className="font-medium text-gray-900 text-sm">Abdalah</h4>
-                        <p className="text-xs text-gray-500">Hello! How can I help you?</p>
-                      </div>
-                      <div className="text-xs text-gray-400">2m ago</div>
+              // Chat tab content - show recent chats from database
+              <div className="p-4">
+                {isLoadingChats ? (
+                  <div className="text-center text-gray-500">
+                    <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
+                      <RefreshCw size={32} className="text-white animate-spin" />
                     </div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Loading Chats...</h3>
+                    <p className="text-sm text-gray-600">Please wait while we fetch your conversations</p>
                   </div>
-                  <div className="p-3 bg-gray-50 rounded-xl border border-gray-200">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-sm">
-                        S
-                      </div>
-                      <div className="flex-1 text-left">
-                        <h4 className="font-medium text-gray-900 text-sm">Sarah</h4>
-                        <p className="text-xs text-gray-500">Thank you for your help!</p>
-                      </div>
-                      <div className="text-xs text-gray-400">1h ago</div>
+                ) : recentChats.length === 0 ? (
+                  <div className="text-center text-gray-500">
+                    <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
+                      <MessageCircle size={32} className="text-white" />
                     </div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Recent Chats</h3>
+                    <p className="text-sm text-gray-600 mb-4">Your recent conversations will appear here</p>
+                    <button 
+                      onClick={loadRecentChats}
+                      disabled={isLoadingChats}
+                      className="text-sm text-green-600 hover:text-green-700 font-medium disabled:opacity-50"
+                    >
+                      Refresh
+                    </button>
                   </div>
-                </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-gray-900">Recent Chats</h3>
+                      <button 
+                        onClick={loadRecentChats}
+                        className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-all duration-200"
+                      >
+                        <RefreshCw size={16} />
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      {recentChats.map((chat, index) => (
+                        <button
+                          key={chat.id}
+                          onClick={() => {
+                            // Find customer by phone and select them
+                            const customer = customers.find(c => 
+                              c.phone?.replace(/[^\d+]/g, '') === chat.phone?.replace(/[^\d+]/g, '')
+                            );
+                            if (customer) {
+                              selectCustomerForChat(customer);
+                              setActiveTab('contacts'); // Switch to contacts tab to show the chat
+                            } else {
+                              // Create temporary customer object for unknown numbers
+                              const tempCustomer = {
+                                id: chat.id,
+                                name: chat.name,
+                                phone: chat.phone,
+                                email: null
+                              };
+                              selectCustomerForChat(tempCustomer);
+                              setActiveTab('contacts');
+                            }
+                          }}
+                          className="w-full p-3 bg-gray-50 hover:bg-gray-100 rounded-xl border border-gray-200 transition-all duration-200 text-left"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-lg transition-all duration-200 ${
+                              index % 4 === 0 ? 'bg-gradient-to-br from-blue-500 to-blue-600' :
+                              index % 4 === 1 ? 'bg-gradient-to-br from-purple-500 to-purple-600' :
+                              index % 4 === 2 ? 'bg-gradient-to-br from-green-500 to-green-600' :
+                              'bg-gradient-to-br from-orange-500 to-orange-600'
+                            }`}>
+                              {chat.name?.charAt(0)?.toUpperCase() || 'U'}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-medium text-gray-900 text-sm truncate">{chat.name}</h4>
+                              <p className="text-xs text-gray-500 truncate">{chat.lastMessage}</p>
+                            </div>
+                            <div className="text-xs text-gray-400">
+                              {formatMessageTime(chat.timestamp)}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             ) : (
               // Contacts tab content - show customer list
@@ -961,7 +1266,17 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
 
               {/* Chat Messages */}
               <div className="flex-1 bg-gradient-to-br from-gray-50 to-gray-100 p-3 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent min-h-0">
-                {chatHistory.length === 0 ? (
+                {isLoadingHistory ? (
+                  <div className="text-center py-6">
+                    <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center mx-auto mb-3 shadow-lg">
+                      <RefreshCw size={28} className="text-green-500 animate-spin" />
+                    </div>
+                    <h3 className="text-base font-bold text-gray-900 mb-2">Loading chat history...</h3>
+                    <p className="text-gray-600 mb-3 max-w-md mx-auto text-sm">
+                      Please wait while we fetch your conversation with {selectedCustomer.name}.
+                    </p>
+                  </div>
+                ) : chatHistory.length === 0 ? (
                   <div className="text-center py-6">
                     <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center mx-auto mb-3 shadow-lg">
                       <MessageCircle size={28} className="text-green-500" />
