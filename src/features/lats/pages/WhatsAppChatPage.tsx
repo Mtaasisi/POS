@@ -29,6 +29,15 @@ import {
 import { supabase } from '../../../lib/supabaseClient';
 import { toast } from '../../../lib/toastUtils';
 import { greenApiService } from '../../../services/greenApiService';
+import type { 
+  SendPollParams, 
+  SendLocationParams, 
+  SendContactParams, 
+  SendInteractiveButtonsParams, 
+  SendFileParams, 
+  ForwardMessageParams,
+  SendMessageParams 
+} from '../../../services/greenApiService';
 
 interface WhatsAppChatPageProps {
   instances: any[];
@@ -55,7 +64,7 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
   const [showQuickReplies, setShowQuickReplies] = useState(false);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [messageType, setMessageType] = useState<'text' | 'image' | 'button' | 'template' | 'document' | 'audio'>('text');
+  const [messageType, setMessageType] = useState<'text' | 'image' | 'button' | 'template' | 'document' | 'audio' | 'poll' | 'location' | 'contact' | 'interactive_buttons' | 'file_url'>('text');
   
   // Enhanced Quick Reply states
   const [quickReplyCategory, setQuickReplyCategory] = useState<string>('Frequently Used');
@@ -91,6 +100,39 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
   
   // Message status tracking
   const [messageStatuses, setMessageStatuses] = useState<{[key: number]: 'sending' | 'sent' | 'delivered' | 'read'}>({});
+
+  // Enhanced messaging states
+  const [showPollCreator, setShowPollCreator] = useState(false);
+  const [pollQuestion, setPollQuestion] = useState('');
+  const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
+  const [pollMultipleAnswers, setPollMultipleAnswers] = useState(false);
+  
+  // Location sharing states
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
+  const [selectedLocation, setSelectedLocation] = useState<{latitude: number, longitude: number, name?: string, address?: string} | null>(null);
+  
+  // Contact sharing states
+  const [showContactPicker, setShowContactPicker] = useState(false);
+  const [contactToShare, setContactToShare] = useState<any>(null);
+  
+  // Interactive buttons states
+  const [showInteractiveButtonsCreator, setShowInteractiveButtonsCreator] = useState(false);
+  const [interactiveMessage, setInteractiveMessage] = useState('');
+  const [interactiveFooter, setInteractiveFooter] = useState('');
+  const [interactiveButtons, setInteractiveButtons] = useState<Array<{buttonId: string, buttonText: string}>>([{buttonId: '', buttonText: ''}]);
+  
+  // File URL sharing states
+  const [showFileUrlInput, setShowFileUrlInput] = useState(false);
+  const [fileUrl, setFileUrl] = useState('');
+  const [fileCaption, setFileCaption] = useState('');
+  
+  // Message forwarding states
+  const [selectedMessagesForForward, setSelectedMessagesForForward] = useState<string[]>([]);
+  const [showForwardModal, setShowForwardModal] = useState(false);
+  
+  // Message enhancement states
+  const [quotedMessage, setQuotedMessage] = useState<any>(null);
+  const [linkPreviewEnabled, setLinkPreviewEnabled] = useState(true);
   
   // Emoji picker data
   const emojis = ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '🤑', '🤠', '💩', '👻', '💀', '☠️', '👽', '👾', '🤖', '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾', '🙈', '🙉', '🙊', '👶', '👧', '🧒', '👦', '👩', '🧑', '👨', '👵', '🧓', '👴', '👮‍♀️', '👮', '👮‍♂️', '🕵️‍♀️', '🕵️', '🕵️‍♂️', '💂‍♀️', '💂', '💂‍♂️', '👷‍♀️', '👷', '👷‍♂️', '🤴', '👸', '👳‍♀️', '👳', '👳‍♂️', '👲', '🧕', '🤵‍♀️', '🤵', '🤵‍♂️', '👰‍♀️', '👰', '👰‍♂️', '🤰', '🤱', '👼', '🎅', '🤶', '🧙‍♀️', '🧙', '🧙‍♂️', '🧝‍♀️', '🧝', '🧝‍♂️', '🧛‍♀️', '🧛', '🧛‍♂️', '🧟‍♀️', '🧟', '🧟‍♂️', '🧞‍♀️', '🧞', '🧞‍♂️', '🧜‍♀️', '🧜', '🧜‍♂️', '🧚‍♀️', '🧚', '🧚‍♂️', '👼', '🤰', '🤱', '👼', '🎅', '🤶', '🧙‍♀️', '🧙', '🧙‍♂️', '🧝‍♀️', '🧝', '🧝‍♂️', '🧛‍♀️', '🧛', '🧛‍♂️', '🧟‍♀️', '🧟', '🧟‍♂️', '🧞‍♀️', '🧞', '🧞‍♂️', '🧜‍♀️', '🧜', '🧜‍♂️', '🧚‍♀️', '🧚', '🧚‍♂️'];
@@ -602,6 +644,249 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
         return <CheckCheck size={10} className="text-green-500" />;
       default:
         return null;
+    }
+  };
+
+  // Enhanced messaging functions
+
+  // Poll creation and sending
+  const addPollOption = () => {
+    setPollOptions([...pollOptions, '']);
+  };
+
+  const removePollOption = (index: number) => {
+    if (pollOptions.length > 2) {
+      setPollOptions(pollOptions.filter((_, i) => i !== index));
+    }
+  };
+
+  const updatePollOption = (index: number, value: string) => {
+    const newOptions = [...pollOptions];
+    newOptions[index] = value;
+    setPollOptions(newOptions);
+  };
+
+  const sendPoll = async () => {
+    if (!selectedCustomer || !instances.length) {
+      toast.error('Please select a customer and ensure WhatsApp is connected');
+      return;
+    }
+
+    if (!pollQuestion.trim()) {
+      toast.error('Please enter a poll question');
+      return;
+    }
+
+    const validOptions = pollOptions.filter(option => option.trim() !== '');
+    if (validOptions.length < 2) {
+      toast.error('Please provide at least 2 poll options');
+      return;
+    }
+
+    setIsSendingChatMessage(true);
+    
+    try {
+      const connectedInstance = instances.find(i => i.status === 'connected');
+      if (!connectedInstance) {
+        toast.error('No connected WhatsApp instance available');
+        return;
+      }
+
+      const customerPhone = formatPhoneNumber(selectedCustomer.phone);
+      
+      const pollParams: SendPollParams = {
+        instanceId: connectedInstance.instance_id,
+        chatId: customerPhone,
+        message: pollQuestion,
+        options: validOptions.map(option => ({ optionName: option })),
+        multipleAnswers: pollMultipleAnswers
+      };
+
+      const result = await greenApiService.sendPoll(pollParams);
+
+      const messageId = Date.now();
+      const newMessage = {
+        id: messageId,
+        content: pollQuestion,
+        sender: 'business',
+        timestamp: new Date().toISOString(),
+        status: 'sent',
+        customer: selectedCustomer,
+        type: 'poll',
+        pollData: {
+          question: pollQuestion,
+          options: validOptions,
+          multipleAnswers: pollMultipleAnswers
+        }
+      };
+      
+      updateMessageStatus(messageId, 'sending');
+      setChatHistory(prev => [...prev, newMessage]);
+      
+      // Reset poll form
+      setPollQuestion('');
+      setPollOptions(['', '']);
+      setPollMultipleAnswers(false);
+      setShowPollCreator(false);
+      setMessageType('text');
+      
+      setTimeout(() => updateMessageStatus(messageId, 'sent'), 1000);
+      setTimeout(() => updateMessageStatus(messageId, 'delivered'), 2000);
+      
+      toast.success(`Poll sent to ${selectedCustomer.name}`);
+      
+    } catch (error: any) {
+      console.error('Error sending poll:', error);
+      toast.error('Failed to send poll: ' + error.message);
+    } finally {
+      setIsSendingChatMessage(false);
+    }
+  };
+
+  // Location sharing
+  const getCurrentLocation = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setSelectedLocation({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            name: 'Current Location'
+          });
+          setShowLocationPicker(true);
+        },
+        (error) => {
+          console.error('Error getting location:', error);
+          toast.error('Could not get your current location');
+        }
+      );
+    } else {
+      toast.error('Geolocation is not supported by this browser');
+    }
+  };
+
+  const sendLocation = async () => {
+    if (!selectedCustomer || !instances.length || !selectedLocation) {
+      toast.error('Please select a customer and location');
+      return;
+    }
+
+    setIsSendingChatMessage(true);
+    
+    try {
+      const connectedInstance = instances.find(i => i.status === 'connected');
+      if (!connectedInstance) {
+        toast.error('No connected WhatsApp instance available');
+        return;
+      }
+
+      const customerPhone = formatPhoneNumber(selectedCustomer.phone);
+      
+      const locationParams: SendLocationParams = {
+        instanceId: connectedInstance.instance_id,
+        chatId: customerPhone,
+        latitude: selectedLocation.latitude,
+        longitude: selectedLocation.longitude,
+        nameLocation: selectedLocation.name,
+        address: selectedLocation.address
+      };
+
+      const result = await greenApiService.sendLocation(locationParams);
+
+      const messageId = Date.now();
+      const newMessage = {
+        id: messageId,
+        content: `📍 ${selectedLocation.name || 'Location'}: ${selectedLocation.latitude}, ${selectedLocation.longitude}`,
+        sender: 'business',
+        timestamp: new Date().toISOString(),
+        status: 'sent',
+        customer: selectedCustomer,
+        type: 'location',
+        locationData: selectedLocation
+      };
+      
+      updateMessageStatus(messageId, 'sending');
+      setChatHistory(prev => [...prev, newMessage]);
+      
+      // Reset location
+      setSelectedLocation(null);
+      setShowLocationPicker(false);
+      setMessageType('text');
+      
+      setTimeout(() => updateMessageStatus(messageId, 'sent'), 1000);
+      setTimeout(() => updateMessageStatus(messageId, 'delivered'), 2000);
+      
+      toast.success(`Location sent to ${selectedCustomer.name}`);
+      
+    } catch (error: any) {
+      console.error('Error sending location:', error);
+      toast.error('Failed to send location: ' + error.message);
+    } finally {
+      setIsSendingChatMessage(false);
+    }
+  };
+
+  // Contact sharing
+  const sendContact = async (contact: any) => {
+    if (!selectedCustomer || !instances.length) {
+      toast.error('Please select a customer and ensure WhatsApp is connected');
+      return;
+    }
+
+    setIsSendingChatMessage(true);
+    
+    try {
+      const connectedInstance = instances.find(i => i.status === 'connected');
+      if (!connectedInstance) {
+        toast.error('No connected WhatsApp instance available');
+        return;
+      }
+
+      const customerPhone = formatPhoneNumber(selectedCustomer.phone);
+      
+      const contactParams: SendContactParams = {
+        instanceId: connectedInstance.instance_id,
+        chatId: customerPhone,
+        contact: {
+          phoneContact: contact.phone,
+          firstName: contact.name.split(' ')[0],
+          lastName: contact.name.split(' ').slice(1).join(' '),
+          email: contact.email
+        }
+      };
+
+      const result = await greenApiService.sendContact(contactParams);
+
+      const messageId = Date.now();
+      const newMessage = {
+        id: messageId,
+        content: `👤 Contact: ${contact.name} - ${contact.phone}`,
+        sender: 'business',
+        timestamp: new Date().toISOString(),
+        status: 'sent',
+        customer: selectedCustomer,
+        type: 'contact',
+        contactData: contact
+      };
+      
+      updateMessageStatus(messageId, 'sending');
+      setChatHistory(prev => [...prev, newMessage]);
+      
+      // Reset contact
+      setContactToShare(null);
+      setShowContactPicker(false);
+      setMessageType('text');
+      
+      setTimeout(() => updateMessageStatus(messageId, 'sent'), 1000);
+      setTimeout(() => updateMessageStatus(messageId, 'delivered'), 2000);
+      
+      toast.success(`Contact sent to ${selectedCustomer.name}`);
+      
+    } catch (error: any) {
+      console.error('Error sending contact:', error);
+      toast.error('Failed to send contact: ' + error.message);
+    } finally {
+      setIsSendingChatMessage(false);
     }
   };
 
@@ -1385,7 +1670,7 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
                         <XCircle size={18} />
                       </button>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-3 gap-3">
                       <label className="group relative overflow-hidden bg-gradient-to-br from-blue-50 to-blue-100 rounded-2xl border-2 border-blue-200 hover:border-blue-400 hover:from-blue-100 hover:to-blue-200 transition-all duration-300 cursor-pointer transform hover:scale-105 hover:shadow-lg">
                         <div className="p-4 flex flex-col items-center">
                           <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-300">
@@ -1449,7 +1734,13 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
                         </div>
                       </button>
                       
-                      <button className="group relative overflow-hidden bg-gradient-to-br from-green-50 to-green-100 rounded-2xl border-2 border-green-200 hover:border-green-400 hover:from-green-100 hover:to-green-200 transition-all duration-300 transform hover:scale-105 hover:shadow-lg">
+                      <button 
+                        onClick={() => {
+                          getCurrentLocation();
+                          setShowAttachmentMenu(false);
+                        }}
+                        className="group relative overflow-hidden bg-gradient-to-br from-green-50 to-green-100 rounded-2xl border-2 border-green-200 hover:border-green-400 hover:from-green-100 hover:to-green-200 transition-all duration-300 transform hover:scale-105 hover:shadow-lg"
+                      >
                         <div className="p-4 flex flex-col items-center">
                           <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-300">
                             <MapPin size={24} className="text-white" />
@@ -1459,13 +1750,70 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
                         </div>
                       </button>
                       
-                      <button className="group relative overflow-hidden bg-gradient-to-br from-orange-50 to-orange-100 rounded-2xl border-2 border-orange-200 hover:border-orange-400 hover:from-orange-100 hover:to-orange-200 transition-all duration-300 transform hover:scale-105 hover:shadow-lg">
+                      <button 
+                        onClick={() => {
+                          setShowContactPicker(true);
+                          setShowAttachmentMenu(false);
+                        }}
+                        className="group relative overflow-hidden bg-gradient-to-br from-orange-50 to-orange-100 rounded-2xl border-2 border-orange-200 hover:border-orange-400 hover:from-orange-100 hover:to-orange-200 transition-all duration-300 transform hover:scale-105 hover:shadow-lg"
+                      >
                         <div className="p-4 flex flex-col items-center">
                           <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-300">
                             <User size={24} className="text-white" />
                           </div>
                           <span className="text-sm font-medium text-orange-700">Contact</span>
                           <span className="text-xs text-orange-600 mt-1">Share contact</span>
+                        </div>
+                      </button>
+
+                      {/* Poll Button */}
+                      <button 
+                        onClick={() => {
+                          setShowPollCreator(true);
+                          setShowAttachmentMenu(false);
+                        }}
+                        className="group relative overflow-hidden bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-2xl border-2 border-yellow-200 hover:border-yellow-400 hover:from-yellow-100 hover:to-yellow-200 transition-all duration-300 transform hover:scale-105 hover:shadow-lg"
+                      >
+                        <div className="p-4 flex flex-col items-center">
+                          <div className="w-12 h-12 bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-300">
+                            📊
+                          </div>
+                          <span className="text-sm font-medium text-yellow-700">Poll</span>
+                          <span className="text-xs text-yellow-600 mt-1">Create poll</span>
+                        </div>
+                      </button>
+
+                      {/* Interactive Buttons */}
+                      <button 
+                        onClick={() => {
+                          setShowInteractiveButtonsCreator(true);
+                          setShowAttachmentMenu(false);
+                        }}
+                        className="group relative overflow-hidden bg-gradient-to-br from-pink-50 to-pink-100 rounded-2xl border-2 border-pink-200 hover:border-pink-400 hover:from-pink-100 hover:to-pink-200 transition-all duration-300 transform hover:scale-105 hover:shadow-lg"
+                      >
+                        <div className="p-4 flex flex-col items-center">
+                          <div className="w-12 h-12 bg-gradient-to-br from-pink-500 to-pink-600 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-300">
+                            🔘
+                          </div>
+                          <span className="text-sm font-medium text-pink-700">Buttons</span>
+                          <span className="text-xs text-pink-600 mt-1">Interactive</span>
+                        </div>
+                      </button>
+
+                      {/* File URL */}
+                      <button 
+                        onClick={() => {
+                          setShowFileUrlInput(true);
+                          setShowAttachmentMenu(false);
+                        }}
+                        className="group relative overflow-hidden bg-gradient-to-br from-teal-50 to-teal-100 rounded-2xl border-2 border-teal-200 hover:border-teal-400 hover:from-teal-100 hover:to-teal-200 transition-all duration-300 transform hover:scale-105 hover:shadow-lg"
+                      >
+                        <div className="p-4 flex flex-col items-center">
+                          <div className="w-12 h-12 bg-gradient-to-br from-teal-500 to-teal-600 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-300">
+                            🔗
+                          </div>
+                          <span className="text-sm font-medium text-teal-700">URL File</span>
+                          <span className="text-xs text-teal-600 mt-1">Share by link</span>
                         </div>
                       </button>
                     </div>
@@ -1985,7 +2333,255 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
              </div>
            </div>
          </div>
-               )}
+                               )}
+
+      {/* Poll Creator Modal */}
+      {showPollCreator && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-yellow-500 to-yellow-600 p-6 text-white">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                    📊
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold">Create Poll</h2>
+                    <p className="text-yellow-100">Ask a question with options</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowPollCreator(false)}
+                  className="p-3 hover:bg-white/20 rounded-full transition-all duration-200"
+                >
+                  <XCircle size={24} />
+                </button>
+              </div>
+            </div>
+
+            {/* Poll Form */}
+            <div className="p-6 space-y-6">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-3">
+                  Poll Question *
+                </label>
+                <textarea
+                  value={pollQuestion}
+                  onChange={(e) => setPollQuestion(e.target.value)}
+                  placeholder="What would you like to ask?"
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl shadow-sm focus:outline-none focus:ring-4 focus:ring-yellow-200 focus:border-yellow-500 transition-all duration-200 resize-none"
+                  rows={3}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-3">
+                  Poll Options
+                </label>
+                <div className="space-y-3">
+                  {pollOptions.map((option, index) => (
+                    <div key={index} className="flex items-center gap-3">
+                      <input
+                        type="text"
+                        value={option}
+                        onChange={(e) => updatePollOption(index, e.target.value)}
+                        placeholder={`Option ${index + 1}`}
+                        className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl shadow-sm focus:outline-none focus:ring-4 focus:ring-yellow-200 focus:border-yellow-500 transition-all duration-200"
+                      />
+                      {pollOptions.length > 2 && (
+                        <button
+                          onClick={() => removePollOption(index)}
+                          className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                          <XCircle size={16} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <button
+                    onClick={addPollOption}
+                    className="w-full py-3 text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50 rounded-xl transition-all duration-200 border-2 border-dashed border-yellow-300 hover:border-yellow-400"
+                  >
+                    + Add Option
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="multipleAnswers"
+                  checked={pollMultipleAnswers}
+                  onChange={(e) => setPollMultipleAnswers(e.target.checked)}
+                  className="w-5 h-5 text-yellow-600 rounded focus:ring-yellow-500"
+                />
+                <label htmlFor="multipleAnswers" className="text-sm font-medium text-gray-700">
+                  Allow multiple answers
+                </label>
+              </div>
+            </div>
+            
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-4">
+              <button
+                onClick={() => setShowPollCreator(false)}
+                className="px-6 py-3 border border-gray-300 rounded-xl shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-4 focus:ring-gray-200 transition-all duration-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={sendPoll}
+                disabled={!pollQuestion.trim() || pollOptions.filter(o => o.trim()).length < 2 || isSendingChatMessage}
+                className="px-8 py-3 border border-transparent rounded-xl shadow-lg text-sm font-semibold text-white bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 focus:outline-none focus:ring-4 focus:ring-yellow-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:scale-105"
+              >
+                {isSendingChatMessage ? 'Sending...' : 'Send Poll'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Location Picker Modal */}
+      {showLocationPicker && selectedLocation && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-green-500 to-green-600 p-6 text-white">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                    <MapPin size={24} />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold">Share Location</h2>
+                    <p className="text-green-100">Send your location</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowLocationPicker(false)}
+                  className="p-3 hover:bg-white/20 rounded-full transition-all duration-200"
+                >
+                  <XCircle size={24} />
+                </button>
+              </div>
+            </div>
+
+            {/* Location Details */}
+            <div className="p-6 space-y-4">
+              <div className="bg-green-50 p-4 rounded-xl border border-green-200">
+                <div className="flex items-center gap-3 mb-3">
+                  <MapPin size={20} className="text-green-600" />
+                  <span className="font-semibold text-green-800">Current Location</span>
+                </div>
+                <p className="text-sm text-green-700">
+                  📍 {selectedLocation.latitude.toFixed(6)}, {selectedLocation.longitude.toFixed(6)}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Location Name (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={selectedLocation.name || ''}
+                  onChange={(e) => setSelectedLocation({...selectedLocation, name: e.target.value})}
+                  placeholder="e.g., My Office, Home, etc."
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl shadow-sm focus:outline-none focus:ring-4 focus:ring-green-200 focus:border-green-500 transition-all duration-200"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Address (Optional)
+                </label>
+                <textarea
+                  value={selectedLocation.address || ''}
+                  onChange={(e) => setSelectedLocation({...selectedLocation, address: e.target.value})}
+                  placeholder="Full address or description"
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl shadow-sm focus:outline-none focus:ring-4 focus:ring-green-200 focus:border-green-500 transition-all duration-200 resize-none"
+                  rows={3}
+                />
+              </div>
+            </div>
+            
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-4">
+              <button
+                onClick={() => setShowLocationPicker(false)}
+                className="px-6 py-3 border border-gray-300 rounded-xl shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-4 focus:ring-gray-200 transition-all duration-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={sendLocation}
+                disabled={isSendingChatMessage}
+                className="px-8 py-3 border border-transparent rounded-xl shadow-lg text-sm font-semibold text-white bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 focus:outline-none focus:ring-4 focus:ring-green-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:scale-105"
+              >
+                {isSendingChatMessage ? 'Sending...' : 'Send Location'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Contact Picker Modal */}
+      {showContactPicker && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md max-h-[80vh] overflow-hidden">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-orange-500 to-orange-600 p-6 text-white">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                    <User size={24} />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold">Share Contact</h2>
+                    <p className="text-orange-100">Select a contact to share</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowContactPicker(false)}
+                  className="p-3 hover:bg-white/20 rounded-full transition-all duration-200"
+                >
+                  <XCircle size={24} />
+                </button>
+              </div>
+            </div>
+
+            {/* Contact List */}
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="space-y-3">
+                {filteredCustomers.map((customer) => (
+                  <button
+                    key={customer.id}
+                    onClick={() => {
+                      sendContact(customer);
+                      setShowContactPicker(false);
+                    }}
+                    className="w-full p-4 text-left hover:bg-gray-50 rounded-xl border border-gray-200 hover:border-orange-300 transition-all duration-200 group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-orange-600 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                        {customer.name?.charAt(0)?.toUpperCase() || 'C'}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-semibold text-gray-900 truncate group-hover:text-orange-600 transition-colors">
+                          {customer.name || 'Unknown Customer'}
+                        </h4>
+                        <p className="text-sm text-gray-500 truncate">
+                          {customer.phone || customer.email || 'No contact info'}
+                        </p>
+                      </div>
+                      <ChevronRight size={16} className="text-gray-400 group-hover:text-orange-500" />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     );
 };

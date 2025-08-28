@@ -34,7 +34,7 @@ export interface GreenApiMessage {
   id: string;
   instance_id: string;
   chat_id: string;
-  message_type: 'text' | 'image' | 'video' | 'audio' | 'document' | 'location' | 'contact' | 'sticker' | 'poll';
+  message_type: 'text' | 'image' | 'video' | 'audio' | 'document' | 'location' | 'contact' | 'sticker' | 'poll' | 'interactive_buttons' | 'forward' | 'file_upload' | 'file_url';
   content: string;
   metadata?: any;
   priority: number;
@@ -49,6 +49,14 @@ export interface GreenApiMessage {
   green_api_message_id?: string;
   created_at: string;
   updated_at: string;
+  // Enhanced fields for new message types
+  quoted_message_id?: string;
+  forwarded_from?: string;
+  poll_options?: any;
+  location_data?: any;
+  contact_data?: any;
+  interactive_data?: any;
+  file_data?: any;
 }
 
 export interface GreenApiMessageTemplate {
@@ -88,10 +96,88 @@ export interface SendMessageParams {
   instanceId: string;
   chatId: string;
   message: string;
-  messageType?: 'text' | 'image' | 'video' | 'audio' | 'document' | 'location' | 'contact' | 'sticker' | 'poll';
+  messageType?: 'text' | 'image' | 'video' | 'audio' | 'document' | 'location' | 'contact' | 'sticker' | 'poll' | 'interactive_buttons' | 'forward';
   metadata?: any;
   priority?: number;
   scheduledAt?: string;
+  // Enhanced message options
+  quotedMessageId?: string;
+  linkPreview?: boolean;
+  typingTime?: number;
+  customPreview?: {
+    title: string;
+    description?: string;
+    link?: string;
+    urlFile?: string;
+    jpegThumbnail?: string;
+  };
+}
+
+// Poll message interface
+export interface SendPollParams {
+  instanceId: string;
+  chatId: string;
+  message: string;
+  options: Array<{
+    optionName: string;
+  }>;
+  multipleAnswers?: boolean;
+}
+
+// Location message interface  
+export interface SendLocationParams {
+  instanceId: string;
+  chatId: string;
+  latitude: number;
+  longitude: number;
+  nameLocation?: string;
+  address?: string;
+}
+
+// Contact message interface
+export interface SendContactParams {
+  instanceId: string;
+  chatId: string;
+  contact: {
+    phoneContact: string;
+    firstName?: string;
+    lastName?: string;
+    middleName?: string;
+    company?: string;
+    jobTitle?: string;
+    email?: string;
+    website?: string;
+  };
+}
+
+// Interactive buttons interface
+export interface SendInteractiveButtonsParams {
+  instanceId: string;
+  chatId: string;
+  message: string;
+  footer?: string;
+  buttons: Array<{
+    buttonId: string;
+    buttonText: string;
+  }>;
+}
+
+// File upload interface
+export interface SendFileParams {
+  instanceId: string;
+  chatId: string;
+  file?: File | Blob;
+  fileUrl?: string;
+  fileName?: string;
+  caption?: string;
+}
+
+// Forward message interface
+export interface ForwardMessageParams {
+  instanceId: string;
+  chatId: string;
+  chatIdFrom: string;
+  messages: string[];
 }
 
 export interface CreateInstanceParams {
@@ -1335,6 +1421,445 @@ class GreenApiService {
     } catch (error: any) {
       console.error('Error fetching message queue status:', error);
       throw new Error(`Failed to fetch queue status: ${error.message}`);
+    }
+  }
+
+  // Enhanced Messaging Methods
+
+  // Send Poll
+  async sendPoll(params: SendPollParams): Promise<GreenApiMessage> {
+    try {
+      const instance = await this.getInstance(params.instanceId);
+      if (!instance) {
+        throw new Error('Instance not found');
+      }
+
+      if (instance.status !== 'connected') {
+        throw new Error('Instance is not connected');
+      }
+
+      // Add poll message to queue
+      const supabase = ensureSupabase();
+      const pollData = {
+        message: params.message,
+        options: params.options,
+        multipleAnswers: params.multipleAnswers || false
+      };
+
+      const { data: queueData, error: queueError } = await supabase
+        .from('green_api_message_queue')
+        .insert({
+          instance_id: params.instanceId,
+          chat_id: params.chatId,
+          message_type: 'poll',
+          content: params.message,
+          metadata: { pollData },
+          priority: 0,
+          scheduled_at: new Date().toISOString(),
+          poll_options: pollData
+        })
+        .select()
+        .single();
+
+      if (queueError) throw queueError;
+
+      // Process queue to send immediately
+      await this.processMessageQueue();
+
+      return queueData;
+    } catch (error: any) {
+      console.error('Error sending poll:', error);
+      throw new Error(`Failed to send poll: ${error.message}`);
+    }
+  }
+
+  // Send Location
+  async sendLocation(params: SendLocationParams): Promise<GreenApiMessage> {
+    try {
+      const instance = await this.getInstance(params.instanceId);
+      if (!instance) {
+        throw new Error('Instance not found');
+      }
+
+      if (instance.status !== 'connected') {
+        throw new Error('Instance is not connected');
+      }
+
+      // Add location message to queue
+      const supabase = ensureSupabase();
+      const locationData = {
+        latitude: params.latitude,
+        longitude: params.longitude,
+        nameLocation: params.nameLocation,
+        address: params.address
+      };
+
+      const { data: queueData, error: queueError } = await supabase
+        .from('green_api_message_queue')
+        .insert({
+          instance_id: params.instanceId,
+          chat_id: params.chatId,
+          message_type: 'location',
+          content: params.nameLocation || `Location: ${params.latitude}, ${params.longitude}`,
+          metadata: { locationData },
+          priority: 0,
+          scheduled_at: new Date().toISOString(),
+          location_data: locationData
+        })
+        .select()
+        .single();
+
+      if (queueError) throw queueError;
+
+      // Process queue to send immediately
+      await this.processMessageQueue();
+
+      return queueData;
+    } catch (error: any) {
+      console.error('Error sending location:', error);
+      throw new Error(`Failed to send location: ${error.message}`);
+    }
+  }
+
+  // Send Contact
+  async sendContact(params: SendContactParams): Promise<GreenApiMessage> {
+    try {
+      const instance = await this.getInstance(params.instanceId);
+      if (!instance) {
+        throw new Error('Instance not found');
+      }
+
+      if (instance.status !== 'connected') {
+        throw new Error('Instance is not connected');
+      }
+
+      // Add contact message to queue
+      const supabase = ensureSupabase();
+      const contactData = {
+        contact: params.contact
+      };
+
+      const { data: queueData, error: queueError } = await supabase
+        .from('green_api_message_queue')
+        .insert({
+          instance_id: params.instanceId,
+          chat_id: params.chatId,
+          message_type: 'contact',
+          content: `Contact: ${params.contact.firstName || ''} ${params.contact.lastName || ''} - ${params.contact.phoneContact}`,
+          metadata: { contactData },
+          priority: 0,
+          scheduled_at: new Date().toISOString(),
+          contact_data: contactData
+        })
+        .select()
+        .single();
+
+      if (queueError) throw queueError;
+
+      // Process queue to send immediately
+      await this.processMessageQueue();
+
+      return queueData;
+    } catch (error: any) {
+      console.error('Error sending contact:', error);
+      throw new Error(`Failed to send contact: ${error.message}`);
+    }
+  }
+
+  // Send Interactive Buttons
+  async sendInteractiveButtons(params: SendInteractiveButtonsParams): Promise<GreenApiMessage> {
+    try {
+      const instance = await this.getInstance(params.instanceId);
+      if (!instance) {
+        throw new Error('Instance not found');
+      }
+
+      if (instance.status !== 'connected') {
+        throw new Error('Instance is not connected');
+      }
+
+      // Add interactive buttons message to queue
+      const supabase = ensureSupabase();
+      const interactiveData = {
+        message: params.message,
+        footer: params.footer,
+        buttons: params.buttons
+      };
+
+      const { data: queueData, error: queueError } = await supabase
+        .from('green_api_message_queue')
+        .insert({
+          instance_id: params.instanceId,
+          chat_id: params.chatId,
+          message_type: 'interactive_buttons',
+          content: params.message,
+          metadata: { interactiveData },
+          priority: 0,
+          scheduled_at: new Date().toISOString(),
+          interactive_data: interactiveData
+        })
+        .select()
+        .single();
+
+      if (queueError) throw queueError;
+
+      // Process queue to send immediately
+      await this.processMessageQueue();
+
+      return queueData;
+    } catch (error: any) {
+      console.error('Error sending interactive buttons:', error);
+      throw new Error(`Failed to send interactive buttons: ${error.message}`);
+    }
+  }
+
+  // Send File by Upload
+  async sendFileByUpload(params: SendFileParams): Promise<GreenApiMessage> {
+    try {
+      const instance = await this.getInstance(params.instanceId);
+      if (!instance) {
+        throw new Error('Instance not found');
+      }
+
+      if (instance.status !== 'connected') {
+        throw new Error('Instance is not connected');
+      }
+
+      if (!params.file) {
+        throw new Error('File is required for upload');
+      }
+
+      // First upload the file
+      const uploadResult = await this.uploadFile(params.instanceId, params.file);
+      
+      // Add file message to queue
+      const supabase = ensureSupabase();
+      const fileData = {
+        fileName: params.fileName || params.file.name,
+        caption: params.caption,
+        uploadedFileUrl: uploadResult.urlFile,
+        uploadedFileId: uploadResult.idFile
+      };
+
+      const { data: queueData, error: queueError } = await supabase
+        .from('green_api_message_queue')
+        .insert({
+          instance_id: params.instanceId,
+          chat_id: params.chatId,
+          message_type: 'file_upload',
+          content: params.caption || `File: ${params.fileName || params.file.name}`,
+          metadata: { fileData },
+          priority: 0,
+          scheduled_at: new Date().toISOString(),
+          file_data: fileData
+        })
+        .select()
+        .single();
+
+      if (queueError) throw queueError;
+
+      // Process queue to send immediately
+      await this.processMessageQueue();
+
+      return queueData;
+    } catch (error: any) {
+      console.error('Error sending file by upload:', error);
+      throw new Error(`Failed to send file by upload: ${error.message}`);
+    }
+  }
+
+  // Send File by URL
+  async sendFileByUrl(params: SendFileParams): Promise<GreenApiMessage> {
+    try {
+      const instance = await this.getInstance(params.instanceId);
+      if (!instance) {
+        throw new Error('Instance not found');
+      }
+
+      if (instance.status !== 'connected') {
+        throw new Error('Instance is not connected');
+      }
+
+      if (!params.fileUrl) {
+        throw new Error('File URL is required');
+      }
+
+      // Add file URL message to queue
+      const supabase = ensureSupabase();
+      const fileData = {
+        fileUrl: params.fileUrl,
+        fileName: params.fileName,
+        caption: params.caption
+      };
+
+      const { data: queueData, error: queueError } = await supabase
+        .from('green_api_message_queue')
+        .insert({
+          instance_id: params.instanceId,
+          chat_id: params.chatId,
+          message_type: 'file_url',
+          content: params.caption || `File: ${params.fileName || 'Shared file'}`,
+          metadata: { fileData },
+          priority: 0,
+          scheduled_at: new Date().toISOString(),
+          file_data: fileData
+        })
+        .select()
+        .single();
+
+      if (queueError) throw queueError;
+
+      // Process queue to send immediately
+      await this.processMessageQueue();
+
+      return queueData;
+    } catch (error: any) {
+      console.error('Error sending file by URL:', error);
+      throw new Error(`Failed to send file by URL: ${error.message}`);
+    }
+  }
+
+  // Upload File
+  async uploadFile(instanceId: string, file: File | Blob): Promise<any> {
+    try {
+      const instance = await this.getInstance(instanceId);
+      if (!instance) {
+        throw new Error('Instance not found');
+      }
+
+      // Create FormData for file upload
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await retryWithBackoff(async () => {
+        const res = await fetch(`${this.proxyUrl}/.netlify/functions/green-api-proxy`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            path: `/waInstance${instanceId}/uploadFile/${instance.api_token}`,
+            method: 'POST',
+            baseUrl: instance.green_api_host || this.baseUrl,
+            isFileUpload: true,
+            formData: formData
+          })
+        });
+
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(`Upload failed: ${res.status} - ${errorText}`);
+        }
+
+        const result = await res.json();
+        if (!result.success) {
+          throw new Error(`Upload failed: ${result.data?.error || 'Unknown error'}`);
+        }
+
+        return result.data;
+      }, 3, 1000);
+
+      return response;
+    } catch (error: any) {
+      console.error('Error uploading file:', error);
+      throw new Error(`Failed to upload file: ${error.message}`);
+    }
+  }
+
+  // Forward Messages
+  async forwardMessages(params: ForwardMessageParams): Promise<GreenApiMessage> {
+    try {
+      const instance = await this.getInstance(params.instanceId);
+      if (!instance) {
+        throw new Error('Instance not found');
+      }
+
+      if (instance.status !== 'connected') {
+        throw new Error('Instance is not connected');
+      }
+
+      // Add forward message to queue
+      const supabase = ensureSupabase();
+      const forwardData = {
+        chatIdFrom: params.chatIdFrom,
+        messages: params.messages
+      };
+
+      const { data: queueData, error: queueError } = await supabase
+        .from('green_api_message_queue')
+        .insert({
+          instance_id: params.instanceId,
+          chat_id: params.chatId,
+          message_type: 'forward',
+          content: `Forwarded ${params.messages.length} message(s)`,
+          metadata: { forwardData },
+          priority: 0,
+          scheduled_at: new Date().toISOString(),
+          forwarded_from: params.chatIdFrom
+        })
+        .select()
+        .single();
+
+      if (queueError) throw queueError;
+
+      // Process queue to send immediately
+      await this.processMessageQueue();
+
+      return queueData;
+    } catch (error: any) {
+      console.error('Error forwarding messages:', error);
+      throw new Error(`Failed to forward messages: ${error.message}`);
+    }
+  }
+
+  // Enhanced Send Message with additional features
+  async sendEnhancedMessage(params: SendMessageParams): Promise<GreenApiMessage> {
+    try {
+      const instance = await this.getInstance(params.instanceId);
+      if (!instance) {
+        throw new Error('Instance not found');
+      }
+
+      if (instance.status !== 'connected') {
+        throw new Error('Instance is not connected');
+      }
+
+      // Add enhanced message to queue
+      const supabase = ensureSupabase();
+      const enhancedMetadata = {
+        ...params.metadata,
+        quotedMessageId: params.quotedMessageId,
+        linkPreview: params.linkPreview,
+        typingTime: params.typingTime,
+        customPreview: params.customPreview
+      };
+
+      const { data: queueData, error: queueError } = await supabase
+        .from('green_api_message_queue')
+        .insert({
+          instance_id: params.instanceId,
+          chat_id: params.chatId,
+          message_type: params.messageType || 'text',
+          content: params.message,
+          metadata: enhancedMetadata,
+          priority: params.priority || 0,
+          scheduled_at: params.scheduledAt || new Date().toISOString(),
+          quoted_message_id: params.quotedMessageId
+        })
+        .select()
+        .single();
+
+      if (queueError) throw queueError;
+
+      // Send message immediately if not scheduled
+      if (!params.scheduledAt) {
+        await this.processMessageQueue();
+      }
+
+      return queueData;
+    } catch (error: any) {
+      console.error('Error sending enhanced message:', error);
+      throw new Error(`Failed to send enhanced message: ${error.message}`);
     }
   }
 }
