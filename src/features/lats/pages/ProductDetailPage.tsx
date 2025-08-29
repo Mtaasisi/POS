@@ -710,15 +710,7 @@ const ProductDetailPage: React.FC = () => {
                     </div>
                   </div>
                 )}
-                {product.brandId && (
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Brand ID</label>
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                      <span className="text-gray-900 font-medium text-sm">{product.brandId}</span>
-                    </div>
-                  </div>
-                )}
+
                 {product.supplierId && (
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">Supplier ID</label>

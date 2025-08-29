@@ -11,7 +11,7 @@ import { useInventoryStore } from '../stores/useInventoryStore';
 import { supabase } from '../../../lib/supabaseClient';
 import { useAuth } from '../../../context/AuthContext';
 import { retryWithBackoff } from '../../../lib/supabaseClient';
-import { getActiveBrands, Brand } from '../../../lib/brandApi';
+
 import { getActiveCategories, Category } from '../../../lib/categoryApi';
 import { getActiveSuppliers, Supplier } from '../../../lib/supplierApi';
 
@@ -51,7 +51,7 @@ const productFormSchema = z.object({
   sku: z.string().min(1, 'SKU must be provided').max(50, 'SKU must be less than 50 characters'),
   barcode: z.string().optional(),
   categoryId: z.string().min(1, 'Category must be selected'),
-  brandId: z.string().optional(),
+
   supplierId: z.string().optional(),
   condition: z.string().min(1, 'Product condition must be selected'),
   
@@ -75,7 +75,6 @@ type ProductImage = z.infer<typeof ProductImageSchema>;
 const AddProductPageOptimized: React.FC = () => {
   const navigate = useNavigate();
   const [categories, setCategories] = useState<Category[]>([]);
-  const [brands, setBrands] = useState<Brand[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
 
   const [loading, setLoading] = useState(false);
@@ -88,8 +87,6 @@ const AddProductPageOptimized: React.FC = () => {
     sku: '',
     barcode: '',
     categoryId: '',
-    brand: '',
-    brandId: '',
     supplierId: '',
     condition: '',
     description: '',
@@ -230,7 +227,6 @@ const AddProductPageOptimized: React.FC = () => {
     try {
       const productData = {
         ...formData,
-        brand_id: formData.brandId,
         supplier_id: formData.supplierId,
         category_id: formData.categoryId,
         cost_price: formData.costPrice,

@@ -9,7 +9,7 @@ import { Save, ArrowLeft, MapPin, Store, X, Plus, Check, Layers, Palette, HardDr
 import { supabase } from '../../../lib/supabaseClient';
 import { useAuth } from '../../../context/AuthContext';
 import { retryWithBackoff } from '../../../lib/supabaseClient';
-import { getActiveBrands, Brand } from '../../../lib/brandApi';
+
 import { getActiveCategories, Category } from '../../../lib/categoryApi';
 import { getActiveSuppliers, Supplier } from '../../../lib/supplierApi';
 import { StoreLocation } from '../../settings/types/storeLocation';
@@ -65,7 +65,7 @@ const productFormSchema = z.object({
   sku: z.string().min(1, 'SKU must be provided').max(50, 'SKU must be less than 50 characters'),
   barcode: z.string().optional(),
   categoryId: z.string().min(1, 'Category must be selected'),
-  brandId: z.string().optional(),
+
   supplierId: z.string().optional(),
   condition: z.string().min(1, 'Product condition must be selected'),
   
@@ -88,7 +88,6 @@ type ProductImage = z.infer<typeof ProductImageSchema>;
 const AddProductPageOptimized: React.FC = () => {
   const navigate = useNavigate();
   const [categories, setCategories] = useState<Category[]>([]);
-  const [brands, setBrands] = useState<Brand[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [storeLocations, setStoreLocations] = useState<StoreLocation[]>([]);
   const [currentErrors, setCurrentErrors] = useState<Record<string, string>>({});
@@ -102,8 +101,6 @@ const AddProductPageOptimized: React.FC = () => {
     sku: '',
     barcode: '',
     categoryId: '',
-    brand: '',
-    brandId: '',
     supplierId: '',
     condition: '',
     description: '',
@@ -276,7 +273,7 @@ const AddProductPageOptimized: React.FC = () => {
         sku: useVariants ? null : (formData.sku || null),
         barcode: useVariants ? null : (formData.barcode || null),
         category_id: formData.categoryId || null,
-        brand_id: getBrandIdFromName(formData.brand) || null,
+
         supplier_id: formData.supplierId || null,
         condition: formData.condition || 'new',
         // Only set these fields if NOT using variants

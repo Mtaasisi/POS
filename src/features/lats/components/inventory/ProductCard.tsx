@@ -30,9 +30,7 @@ interface Product {
   categoryId: string;
   categoryName?: string;
   categoryColor?: string;
-  brandId?: string;
-  brandName?: string;
-  brandLogo?: string;
+
   images?: string[];
 
       isActive: boolean;

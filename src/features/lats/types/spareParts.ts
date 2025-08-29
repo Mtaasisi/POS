@@ -6,7 +6,7 @@ export interface SparePart {
   name: string;
   part_number: string;
   category_id: string;
-  brand?: string;
+
   supplier_id?: string;
   condition?: 'new' | 'used' | 'refurbished';
   description?: string;
@@ -48,7 +48,7 @@ export interface SparePartFormData {
   name: string;
   part_number: string;
   category_id: string;
-  brand: string;
+
   supplier_id: string;
   condition: 'new' | 'used' | 'refurbished';
   description: string;
@@ -65,7 +65,7 @@ export interface SparePartCreateData {
   name: string;
   part_number: string;
   category_id: string;
-  brand?: string;
+
   supplier_id?: string;
   condition?: 'new' | 'used' | 'refurbished';
   description?: string;
@@ -123,7 +123,7 @@ export interface Device {
   id: string;
   name: string;
   model?: string;
-  brand?: string;
+
   serial_number?: string;
   created_at: string;
   updated_at: string;
@@ -165,7 +165,7 @@ export interface SparePartFilters {
   category_id?: string;
   supplier_id?: string;
   condition?: 'new' | 'used' | 'refurbished';
-  brand?: string;
+
   is_active?: boolean;
   low_stock?: boolean;
   out_of_stock?: boolean;

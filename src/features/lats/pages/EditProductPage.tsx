@@ -76,7 +76,7 @@ const productFormSchema = z.object({
   sku: z.string().min(1, 'SKU must be provided').max(50, 'SKU must be less than 50 characters'),
   barcode: z.string().optional(),
   categoryId: z.string().min(1, 'Category must be selected'),
-  brandId: z.string().optional(),
+
   supplierId: z.string().optional(),
   condition: z.string().min(1, 'Product condition must be selected'),
   
@@ -111,8 +111,7 @@ const EditProductPage: React.FC = () => {
     sku: '',
     barcode: '',
     categoryId: '',
-    brand: '',
-    brandId: '',
+
     supplierId: '',
     condition: '',
     description: '',
@@ -253,12 +252,7 @@ const EditProductPage: React.FC = () => {
       if (error) throw error;
       
       if (product) {
-        // Find brand name from brandId if available
-        let brandName = '';
-        if (product.brand_id) {
-          const brand = brands.find(b => b.id === product.brand_id);
-          brandName = brand?.name || '';
-        }
+
         
         setFormData({
           name: product.name || '',
@@ -285,8 +279,6 @@ const EditProductPage: React.FC = () => {
           sku: product.sku || '',
           barcode: product.barcode || '',
           categoryId: product.category_id || '',
-          brand: brandName,
-          brandId: product.brand_id || '',
           supplierId: product.supplier_id || '',
           condition: product.condition || '',
           
@@ -399,7 +391,7 @@ const EditProductPage: React.FC = () => {
         sku: formData.sku || null,
         barcode: formData.barcode || null,
         category_id: formData.categoryId || null,
-        brand_id: getBrandIdFromName(formData.brand) || null,
+
         supplier_id: formData.supplierId || null,
         condition: formData.condition || 'new',
         cost_price: formData.costPrice || 0,

@@ -27,7 +27,7 @@ const editProductSchema = z.object({
   sku: z.string().min(1, 'SKU is required').max(100, 'SKU must be less than 100 characters'),
   barcode: z.string().max(100, 'Barcode must be less than 100 characters').optional(),
   categoryId: z.string().min(1, 'Category is required'),
-  brandId: z.string().optional(),
+
   supplierId: z.string().optional(),
   condition: z.string().min(1, 'Condition is required'),
   storeLocationId: z.string().optional(),
@@ -108,7 +108,7 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
       sku: '',
       barcode: '',
       categoryId: '',
-      brandId: '',
+
       supplierId: '',
       condition: 'new',
       storeLocationId: '',
@@ -222,7 +222,7 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
               sku: fetchedProduct.sku,
               barcode: fetchedProduct.barcode || '',
               categoryId: fetchedProduct.categoryId,
-              brandId: fetchedProduct.brandId || '',
+
               supplierId: fetchedProduct.supplierId || '',
               condition: fetchedProduct.condition || 'new',
               storeLocationId: '', // Will be set based on shelf lookup
@@ -404,19 +404,8 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
                 )}
               />
 
-              <Controller
-                name="brandId"
-                control={control}
-                render={({ field }) => (
-                  <GlassSelect
-                    {...field}
-                    label={t('Brand')}
-                    error={errors.brandId?.message}
-                  >
-                    <option value="">{t('Select Brand')}</option>
-                    {(brands || [])?.map((brand) => (
-                      <option key={brand.id} value={brand.id}>
-                        {brand.name}
+
+
                       </option>
                     ))}
                   </GlassSelect>

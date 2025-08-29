@@ -591,7 +591,7 @@ const UnifiedInventoryPage: React.FC = () => {
                   name: productData.name || productData.product_name,
                   description: productData.description || productData.desc,
                   categoryId: '',
-                  brandId: '',
+
                   supplierId: '',
                   images: [],
           
