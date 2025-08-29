@@ -10,7 +10,7 @@ import { toast } from 'react-hot-toast';
 interface BulkImportData {
   file: File;
   categoryId?: string;
-  brandId?: string;
+
   supplierId?: string;
   defaultPrice?: number;
   defaultCost?: number;
@@ -133,7 +133,7 @@ const BulkImportModal: React.FC<{
             sku: row.sku,
             barcode: row.barcode || '',
             categoryId: data.categoryId || row.category_id || '',
-            brandId: data.brandId || row.brand_id || '',
+
             supplierId: data.supplierId || row.supplier_id || '',
             variants: [{
               sku: row.sku,
@@ -330,22 +330,7 @@ variant_name - Product variant name (optional)`;
                   </select>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Default Brand
-                  </label>
-                  <select
-                    {...register('brandId')}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">Select Brand</option>
-                    {brands.map(brand => (
-                      <option key={brand.id} value={brand.id}>
-                        {brand.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">

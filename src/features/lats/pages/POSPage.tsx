@@ -568,10 +568,7 @@ const POSPage: React.FC = () => {
       filtered = filtered.filter(product => product.categoryId === selectedCategory);
     }
     
-    // Brand filter
-    if (selectedBrand) {
-      filtered = filtered.filter(product => product.brandId === selectedBrand);
-    }
+
     
     // Price range filter
     if (priceRange.min || priceRange.max) {

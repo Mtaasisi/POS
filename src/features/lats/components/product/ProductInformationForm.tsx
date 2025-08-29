@@ -1,11 +1,9 @@
 import React from 'react';
 import { Package, Tag, Hash, FileText } from 'lucide-react';
-import BrandInput from '../../../shared/components/ui/BrandInput';
 import { Category } from '../../../../lib/categoryApi';
 
 interface ProductInformationFormProps {
   formData: {
-    brand: string;
     name: string;
     sku: string;
     barcode: string;
@@ -42,22 +40,6 @@ const ProductInformationForm: React.FC<ProductInformationFormProps> = ({
       
       <form className="space-y-6" onSubmit={(e) => e.preventDefault()}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Brand */}
-          <div>
-            <label 
-              htmlFor="brand-input"
-              className="block mb-2 font-medium text-gray-700"
-            >
-              Brand (optional)
-            </label>
-            <BrandInput
-              value={formData.brand}
-              onChange={val => setFormData(prev => ({ ...prev, brand: val }))}
-              placeholder="Brand"
-              className="w-full"
-            />
-          </div>
-          
           {/* Product Name & Model */}
           <div>
             <label 

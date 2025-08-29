@@ -39,11 +39,10 @@ const filteredProducts = useMemo(() => {
     filtered = filtered.filter(product => {
       const mainVariant = product.variants?.[0];
       const category = categories.find(c => c.id === product.categoryId)?.name || '';
-      const brand = brands.find(b => b.id === product.brandId)?.name || '';
+
       
       return (product.name?.toLowerCase() || '').includes(query) ||
              (mainVariant?.sku?.toLowerCase() || '').includes(query) ||
-             (brand.toLowerCase() || '').includes(query) ||
              (category.toLowerCase() || '').includes(query);
     });
   }

@@ -62,7 +62,6 @@ export interface Product {
   sku: string;
   barcode?: string;
   categoryId: string;
-  brandId?: string;
   supplierId?: string;
   condition: string;
   internalNotes?: string;
@@ -154,7 +153,6 @@ export interface ProductFormData {
   sku: string;
   barcode?: string;
   categoryId: string;
-  brandId?: string;
   supplierId?: string;
   internalNotes?: string;
   images?: Array<{
@@ -240,7 +238,6 @@ export interface PaginatedResponse<T> {
 export interface InventoryFilters {
   searchTerm: string;
   categoryId?: string;
-  brandId?: string;
   supplierId?: string;
   stockFilter: 'all' | 'in-stock' | 'low-stock' | 'out-of-stock';
   statusFilter: 'all' | 'active' | 'inactive';

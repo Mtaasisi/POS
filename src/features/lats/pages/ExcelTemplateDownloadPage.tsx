@@ -41,7 +41,7 @@ Instructions:
 4. Stock quantities should be whole numbers
 5. Category, Brand, and Supplier IDs can be left empty if not available
 
-Required Fields (*),name*,sku*,barcode,description,price,cost_price,stock_quantity,min_stock,max_stock,category_id,brand_id,supplier_id,tags,variant_name
+Required Fields (*),name*,sku*,barcode,description,price,cost_price,stock_quantity,min_stock,max_stock,category_id,supplier_id,tags,variant_name
 Product 1,Example Product 1,PROD-001,1234567890123,Example product description,159999,120000,15,5,50,,,electronics,example,Default Variant
 Product 2,Example Product 2,PROD-002,1234567890124,Another example product,129999,100000,12,5,50,,,electronics,example,Default Variant
 Product 3,Example Product 3,PROD-003,1234567890125,Third example product,899999,750000,8,3,25,,,electronics,example,Default Variant
@@ -59,7 +59,7 @@ stock_quantity - Current stock level
 min_stock - Minimum stock level for alerts
 max_stock - Maximum stock level
 category_id - Category UUID (optional)
-brand_id - Brand UUID (optional)
+
 supplier_id - Supplier UUID (optional)
 tags - Comma-separated tags (optional)
 variant_name - Product variant name (optional)`;

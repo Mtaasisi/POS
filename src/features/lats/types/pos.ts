@@ -97,8 +97,6 @@ export interface ProductSearchResult {
   description?: string;
   categoryId: string;
   categoryName: string;
-  brandId?: string;
-  brandName?: string;
   variants: ProductSearchVariant[];
   images: string[];
   tags: string[];

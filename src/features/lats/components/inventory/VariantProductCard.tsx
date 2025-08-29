@@ -27,8 +27,7 @@ interface Product {
   description?: string;
   categoryId: string;
   categoryName?: string;
-  brandId?: string;
-  brandName?: string;
+
   images?: string[];
   tags?: string[];
   isActive: boolean;

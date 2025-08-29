@@ -14,7 +14,7 @@ interface ProductExportData {
   sku: string;
   barcode?: string;
   categoryId: string;
-  brandId?: string;
+
   supplierId?: string;
   images?: string[];
   isActive: boolean;
@@ -159,7 +159,7 @@ const ProductExcelExport: React.FC = () => {
             sku: product.sku,
             barcode: product.barcode,
             categoryId: product.category_id,
-            brandId: product.brand_id,
+
             supplierId: product.supplier_id,
             images: product.images || [],
             isActive: product.is_active,
@@ -223,7 +223,7 @@ const ProductExcelExport: React.FC = () => {
               sku: product.sku,
               barcode: product.barcode,
               categoryId: product.category_id,
-              brandId: product.brand_id,
+  
               supplierId: product.supplier_id,
               images: product.images || [],
               isActive: product.is_active,
@@ -338,9 +338,7 @@ const ProductExcelExport: React.FC = () => {
           `"${(product.categoryName || '').replace(/"/g, '""')}"`,
           `"${(product.category?.description || '').replace(/"/g, '""')}"`,
           `"${(product.category?.color || '').replace(/"/g, '""')}"`,
-          `"${(product.brandId || '').replace(/"/g, '""')}"`,
-          `"${(product.brandName || '').replace(/"/g, '""')}"`,
-          `"${(product.brand?.description || '').replace(/"/g, '""')}"`,
+
           `"${(product.brand?.logo || '').replace(/"/g, '""')}"`,
           `"${(product.brand?.website || '').replace(/"/g, '""')}"`,
           `"${(product.supplierId || '').replace(/"/g, '""')}"`,

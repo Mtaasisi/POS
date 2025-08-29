@@ -73,22 +73,9 @@ const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       };
     }).sort((a, b) => b.count - a.count);
     
-    // Brand analytics
-    const brandStats = brands.map(brand => {
-      const brandProducts = products.filter(p => p.brandId === brand.id);
-      const brandValue = brandProducts.reduce((sum, product) => {
-        const mainVariant = product.variants?.[0];
-        const totalStock = product.variants?.reduce((stockSum, variant) => stockSum + (variant.quantity || 0), 0) || 0;
-        return sum + ((mainVariant?.sellingPrice || 0) * totalStock);
-      }, 0);
-      
-      return {
-        name: brand.name,
-        count: brandProducts.length,
-        value: brandValue,
-        percentage: totalProducts > 0 ? (brandProducts.length / totalProducts) * 100 : 0
-      };
-    }).sort((a, b) => b.count - a.count);
+
+
+
     
     return {
       totalProducts,

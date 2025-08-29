@@ -222,7 +222,7 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
               suggestions={[
                 ...products.map(p => p.name),
                 ...products.map(p => p.variants?.[0]?.sku || '').filter(Boolean),
-                ...products.map(p => brands.find(b => b.id === p.brandId)?.name || '').filter(Boolean),
+
                 ...products.map(p => categories.find(c => c.id === p.categoryId)?.name || '').filter(Boolean)
               ]}
               searchKey="enhanced_inventory_search"

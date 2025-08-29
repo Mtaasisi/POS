@@ -89,7 +89,7 @@ interface InventoryState {
   // Search and filters
   setSearchTerm: (term: string) => void;
   setSelectedCategory: (categoryId: string | null) => void;
-  setSelectedBrand: (brandId: string | null) => void;
+
   setSelectedSupplier: (supplierId: string | null) => void;
   setStockFilter: (filter: 'all' | 'in-stock' | 'low-stock' | 'out-of-stock') => void;
   clearFilters: () => void;
@@ -226,7 +226,7 @@ export const useInventoryStore = create<InventoryState>()(
       // Search and filters
       setSearchTerm: (term) => set({ searchTerm: term, currentPage: 1 }),
       setSelectedCategory: (categoryId) => set({ selectedCategory: categoryId, currentPage: 1 }),
-      setSelectedBrand: (brandId) => set({ selectedBrand: brandId, currentPage: 1 }),
+
       setSelectedSupplier: (supplierId) => set({ selectedSupplier: supplierId, currentPage: 1 }),
       setStockFilter: (filter) => set({ stockFilter: filter, currentPage: 1 }),
       clearFilters: () => set({
@@ -1228,10 +1228,7 @@ export const useInventoryStore = create<InventoryState>()(
             return false;
           }
 
-          // Brand filter
-          if (selectedBrand && product.brandId !== selectedBrand) {
-            return false;
-          }
+
 
           // Supplier filter
           if (selectedSupplier && product.supplierId !== selectedSupplier) {
