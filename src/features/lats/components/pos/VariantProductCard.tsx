@@ -31,6 +31,8 @@ interface VariantProductCardProps {
   showCategory?: boolean;
   showBrand?: boolean;
   className?: string;
+  primaryColor?: 'blue' | 'orange' | 'green' | 'purple';
+  actionText?: string;
 }
 
 const VariantProductCard: React.FC<VariantProductCardProps> = ({
@@ -41,10 +43,52 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
   showStockInfo = true,
   showCategory = true,
   showBrand = true,
-  className = ''
+  className = '',
+  primaryColor = 'blue',
+  actionText = 'Add to Cart'
 }) => {
   // Add error state for React refresh issues
   const [hasError, setHasError] = useState(false);
+
+  // Theme configuration based on primaryColor
+  const getThemeConfig = () => {
+    switch (primaryColor) {
+      case 'orange':
+        return {
+          hoverBorder: 'hover:border-orange-300',
+          textColor: 'text-orange-600',
+          iconColor: 'text-orange-600',
+          priceColor: 'text-orange-900',
+          errorColor: 'text-orange-600'
+        };
+      case 'green':
+        return {
+          hoverBorder: 'hover:border-green-300',
+          textColor: 'text-green-600',
+          iconColor: 'text-green-600',
+          priceColor: 'text-green-900',
+          errorColor: 'text-green-600'
+        };
+      case 'purple':
+        return {
+          hoverBorder: 'hover:border-purple-300',
+          textColor: 'text-purple-600',
+          iconColor: 'text-purple-600',
+          priceColor: 'text-purple-900',
+          errorColor: 'text-purple-600'
+        };
+      default: // blue
+        return {
+          hoverBorder: 'hover:border-blue-300',
+          textColor: 'text-blue-600',
+          iconColor: 'text-blue-600',
+          priceColor: 'text-blue-900',
+          errorColor: 'text-blue-600'
+        };
+    }
+  };
+
+  const theme = getThemeConfig();
 
   // Defensive check for product
   if (!product) {
@@ -213,11 +257,11 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
       <>
         <div 
           className={`bg-white border border-gray-200 rounded-lg p-4 transition-all duration-200 ${className} ${
-            isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-blue-300 hover:shadow-md active:scale-95'
+            isDisabled ? 'opacity-50 cursor-not-allowed' : `cursor-pointer ${theme.hoverBorder} hover:shadow-md active:scale-95`
           } ${hasNoVariants ? 'border-gray-300 bg-gray-50' : ''}`}
           onClick={handleCardClick}
           style={{ minHeight: '60px' }}
-          title={hasNoVariants ? 'This product has no variants and cannot be added to cart. Please add variants in the inventory management.' : ''}
+          title={hasNoVariants ? 'This product has no variants and cannot be added to cart. Please add variants in the inventory management.' : `Click to ${actionText.toLowerCase()}`}
         >
           
 
@@ -284,7 +328,7 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
             {/* Price */}
             <div className="text-right">
               {showPrices && (
-                <div className={`font-semibold text-sm ${hasNoVariants ? 'text-gray-500' : 'text-blue-900'}`}>{getPriceDisplay()}</div>
+                <div className={`font-semibold text-sm ${hasNoVariants ? 'text-gray-500' : theme.priceColor}`}>{getPriceDisplay()}</div>
               )}
               {showStockLevels && (
                 <div className="text-xs text-gray-500">Stock: {getTotalStock()}</div>
@@ -305,10 +349,10 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
     <>
       <div 
         className={`relative bg-white border-2 rounded-xl transition-all duration-300 ${className} ${
-          isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-gray-300 hover:shadow-md active:scale-95'
+          isDisabled ? 'opacity-50 cursor-not-allowed' : `cursor-pointer ${theme.hoverBorder} hover:shadow-md active:scale-95`
         } ${hasNoVariants ? 'border-gray-300 bg-gray-50' : 'border-gray-200'}`}
         onClick={handleCardClick}
-        title={hasNoVariants ? 'This product has no variants and cannot be added to cart. Please add variants in the inventory management.' : ''}
+        title={hasNoVariants ? 'This product has no variants and cannot be added to cart. Please add variants in the inventory management.' : `Click to ${actionText.toLowerCase()}`}
       >
         
         
@@ -330,7 +374,7 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
             <div className="flex items-center gap-4 flex-1 min-w-0">
               {/* Product Icon */}
               {showProductImages && (
-                <div className="relative w-20 h-20 rounded-xl flex items-center justify-center text-lg font-bold text-blue-600">
+                <div className={`relative w-20 h-20 rounded-xl flex items-center justify-center text-lg font-bold ${theme.iconColor}`}>
                   <SimpleImageDisplay
                     images={productImages}
                     productName={product.name}
@@ -426,6 +470,15 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Action Indicator */}
+          {!isDisabled && (
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <div className={`text-center text-sm font-medium ${theme.textColor} opacity-70 hover:opacity-100 transition-opacity`}>
+                Click to {actionText}
+              </div>
+            </div>
+          )}
 
           {/* Stock Warning */}
           {/* {primaryVariant && primaryVariant.quantity <= 5 && primaryVariant.quantity > 0 && (
