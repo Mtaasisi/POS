@@ -1,46 +1,42 @@
-import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../../context/AuthContext';
-import { useNavigationHistory } from '../../../hooks/useNavigationHistory';
-import { useDevices } from '../../../context/DevicesContext';
-import { useCustomers } from '../../../context/CustomersContext';
-import { usePayments } from '../../../context/PaymentsContext';
+import { useAuth } from '../context/AuthContext';
+import { useDevices } from '../context/DevicesContext';
+import { useCustomers } from '../context/CustomersContext';
+import { usePayments } from '../context/PaymentsContext';
 import { QRCodeSVG } from 'qrcode.react';
-import GlassCard from '../../../features/shared/components/ui/GlassCard';
-import CountdownTimer from '../../../features/shared/components/ui/CountdownTimer';
-import StatusBadge from '../../../features/shared/components/ui/StatusBadge';
+import GlassCard from '../components/ui/GlassCard';
+import CountdownTimer from '../components/ui/CountdownTimer';
+import StatusBadge from '../components/ui/StatusBadge';
 import { ChevronDown, CheckCircle, XCircle, Smartphone, Barcode, Calendar, Loader2, Image as ImageIcon, FileText, File as FileIcon, CreditCard, DollarSign, AlertTriangle, Star, Award, Activity, Gift, MessageSquare, Clock, User, Upload, Trash2, ArrowLeft, Phone, Printer, Send, RefreshCw, ArrowRight, Key, Wrench, Hash, Settings, History, QrCode, Stethoscope } from 'lucide-react';
-
+import WhatsAppChatUI from '../components/WhatsAppChatUI';
 import DeviceDetailHeader from '../components/DeviceDetailHeader';
-import StatusUpdateForm from '../components/forms/StatusUpdateForm';
-
-import AssignTechnicianForm from '../components/forms/AssignTechnicianForm';
-import DeviceBarcodeCard from '../components/DeviceBarcodeCard';
-import DiagnosticChecklist from '../../../features/diagnostics/components/DiagnosticChecklist';
-import RepairChecklist from '../components/RepairChecklist';
+import StatusUpdateForm from '../components/StatusUpdateForm';
 import PrintableSlip from '../components/PrintableSlip';
-import GlassButton from '../../../features/shared/components/ui/GlassButton';
-import { DeviceStatus, Payment } from '../../../types';
-import { smsService, logManualSMS } from '../../../services/smsService';
-import Modal from '../../../features/shared/components/ui/Modal';
-import { uploadAttachment, listAttachments, deleteAttachment } from '../../../lib/attachmentsApi';
-import { logAuditAction } from '../../../lib/auditLogApi';
+import AssignTechnicianForm from '../components/AssignTechnicianForm';
+import DeviceBarcodeCard from '../components/DeviceBarcodeCard';
+import DiagnosticChecklist from '../components/DiagnosticChecklist';
+import RepairChecklist from '../components/RepairChecklist';
+import GlassButton from '../components/ui/GlassButton';
+import { DeviceStatus, Payment } from '../types';
+import { smsService, logManualSMS } from '../services/smsService';
+import Modal from '../components/ui/Modal';
+import { uploadAttachment, listAttachments, deleteAttachment } from '../lib/attachmentsApi';
+import { logAuditAction } from '../lib/auditLogApi';
 import { toast } from 'react-hot-toast';
-import { supabase } from '../../../lib/supabaseClient';
-import { formatCurrency } from '../../../lib/customerApi';
-import { formatRelativeTime } from '../../../lib/utils';
-import { auditService } from '../../../lib/auditService';
+import { supabase } from '../lib/supabaseClient';
+import { formatCurrency } from '../lib/customerApi';
+import { formatRelativeTime } from '../lib/utils';
+import { auditService } from '../lib/auditService';
 
 const DeviceDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { currentUser } = useAuth();
 
   // All hooks must be called unconditionally before any early returns
-  const { getDeviceById, updateDeviceStatus, addRemark, addRating, devices, loading: devicesLoading } = useDevices();
+  const { getDeviceById, updateDeviceStatus, addRemark, addRating, devices } = useDevices();
   const { getCustomerById } = useCustomers();
-  const { payments } = usePayments();
   const navigate = useNavigate();
-  const { handleBackClick } = useNavigationHistory();
 
   const printRef = useRef<HTMLDivElement>(null);
   const [showSmsModal, setShowSmsModal] = useState(false);
@@ -58,149 +54,11 @@ const DeviceDetailPage: React.FC = () => {
   const [showRepairChecklist, setShowRepairChecklist] = useState(false);
   // Loading state (mock, since data is synchronous in context, but for demo)
   const [loading, setLoading] = useState(true);
-  
-  // Preserve scroll position to prevent auto-scrolling
-  const [scrollPosition, setScrollPosition] = useState(0);
-  
-  // Payment modal state
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [paymentAmount, setPaymentAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'transfer'>('cash');
-  const [recordingPayment, setRecordingPayment] = useState(false);
-  const [paymentError, setPaymentError] = useState<string | null>(null);
-  const [showPaymentConfirmation, setShowPaymentConfirmation] = useState(false);
-  const [lastPayment, setLastPayment] = useState<any>(null);
-  const [selectedAttachmentsForDelete, setSelectedAttachmentsForDelete] = useState<string[]>([]);
-  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
-
-  // Minimal live countdown state
-  const [now, setNow] = useState(new Date());
-  const [dotVisible, setDotVisible] = useState(true);
-
-  // Timeline and activity state
-  const [auditLogs, setAuditLogs] = useState<any[]>([]);
-  const [pointsTransactions, setPointsTransactions] = useState<any[]>([]);
-  const [smsLogs, setSmsLogs] = useState<any[]>([]);
-  const [timelineLoading, setTimelineLoading] = useState(true);
-
-  // Device checklist state
-  const [deviceChecklist, setDeviceChecklist] = useState<any>(null);
-  const [deviceChecklistLoading, setDeviceChecklistLoading] = useState(false);
-  const [dbDevice, setDbDevice] = useState<any>(null);
-  const [dbDeviceLoading, setDbDeviceLoading] = useState(false);
-
-  // All device activity state
-  const [allPayments, setAllPayments] = useState<any[]>([]);
-  const [allTransitions, setAllTransitions] = useState<any[]>([]);
-  const [allRemarks, setAllRemarks] = useState<any[]>([]);
-  const [allRatings, setAllRatings] = useState<any[]>([]);
-  const [allAttachments, setAllAttachments] = useState<any[]>([]);
-
-  // Get device early to avoid temporal dead zone issues
-  const device = id ? getDeviceById(id) : null;
-
-  // All useEffects must be called before any early returns
   useEffect(() => {
-    // Save current scroll position
-    const currentScroll = window.scrollY;
-    setScrollPosition(currentScroll);
-    
     setLoading(true);
-    const timeout = setTimeout(() => {
-      setLoading(false);
-      // Restore scroll position after loading
-      window.scrollTo(0, currentScroll);
-    }, 500);
+    const timeout = setTimeout(() => setLoading(false), 500);
     return () => clearTimeout(timeout);
   }, [id, currentUser]);
-
-  // Fetch attachments on load
-  useEffect(() => {
-    if (id) {
-      setAttachmentsLoading(true);
-      setAttachmentsError(null);
-      listAttachments(String(id))
-        .then(setAttachments)
-        .catch(e => setAttachmentsError('Failed to load attachments'))
-        .finally(() => setAttachmentsLoading(false));
-    }
-  }, [id]);
-
-  // Minimal live countdown effects
-  useEffect(() => {
-    const interval = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    const interval = setInterval(() => setDotVisible(v => !v), 500);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Warranty expiry notification effect
-  useEffect(() => {
-    if (id && currentUser && device) {
-      // Warranty expiry notification (30 days)
-      if (device.warrantyEnd) {
-        const now = new Date();
-        const end = new Date(device.warrantyEnd);
-        const diffDays = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-        if (diffDays > 0 && diffDays <= 30) {
-          toast(
-            `Warranty for this device expires in ${diffDays} day${diffDays === 1 ? '' : 's'}!`,
-            { icon: '⚠️', id: `warranty-expiry-${device.id}` }
-          );
-        }
-      }
-    }
-  }, [id, currentUser, device]);
-
-  // Technician permission check effect
-  useEffect(() => {
-    if (id && currentUser && device) {
-      const isTechnician = currentUser.role === 'technician';
-      const isAssignedTechnician = isTechnician && device.assignedTo === currentUser.id;
-      if (isTechnician && !isAssignedTechnician) {
-        handleBackClick();
-      }
-    }
-  }, [id, currentUser, device, handleBackClick]);
-
-  // Device checklist effect - commented out until device_checklists table is created
-  // useEffect(() => {
-  //   if (id) {
-  //     setDeviceChecklistLoading(true);
-  //     // Fetch device checklist from database
-  //     const fetchDeviceChecklist = async () => {
-  //       try {
-  //         const { data, error } = await supabase
-  //           .from('device_checklists')
-  //           .select('*')
-  //           .eq('device_id', id)
-  //           .single();
-  //         
-  //         if (error && error.code !== 'PGRST116') {
-  //           console.error('Error fetching device checklist:', error);
-  //         } else if (data) {
-  //           setDeviceChecklist(data);
-  //         }
-  //       } catch (err) {
-  //         console.error('Error fetching device checklist:', err);
-  //       } finally {
-  //         setDeviceChecklistLoading(false);
-  //       }
-  //     };
-  //     
-  //     fetchDeviceChecklist();
-  //   }
-  // }, [id]);
-
-  // Fetch all device activity effect
-  useEffect(() => {
-    if (id) {
-      // This will be called after device is loaded
-    }
-  }, [id]);
 
   // Only static check at the very top
   if (!id || !currentUser) {
@@ -209,35 +67,10 @@ const DeviceDetailPage: React.FC = () => {
     );
   }
 
-  // Check if devices are still loading
-  if (devicesLoading) {
-    return (
-      <div className="p-8 text-center">
-        <Loader2 className="animate-spin h-8 w-8 mx-auto mb-4 text-blue-600" />
-        <p className="text-gray-600">Loading device data...</p>
-      </div>
-    );
-  }
-
-  // Check if device is not found
-  if (!device && !devicesLoading) {
-    return (
-      <div className="p-8 text-center">
-        <div className="text-red-500 font-bold text-lg mb-4">Device Not Found</div>
-        <p className="text-gray-600 mb-4">The device with ID "{id}" could not be found.</p>
-        <GlassButton
-          variant="secondary"
-          onClick={() => navigate('/devices')}
-          icon={<ArrowLeft size={16} />}
-        >
-          Back to Devices
-        </GlassButton>
-      </div>
-    );
-  }
-  
+  // Only attempt to get device if id is defined (id is always defined here)
+  const device = getDeviceById(id);
   // Defensive: always have transitions and remarks as arrays, and required fields as non-undefined
-  const safeDevice = useMemo(() => ({
+  const safeDevice = {
     id: device?.id || '',
     customerId: device?.customerId || '',
     customerName: device?.customerName || '',
@@ -270,7 +103,7 @@ const DeviceDetailPage: React.FC = () => {
     accessoriesConfirmed: device?.accessoriesConfirmed || false,
     problemConfirmed: device?.problemConfirmed || false,
     privacyConfirmed: device?.privacyConfirmed || false,
-  }), [device]);
+  };
   const customer = getCustomerById(safeDevice.customerId);
 
   // Helper: get file type icon/preview
@@ -284,6 +117,16 @@ const DeviceDetailPage: React.FC = () => {
     }
     return <FileIcon className="w-8 h-8 text-gray-500" />;
   };
+
+  // Fetch attachments on load
+  useEffect(() => {
+    setAttachmentsLoading(true);
+    setAttachmentsError(null);
+    listAttachments(String(id))
+      .then(setAttachments)
+      .catch(e => setAttachmentsError('Failed to load attachments'))
+      .finally(() => setAttachmentsLoading(false));
+  }, [id]);
 
   const handleAttachmentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -386,24 +229,25 @@ const DeviceDetailPage: React.FC = () => {
   };
 
   // Mock warranty info (replace with real data integration as needed)
-  const warrantyInfo = useMemo(() => ({
+  const warrantyInfo = {
     status: safeDevice.warrantyStatus || 'None',
     startDate: safeDevice.warrantyStart,
     endDate: safeDevice.warrantyEnd,
     durationMonths: safeDevice.warrantyStart && safeDevice.warrantyEnd
       ? Math.round((new Date(safeDevice.warrantyEnd).getTime() - new Date(safeDevice.warrantyStart).getTime()) / (1000 * 60 * 60 * 24 * 30))
       : 0,
-  }), [safeDevice.warrantyStatus, safeDevice.warrantyStart, safeDevice.warrantyEnd]);
+  };
 
   // Device repair history (other devices with same serial number, excluding current)
-  const deviceHistory = useMemo(() => devices.filter(
+  const deviceHistory = devices.filter(
     d => d.serialNumber === safeDevice.serialNumber && d.id !== safeDevice.id
-  ), [devices, safeDevice.serialNumber, safeDevice.id]);
+  );
 
   // Payments for this device
-  const totalPaid = useMemo(() => payments.filter((p: any) => p.status === 'completed').reduce((sum: number, p: any) => sum + (p.amount || 0), 0), [payments]);
+  const payments = usePayments().payments.filter((p: any) => p.device_id === safeDevice.id);
+  const totalPaid = payments.filter((p: any) => p.status === 'completed').reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
   // Try to get invoice total from attachments (if any invoice has an amount in file_name, e.g., 'invoice-1234-amount-500.pdf')
-  const invoiceAttachments = useMemo(() => attachments.filter(att => att.type === 'invoice'), [attachments]);
+  const invoiceAttachments = attachments.filter(att => att.type === 'invoice');
   let invoiceTotal = 0;
   invoiceAttachments.forEach(att => {
     const match = att.file_name.match(/amount[-_](\d+)/i);
@@ -432,6 +276,11 @@ const DeviceDetailPage: React.FC = () => {
   // Check permissions based on role
   const isTechnician = currentUser.role === 'technician';
   const isAssignedTechnician = isTechnician && device?.assignedTo === currentUser.id;
+  useEffect(() => {
+    if (isTechnician && !isAssignedTechnician) {
+      navigate('/dashboard');
+    }
+  }, [isTechnician, isAssignedTechnician, navigate]);
   
   const handleStatusUpdate = (newStatus: DeviceStatus, signature: string) => {
     return updateDeviceStatus(id, newStatus, signature);
@@ -573,6 +422,31 @@ const DeviceDetailPage: React.FC = () => {
   // Helper to get device name
   const getDeviceName = (device: { brand: string; model: string }) => `${device.model}`;
 
+  useEffect(() => {
+    // Warranty expiry notification (30 days)
+    if (warrantyInfo.endDate) {
+      const now = new Date();
+      const end = new Date(warrantyInfo.endDate);
+      const diffDays = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      if (diffDays > 0 && diffDays <= 30) {
+        toast(
+          `Warranty for this device expires in ${diffDays} day${diffDays === 1 ? '' : 's'}!`,
+          { icon: '⚠️', id: `warranty-expiry-${safeDevice.id}` }
+        );
+      }
+    }
+  }, [warrantyInfo.endDate, safeDevice.id]);
+
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'transfer'>('cash');
+  const [recordingPayment, setRecordingPayment] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [showPaymentConfirmation, setShowPaymentConfirmation] = useState(false);
+  const [lastPayment, setLastPayment] = useState<any>(null);
+  const [selectedAttachmentsForDelete, setSelectedAttachmentsForDelete] = useState<string[]>([]);
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+
   // Add payment handler
   const handleRecordPayment = async () => {
     setRecordingPayment(true);
@@ -614,38 +488,48 @@ const DeviceDetailPage: React.FC = () => {
     }
   };
 
+  // Minimal live countdown: only two most significant units, monospace, single fading dot
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(interval);
+  }, []);
+  // Animated dot state for fade in/out
+  const [dotVisible, setDotVisible] = useState(true);
+  useEffect(() => {
+    const interval = setInterval(() => setDotVisible(v => !v), 500);
+    return () => clearInterval(interval);
+  }, []);
   // Minimal countdown string: only two most significant units, with color
-  const getMinimalCountdown = useMemo(() => {
-    return (dateString: string) => {
-      const target = new Date(dateString);
-      const diff = target.getTime() - now.getTime();
-      let color = '#22c55e'; // green-500
-      if (diff <= 0) color = '#ef4444'; // red-500
-      else if (diff < 24 * 60 * 60 * 1000) color = '#f59e42'; // orange-400
-      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-      const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
-      const minutes = Math.floor((diff / (1000 * 60)) % 60);
-      const seconds = Math.floor((diff / 1000) % 60);
-      if (diff <= 0) return <span style={{fontFamily: 'monospace', fontSize: '0.95em', color, fontWeight: 600}}>Overdue</span>;
-      let units = [];
-      if (days > 0) units.push(`${days}d`);
-      if (hours > 0 || days > 0) units.push(`${hours}h`);
-      if (minutes > 0 && days === 0) units.push(`${minutes}m`);
-      if (days === 0 && hours === 0) units.push(`${seconds}s`);
-      units = units.slice(0, 2);
-      const dot = <span style={{opacity: dotVisible ? 1 : 0.2, transition: 'opacity 0.3s', fontWeight: 'bold', color}}>.</span>;
-      return (
-        <span style={{fontFamily: 'monospace', fontSize: '0.95em', letterSpacing: '0.5px', color, fontWeight: 600}}>
-          {units.map((u, i) => (
-            <React.Fragment key={i}>
-              {u}
-              {i < units.length - 1 && dot}
-            </React.Fragment>
-          ))}
-        </span>
-      );
-    };
-  }, [now, dotVisible]);
+  const getMinimalCountdown = (dateString: string) => {
+    const target = new Date(dateString);
+    const diff = target.getTime() - now.getTime();
+    let color = '#22c55e'; // green-500
+    if (diff <= 0) color = '#ef4444'; // red-500
+    else if (diff < 24 * 60 * 60 * 1000) color = '#f59e42'; // orange-400
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+    const minutes = Math.floor((diff / (1000 * 60)) % 60);
+    const seconds = Math.floor((diff / 1000) % 60);
+    if (diff <= 0) return <span style={{fontFamily: 'monospace', fontSize: '0.95em', color, fontWeight: 600}}>Overdue</span>;
+    let units = [];
+    if (days > 0) units.push(`${days}d`);
+    if (hours > 0 || days > 0) units.push(`${hours}h`);
+    if (minutes > 0 && days === 0) units.push(`${minutes}m`);
+    if (days === 0 && hours === 0) units.push(`${seconds}s`);
+    units = units.slice(0, 2);
+    const dot = <span style={{opacity: dotVisible ? 1 : 0.2, transition: 'opacity 0.3s', fontWeight: 'bold', color}}>.</span>;
+    return (
+      <span style={{fontFamily: 'monospace', fontSize: '0.95em', letterSpacing: '0.5px', color, fontWeight: 600}}>
+        {units.map((u, i) => (
+          <React.Fragment key={i}>
+            {u}
+            {i < units.length - 1 && dot}
+          </React.Fragment>
+        ))}
+      </span>
+    );
+  };
 
   // Helper to format duration
   function formatDuration(ms?: number) {
@@ -671,6 +555,18 @@ const DeviceDetailPage: React.FC = () => {
 
   const technicianDuration = (inRepairTime && repairCompleteTime) ? repairCompleteTime - inRepairTime : undefined;
   const handoverDuration = (repairCompleteTime && doneTime) ? doneTime - repairCompleteTime : undefined;
+
+  // Add state for audit logs, points transactions, and SMS logs
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [pointsTransactions, setPointsTransactions] = useState<any[]>([]);
+  const [smsLogs, setSmsLogs] = useState<any[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(true);
+
+  // Add state for device checklist and additional device info
+  const [deviceChecklist, setDeviceChecklist] = useState<any>(null);
+  const [deviceChecklistLoading, setDeviceChecklistLoading] = useState(false);
+  const [dbDevice, setDbDevice] = useState<any>(null);
+  const [dbDeviceLoading, setDbDeviceLoading] = useState(false);
 
   // Fetch audit logs, points transactions, and SMS logs on mount
   useEffect(() => {
@@ -709,8 +605,15 @@ const DeviceDetailPage: React.FC = () => {
     return () => { isMounted = false; };
   }, [safeDevice.id]);
 
+  // Add at the top of DeviceDetailPage component:
+  const [allPayments, setAllPayments] = useState<any[]>([]);
+  const [allTransitions, setAllTransitions] = useState<any[]>([]);
+  const [allRemarks, setAllRemarks] = useState<any[]>([]);
+  const [allRatings, setAllRatings] = useState<any[]>([]);
+  const [allAttachments, setAllAttachments] = useState<any[]>([]);
+
   // Fetch all device activity on mount or when device ID changes
-  const fetchAllDeviceActivity = useCallback(async () => {
+  const fetchAllDeviceActivity = async () => {
     if (!safeDevice.id) return;
     // Payments
     const { data: paymentsData } = await supabase
@@ -751,32 +654,32 @@ const DeviceDetailPage: React.FC = () => {
       .select('*')
       .eq('device_id', safeDevice.id);
     setAllAttachments(attachmentsData || []);
-  }, [safeDevice.id]);
+  };
 
-  // Fetch device checklist and additional device info - commented out device_checklists until table is created
-  const fetchDeviceDetails = useCallback(async () => {
+  // Fetch device checklist and additional device info
+  const fetchDeviceDetails = async () => {
     if (!safeDevice.id) return;
     
     setDeviceChecklistLoading(true);
     setDbDeviceLoading(true);
     
     try {
-      // Fetch device checklist - commented out until device_checklists table is created
-      // const { data: checklistData, error: checklistError } = await supabase
-      //   .from('device_checklists')
-      //   .select('*')
-      //   .eq('device_id', safeDevice.id)
-      //   .maybeSingle();
+      // Fetch device checklist - handle the actual table structure
+      const { data: checklistData, error: checklistError } = await supabase
+        .from('device_checklists')
+        .select('*')
+        .eq('device_id', safeDevice.id)
+        .maybeSingle();
       
-      // if (checklistError) {
-      //   console.error('Error fetching device checklist:', checklistError);
-      //   setDeviceChecklist(null);
-      // } else {
-      //   setDeviceChecklist(checklistData);
-      // }
+      if (checklistError) {
+        console.error('Error fetching device checklist:', checklistError);
+        setDeviceChecklist(null);
+      } else {
+        setDeviceChecklist(checklistData);
+      }
       
-      // Fetch additional device info from devices table
-      const { data: deviceData, error: deviceError } = await supabase
+              // Fetch additional device info from devices table
+        const { data: deviceData, error: deviceError } = await supabase
         .from('devices')
         .select('*')
         .eq('id', safeDevice.id)
@@ -785,9 +688,9 @@ const DeviceDetailPage: React.FC = () => {
       if (deviceError) {
         console.error('Error fetching device data:', deviceError);
         setDbDevice(null);
-      } else {
-        setDbDevice(deviceData);
-      }
+              } else {
+          setDbDevice(deviceData);
+        }
     } catch (error) {
       console.error('Error fetching device details:', error);
       setDeviceChecklist(null);
@@ -796,14 +699,11 @@ const DeviceDetailPage: React.FC = () => {
       setDeviceChecklistLoading(false);
       setDbDeviceLoading(false);
     }
-  }, [safeDevice.id]);
-  // Fetch all device activity effect
+  };
   useEffect(() => {
-    if (id) {
-      fetchAllDeviceActivity();
-      fetchDeviceDetails();
-    }
-  }, [id, fetchAllDeviceActivity, fetchDeviceDetails]);
+    fetchAllDeviceActivity();
+    fetchDeviceDetails();
+  }, [safeDevice.id]);
 
   // Helper: normalize all events to a common structure
   function getTimelineEvents() {
@@ -962,7 +862,7 @@ const DeviceDetailPage: React.FC = () => {
     }
     fetchUserNames();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [safeDevice.assignedTo, allPayments.length, allTransitions.length, allRemarks.length, allRatings.length, allAttachments.length, auditLogs.length, pointsTransactions.length, smsLogs.length]);
+  }, [safeDevice, safeDevice.assignedTo, allPayments, allTransitions, allRemarks, allRatings, allAttachments, auditLogs, pointsTransactions, smsLogs]);
 
   // Replace getUserById with this:
   const getUserName = (userId: string) => {
@@ -988,179 +888,469 @@ const DeviceDetailPage: React.FC = () => {
     fetchCustomer();
   }, [safeDevice.customerId]);
   return (
-    <>
-      <div className="p-2 sm:p-4 max-w-6xl mx-auto w-full">
-        <div className="space-y-6">
-          {/* Device Header */}
-          <DeviceDetailHeader device={safeDevice} />
-          
-          {/* Customer Information Section */}
-          {(customer || dbCustomer) && (
-            <GlassCard className="bg-gradient-to-br from-blue-500/10 to-blue-400/5">
-              <h3 className="text-lg sm:text-xl font-bold text-blue-900 mb-4">Customer Information</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs sm:text-sm text-gray-500">Name</p>
-                  <p className="text-gray-800 text-sm sm:text-base">{dbCustomer?.name || customer?.name || 'N/A'}</p>
+    <div className="p-2 sm:p-4 max-w-6xl mx-auto w-full">
+      {/* Highlight for failed devices */}
+      {safeDevice.status === 'failed' && (
+        <div className="mb-4 sm:mb-6 p-3 sm:p-4 rounded-lg bg-gradient-to-r from-red-600/90 to-pink-500/90 text-white text-lg sm:text-xl font-bold flex flex-col gap-2 shadow-lg">
+          <span>⚠️ This device was marked as <span className="underline">FAILED TO REPAIR</span></span>
+          {(currentUser.role === 'admin' || currentUser.role === 'customer-care') && safeDevice.remarks.length > 0 && (
+            <div className="text-sm sm:text-base font-normal bg-white/20 rounded p-2 mt-2">
+              <span className="font-semibold">Failure Reason:</span> {safeDevice.remarks[safeDevice.remarks.length-1].content}
+            </div>
+          )}
+        </div>
+      )}
+      
+      {/* Debug Panel - Only show for admin users */}
+      {currentUser.role === 'admin' && (
+        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <h3 className="text-sm font-semibold text-yellow-800 mb-2">Debug Info (Admin Only)</h3>
+          <div className="text-xs text-yellow-700 space-y-1">
+            <div>Current User: {currentUser.name} ({currentUser.role})</div>
+            <div>Device Status: {safeDevice.status}</div>
+            <div>Device Assigned To: {safeDevice.assignedTo || 'None'}</div>
+            <div>Is Current User Assigned: {safeDevice.assignedTo === currentUser.id ? 'Yes' : 'No'}</div>
+            <div>Can Show Failed Button: {((safeDevice.status === 'in-repair' || safeDevice.status === 'assigned') && currentUser.role === 'technician' && safeDevice.assignedTo === currentUser.id) ? 'Yes' : 'No'}</div>
+          </div>
+        </div>
+      )}
+      
+      <div className="flex items-center mb-3 sm:mb-4 sm:mb-6">
+        <Link to="/dashboard" className="mr-3 sm:mr-4 text-gray-700 hover:text-gray-900">
+          <ArrowLeft size={18} className="sm:w-5 sm:h-5" />
+        </Link>
+        <h1 className="text-lg sm:text-xl sm:text-2xl font-bold text-gray-900">Device Details</h1>
+      </div>
+      
+      <DeviceDetailHeader device={safeDevice} />
+      
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-2 sm:gap-3 sm:gap-6">
+        {/* Left Column - Details & Checklist */}
+        <div className="lg:col-span-2 space-y-2 sm:space-y-3 sm:space-y-6">
+          <GlassCard>
+            <div className="flex justify-between items-start mb-4 sm:mb-6">
+              <div>
+                <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+                  <h1 className="text-xl sm:text-2xl sm:text-3xl font-bold text-gray-900">{getDeviceName(safeDevice)}</h1>
+                  <StatusBadge status={safeDevice.status} />
                 </div>
-                <div>
-                  <p className="text-xs sm:text-sm text-gray-500">Phone</p>
-                  <p className="text-gray-800 text-sm sm:text-base">{dbCustomer?.phone || customer?.phone || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-xs sm:text-sm text-gray-500">City</p>
-                  <p className="text-gray-800 text-sm sm:text-base">{dbCustomer?.city || customer?.city || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-xs sm:text-sm text-gray-500">Loyalty Level</p>
-                  <p className="text-gray-800 text-sm sm:text-base">{dbCustomer?.loyaltyLevel || customer?.loyaltyLevel || 'N/A'}</p>
+                <div className="space-y-1 sm:space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 sm:p-2 rounded-lg bg-blue-500/10">
+                      <Smartphone size={16} className="sm:w-[18px] sm:h-[18px] text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-blue-600/70">Brand & Model</p>
+                      <p className="text-sm sm:text-base text-gray-900 font-medium truncate">{safeDevice.brand} {safeDevice.model}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 sm:p-2 rounded-lg bg-purple-500/10">
+                      <Barcode size={16} className="sm:w-[18px] sm:h-[18px] text-purple-600" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-purple-600/70">Serial Number</p>
+                      <p className="text-sm sm:text-base text-gray-900 font-mono truncate">{safeDevice.serialNumber || 'Not provided'}</p>
+                    </div>
+                  </div>
+                  {/* IMEI Number - if different from Serial Number */}
+                  {dbDevice?.imei && dbDevice.imei !== safeDevice.serialNumber && (
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 sm:p-2 rounded-lg bg-cyan-500/10">
+                        <Hash size={16} className="sm:w-[18px] sm:h-[18px] text-cyan-600" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-cyan-600/70">IMEI Number</p>
+                        <p className="text-sm sm:text-base text-gray-900 font-mono truncate">{dbDevice.imei}</p>
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 sm:p-2 rounded-lg bg-emerald-500/10">
+                      <Calendar size={16} className="sm:w-[18px] sm:h-[18px] text-emerald-600" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-emerald-600/70">Date Received</p>
+                      <p className="text-sm sm:text-base text-gray-900 font-mono">{formatDate(safeDevice.createdAt || new Date().toISOString())}</p>
+                    </div>
+                  </div>
+                  {/* Est. Completion - Match Date Received Design, with date and time */}
+                  <div className="flex items-center gap-2 mt-2 mb-1">
+                    <div className="p-1.5 sm:p-2 rounded-lg bg-amber-500/10">
+                      <Calendar size={16} className="sm:w-[18px] sm:h-[18px] text-amber-600" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-amber-600/70">Est. Completion</p>
+                      {safeDevice.expectedReturnDate ? (
+                        <>
+                          <p className="text-sm sm:text-base text-gray-900 font-mono font-semibold">{getMinimalCountdown(safeDevice.expectedReturnDate)}</p>
+                          <p className="text-xs text-gray-500">{formatDate(safeDevice.expectedReturnDate, true)}</p>
+                        </>
+                      ) : (
+                        <p className="italic text-gray-400 text-sm">N/A</p>
+                      )}
+                    </div>
+                  </div>
+                  {/* Device Issue Section - Compact Version (moved below Est. Completion) */}
+                  <div className="mt-2 mb-1">
+                    <div className="flex items-start gap-2 p-2 rounded-lg bg-rose-50 border border-rose-100 shadow-sm">
+                      <AlertTriangle size={16} className="sm:w-[18px] sm:h-[18px] text-rose-500 mt-0.5 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <span className="text-xs font-semibold text-rose-700 mr-1">Device Issue:</span>
+                        <span className="text-xs text-gray-900 font-medium break-words leading-relaxed">
+                          {safeDevice.issueDescription || <span className="italic text-gray-400">No issue description provided.</span>}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </GlassCard>
-          )}
             
-          {/* Payments Section - Mobile Optimized */}
-          {(currentUser.role === 'admin' || currentUser.role === 'customer-care') && (
-            <GlassCard className="bg-gradient-to-br from-green-500/10 to-green-400/5">
-              <h3 className="text-lg sm:text-xl sm:text-2xl font-bold text-green-900 mb-4">Payments</h3>
-              
-              {payments.length === 0 ? (
-                <div className="text-center py-6">
-                  <CreditCard className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                  <div className="text-gray-700 text-sm sm:text-base">No payments recorded for this device.</div>
+
+            </div>
+            
+
+          </GlassCard>
+
+          {/* Status Update Card - Moved from right column */}
+          <GlassCard>
+            {safeDevice.status === 'failed' ? (
+              <div className="text-center text-base sm:text-lg text-red-700 font-semibold p-4 sm:p-6">No further actions are allowed for devices marked as failed to repair.</div>
+            ) : (
+              (currentUser.role === 'admin') && safeDevice.status === 'assigned' ? (
+                <AssignTechnicianForm 
+                  deviceId={safeDevice.id} 
+                  currentTechId={safeDevice.assignedTo}
+                  currentUser={currentUser}
+                />
+              ) : (
+                <StatusUpdateForm
+                  device={safeDevice}
+                  currentUser={currentUser}
+                  onUpdateStatus={handleStatusUpdate}
+                  onAddRemark={handleAddRemark}
+                  onAddRating={safeDevice.assignedTo ? 
+                    (score, comment) => addRating(safeDevice.id, safeDevice.assignedTo!, score, comment)
+                    : undefined
+                  }
+                  outstanding={typeof outstanding === 'number' ? outstanding : undefined}
+                />
+              )
+            )}
+          </GlassCard>
+          
+          {/* Device Intake Details Section */}
+          <GlassCard className="bg-gradient-to-br from-indigo-500/10 to-indigo-400/5">
+            <h3 className="text-lg sm:text-xl sm:text-2xl font-bold text-indigo-900 mb-3 sm:mb-4">Device Intake Details</h3>
+            {dbDeviceLoading ? (
+              <div className="flex items-center justify-center py-6 sm:py-8">
+                <Loader2 className="animate-spin h-5 w-5 sm:h-6 sm:w-6 text-indigo-600" />
+                <span className="ml-2 text-indigo-700 text-sm sm:text-base">Loading device details...</span>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                {/* Unlock Code */}
+                {dbDevice?.unlock_code && (
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 sm:p-2 rounded-lg bg-indigo-500/10">
+                      <Key size={16} className="sm:w-[18px] sm:h-[18px] text-indigo-600" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-indigo-600/70">Unlock Code</p>
+                      <p className="text-sm sm:text-base text-gray-900 font-mono truncate">{dbDevice.unlock_code}</p>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Estimated Repair Cost */}
+                {dbDevice?.repair_cost && (
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 sm:p-2 rounded-lg bg-green-500/10">
+                      <DollarSign size={16} className="sm:w-[18px] sm:h-[18px] text-green-600" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-green-600/70">Est. Repair Cost</p>
+                      <p className="text-sm sm:text-base text-gray-900 font-semibold">{formatCurrency(parseFloat(dbDevice.repair_cost))}</p>
+                    </div>
+                  </div>
+                )}
+                
+                
+                {/* Deposit Amount */}
+                {dbDevice?.deposit_amount && (
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 sm:p-2 rounded-lg bg-amber-500/10">
+                      <CreditCard size={16} className="sm:w-[18px] sm:h-[18px] text-amber-600" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-amber-600/70">Deposit Amount</p>
+                      <p className="text-sm sm:text-base text-gray-900 font-semibold">{formatCurrency(parseFloat(dbDevice.deposit_amount))}</p>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Device Cost */}
+                {dbDevice?.device_cost && (
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 sm:p-2 rounded-lg bg-emerald-500/10">
+                      <DollarSign size={16} className="sm:w-[18px] sm:h-[18px] text-emerald-600" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-emerald-600/70">Device Cost</p>
+                      <p className="text-sm sm:text-base text-gray-900 font-semibold">{formatCurrency(parseFloat(dbDevice.device_cost))}</p>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Diagnosis Required */}
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 sm:p-2 rounded-lg bg-purple-500/10">
+                    <Wrench size={16} className="sm:w-[18px] sm:h-[18px] text-purple-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-purple-600/70">Diagnosis Required</p>
+                    <p className="text-sm sm:text-base text-gray-900 font-semibold">
+                      {dbDevice?.diagnosis_required ? 'Yes' : 'No'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Assigned Technician */}
+                {(dbDevice?.assigned_to || safeDevice.assignedTo) && (
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 sm:p-2 rounded-lg bg-blue-500/10">
+                      <User size={16} className="sm:w-[18px] sm:h-[18px] text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-blue-600/70">Assigned Technician</p>
+                      <p className="text-sm sm:text-base text-gray-900 font-semibold">{getUserName(dbDevice?.assigned_to || safeDevice.assignedTo)}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Issue Description */}
+                {(dbDevice?.issue_description || safeDevice.issueDescription) && (
+                  <div className="flex items-center gap-2 md:col-span-2">
+                    <div className="p-1.5 sm:p-2 rounded-lg bg-orange-500/10">
+                      <FileText size={16} className="sm:w-[18px] sm:h-[18px] text-orange-600" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-xs font-medium text-orange-600/70">Issue Description</p>
+                      <p className="text-sm sm:text-base text-gray-900">{dbDevice?.issue_description || safeDevice.issueDescription}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Device Condition Assessment */}
+                {dbDevice?.device_condition && Object.keys(dbDevice.device_condition).length > 0 && (
+                  <div className="flex items-center gap-2 md:col-span-2">
+                    <div className="p-1.5 sm:p-2 rounded-lg bg-red-500/10">
+                      <AlertTriangle size={16} className="sm:w-[18px] sm:h-[18px] text-red-600" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-xs font-medium text-red-600/70">Device Condition</p>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {Object.entries(dbDevice.device_condition).map(([condition, value]) => (
+                          value && (
+                            <span key={condition} className="px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full">
+                              {condition.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
+                            </span>
+                          )
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Expected Return Date */}
+                {(dbDevice?.expected_return_date || safeDevice.expectedReturnDate) && (
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 sm:p-2 rounded-lg bg-teal-500/10">
+                      <Calendar size={16} className="sm:w-[18px] sm:h-[18px] text-teal-600" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-teal-600/70">Expected Return</p>
+                      <p className="text-sm sm:text-base text-gray-900 font-semibold">{formatDate(dbDevice?.expected_return_date || safeDevice.expectedReturnDate)}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Estimated Hours */}
+                {(dbDevice?.estimated_hours || safeDevice.estimatedHours) && (
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 sm:p-2 rounded-lg bg-cyan-500/10">
+                      <Clock size={16} className="sm:w-[18px] sm:h-[18px] text-cyan-600" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-cyan-600/70">Estimated Hours</p>
+                      <p className="text-sm sm:text-base text-gray-900 font-semibold">{dbDevice?.estimated_hours || safeDevice.estimatedHours}h</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* Device Notes */}
+            {!dbDeviceLoading && dbDevice?.device_notes && (
+              <div className="mt-3 sm:mt-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <FileText size={16} className="sm:w-[18px] sm:h-[18px] text-gray-600" />
+                  <span className="text-sm font-semibold text-gray-700">Device Notes</span>
+                </div>
+                <div className="p-2 sm:p-3 bg-white/50 rounded-lg border border-gray-200">
+                  <p className="text-gray-800 text-sm">{dbDevice.device_notes}</p>
+                </div>
+              </div>
+            )}
+            
+            {/* Intake Confirmations */}
+            {!dbDeviceLoading && (
+              <div className="mt-3 sm:mt-4 grid grid-cols-1 md:grid-cols-3 gap-2 sm:gap-3">
+                <div className={`p-2 sm:p-3 rounded-lg border ${dbDevice?.accessories_confirmed ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle size={14} className="sm:w-4 sm:h-4 ${dbDevice?.accessories_confirmed ? 'text-green-600' : 'text-gray-400'}" />
+                    <span className="text-xs sm:text-sm font-medium">Accessories Confirmed</span>
+                  </div>
+                </div>
+                <div className={`p-2 sm:p-3 rounded-lg border ${dbDevice?.problem_confirmed ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle size={14} className="sm:w-4 sm:h-4 ${dbDevice?.problem_confirmed ? 'text-green-600' : 'text-gray-400'}" />
+                    <span className="text-xs sm:text-sm font-medium">Problem Confirmed</span>
+                  </div>
+                </div>
+                <div className={`p-2 sm:p-3 rounded-lg border ${dbDevice?.privacy_confirmed ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle size={14} className="sm:w-4 sm:h-4 ${dbDevice?.privacy_confirmed ? 'text-green-600' : 'text-gray-400'}" />
+                    <span className="text-xs sm:text-sm font-medium">Privacy Confirmed</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </GlassCard>
+          
+          {/* Device Condition Assessment Section */}
+          {dbDevice?.device_condition && Object.keys(dbDevice.device_condition).length > 0 && (
+            <GlassCard className="bg-gradient-to-br from-orange-500/10 to-orange-400/5">
+              <h3 className="text-lg sm:text-xl sm:text-2xl font-bold text-orange-900 mb-3 sm:mb-4">Device Condition Assessment</h3>
+              {dbDeviceLoading ? (
+                <div className="flex items-center justify-center py-6 sm:py-8">
+                  <Loader2 className="animate-spin h-5 w-5 sm:h-6 sm:w-6 text-orange-600" />
+                  <span className="ml-2 text-orange-700 text-sm sm:text-base">Loading condition assessment...</span>
                 </div>
               ) : (
-                <div className="space-y-3 mb-4">
-                  {payments.map((p: any) => (
-                    <div key={p.id} className="bg-white rounded-lg border border-green-200 p-3 sm:p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <CreditCard className="w-4 h-4 text-green-600" />
-                          <span className="font-semibold text-green-700 text-lg">{formatCurrency(p.amount)}</span>
-                        </div>
-                        <span className="text-xs text-gray-500 capitalize">{p.method}</span>
-                      </div>
-                      
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        <div>
-                          <span className="text-gray-500">Type:</span>
-                          <p className="font-medium capitalize">{p.payment_type === 'payment' ? 'Payment' : p.payment_type === 'deposit' ? 'Deposit' : 'Refund'}</p>
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Status:</span>
-                          <p className="font-medium capitalize">{p.status}</p>
-                        </div>
-                      </div>
-                      
-                      <div className="mt-2 text-xs text-gray-500">
-                        {p.payment_date ? formatRelativeTime(p.payment_date) : ''}
-                        {p.created_by && (
-                          <span className="ml-2 text-blue-700">by {p.created_by}</span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-3">
+                  {Object.entries(dbDevice.device_condition).map(([condition, value]) => (
+                    <div key={condition} className={`p-2 sm:p-3 rounded-lg border ${value ? 'bg-orange-50 border-orange-200' : 'bg-gray-50 border-gray-200'}`}>
+                      <div className="flex items-center gap-2">
+                        {value ? (
+                          <AlertTriangle size={14} className="sm:w-4 sm:h-4 text-orange-600" />
+                        ) : (
+                          <CheckCircle size={14} className="sm:w-4 sm:h-4 text-gray-400" />
                         )}
+                        <span className="text-xs sm:text-sm font-medium capitalize">
+                          {condition.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
+                        </span>
                       </div>
                     </div>
                   ))}
                 </div>
               )}
-              
-              <div className="bg-green-50 rounded-lg p-3 sm:p-4 space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-green-900 font-semibold">Total Paid:</span>
-                  <span className="text-green-700 font-bold text-lg">{formatCurrency(totalPaid)}</span>
+            </GlassCard>
+          )}
+          
+          {/* Device Checklist Section */}
+          {deviceChecklist && (
+            <GlassCard className="bg-gradient-to-br from-teal-500/10 to-teal-400/5">
+              <h3 className="text-lg sm:text-xl sm:text-2xl font-bold text-teal-900 mb-3 sm:mb-4">Device Checklist</h3>
+              {deviceChecklistLoading ? (
+                <div className="flex items-center justify-center py-6 sm:py-8">
+                  <Loader2 className="animate-spin h-5 w-5 sm:h-6 sm:w-6 text-teal-600" />
+                  <span className="ml-2 text-teal-700 text-sm sm:text-base">Loading checklist...</span>
                 </div>
-                {invoiceTotal > 0 && outstanding !== null && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-amber-900 font-semibold">Outstanding:</span>
-                    <span className="text-amber-700 font-bold">{formatCurrency(outstanding)}</span>
-                  </div>
-                )}
-              </div>
-              
-              {currentUser.role === 'customer-care' || currentUser.role === 'admin' ? (
-                <GlassButton
-                  variant="primary"
-                  icon={<CreditCard size={16} className="sm:w-[18px] sm:h-[18px]" />}
-                  className="mt-4 w-full sm:w-auto text-sm"
-                  onClick={() => setShowPaymentModal(true)}
-                >
-                  Record Payment
-                </GlassButton>
               ) : (
-                <div className="mt-4">
-                  <GlassButton
-                    variant="primary"
-                    icon={<CreditCard size={16} className="sm:w-[18px] sm:h-[18px]" />}
-                    className="opacity-50 cursor-not-allowed w-full sm:w-auto text-sm"
-                    disabled
-                  >
-                    Record Payment
-                  </GlassButton>
-                  <div className="text-xs text-gray-500 mt-2 text-center sm:text-left">Only customer care can record payments.</div>
+                <div>
+                  {/* Checklist Type and Completion Info */}
+                  <div className="mb-3 sm:mb-4 p-2 sm:p-3 bg-teal-50 border border-teal-200 rounded-lg">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-0">
+                      <div>
+                        <span className="text-xs sm:text-sm font-semibold text-teal-800">Checklist Type:</span>
+                        <span className="ml-2 text-teal-700 capitalize text-xs sm:text-sm">{deviceChecklist.checklist_type || 'General'}</span>
+                      </div>
+                      {deviceChecklist.completed_by && (
+                        <div className="text-xs text-teal-600">
+                          Completed by: {getUserName(deviceChecklist.completed_by)}
+                        </div>
+                      )}
+                      {deviceChecklist.completed_at && (
+                        <div className="text-xs text-teal-600">
+                          {formatDate(deviceChecklist.completed_at)}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Checklist Items */}
+                  {deviceChecklist.items && Array.isArray(deviceChecklist.items) && deviceChecklist.items.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
+                      {deviceChecklist.items.map((item: any, index: number) => (
+                        <div key={index} className={`p-2 sm:p-3 rounded-lg border ${item.checked ? 'bg-teal-50 border-teal-200' : 'bg-gray-50 border-gray-200'}`}>
+                          <div className="flex items-center gap-2">
+                            {item.checked ? (
+                              <CheckCircle size={14} className="sm:w-4 sm:h-4 text-teal-600" />
+                            ) : (
+                              <XCircle size={14} className="sm:w-4 sm:h-4 text-gray-400" />
+                            )}
+                            <span className="text-xs sm:text-sm font-medium capitalize">
+                              {item.name || `Item ${index + 1}`}
+                            </span>
+                          </div>
+                          {item.notes && (
+                            <div className="mt-1 text-xs text-gray-600">
+                              {item.notes}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-4 text-gray-500 text-sm">No checklist items found</div>
+                  )}
                 </div>
               )}
             </GlassCard>
           )}
-            
+        </div>
+        
+        {/* Right Column - Actions Panel */}
+        <div className="space-y-2 sm:space-y-3 sm:space-y-6">
+          {/* Customer Information */}
+          {(currentUser.role === 'admin' || currentUser.role === 'customer-care') && (
+            <GlassCard>
+              <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-3 sm:mb-4">Customer Information</h3>
+              <div className="space-y-2 sm:space-y-3">
+                <div className="flex items-center gap-2">
+                  <User size={16} className="sm:w-[18px] sm:h-[18px] text-gray-500" />
+                  <span 
+                    className="font-medium text-gray-900 cursor-pointer hover:text-blue-600 transition-colors text-sm sm:text-base truncate"
+                    onClick={() => navigate(`/customers/${safeDevice.customerId}`)}
+                  >
+                    {dbCustomer?.name || customer?.name || safeDevice.customerName || 'N/A'}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-xs sm:text-sm text-gray-500">Phone Number</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <p className="text-gray-800 text-sm sm:text-base">{dbCustomer?.phone || customer?.phone || safeDevice.phoneNumber || 'N/A'}</p>
+                  </div>
+                </div>
+              </div>
+            </GlassCard>
+          )}
         </div>
       </div>
       
       <PrintableSlip ref={printRef} device={safeDevice} />
-
-      {/* SMS Modal: Only Customer Care can use */}
-      {currentUser.role === 'customer-care' && (
-        <Modal isOpen={showSmsModal} onClose={() => { setShowSmsModal(false); setSmsMessage(''); setSmsResult(null); }} title="Send SMS" maxWidth="400px">
-          <form
-            onSubmit={async e => {
-              e.preventDefault();
-              setSmsSending(true);
-              setSmsResult(null);
-              const smsPhoneNumber = (dbCustomer?.phone || customer?.phone || safeDevice.phoneNumber || '').replace(/\D/g, '');
-              const smsResultObj = await smsService.sendSMS(smsPhoneNumber, smsMessage, dbCustomer?.id || customer?.id || safeDevice.customerId);
-              setSmsSending(false);
-              if (smsResultObj.success) {
-                // Log the manual SMS
-                const logSuccess = await logManualSMS({
-                  deviceId: safeDevice.id,
-                  customerId: dbCustomer?.id || customer?.id || safeDevice.customerId,
-                  sentBy: currentUser.id,
-                  message: smsMessage,
-                });
-                if (!logSuccess) {
-                  setSmsResult('SMS sent, but failed to log the message.');
-                } else {
-                  setSmsResult('SMS sent!');
-                }
-                setSmsMessage('');
-              } else {
-                setSmsResult(`Failed: ${smsResultObj.error}`);
-              }
-            }}
-            className="space-y-4"
-          >
-            <div>
-              <label className="block text-gray-700 mb-1 font-medium">To</label>
-              <div className="py-2 px-4 bg-gray-100 rounded">{dbCustomer?.phone || customer?.phone || safeDevice.phoneNumber || 'N/A'}</div>
-            </div>
-            <div>
-              <label className="block text-gray-700 mb-1 font-medium">Message</label>
-              <textarea
-                value={smsMessage}
-                onChange={e => setSmsMessage(e.target.value)}
-                rows={3}
-                className="w-full py-2 px-4 bg-white/30 backdrop-blur-md border border-white/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                placeholder="Type your message here"
-                required
-              />
-            </div>
-            {smsResult && <div className={`text-sm ${smsResult.startsWith('Failed') ? 'text-red-600' : 'text-green-600'}`}>{smsResult}</div>}
-            <div className="flex gap-3 justify-end mt-4">
-              <GlassButton type="button" variant="secondary" onClick={() => { setShowSmsModal(false); setSmsMessage(''); setSmsResult(null); }}>Cancel</GlassButton>
-              <GlassButton type="submit" variant="primary" disabled={smsSending}>{smsSending ? 'Sending...' : 'Send SMS'}</GlassButton>
-            </div>
-          </form>
-        </Modal>
-      )}
-
+      
       {/* Diagnostic Checklist Modal */}
       <DiagnosticChecklist
         device={safeDevice}
@@ -1176,7 +1366,7 @@ const DeviceDetailPage: React.FC = () => {
         onClose={() => setShowRepairChecklist(false)}
         onStatusUpdate={handleChecklistStatusUpdate}
       />
-    </>
+    </div>
   );
 };
 
