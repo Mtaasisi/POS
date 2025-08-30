@@ -5,13 +5,13 @@ import { Product, ProductVariant } from '../types/inventory';
 export interface SearchResult {
   product: Product;
   relevance: number;
-  matchType: 'exact' | 'fuzzy' | 'category' | 'brand';
+  matchType: 'exact' | 'fuzzy' | 'category';
   matchedField: string;
 }
 
 export interface SearchSuggestion {
   text: string;
-  type: 'product' | 'category' | 'brand' | 'sku';
+  type: 'product' | 'category' | 'sku';
   relevance: number;
 }
 
@@ -128,8 +128,7 @@ export class SmartSearchService {
       .select(`
         *,
         lats_product_variants(id, sku, barcode, selling_price, quantity, name),
-        lats_categories(name),
-        lats_brands(name)
+        lats_categories(name)
       `)
       .eq('name', query)
       .eq('is_active', true);
@@ -144,8 +143,7 @@ export class SmartSearchService {
       .select(`
         *,
         lats_product_variants(id, sku, barcode, selling_price, quantity, name),
-        lats_categories(name),
-        lats_brands(name)
+        lats_categories(name)
       `)
       .eq('is_active', true);
 
@@ -158,31 +156,12 @@ export class SmartSearchService {
       product.lats_product_variants?.some(variant => variant.sku === query)
     ) || [];
 
-    // Search by variant barcode
-    const { data: barcodeMatches, error: barcodeError } = await supabase
-      .from('lats_products')
-      .select(`
-        *,
-        lats_product_variants(id, sku, barcode, selling_price, quantity, name),
-        lats_categories(name),
-        lats_brands(name)
-      `)
-      .eq('is_active', true);
 
-    if (barcodeError) {
-      console.error('Error searching by barcode:', barcodeError);
-    }
-
-    // Filter barcode matches manually to avoid complex joins
-    const barcodeFilteredMatches = barcodeMatches?.filter(product => 
-      product.lats_product_variants?.some(variant => variant.barcode === query)
-    ) || [];
 
     // Combine all matches and remove duplicates
     const allMatches = [
       ...(nameMatches || []),
-      ...skuFilteredMatches,
-      ...barcodeFilteredMatches
+      ...skuFilteredMatches
     ];
 
     // Remove duplicates based on product ID
@@ -204,8 +183,7 @@ export class SmartSearchService {
       .select(`
         *,
         lats_product_variants(id, sku, barcode, selling_price, quantity, name),
-        lats_categories(name),
-        lats_brands(name)
+        lats_categories(name)
       `)
       .textSearch('name', query, {
         type: 'websearch',
@@ -231,8 +209,7 @@ export class SmartSearchService {
       .select(`
         *,
         lats_product_variants(id, sku, barcode, selling_price, quantity, name),
-        lats_categories(name),
-        lats_brands(name)
+        lats_categories(name)
       `)
       .eq('is_active', true)
       .limit(100); // Get more candidates for fuzzy matching
@@ -246,9 +223,7 @@ export class SmartSearchService {
       const skuSimilarity = product.lats_product_variants?.some(v => 
         this.calculateSimilarity(query, v.sku?.toLowerCase() || '') > 0.7
       ) ? 0.9 : 0;
-      const barcodeSimilarity = product.lats_product_variants?.some(v => 
-        v.barcode === query
-      ) ? 1.0 : 0;
+
 
       const maxSimilarity = Math.max(nameSimilarity, skuSimilarity, barcodeSimilarity);
       
@@ -258,7 +233,7 @@ export class SmartSearchService {
           relevance: maxSimilarity,
           matchType: 'fuzzy' as const,
           matchedField: maxSimilarity === nameSimilarity ? 'name' : 
-                       maxSimilarity === skuSimilarity ? 'sku' : 'barcode'
+                       'sku'
         });
       }
     }
@@ -274,10 +249,9 @@ export class SmartSearchService {
       .select(`
         *,
         lats_product_variants(id, sku, barcode, selling_price, quantity, name),
-        lats_categories(name),
-        lats_brands(name)
+        lats_categories(name)
       `)
-      .or(`lats_categories.name.ilike.%${query}%,lats_brands.name.ilike.%${query}%`)
+      .or(`lats_categories.name.ilike.%${query}%`)
       .eq('is_active', true)
       .limit(limit);
 
@@ -286,8 +260,8 @@ export class SmartSearchService {
     return (data || []).map(product => ({
       product,
       relevance: 0.6,
-      matchType: product.lats_categories?.name?.toLowerCase().includes(query) ? 'category' as const : 'brand' as const,
-      matchedField: product.lats_categories?.name?.toLowerCase().includes(query) ? 'category' : 'brand'
+      matchType: product.lats_categories?.name?.toLowerCase().includes(query) ? 'category' as const : 'fuzzy' as const,
+      matchedField: product.lats_categories?.name?.toLowerCase().includes(query) ? 'category' : 'name'
     }));
   }
 
@@ -339,19 +313,6 @@ export class SmartSearchService {
       suggestions.push(...(categories || []).map(c => ({
         text: c.name,
         type: 'category' as const,
-        relevance: 0.8
-      })));
-
-      // Brand suggestions
-      const { data: brands } = await supabase
-        .from('lats_brands')
-        .select('name')
-        .ilike('name', `%${trimmedQuery}%`)
-        .limit(limit);
-
-      suggestions.push(...(brands || []).map(b => ({
-        text: b.name,
-        type: 'brand' as const,
         relevance: 0.8
       })));
 

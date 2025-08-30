@@ -166,12 +166,14 @@ export const useZenoPay = (): UseZenoPayReturn => {
         throw new Error('Failed to create payment order');
       }
 
-      // Poll for status updates
+      // Poll for status updates with exponential backoff (optimized)
       let attempts = 0;
-      const maxAttempts = 120; // 10 minutes with 5-second intervals
+      const maxAttempts = 30; // Reduced from 120 (2.5 minutes max instead of 10 minutes)
+      let delay = 1000; // Start with 1 second
+      const maxDelay = 8000; // Cap at 8 seconds
       
       while (attempts < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+        await new Promise(resolve => setTimeout(resolve, delay));
         
         const updatedOrder = await checkOrderStatus(order.order_id);
         if (!updatedOrder) {
@@ -226,6 +228,8 @@ export const useZenoPay = (): UseZenoPayReturn => {
         }
 
         attempts++;
+        // Exponential backoff: double the delay each time, up to maxDelay
+        delay = Math.min(delay * 2, maxDelay);
       }
 
       throw new Error('Payment timeout. Please try again.');

@@ -222,7 +222,7 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
               suggestions={[
                 ...products.map(p => p.name),
                 ...products.map(p => p.variants?.[0]?.sku || '').filter(Boolean),
-                ...products.map(p => brands.find(b => b.id === p.brandId)?.name || '').filter(Boolean),
+
                 ...products.map(p => categories.find(c => c.id === p.categoryId)?.name || '').filter(Boolean)
               ]}
               searchKey="enhanced_inventory_search"
@@ -238,14 +238,7 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
             categories?.length || 0
           )}
 
-          {/* Brand */}
-          {renderFilterSelect(
-            brands,
-            selectedBrand,
-            setSelectedBrand,
-            'Brand',
-            brands?.length || 0
-          )}
+
 
           {/* Status */}
           <div className="min-w-[100px]">
@@ -413,7 +406,6 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
                   <th className="text-left py-4 px-4 font-medium text-gray-700">Product</th>
                   <th className="text-left py-4 px-4 font-medium text-gray-700">SKU</th>
                   <th className="text-left py-4 px-4 font-medium text-gray-700">Category</th>
-                  <th className="text-left py-4 px-4 font-medium text-gray-700">Brand</th>
                   <th className="text-right py-4 px-4 font-medium text-gray-700">Price</th>
                   <th className="text-right py-4 px-4 font-medium text-gray-700">Stock</th>
                   <th className="text-center py-4 px-4 font-medium text-gray-700">Status</th>
@@ -429,7 +421,11 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
                   const stockStatus = totalStock <= 0 ? 'out-of-stock' : totalStock <= 10 ? 'low-stock' : 'in-stock';
                   
                   return (
-                    <tr key={product.id} className="border-b border-gray-200/30 hover:bg-blue-50 cursor-pointer transition-colors">
+                    <tr 
+                      key={product.id} 
+                      className="border-b border-gray-200/30 hover:bg-blue-50 cursor-pointer transition-colors"
+                      onClick={() => navigate(`/lats/products/${product.id}`)}
+                    >
                       <td className="py-4 px-4">
                         <input
                           type="checkbox"
@@ -443,7 +439,7 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
                           <SimpleImageDisplay
                             images={convertToProductImages(product.images)}
                             productName={product.name}
-                            size="sm"
+                            size="lg"
                             className="flex-shrink-0"
                           />
                           <div>
@@ -465,9 +461,6 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
                       </td>
                       <td className="py-4 px-4">
                         <span className="text-sm text-gray-600">{category?.name || 'Uncategorized'}</span>
-                      </td>
-                      <td className="py-4 px-4">
-                        <span className="text-sm text-gray-600">{brand?.name || 'No Brand'}</span>
                       </td>
                       <td className="py-4 px-4 text-right">
                         <span className="font-semibold text-gray-900">{formatMoney(mainVariant?.sellingPrice || 0)}</span>

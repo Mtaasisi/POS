@@ -30,9 +30,7 @@ interface Product {
   categoryId: string;
   categoryName?: string;
   categoryColor?: string;
-  brandId?: string;
-  brandName?: string;
-  brandLogo?: string;
+
   images?: string[];
 
       isActive: boolean;
@@ -114,10 +112,22 @@ const ProductCard: React.FC<ProductCardProps> = ({
   const handleAdjustStock = () => primaryVariant && onAdjustStock?.(primaryVariant);
   const handleToggleActive = () => onToggleActive?.(product);
 
+  // Handle card click to view product
+  const handleCardClick = (e: React.MouseEvent) => {
+    // Don't trigger if clicking on action buttons
+    if ((e.target as Element).closest('button')) {
+      return;
+    }
+    onView?.(product);
+  };
+
   // Render compact variant
   if (variant === 'compact') {
     return (
-      <GlassCard className={`hover:shadow-lats-glass-shadow-lg transition-all duration-200 ${className}`}>
+      <GlassCard 
+        className={`hover:shadow-lats-glass-shadow-lg transition-all duration-200 cursor-pointer ${className}`}
+        onClick={handleCardClick}
+      >
         <div className="flex items-center gap-3">
           {/* Product Image */}
           <div className="flex-shrink-0">
@@ -191,7 +201,10 @@ const ProductCard: React.FC<ProductCardProps> = ({
   // Render detailed variant
   if (variant === 'detailed') {
     return (
-      <GlassCard className={`hover:shadow-lats-glass-shadow-lg transition-all duration-200 ${className}`}>
+      <GlassCard 
+        className={`hover:shadow-lats-glass-shadow-lg transition-all duration-200 cursor-pointer ${className}`}
+        onClick={handleCardClick}
+      >
         {/* Header */}
         <div className="flex items-start justify-between mb-4">
           <div className="flex-1 min-w-0">
@@ -249,12 +262,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
                 {product.categoryName || 'Uncategorized'}
               </span>
             </div>
-            {product.brandName && (
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-lats-text-secondary">Brand:</span>
-                <span className="text-sm text-lats-text">{product.brandName}</span>
-              </div>
-            )}
+
             <div className="flex items-center justify-between">
               <span className="text-sm text-lats-text-secondary">Price Range:</span>
               <span className="text-sm font-medium text-lats-text">{getPriceRange()}</span>
@@ -325,7 +333,10 @@ const ProductCard: React.FC<ProductCardProps> = ({
 
   // Default variant
   return (
-    <GlassCard className={`hover:shadow-lats-glass-shadow-lg transition-all duration-200 ${className}`}>
+    <GlassCard 
+      className={`hover:shadow-lats-glass-shadow-lg transition-all duration-200 cursor-pointer ${className}`}
+      onClick={handleCardClick}
+    >
       {/* Product Image */}
       <div className="relative mb-4">
         <div className="aspect-square bg-lats-surface/50 rounded-lats-radius-md border border-lats-glass-border flex items-center justify-center overflow-hidden">

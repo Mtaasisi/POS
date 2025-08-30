@@ -8,7 +8,7 @@ export interface POSPriceData {
   sellingPrice: number;
   costPrice: number;
   quantity: number;
-  barcode?: string;
+
 }
 
 export interface POSPriceCache {
@@ -81,7 +81,7 @@ class POSPriceService {
                 selling_price,
                 cost_price,
                 quantity,
-                barcode
+
               `)
               .in('product_id', batch)
               .order('name');
@@ -124,7 +124,7 @@ class POSPriceService {
             sellingPrice: variant.selling_price || 0,
             costPrice: variant.cost_price || 0,
             quantity: variant.quantity || 0,
-            barcode: variant.barcode || undefined
+
           }));
 
           console.log(`✅ POSPriceService: Batch ${batchNumber} returned ${batchPrices.length} variants`);
@@ -146,7 +146,7 @@ class POSPriceService {
                   selling_price,
                   cost_price,
                   quantity,
-                  barcode
+  
                 `)
                 .eq('product_id', productId)
                 .order('name');
@@ -160,7 +160,7 @@ class POSPriceService {
                   sellingPrice: variant.selling_price || 0,
                   costPrice: variant.cost_price || 0,
                   quantity: variant.quantity || 0,
-                  barcode: variant.barcode || undefined
+
                 }));
                 allNewPrices.push(...individualPrices);
                 console.log(`✅ POSPriceService: Individual query for product ${productId}: ${individualPrices.length} variants`);
@@ -197,7 +197,7 @@ class POSPriceService {
     return this.fetchPricesForProducts([productId]);
   }
 
-  // Fetch price by SKU (for barcode scanning)
+  // Fetch price by SKU
   async fetchPriceBySKU(sku: string): Promise<POSPriceData | null> {
     try {
       console.log('💰 POSPriceService: Fetching price for SKU:', sku);
@@ -223,7 +223,7 @@ class POSPriceService {
           selling_price,
           cost_price,
           quantity,
-          barcode
+
         `)
         .eq('sku', sku)
         .limit(1);
@@ -242,7 +242,7 @@ class POSPriceService {
         sellingPrice: variant.selling_price || 0,
         costPrice: variant.cost_price || 0,
         quantity: variant.quantity || 0,
-        barcode: variant.barcode || undefined
+
       };
 
       // Cache the result
@@ -260,68 +260,7 @@ class POSPriceService {
     }
   }
 
-  // Fetch price by barcode
-  async fetchPriceByBarcode(barcode: string): Promise<POSPriceData | null> {
-    try {
-      console.log('💰 POSPriceService: Fetching price for barcode:', barcode);
-      
-      // Check cache first
-      const cachedPrice = Object.values(this.priceCache)
-        .flat()
-        .find(price => price.barcode === barcode);
-      
-      if (cachedPrice && (Date.now() - this.cacheTimestamp) < this.CACHE_DURATION) {
-        console.log('💰 POSPriceService: Price found in cache for barcode:', barcode);
-        return cachedPrice;
-      }
 
-      // Fetch from database
-      const { data: variants, error } = await supabase
-        .from('lats_product_variants')
-        .select(`
-          id,
-          product_id,
-          sku,
-          name,
-          selling_price,
-          cost_price,
-          quantity,
-          barcode
-        `)
-        .eq('barcode', barcode)
-        .limit(1);
-
-      if (error || !variants || variants.length === 0) {
-        console.log('❌ POSPriceService: No price found for barcode:', barcode);
-        return null;
-      }
-
-      const variant = variants[0];
-      const priceData: POSPriceData = {
-        productId: variant.product_id,
-        variantId: variant.id,
-        sku: variant.sku || '',
-        name: variant.name || '',
-        sellingPrice: variant.selling_price || 0,
-        costPrice: variant.cost_price || 0,
-        quantity: variant.quantity || 0,
-        barcode: variant.barcode || undefined
-      };
-
-      // Cache the result
-      if (!this.priceCache[priceData.productId]) {
-        this.priceCache[priceData.productId] = [];
-      }
-      this.priceCache[priceData.productId].push(priceData);
-      this.cacheTimestamp = Date.now();
-
-      console.log('💰 POSPriceService: Fetched price for barcode:', barcode, priceData);
-      return priceData;
-    } catch (error) {
-      console.error('💥 POSPriceService: Exception fetching price by barcode:', error);
-      return null;
-    }
-  }
 
   // Clear cache
   clearCache(): void {

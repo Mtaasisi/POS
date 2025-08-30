@@ -13,6 +13,7 @@ import { format } from '../../lib/format';
 import { ProductSearchResult, ProductSearchVariant, CartItem, Sale } from '../../types/pos';
 import { Customer } from '../../../customers/types';
 import { useAuth } from '../../../../context/AuthContext';
+import { saleProcessingService } from '../../../../lib/saleProcessingService';
 
 const EnhancedPOSComponent: React.FC = () => {
   // Store hooks
@@ -22,6 +23,34 @@ const EnhancedPOSComponent: React.FC = () => {
     isLoading: inventoryLoading, 
     error: inventoryError 
   } = useInventoryStore();
+
+  // Smart inventory update function - updates only affected products in memory
+  const updateLocalInventory = useCallback((saleItems: any[]) => {
+    // Update products state directly without database reload
+    const updatedProducts = products.map(product => {
+      const productSaleItems = saleItems.filter(item => item.productId === product.id);
+      if (productSaleItems.length === 0) return product;
+
+      // Update variants quantities
+      const updatedVariants = product.variants?.map(variant => {
+        const variantSaleItem = productSaleItems.find(item => item.variantId === variant.id);
+        if (!variantSaleItem) return variant;
+
+        return {
+          ...variant,
+          quantity: Math.max(0, (variant.quantity || 0) - variantSaleItem.quantity)
+        };
+      });
+
+      return {
+        ...product,
+        variants: updatedVariants
+      };
+    });
+
+    // Update the store state directly (this is a temporary workaround)
+    useInventoryStore.setState({ products: updatedProducts });
+  }, [products]);
   
   const { 
     searchResults, 
@@ -351,9 +380,6 @@ const EnhancedPOSComponent: React.FC = () => {
     try {
       console.log('ZenoPay payment completed:', sale);
       
-      // Import the sale processing service
-      const { saleProcessingService } = await import('../../../../lib/saleProcessingService');
-      
       // Process the sale using the service
       const result = await saleProcessingService.processSale({
         customerId: sale.customerId,
@@ -396,8 +422,8 @@ const EnhancedPOSComponent: React.FC = () => {
         // Show success message
         toast.success(`Payment completed! Sale #${result.sale?.saleNumber}`);
         
-        // Reload products to update stock
-        await loadProducts();
+        // Smart inventory update - update only affected products in memory
+        updateLocalInventory(sale.items);
         
       } else {
         toast.error(result.error || 'Failed to process payment');
@@ -430,8 +456,6 @@ const EnhancedPOSComponent: React.FC = () => {
       description: product.description,
       categoryId: product.categoryId,
       categoryName: product.categoryId, // TODO: Get actual category name
-      brandId: product.brandId,
-      brandName: product.brandId, // TODO: Get actual brand name
       variants: product.variants.map(variant => ({
         id: variant.id,
         sku: variant.sku,

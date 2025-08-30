@@ -94,10 +94,7 @@ export class DebugAnalytics {
         .from('lats_categories')
         .select('*', { count: 'exact', head: true });
 
-      // Check brands
-      const { count: brandsCount } = await supabase
-        .from('lats_brands')
-        .select('*', { count: 'exact', head: true });
+
 
       // Check suppliers
       const { count: suppliersCount } = await supabase
@@ -108,7 +105,7 @@ export class DebugAnalytics {
       console.log(`   Products: ${products?.length || 0}`);
       console.log(`   Variants: ${variants?.length || 0}`);
       console.log(`   Categories: ${categoriesCount || 0}`);
-      console.log(`   Brands: ${brandsCount || 0}`);
+
       console.log(`   Suppliers: ${suppliersCount || 0}`);
 
     } catch (error) {

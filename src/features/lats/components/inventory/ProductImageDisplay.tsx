@@ -4,7 +4,7 @@ import { Package, Image as ImageIcon } from 'lucide-react';
 interface ProductImageDisplayProps {
   images?: string[];
   productName: string;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
   showFallback?: boolean;
 }
@@ -23,7 +23,8 @@ const ProductImageDisplay: React.FC<ProductImageDisplayProps> = ({
   const sizeClasses = {
     sm: 'w-10 h-10',
     md: 'w-12 h-12',
-    lg: 'w-16 h-16'
+    lg: 'w-16 h-16',
+    xl: 'w-20 h-20'
   };
 
   // If className includes w-full or h-full, use those instead of size classes
@@ -33,7 +34,8 @@ const ProductImageDisplay: React.FC<ProductImageDisplayProps> = ({
   const iconSizes = {
     sm: 'w-5 h-5',
     md: 'w-6 h-6',
-    lg: 'w-8 h-8'
+    lg: 'w-8 h-8',
+    xl: 'w-10 h-10'
   };
 
   const handleImageError = () => {

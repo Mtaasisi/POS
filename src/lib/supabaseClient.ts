@@ -85,13 +85,13 @@ export const supabase = (() => {
       // Enable real-time subscriptions with improved configuration
       realtime: {
         params: {
-          eventsPerSecond: 10, // Increased for better responsiveness
+          eventsPerSecond: 5, // Reduced to prevent overload
         },
         // Improved real-time configuration for better stability
-        heartbeatIntervalMs: 15000, // More frequent heartbeats
-        reconnectAfterMs: (tries) => Math.min(tries * 1000, 15000), // Faster reconnection
-        timeoutMs: 20000, // Connection timeout
-        retryAttempts: 5, // Number of retry attempts
+        heartbeatIntervalMs: 30000, // Less frequent heartbeats
+        reconnectAfterMs: (tries) => Math.min(tries * 2000, 30000), // Slower reconnection
+        timeoutMs: 30000, // Connection timeout
+        retryAttempts: 2, // Reduced retry attempts
       },
       // Global headers - don't set Content-Type globally to avoid conflicts with file uploads
       global: {
@@ -102,6 +102,23 @@ export const supabase = (() => {
       // Add better error handling for network issues
       db: {
         schema: 'public',
+      },
+      // Enhanced connection settings for better stability
+      fetch: (url, options = {}) => {
+        // Add connection timeout and retry logic
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+        
+        return fetch(url, {
+          ...options,
+          signal: controller.signal,
+          // Add keep-alive for better connection persistence
+          keepalive: true,
+          // Add cache control for better performance
+          cache: 'no-cache',
+        }).finally(() => {
+          clearTimeout(timeoutId);
+        });
       },
     });
     
@@ -137,7 +154,7 @@ export const supabase = (() => {
         } catch (error) {
           // Handle QUIC protocol errors specifically
           if (error instanceof TypeError && error.message.includes('ERR_QUIC_PROTOCOL_ERROR')) {
-            // Reduced logging to prevent console spam
+            console.warn('🌐 QUIC protocol error detected, retrying with fallback...');
             // Return a mock response to prevent infinite retries
             if (typeof input === 'string' && input.includes('/rest/v1/')) {
               return new Response(JSON.stringify({ 
@@ -150,8 +167,23 @@ export const supabase = (() => {
             }
           }
           
+          // Handle connection closed errors specifically
+          if (error instanceof TypeError && error.message.includes('ERR_CONNECTION_CLOSED')) {
+            console.warn('🌐 Connection closed error detected, retrying...');
+            // Return a mock response to prevent infinite retries
+            if (typeof input === 'string' && (input.includes('/rest/v1/') || input.includes('/auth/'))) {
+              return new Response(JSON.stringify({ 
+                error: 'Connection closed',
+                message: 'Network connection was closed unexpectedly'
+              }), {
+                status: 503,
+                headers: { 'Content-Type': 'application/json' }
+              });
+            }
+          }
+          
           if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-            // Reduced logging to prevent console spam
+            console.warn('🌐 Network fetch error detected, retrying...');
             // Return a mock response for auth endpoints to prevent infinite retries
             if (typeof input === 'string' && input.includes('/auth/')) {
               return new Response(JSON.stringify({ 
@@ -210,7 +242,14 @@ export const retryWithBackoff = async <T>(
       // Check if it's a network error
       const isNetworkError = error.message?.includes('Failed to fetch') || 
                            error.message?.includes('NetworkError') ||
-                           error.message?.includes('ERR_CONNECTION_CLOSED');
+                           error.message?.includes('ERR_CONNECTION_CLOSED') ||
+                           error.message?.includes('ERR_CONNECTION_REFUSED');
+      
+      // For connection refused errors (like proxy not running), don't retry
+      if (error.message?.includes('ERR_CONNECTION_REFUSED')) {
+        console.log('🔍 Connection refused - service not available, skipping retries');
+        throw error;
+      }
       
       if (isNetworkError && attempt < maxRetries) {
         const delay = baseDelay * Math.pow(2, attempt);
@@ -225,4 +264,50 @@ export const retryWithBackoff = async <T>(
   }
   
   throw lastError;
+};
+
+// Add a connection health check function
+export const checkConnectionHealth = async () => {
+  try {
+    const startTime = Date.now();
+    const { data, error } = await supabase
+      .from('devices')
+      .select('count')
+      .limit(1);
+    
+    const responseTime = Date.now() - startTime;
+    
+    if (error) {
+      return {
+        healthy: false,
+        error: error.message,
+        responseTime,
+        timestamp: new Date().toISOString()
+      };
+    }
+    
+    return {
+      healthy: true,
+      responseTime,
+      timestamp: new Date().toISOString()
+    };
+  } catch (error: any) {
+    return {
+      healthy: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    };
+  }
+};
+
+// Add a connection status monitor
+export const monitorConnection = (intervalMs: number = 30000) => {
+  const interval = setInterval(async () => {
+    const health = await checkConnectionHealth();
+    if (!health.healthy) {
+      console.warn('🌐 Supabase connection health check failed:', health.error);
+    }
+  }, intervalMs);
+  
+  return () => clearInterval(interval);
 }; 

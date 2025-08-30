@@ -51,7 +51,7 @@ const POSMainLayout: React.FC<POSMainLayoutProps> = memo(({
               type="text"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
-              placeholder="Search products, categories, brands..."
+              placeholder="Search products, categories..."
               className="w-full pl-12 pr-32 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
             

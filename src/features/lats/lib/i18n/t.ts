@@ -64,8 +64,7 @@ const DEFAULT_TRANSLATIONS: TranslationKey = {
   'common.products': 'Products',
   'common.category': 'Category',
   'common.categories': 'Categories',
-  'common.brand': 'Brand',
-  'common.brands': 'Brands',
+
   'common.supplier': 'Supplier',
   'common.suppliers': 'Suppliers',
   'common.customer': 'Customer',
@@ -291,8 +290,7 @@ const SWAHILI_TRANSLATIONS: TranslationKey = {
   'common.products': 'Bidhaa',
   'common.category': 'Kategoria',
   'common.categories': 'Kategoria',
-  'common.brand': 'Chapa',
-  'common.brands': 'Chapa',
+
   'common.supplier': 'Mtoaji',
   'common.suppliers': 'Watoaji',
   'common.customer': 'Mteja',

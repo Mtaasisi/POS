@@ -42,7 +42,7 @@ export const exportCustomerDataAsSQL = async (options: ExportOptions = {}): Prom
                    .lte('created_at', options.dateRange.end);
     }
 
-    const { data, error } = await query;
+    const { data, error } = await query.limit(50000); // Fetch up to 50,000 customers instead of default 1000
 
     if (error) {
       throw new Error(`Failed to export customer data: ${error.message}`);
@@ -129,7 +129,7 @@ ${generateSQLInserts('customer_payments', data || [])}`;
 export const exportAllDataAsSQL = async (options: ExportOptions = {}): Promise<Blob> => {
   try {
     const [customers, devices, payments] = await Promise.all([
-      supabase.from('customers').select('*'),
+      supabase.from('customers').select('*').limit(50000), // Fetch up to 50,000 customers instead of default 1000
       supabase.from('devices').select('*'),
       supabase.from('customer_payments').select('*')
     ]);
@@ -428,7 +428,7 @@ export const exportCustomerData = async (options: ExportOptions = {}): Promise<B
                    .lte('created_at', options.dateRange.end);
     }
 
-    const { data, error } = await query;
+    const { data, error } = await query.limit(50000); // Fetch up to 50,000 customers instead of default 1000
 
     if (error) {
       throw new Error(`Failed to export customer data: ${error.message}`);

@@ -126,7 +126,7 @@ export const LabelPrintingModal: React.FC<LabelPrintingModalProps> = ({
               {/* Title */}
               <div className="text-lg font-bold">{labelData.title}</div>
               
-              {/* Brand/Category */}
+              {/* Make/Category */}
               {labelData.text && (
                 <div className="text-sm text-gray-600">{labelData.text}</div>
               )}

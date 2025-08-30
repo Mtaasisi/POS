@@ -59,10 +59,10 @@ const GlassCard: React.FC<GlassCardProps> = ({
   // Padding classes
   const paddingClasses = {
     none: '',
-    sm: 'p-2',
-    md: 'p-4',
-    lg: 'p-6',
-    xl: 'p-8'
+    sm: 'p-3',
+    md: 'p-6',
+    lg: 'p-8',
+    xl: 'p-10'
   };
 
   // Border radius classes

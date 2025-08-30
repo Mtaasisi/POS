@@ -3,7 +3,6 @@ import { create } from 'zustand';
 import { devtools, subscribeWithSelector } from 'zustand/middleware';
 import { 
   Category, 
-  Brand, 
   Supplier, 
   Product, 
   ProductVariant,
@@ -20,6 +19,7 @@ import { latsEventBus, LatsEventType } from '../lib/data/eventBus';
 import { latsAnalyticsService as latsAnalytics } from '../lib/analytics';
 import { supabase } from '../../../lib/supabaseClient';
 import { processLatsData, validateDataIntegrity, emergencyDataCleanup } from '../lib/dataProcessor';
+import { categoryService } from '../lib/categoryService';
 import { 
   getActiveSuppliers as getActiveSuppliersApi, 
   createSupplier as createSupplierApi, 
@@ -42,7 +42,6 @@ interface InventoryState {
   // Cache management
   dataCache: {
     categories: Category[] | null;
-    brands: Brand[] | null;
     suppliers: Supplier[] | null;
     products: Product[] | null;
     stockMovements: StockMovement[] | null;
@@ -53,7 +52,6 @@ interface InventoryState {
 
   // Data
   categories: Category[];
-  brands: Brand[];
   suppliers: Supplier[];
   products: Product[];
   sales: any[];
@@ -65,7 +63,6 @@ interface InventoryState {
   // Filters and search
   searchTerm: string;
   selectedCategory: string | null;
-  selectedBrand: string | null;
   selectedSupplier: string | null;
   stockFilter: 'all' | 'in-stock' | 'low-stock' | 'out-of-stock';
 
@@ -89,7 +86,7 @@ interface InventoryState {
   // Search and filters
   setSearchTerm: (term: string) => void;
   setSelectedCategory: (categoryId: string | null) => void;
-  setSelectedBrand: (brandId: string | null) => void;
+
   setSelectedSupplier: (supplierId: string | null) => void;
   setStockFilter: (filter: 'all' | 'in-stock' | 'low-stock' | 'out-of-stock') => void;
   clearFilters: () => void;
@@ -111,12 +108,6 @@ interface InventoryState {
   createCategory: (category: Omit<Category, 'id' | 'createdAt' | 'updatedAt'>) => Promise<ApiResponse<Category>>;
   updateCategory: (id: string, category: Partial<Category>) => Promise<ApiResponse<Category>>;
   deleteCategory: (id: string) => Promise<ApiResponse<void>>;
-
-  // Brands
-  loadBrands: () => Promise<void>;
-  createBrand: (brand: Omit<Brand, 'id' | 'createdAt' | 'updatedAt'>) => Promise<ApiResponse<Brand>>;
-  updateBrand: (id: string, brand: Partial<Brand>) => Promise<ApiResponse<Brand>>;
-  deleteBrand: (id: string) => Promise<ApiResponse<void>>;
 
   // Suppliers
   loadSuppliers: () => Promise<void>;
@@ -165,7 +156,6 @@ interface InventoryState {
   getOutOfStockProducts: () => Product[];
   getProductById: (id: string) => Product | undefined;
   getCategoryById: (id: string) => Category | undefined;
-  getBrandById: (id: string) => Brand | undefined;
   getSupplierById: (id: string) => Supplier | undefined;
 }
 
@@ -184,7 +174,6 @@ export const useInventoryStore = create<InventoryState>()(
       // Cache management
       dataCache: {
         categories: null,
-        brands: null,
         suppliers: null,
         products: null,
         stockMovements: null,
@@ -194,7 +183,6 @@ export const useInventoryStore = create<InventoryState>()(
       CACHE_DURATION: 5 * 60 * 1000, // 5 minutes
 
       categories: [],
-      brands: [],
       suppliers: [],
       products: [],
       sales: [],
@@ -205,7 +193,6 @@ export const useInventoryStore = create<InventoryState>()(
 
       searchTerm: '',
       selectedCategory: null,
-      selectedBrand: null,
       selectedSupplier: null,
       stockFilter: 'all',
 
@@ -226,13 +213,12 @@ export const useInventoryStore = create<InventoryState>()(
       // Search and filters
       setSearchTerm: (term) => set({ searchTerm: term, currentPage: 1 }),
       setSelectedCategory: (categoryId) => set({ selectedCategory: categoryId, currentPage: 1 }),
-      setSelectedBrand: (brandId) => set({ selectedBrand: brandId, currentPage: 1 }),
+
       setSelectedSupplier: (supplierId) => set({ selectedSupplier: supplierId, currentPage: 1 }),
       setStockFilter: (filter) => set({ stockFilter: filter, currentPage: 1 }),
       clearFilters: () => set({
         searchTerm: '',
         selectedCategory: null,
-        selectedBrand: null,
         selectedSupplier: null,
         stockFilter: 'all',
         currentPage: 1
@@ -308,7 +294,6 @@ export const useInventoryStore = create<InventoryState>()(
           set({
             dataCache: {
               categories: null,
-              brands: null,
               suppliers: null,
               products: null,
               stockMovements: null,
@@ -331,44 +316,44 @@ export const useInventoryStore = create<InventoryState>()(
 
       // Categories
       loadCategories: async () => {
+        console.log('📂 Inventory Store: loadCategories called');
         const state = get();
         
         // Check cache first
         if (state.isCacheValid('categories')) {
+          console.log('📂 Inventory Store: Using cached categories');
           set({ categories: state.dataCache.categories || [] });
           return;
         }
 
         // Prevent multiple simultaneous loads
         if (state.isDataLoading) {
+          console.log('📂 Inventory Store: Data already loading, skipping');
           return;
         }
 
+        console.log('📂 Inventory Store: Loading categories from service');
         set({ isLoading: true, isDataLoading: true, error: null });
         try {
-          const provider = getLatsProvider();
-          const response = await provider.getCategories();
+          // Use optimized category service
+          const categories = await categoryService.getCategories();
+          console.log('📂 Inventory Store: Categories received from service:', categories.length);
           
-          if (response.ok) {
-            const rawCategories = response.data || [];
-            
-            // Validate and process categories
-            if (rawCategories.length > 0) {
-              validateDataIntegrity(rawCategories, 'Categories');
-            }
-            const processedCategories = processLatsData({ categories: rawCategories }).categories;
-            
-            set({ 
-              categories: processedCategories, 
-              lastDataLoadTime: Date.now(),
-              error: null // Clear any previous errors
-            });
-            get().updateCache('categories', processedCategories);
-            latsAnalytics.track('categories_loaded', { count: processedCategories.length });
-          } else {
-            console.error('Categories error:', response.message);
-            set({ error: response.message || 'Failed to load categories' });
+          // Validate and process categories
+          if (categories.length > 0) {
+            validateDataIntegrity(categories, 'Categories');
           }
+          const processedCategories = processLatsData({ categories }).categories;
+          console.log('📂 Inventory Store: Processed categories:', processedCategories.length);
+          
+          set({ 
+            categories: processedCategories, 
+            lastDataLoadTime: Date.now(),
+            error: null // Clear any previous errors
+          });
+          get().updateCache('categories', processedCategories);
+          latsAnalytics.track('categories_loaded', { count: processedCategories.length });
+          console.log('📂 Inventory Store: Categories loaded successfully');
         } catch (error) {
           console.error('Categories exception:', error);
           set({ error: 'Failed to load categories' });
@@ -383,8 +368,9 @@ export const useInventoryStore = create<InventoryState>()(
           const provider = getLatsProvider();
           const response = await provider.createCategory(category);
           if (response.ok) {
-            // Invalidate cache instead of reloading to prevent infinite loops
+            // Invalidate both local and service cache
             get().invalidateCache('categories');
+            categoryService.invalidateCache();
             latsAnalytics.track('category_created', { categoryId: response.data?.id });
           }
           return response;
@@ -404,8 +390,9 @@ export const useInventoryStore = create<InventoryState>()(
           const provider = getLatsProvider();
           const response = await provider.updateCategory(id, category);
           if (response.ok) {
-            // Invalidate cache instead of reloading to prevent infinite loops
+            // Invalidate both local and service cache
             get().invalidateCache('categories');
+            categoryService.invalidateCache();
             latsAnalytics.track('category_updated', { categoryId: id });
           }
           return response;
@@ -425,8 +412,9 @@ export const useInventoryStore = create<InventoryState>()(
           const provider = getLatsProvider();
           const response = await provider.deleteCategory(id);
           if (response.ok) {
-            // Reload categories to get the updated list
-            await get().loadCategories();
+            // Invalidate both local and service cache
+            get().invalidateCache('categories');
+            categoryService.invalidateCache();
             latsAnalytics.track('category_deleted', { categoryId: id });
           }
           return response;
@@ -434,114 +422,6 @@ export const useInventoryStore = create<InventoryState>()(
           const errorMsg = 'Failed to delete category';
           set({ error: errorMsg });
           console.error('Error deleting category:', error);
-          return { ok: false, message: errorMsg };
-        } finally {
-          set({ isDeleting: false });
-        }
-      },
-
-      // Brands
-      loadBrands: async () => {
-        const state = get();
-        
-        // Check cache first
-        if (state.isCacheValid('brands')) {
-          set({ brands: state.dataCache.brands || [] });
-          return;
-        }
-
-        // Prevent multiple simultaneous loads
-        if (state.isDataLoading) {
-          return;
-        }
-
-        set({ isLoading: true, isDataLoading: true, error: null });
-        try {
-          const provider = getLatsProvider();
-          const response = await provider.getBrands();
-          
-          if (response.ok) {
-            const rawBrands = response.data || [];
-            
-            // Validate and process brands
-            if (rawBrands.length > 0) {
-              validateDataIntegrity(rawBrands, 'Brands');
-            }
-            const processedBrands = processLatsData({ brands: rawBrands }).brands;
-            
-            set({ 
-              brands: processedBrands, 
-              lastDataLoadTime: Date.now(),
-              error: null // Clear any previous errors
-            });
-            get().updateCache('brands', processedBrands);
-            latsAnalytics.track('brands_loaded', { count: processedBrands.length });
-          } else {
-            console.error('Brands error:', response.message);
-            set({ error: response.message || 'Failed to load brands' });
-          }
-        } catch (error) {
-          console.error('Brands exception:', error);
-          set({ error: 'Failed to load brands' });
-        } finally {
-          set({ isLoading: false, isDataLoading: false });
-        }
-      },
-
-      createBrand: async (brand) => {
-        set({ isCreating: true, error: null });
-        try {
-          const provider = getLatsProvider();
-          const response = await provider.createBrand(brand);
-          if (response.ok) {
-            await get().loadBrands();
-            latsAnalytics.track('brand_created', { brandId: response.data?.id });
-          }
-          return response;
-        } catch (error) {
-          const errorMsg = 'Failed to create brand';
-          set({ error: errorMsg });
-          console.error('Error creating brand:', error);
-          return { ok: false, message: errorMsg };
-        } finally {
-          set({ isCreating: false });
-        }
-      },
-
-      updateBrand: async (id, brand) => {
-        set({ isUpdating: true, error: null });
-        try {
-          const provider = getLatsProvider();
-          const response = await provider.updateBrand(id, brand);
-          if (response.ok) {
-            await get().loadBrands();
-            latsAnalytics.track('brand_updated', { brandId: id });
-          }
-          return response;
-        } catch (error) {
-          const errorMsg = 'Failed to update brand';
-          set({ error: errorMsg });
-          console.error('Error updating brand:', error);
-          return { ok: false, message: errorMsg };
-        } finally {
-          set({ isUpdating: false });
-        }
-      },
-
-      deleteBrand: async (id) => {
-        set({ isDeleting: true, error: null });
-        try {
-          const provider = getLatsProvider();
-          const response = await provider.deleteBrand(id);
-          if (response.ok) {
-            await get().loadBrands();
-            latsAnalytics.track('brand_deleted', { brandId: id });
-          }
-          return response;
-        } catch (error) {
-          const errorMsg = 'Failed to delete brand';
-          set({ error: errorMsg });
-          console.error('Error deleting brand:', error);
           return { ok: false, message: errorMsg };
         } finally {
           set({ isDeleting: false });
@@ -1207,7 +1087,7 @@ export const useInventoryStore = create<InventoryState>()(
 
       // Computed values
       getFilteredProducts: () => {
-        const { products, searchTerm, selectedCategory, selectedBrand, selectedSupplier, stockFilter } = get();
+        const { products, searchTerm, selectedCategory, selectedSupplier, stockFilter } = get();
         
         return products.filter(product => {
           // Search filter
@@ -1228,10 +1108,7 @@ export const useInventoryStore = create<InventoryState>()(
             return false;
           }
 
-          // Brand filter
-          if (selectedBrand && product.brandId !== selectedBrand) {
-            return false;
-          }
+
 
           // Supplier filter
           if (selectedSupplier && product.supplierId !== selectedSupplier) {
@@ -1313,18 +1190,7 @@ export const useInventoryStore = create<InventoryState>()(
         return categories.find(c => c.id === sanitizedId);
       },
 
-      getBrandById: (id) => {
-        const { brands } = get();
-        
-        // Validate and sanitize the ID parameter
-        if (!id || typeof id === 'object') {
-          console.error('❌ getBrandById: Invalid ID provided:', id);
-          return undefined;
-        }
-        
-        const sanitizedId = String(id).trim();
-        return brands.find(b => b.id === sanitizedId);
-      },
+
 
       getSupplierById: (id) => {
         const { suppliers } = get();
@@ -1362,15 +1228,6 @@ latsEventBus.subscribeToAll((event) => {
       // Only reload if not already loading and cache is stale
       if (!store.isCacheValid('categories')) {
         store.loadCategories();
-      }
-      break;
-      
-    case 'lats:brand.created':
-    case 'lats:brand.updated':
-    case 'lats:brand.deleted':
-      // Only reload if not already loading and cache is stale
-      if (!store.isCacheValid('brands')) {
-        store.loadBrands();
       }
       break;
       

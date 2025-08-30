@@ -172,11 +172,19 @@ const PurchaseOrdersPage: React.FC = () => {
           
           <div className="flex gap-2">
             <GlassButton
-              onClick={() => navigate('/lats/purchase-orders/new')}
-              className="flex items-center gap-2"
+              onClick={() => navigate('/lats/purchase-order/create')}
+              icon={<Plus size={18} />}
+              className="bg-gradient-to-r from-orange-500 to-amber-600 text-white font-semibold"
             >
-              <Plus className="w-4 h-4" />
-              New Purchase Order
+              🛒 Interactive PO Creator
+            </GlassButton>
+            <GlassButton
+              onClick={() => navigate('/lats/purchase-orders/new')}
+              icon={<FileText size={18} />}
+              variant="outline"
+              className="border-purple-300 text-purple-600 hover:bg-purple-50"
+            >
+              Form-based PO
             </GlassButton>
           </div>
         </div>

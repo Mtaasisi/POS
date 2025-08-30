@@ -6,215 +6,9 @@ const DatabaseSetupPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
 
-  const createBrandsTable = async () => {
-    setLoading(true);
-    setResult(null);
 
-    try {
-      // Create the brands table
-      const { error: tableError } = await supabase.rpc('exec_sql', {
-        sql: `
-          CREATE TABLE IF NOT EXISTS brands (
-            id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-            name TEXT NOT NULL UNIQUE,
-            logo_url TEXT,
-            description TEXT,
-            category TEXT CHECK (category IN ('phone', 'laptop', 'tablet', 'desktop', 'printer', 'other')),
-            is_active BOOLEAN NOT NULL DEFAULT true,
-            created_by UUID REFERENCES auth_users(id),
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-          );
-        `
-      });
 
-      if (tableError) {
-        throw new Error(`Table creation failed: ${tableError.message}`);
-      }
 
-      // Create indexes
-      const { error: indexError } = await supabase.rpc('exec_sql', {
-        sql: `
-          CREATE INDEX IF NOT EXISTS idx_brands_name ON brands(name);
-          CREATE INDEX IF NOT EXISTS idx_brands_category ON brands(category);
-          CREATE INDEX IF NOT EXISTS idx_brands_active ON brands(is_active);
-        `
-      });
-
-      if (indexError) {
-        console.warn('Index creation failed:', indexError.message);
-      }
-
-      // Insert default brands
-      const { error: insertError } = await supabase.rpc('exec_sql', {
-        sql: `
-          INSERT INTO brands (name, logo_url, category, description) VALUES
-            ('Apple', '/logos/apple.svg', 'phone', 'Apple Inc. devices including iPhone, iPad, and Mac'),
-            ('Samsung', '/logos/samsung.svg', 'phone', 'Samsung Electronics devices'),
-            ('Google', '/logos/google.svg', 'phone', 'Google Pixel devices'),
-            ('Microsoft', '/logos/microsoft.svg', 'laptop', 'Microsoft Surface and Windows devices'),
-            ('Lenovo', '/logos/lenovo.svg', 'laptop', 'Lenovo laptops and desktops'),
-            ('HP', '/logos/hp.svg', 'laptop', 'Hewlett-Packard devices'),
-            ('Dell', '/logos/dell.svg', 'laptop', 'Dell computers and laptops'),
-            ('Huawei', '/logos/huawei.svg', 'phone', 'Huawei smartphones and tablets'),
-            ('Xiaomi', '/logos/xiaomi.svg', 'phone', 'Xiaomi smartphones and IoT devices'),
-            ('OnePlus', '/logos/oneplus.svg', 'phone', 'OnePlus smartphones'),
-            ('Sony', '/logos/sony.svg', 'phone', 'Sony mobile devices'),
-            ('LG', '/logos/lg.svg', 'phone', 'LG smartphones and TVs'),
-            ('Motorola', '/logos/motorola.svg', 'phone', 'Motorola smartphones'),
-            ('Nokia', '/logos/nokia.svg', 'phone', 'Nokia mobile devices'),
-            ('Tecno', '/logos/tecno.svg', 'phone', 'Tecno mobile devices'),
-            ('Infinix', '/logos/infinix.svg', 'phone', 'Infinix smartphones'),
-            ('Itel', '/logos/itel.svg', 'phone', 'Itel mobile devices'),
-            ('HTC', '/logos/htc.svg', 'phone', 'HTC smartphones'),
-            ('Asus', '/logos/asus.svg', 'laptop', 'ASUS laptops and computers'),
-            ('Acer', '/logos/acer.svg', 'laptop', 'Acer laptops and desktops'),
-            ('Canon', '/logos/canon.svg', 'printer', 'Canon printers and cameras'),
-            ('Epson', '/logos/epson.svg', 'printer', 'Epson printers and scanners'),
-            ('Brother', '/logos/brother.svg', 'printer', 'Brother printers and scanners')
-          ON CONFLICT (name) DO NOTHING;
-        `
-      });
-
-      if (insertError) {
-        console.warn('Default brands insertion failed:', insertError.message);
-      }
-
-      // Create trigger function
-      const { error: triggerError } = await supabase.rpc('exec_sql', {
-        sql: `
-          CREATE OR REPLACE FUNCTION update_brands_updated_at()
-          RETURNS TRIGGER AS $$
-          BEGIN
-            NEW.updated_at = NOW();
-            RETURN NEW;
-          END;
-          $$ LANGUAGE plpgsql;
-
-          CREATE TRIGGER trigger_update_brands_updated_at
-            BEFORE UPDATE ON brands
-            FOR EACH ROW
-            EXECUTE FUNCTION update_brands_updated_at();
-        `
-      });
-
-      if (triggerError) {
-        console.warn('Trigger creation failed:', triggerError.message);
-      }
-
-      setResult({
-        success: true,
-        message: 'Brands table created successfully with default data!'
-      });
-
-    } catch (error: any) {
-      console.error('Database setup error:', error);
-      setResult({
-        success: false,
-        message: `Failed to create brands table: ${error.message}`
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const checkBrandsTable = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('lats_brands')
-        .select('count')
-        .limit(1);
-
-      if (error) {
-        return false;
-      }
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
-  const updateBrandsToMultipleCategories = async () => {
-    setLoading(true);
-    setResult(null);
-
-    try {
-      // Apply the migration to support multiple categories
-      const { error: migrationError } = await supabase.rpc('exec_sql', {
-        sql: `
-          -- First, let's create a backup of the current brands data
-          CREATE TABLE IF NOT EXISTS lats_brands_backup AS SELECT * FROM lats_brands;
-
-          -- Update the brands table to use categories as JSON array
-          ALTER TABLE lats_brands 
-          DROP CONSTRAINT IF EXISTS lats_brands_category_check;
-
-          -- Change category column to JSON type to store multiple categories
-          ALTER TABLE lats_brands 
-          ALTER COLUMN category TYPE JSONB USING 
-            CASE 
-              WHEN category IS NULL THEN '[]'::jsonb
-              WHEN category = '' THEN '[]'::jsonb
-              ELSE jsonb_build_array(category)
-            END;
-
-          -- Add a check constraint to ensure categories is always an array
-          ALTER TABLE lats_brands 
-          ADD CONSTRAINT lats_brands_categories_check 
-          CHECK (jsonb_typeof(category) = 'array');
-
-          -- Update existing brands with common multiple categories
-          UPDATE lats_brands SET category = '["phone", "laptop", "tablet"]'::jsonb WHERE name ILIKE '%Apple%';
-          UPDATE lats_brands SET category = '["phone", "laptop", "tablet", "desktop"]'::jsonb WHERE name ILIKE '%Samsung%';
-          UPDATE lats_brands SET category = '["phone", "laptop", "tablet"]'::jsonb WHERE name ILIKE '%Google%';
-          UPDATE lats_brands SET category = '["laptop", "desktop", "tablet"]'::jsonb WHERE name ILIKE '%Microsoft%';
-          UPDATE lats_brands SET category = '["laptop", "desktop"]'::jsonb WHERE name ILIKE '%Lenovo%';
-          UPDATE lats_brands SET category = '["laptop", "desktop", "printer"]'::jsonb WHERE name ILIKE '%HP%';
-          UPDATE lats_brands SET category = '["laptop", "desktop"]'::jsonb WHERE name ILIKE '%Dell%';
-          UPDATE lats_brands SET category = '["phone", "laptop", "tablet"]'::jsonb WHERE name ILIKE '%Huawei%';
-          UPDATE lats_brands SET category = '["phone", "laptop", "tablet"]'::jsonb WHERE name ILIKE '%Xiaomi%';
-          UPDATE lats_brands SET category = '["phone"]'::jsonb WHERE name ILIKE '%OnePlus%';
-          UPDATE lats_brands SET category = '["phone", "laptop", "tablet"]'::jsonb WHERE name ILIKE '%Sony%';
-          UPDATE lats_brands SET category = '["phone", "laptop", "tablet"]'::jsonb WHERE name ILIKE '%LG%';
-          UPDATE lats_brands SET category = '["phone"]'::jsonb WHERE name ILIKE '%Motorola%';
-          UPDATE lats_brands SET category = '["phone"]'::jsonb WHERE name ILIKE '%Nokia%';
-          UPDATE lats_brands SET category = '["phone"]'::jsonb WHERE name ILIKE '%Tecno%';
-          UPDATE lats_brands SET category = '["phone"]'::jsonb WHERE name ILIKE '%Infinix%';
-          UPDATE lats_brands SET category = '["phone"]'::jsonb WHERE name ILIKE '%Itel%';
-          UPDATE lats_brands SET category = '["phone"]'::jsonb WHERE name ILIKE '%HTC%';
-          UPDATE lats_brands SET category = '["laptop", "desktop"]'::jsonb WHERE name ILIKE '%Asus%';
-          UPDATE lats_brands SET category = '["laptop", "desktop"]'::jsonb WHERE name ILIKE '%Acer%';
-          UPDATE lats_brands SET category = '["printer"]'::jsonb WHERE name ILIKE '%Canon%';
-          UPDATE lats_brands SET category = '["printer"]'::jsonb WHERE name ILIKE '%Epson%';
-          UPDATE lats_brands SET category = '["printer"]'::jsonb WHERE name ILIKE '%Brother%';
-
-          -- Update any remaining brands that don't have categories set
-          UPDATE lats_brands SET category = '["other"]'::jsonb WHERE category IS NULL OR category = '[]'::jsonb;
-
-          -- Create an index for better performance when querying by categories
-          CREATE INDEX IF NOT EXISTS idx_lats_brands_categories ON lats_brands USING GIN (category);
-
-          -- Add a function to check if a brand has a specific category
-          CREATE OR REPLACE FUNCTION brand_has_category(brand_categories JSONB, search_category TEXT)
-          RETURNS BOOLEAN AS $$
-          BEGIN
-            RETURN brand_categories ? search_category;
-          END;
-          $$ LANGUAGE plpgsql IMMUTABLE;
-        `
-      });
-
-      if (migrationError) {
-        throw new Error(`Migration failed: ${migrationError.message}`);
-      }
-
-      setResult({ success: true, message: 'Successfully updated brands table to support multiple categories!' });
-    } catch (error: any) {
-      setResult({ success: false, message: `Migration error: ${error.message}` });
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const createCategoriesTable = async () => {
     setLoading(true);
@@ -367,50 +161,7 @@ const DatabaseSetupPage: React.FC = () => {
 
         {/* Setup Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Brands Table Setup */}
-          <div className="bg-white/90 backdrop-blur-sm rounded-lg p-6 shadow-sm">
-            <div className="flex items-center gap-3 mb-4">
-              <Database className="h-8 w-8 text-blue-500" />
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900">Brands Table</h2>
-                <p className="text-sm text-gray-600">Create brands table for brand management</p>
-              </div>
-            </div>
 
-            <div className="space-y-4">
-              <div className="text-sm text-gray-600">
-                <p className="mb-2">This will create:</p>
-                <ul className="list-disc list-inside space-y-1 text-gray-500">
-                  <li>Brands table with all necessary fields</li>
-                  <li>Indexes for fast lookups</li>
-                  <li>Default brands (Apple, Samsung, Google, etc.)</li>
-                  <li>Automatic timestamp updates</li>
-                </ul>
-              </div>
-
-              <button
-                onClick={createBrandsTable}
-                disabled={loading}
-                className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-colors ${
-                  loading
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-blue-600 text-white hover:bg-blue-700'
-                }`}
-              >
-                {loading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                    <span>Creating Table...</span>
-                  </>
-                ) : (
-                  <>
-                    <Database className="h-5 w-5" />
-                    <span>Create Brands Table</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
 
           {/* Status Card */}
           <div className="bg-white/90 backdrop-blur-sm rounded-lg p-6 shadow-sm">
@@ -442,12 +193,7 @@ const DatabaseSetupPage: React.FC = () => {
 
               <div className="text-sm text-gray-600">
                 <p className="mb-2">After setup, you can:</p>
-                <ul className="list-disc list-inside space-y-1 text-gray-500">
-                  <li>Access brand management at /brand-management</li>
-                  <li>Add and edit brands through the UI</li>
-                  <li>Use brand suggestions in device forms</li>
-                  <li>Filter brands by category</li>
-                </ul>
+
               </div>
             </div>
           </div>
@@ -457,43 +203,17 @@ const DatabaseSetupPage: React.FC = () => {
             <div className="flex items-center gap-3 mb-4">
               <Database className="h-8 w-8 text-orange-500" />
               <div>
-                <h2 className="text-xl font-semibold text-gray-900">Multiple Categories</h2>
-                <p className="text-sm text-gray-600">Update brands to support multiple categories</p>
+
               </div>
             </div>
 
             <div className="space-y-4">
               <div className="text-sm text-gray-600">
                 <p className="mb-2">This will update:</p>
-                <ul className="list-disc list-inside space-y-1 text-gray-500">
-                  <li>Convert single category to JSON array</li>
-                  <li>Update existing brands with multiple categories</li>
-                  <li>Add proper indexing for performance</li>
-                  <li>Create backup of current data</li>
-                </ul>
+
               </div>
 
-              <button
-                onClick={updateBrandsToMultipleCategories}
-                disabled={loading}
-                className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-colors ${
-                  loading
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-orange-600 text-white hover:bg-orange-700'
-                }`}
-              >
-                {loading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                    <span>Updating Categories...</span>
-                  </>
-                ) : (
-                  <>
-                    <Database className="h-5 w-5" />
-                    <span>Update to Multiple Categories</span>
-                  </>
-                )}
-              </button>
+
             </div>
           </div>
         </div>
@@ -544,11 +264,11 @@ const DatabaseSetupPage: React.FC = () => {
         <div className="mt-8 bg-white/90 backdrop-blur-sm rounded-lg p-6 shadow-sm">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Setup Instructions</h3>
           <div className="space-y-3 text-sm text-gray-600">
-            <p>1. <strong>Click "Create Brands Table"</strong> to set up the brands database table</p>
+
             <p>2. <strong>Click "Create Categories Table"</strong> to set up the categories database table</p>
             <p>3. <strong>Wait for completion</strong> - the process may take a few seconds</p>
             <p>4. <strong>Check the status</strong> - you'll see a success or error message</p>
-            <p>5. <strong>Navigate to brand management</strong> at /brand-management to start using the feature</p>
+
             <p>6. <strong>Navigate to category management</strong> at /category-management to manage categories</p>
           </div>
         </div>

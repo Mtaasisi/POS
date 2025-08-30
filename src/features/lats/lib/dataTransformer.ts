@@ -1,4 +1,4 @@
-import { ProductFormData, CategoryFormData, BrandFormData, SupplierFormData } from '../types/inventory';
+import { ProductFormData, CategoryFormData, SupplierFormData } from '../types/inventory';
 
 export class LatsDataTransformer {
   private static instance: LatsDataTransformer;
@@ -26,9 +26,9 @@ export class LatsDataTransformer {
       description: formData.description || '',
       shortDescription: formData.description || '',
       sku: formData.product_code || this.generateSKU(formData.name),
-      barcode: formData.barcode || '',
+    
       categoryId: this.isValidUUID(formData.category_id) ? formData.category_id : '',
-      brandId: formData.brand ? this.findBrandId(formData.brand) : undefined,
+
       supplierId: this.isValidUUID(formData.supplier_id) ? formData.supplier_id : undefined,
       images: [],
       isActive: formData.is_active ?? true,
@@ -40,7 +40,7 @@ export class LatsDataTransformer {
       transformedData.variants = formData.variants.map((variant: any, index: number) => ({
         sku: variant.sku || `${transformedData.sku}-${index + 1}`,
         name: variant.variant_name || `Variant ${index + 1}`,
-        barcode: variant.barcode || formData.barcode || '',
+    
         price: variant.selling_price || 0,
         costPrice: variant.cost_price || 0,
         stockQuantity: variant.quantity_in_stock || 0,
@@ -54,7 +54,7 @@ export class LatsDataTransformer {
       transformedData.variants = [{
         sku: transformedData.sku,
         name: 'Default',
-        barcode: transformedData.barcode,
+    
         price: formData.selling_price || 0,
         costPrice: formData.cost_price || 0,
         stockQuantity: formData.quantity_in_stock || 0,
@@ -77,7 +77,7 @@ export class LatsDataTransformer {
       sku: data.sku,
       barcode: data.barcode,
       categoryId: this.isValidUUID(data.categoryId) ? data.categoryId : '',
-      brandId: this.isValidUUID(data.brandId || '') ? data.brandId : undefined,
+
       supplierId: this.isValidUUID(data.supplierId || '') ? data.supplierId : undefined,
       images: data.images || [],
       isActive: data.isActive,
@@ -104,7 +104,7 @@ export class LatsDataTransformer {
       sku: apiData.sku || '',
       barcode: apiData.barcode || '',
       categoryId: apiData.categoryId || apiData.category_id || '',
-      brandId: apiData.brandId || apiData.brand_id || undefined,
+
       supplierId: apiData.supplierId || apiData.supplier_id || undefined,
       images: apiData.images || [],
       variants: (apiData.variants || []).map((variant: any) => ({
@@ -137,18 +137,7 @@ export class LatsDataTransformer {
     };
   }
 
-  // Transform brand form data
-  transformBrandFormData(data: any): BrandFormData {
-    return {
-      name: data.name || '',
-      description: data.description || '',
-      logo: data.logo || undefined,
-      color: data.color || undefined,
-      website: data.website || undefined,
-      isActive: data.isActive ?? true,
-      metadata: data.metadata || {}
-    };
-  }
+
 
   // Transform supplier form data
   transformSupplierFormData(data: any): SupplierFormData {
@@ -223,12 +212,7 @@ export class LatsDataTransformer {
     return 'SKU-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8).toUpperCase();
   }
 
-  // Find brand ID by name (this would need to be implemented with actual brand data)
-  private findBrandId(brandName: string): string | undefined {
-    // This is a placeholder - in a real implementation, you'd look up the brand ID
-    // from the brands list or make an API call
-    return undefined;
-  }
+
 
   // Parse dimensions string to object
   private parseDimensions(dimensionsString: string): { length?: number; width?: number; height?: number } | undefined {
@@ -269,7 +253,7 @@ export class LatsDataTransformer {
       sku: product.sku,
       barcode: product.barcode,
       categoryId: product.categoryId || product.category_id,
-      brandId: product.brandId || product.brand_id,
+
       supplierId: product.supplierId || product.supplier_id,
       images: product.images || [],
       tags: [],
@@ -295,7 +279,7 @@ export class LatsDataTransformer {
         isActive: variant.isActive ?? true
       })),
       category: product.category,
-      brand: product.brand,
+
       supplier: product.supplier,
       createdAt: product.createdAt || product.created_at,
       updatedAt: product.updatedAt || product.updated_at
@@ -319,21 +303,7 @@ export class LatsDataTransformer {
     };
   }
 
-  // Transform brand data for display
-  transformBrandForDisplay(brand: any): any {
-    return {
-      id: brand.id,
-      name: brand.name,
-      description: brand.description,
-      logo: brand.logo || brand.logo_url,
-      color: brand.color,
-      website: brand.website,
-      isActive: brand.isActive ?? true,
-      metadata: brand.metadata || {},
-      createdAt: brand.createdAt || brand.created_at,
-      updatedAt: brand.updatedAt || brand.updated_at
-    };
-  }
+
 
   // Transform supplier data for display
   transformSupplierForDisplay(supplier: any): any {
@@ -363,7 +333,7 @@ export class LatsDataTransformer {
       Name: product.name,
       SKU: mainVariant?.sku || product.sku || '',
       Category: product.category?.name || '',
-      Brand: product.brand?.name || '',
+
       Description: product.description || '',
       CostPrice: mainVariant?.costPrice || 0,
       SellingPrice: mainVariant?.price || mainVariant?.sellingPrice || 0,
@@ -388,7 +358,7 @@ export class LatsDataTransformer {
       sku: csvData.SKU || csvData.sku || this.generateSKU(csvData.Name || csvData.name),
       barcode: csvData.Barcode || csvData.barcode || '',
       categoryId: '', // Will need to be resolved
-      brandId: undefined, // Will need to be resolved
+
       supplierId: undefined, // Will need to be resolved
       images: [],
       tags: csvData.Tags ? csvData.Tags.split(',').map((tag: string) => tag.trim()) : [],
@@ -430,8 +400,7 @@ export const transformApiResponseToProductFormData = (apiData: any) =>
 export const transformCategoryFormData = (data: any) => 
   latsDataTransformer.transformCategoryFormData(data);
 
-export const transformBrandFormData = (data: any) => 
-  latsDataTransformer.transformBrandFormData(data);
+
 
 export const transformSupplierFormData = (data: any) => 
   latsDataTransformer.transformSupplierFormData(data);
@@ -442,8 +411,7 @@ export const transformProductForDisplay = (product: any) =>
 export const transformCategoryForDisplay = (category: any) => 
   latsDataTransformer.transformCategoryForDisplay(category);
 
-export const transformBrandForDisplay = (brand: any) => 
-  latsDataTransformer.transformBrandForDisplay(brand);
+
 
 export const transformSupplierForDisplay = (supplier: any) => 
   latsDataTransformer.transformSupplierForDisplay(supplier);

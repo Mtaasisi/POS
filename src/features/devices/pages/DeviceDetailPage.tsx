@@ -99,6 +99,42 @@ const DeviceDetailPage: React.FC = () => {
   // Get device early to avoid temporal dead zone issues
   const device = id ? getDeviceById(id) : null;
 
+  // Defensive: always have transitions and remarks as arrays, and required fields as non-undefined
+  const safeDevice = useMemo(() => ({
+    id: device?.id || '',
+    customerId: device?.customerId || '',
+    customerName: device?.customerName || '',
+    phoneNumber: device?.phoneNumber || '',
+    brand: device?.brand || '',
+    model: device?.model || '',
+    serialNumber: device?.serialNumber || '',
+    createdAt: device?.createdAt || '',
+    updatedAt: device?.updatedAt || '',
+    expectedReturnDate: device?.expectedReturnDate || '',
+    estimatedHours: device?.estimatedHours || 0,
+    status: device?.status || 'assigned',
+    assignedTo: device?.assignedTo || '',
+    issueDescription: device?.issueDescription || '',
+    transitions: device?.transitions || [],
+    remarks: device?.remarks || [],
+    warrantyStart: device?.warrantyStart || '',
+    warrantyEnd: device?.warrantyEnd || '',
+    warrantyStatus: device?.warrantyStatus || 'None',
+    // Add missing fields from New Device Form
+    unlockCode: device?.unlockCode || '',
+    repairCost: device?.repairCost || '',
+    depositAmount: device?.depositAmount || '',
+    diagnosisRequired: device?.diagnosisRequired || false,
+    deviceNotes: device?.deviceNotes || '',
+    deviceCost: device?.deviceCost || '',
+    // Add fields for device condition assessment
+    deviceCondition: device?.deviceCondition || {},
+    deviceImages: device?.deviceImages || [],
+    accessoriesConfirmed: device?.accessoriesConfirmed || false,
+    problemConfirmed: device?.problemConfirmed || false,
+    privacyConfirmed: device?.privacyConfirmed || false,
+  }), [device]);
+
   // All useEffects must be called before any early returns
   useEffect(() => {
     // Save current scroll position
@@ -113,6 +149,149 @@ const DeviceDetailPage: React.FC = () => {
     }, 500);
     return () => clearTimeout(timeout);
   }, [id, currentUser]);
+
+  // All useMemo hooks must be called before any early returns
+  const warrantyInfo = useMemo(() => ({
+    status: safeDevice.warrantyStatus || 'None',
+    startDate: safeDevice.warrantyStart,
+    endDate: safeDevice.warrantyEnd,
+    durationMonths: safeDevice.warrantyStart && safeDevice.warrantyEnd
+      ? Math.round((new Date(safeDevice.warrantyEnd).getTime() - new Date(safeDevice.warrantyStart).getTime()) / (1000 * 60 * 60 * 24 * 30))
+      : 0,
+  }), [safeDevice.warrantyStatus, safeDevice.warrantyStart, safeDevice.warrantyEnd]);
+
+  // Device repair history (other devices with same serial number, excluding current)
+  const deviceHistory = useMemo(() => devices.filter(
+    d => d.serialNumber === safeDevice.serialNumber && d.id !== safeDevice.id
+  ), [devices, safeDevice.serialNumber, safeDevice.id]);
+
+  // Payments for this device
+  const totalPaid = useMemo(() => payments.filter((p: any) => p.status === 'completed').reduce((sum: number, p: any) => sum + (p.amount || 0), 0), [payments]);
+  
+  // Try to get invoice total from attachments (if any invoice has an amount in file_name, e.g., 'invoice-1234-amount-500.pdf')
+  const invoiceAttachments = useMemo(() => attachments.filter(att => att.type === 'invoice'), [attachments]);
+  
+  // Minimal countdown string: only two most significant units, with color
+  const getMinimalCountdown = useMemo(() => {
+    return (dateString: string) => {
+      const target = new Date(dateString);
+      const diff = target.getTime() - now.getTime();
+      let color = '#22c55e'; // green-500
+      if (diff <= 0) color = '#ef4444'; // red-500
+      else if (diff < 24 * 60 * 60 * 1000) color = '#f59e42'; // orange-400
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+      const minutes = Math.floor((diff / (1000 * 60)) % 60);
+      const seconds = Math.floor((diff / 1000) % 60);
+      if (diff <= 0) return <span style={{fontFamily: 'monospace', fontSize: '0.95em', color, fontWeight: 600}}>Overdue</span>;
+      let units = [];
+      if (days > 0) units.push(`${days}d`);
+      if (hours > 0 || days > 0) units.push(`${hours}h`);
+      if (minutes > 0 && days === 0) units.push(`${minutes}m`);
+      if (days === 0 && hours === 0) units.push(`${seconds}s`);
+      units = units.slice(0, 2);
+      const dot = <span style={{opacity: dotVisible ? 1 : 0.2, transition: 'opacity 0.3s', fontWeight: 'bold', color}}>.</span>;
+      return (
+        <span style={{fontFamily: 'monospace', fontSize: '0.95em', letterSpacing: '0.5px', color, fontWeight: 600}}>
+          {units.map((u, i) => (
+            <React.Fragment key={i}>
+              {u}
+              {i < units.length - 1 && dot}
+            </React.Fragment>
+          ))}
+        </span>
+      );
+    };
+  }, [now, dotVisible]);
+
+  // All useCallback hooks must be called before any early returns
+  const fetchAllDeviceActivity = useCallback(async () => {
+    if (!safeDevice.id) return;
+    // Payments
+    const { data: paymentsData } = await supabase
+      .from('customer_payments')
+      .select(`
+        *,
+        customers(name)
+      `)
+      .eq('device_id', safeDevice.id);
+    
+    // Transform payments to include customer names
+    const transformedPayments = (paymentsData || []).map((payment: any) => ({
+      ...payment,
+      customer_name: payment.customers?.name || undefined
+    }));
+    setAllPayments(transformedPayments);
+    // Transitions
+    const { data: transitionsData } = await supabase
+      .from('device_transitions')
+      .select('*')
+      .eq('device_id', safeDevice.id);
+    setAllTransitions(transitionsData || []);
+    // Remarks
+    const { data: remarksData } = await supabase
+      .from('device_remarks')
+      .select('*')
+      .eq('device_id', safeDevice.id);
+    setAllRemarks(remarksData || []);
+    // Ratings
+    const { data: ratingsData } = await supabase
+      .from('device_ratings')
+      .select('*')
+      .eq('device_id', safeDevice.id);
+    setAllRatings(ratingsData || []);
+    // Attachments
+    const { data: attachmentsData } = await supabase
+      .from('device_attachments')
+      .select('*')
+      .eq('device_id', safeDevice.id);
+    setAllAttachments(attachmentsData || []);
+  }, [safeDevice.id]);
+
+  // Fetch device checklist and additional device info - commented out device_checklists until table is created
+  const fetchDeviceDetails = useCallback(async () => {
+    if (!safeDevice.id) return;
+    
+    setDeviceChecklistLoading(true);
+    setDbDeviceLoading(true);
+    
+    try {
+      // Fetch device checklist - commented out until device_checklists table is created
+      // const { data: checklistData, error: checklistError } = await supabase
+      //   .from('device_checklists')
+      //   .select('*')
+      //   .eq('device_id', safeDevice.id)
+      //   .maybeSingle();
+      
+      // if (checklistError) {
+      //   console.error('Error fetching device checklist:', checklistError);
+      //   setDeviceChecklist(null);
+      // } else {
+      //   setDeviceChecklist(checklistData);
+      // }
+      
+      // Fetch additional device info from devices table
+      const { data: deviceData, error: deviceError } = await supabase
+        .from('devices')
+        .select('*')
+        .eq('id', safeDevice.id)
+        .single();
+      
+      if (deviceError) {
+        console.error('Error fetching device data:', deviceError);
+        setDbDevice(null);
+      } else {
+        setDbDevice(deviceData);
+      }
+    } catch (error) {
+      console.error('Error fetching device details:', error);
+      setDeviceChecklist(null);
+      setDbDevice(null);
+    } finally {
+      setDeviceChecklistLoading(false);
+      setDbDeviceLoading(false);
+    }
+  }, [safeDevice.id]);
 
   // Fetch attachments on load
   useEffect(() => {
@@ -202,6 +381,108 @@ const DeviceDetailPage: React.FC = () => {
     }
   }, [id]);
 
+  // Fetch all device activity effect
+  useEffect(() => {
+    if (id) {
+      fetchAllDeviceActivity();
+      fetchDeviceDetails();
+    }
+  }, [id, fetchAllDeviceActivity, fetchDeviceDetails]);
+
+  // Fetch audit logs, points transactions, and SMS logs on mount
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchTimelineExtras() {
+      setTimelineLoading(true);
+      try {
+        // Audit logs
+        const logs = await auditService.getEntityAuditLogs('device', safeDevice.id);
+        // Points transactions
+        const { data: points, error: pointsError } = await supabase
+          .from('points_transactions')
+          .select('*')
+          .eq('device_id', safeDevice.id);
+        // SMS logs
+        const { data: sms, error: smsError } = await supabase
+          .from('sms_logs')
+          .select('*')
+          .eq('device_id', safeDevice.id);
+        if (isMounted) {
+          setAuditLogs(logs || []);
+          setPointsTransactions(points || []);
+          setSmsLogs(sms || []);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setAuditLogs([]);
+          setPointsTransactions([]);
+          setSmsLogs([]);
+        }
+      } finally {
+        if (isMounted) setTimelineLoading(false);
+      }
+    }
+    if (safeDevice.id) fetchTimelineExtras();
+    return () => { isMounted = false; };
+  }, [safeDevice.id]);
+
+  // Fetch user names for all unique user IDs in timeline events
+  useEffect(() => {
+    async function fetchUserNames() {
+      // Gather all unique user IDs from device transitions, remarks, payments, attachments, ratings, auditLogs, pointsTransactions, smsLogs
+      const ids = new Set<string>();
+      
+      // Add assigned technician
+      if (safeDevice.assignedTo) {
+        ids.add(safeDevice.assignedTo);
+      }
+      
+      allTransitions.forEach((t: any) => t.performed_by && ids.add(t.performed_by));
+      allRemarks.forEach((r: any) => r.created_by && ids.add(r.created_by));
+      allPayments.forEach((p: any) => p.created_by && ids.add(p.created_by));
+      allAttachments.forEach((a: any) => a.uploaded_by && ids.add(a.uploaded_by));
+      allRatings.forEach((r: any) => r.technician_id && ids.add(r.technician_id));
+      auditLogs.forEach(a => a.user_id && ids.add(a.user_id));
+      pointsTransactions.forEach(pt => pt.created_by && ids.add(pt.created_by));
+      smsLogs.forEach(sms => (sms.sent_by || sms.created_by) && ids.add(sms.sent_by || sms.created_by));
+      
+      // Remove empty/undefined/null
+      const uniqueIds = Array.from(ids).filter(Boolean);
+      if (uniqueIds.length === 0) return;
+      
+      // Only fetch those not already in userNames
+      const idsToFetch = uniqueIds.filter(id => !(id in userNames));
+      if (idsToFetch.length === 0) return;
+      
+      // Query auth_users for these IDs
+      const { data, error } = await supabase
+        .from('auth_users')
+        .select('id, username')
+        .in('id', idsToFetch);
+      if (!error && data) {
+        const newNames: { [id: string]: string } = {};
+        data.forEach((u: any) => { newNames[u.id] = u.username; });
+        setUserNames(prev => ({ ...prev, ...newNames }));
+      }
+    }
+    fetchUserNames();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [safeDevice.assignedTo, allPayments.length, allTransitions.length, allRemarks.length, allRatings.length, allAttachments.length, auditLogs.length, pointsTransactions.length, smsLogs.length]);
+
+  // Fetch customer info directly from Supabase
+  useEffect(() => {
+    async function fetchCustomer() {
+      if (!safeDevice.customerId) return;
+      const { data, error } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('id', safeDevice.customerId)
+        .single();
+      if (!error && data) setDbCustomer(data);
+    }
+    fetchCustomer();
+  }, [safeDevice.customerId]);
+
   // Only static check at the very top
   if (!id || !currentUser) {
     return (
@@ -236,41 +517,6 @@ const DeviceDetailPage: React.FC = () => {
     );
   }
   
-  // Defensive: always have transitions and remarks as arrays, and required fields as non-undefined
-  const safeDevice = useMemo(() => ({
-    id: device?.id || '',
-    customerId: device?.customerId || '',
-    customerName: device?.customerName || '',
-    phoneNumber: device?.phoneNumber || '',
-    brand: device?.brand || '',
-    model: device?.model || '',
-    serialNumber: device?.serialNumber || '',
-    createdAt: device?.createdAt || '',
-    updatedAt: device?.updatedAt || '',
-    expectedReturnDate: device?.expectedReturnDate || '',
-    estimatedHours: device?.estimatedHours || 0,
-    status: device?.status || 'assigned',
-    assignedTo: device?.assignedTo || '',
-    issueDescription: device?.issueDescription || '',
-    transitions: device?.transitions || [],
-    remarks: device?.remarks || [],
-    warrantyStart: device?.warrantyStart || '',
-    warrantyEnd: device?.warrantyEnd || '',
-    warrantyStatus: device?.warrantyStatus || 'None',
-    // Add missing fields from New Device Form
-    unlockCode: device?.unlockCode || '',
-    repairCost: device?.repairCost || '',
-    depositAmount: device?.depositAmount || '',
-    diagnosisRequired: device?.diagnosisRequired || false,
-    deviceNotes: device?.deviceNotes || '',
-    deviceCost: device?.deviceCost || '',
-    // Add fields for device condition assessment
-    deviceCondition: device?.deviceCondition || {},
-    deviceImages: device?.deviceImages || [],
-    accessoriesConfirmed: device?.accessoriesConfirmed || false,
-    problemConfirmed: device?.problemConfirmed || false,
-    privacyConfirmed: device?.privacyConfirmed || false,
-  }), [device]);
   const customer = getCustomerById(safeDevice.customerId);
 
   // Helper: get file type icon/preview
@@ -385,25 +631,7 @@ const DeviceDetailPage: React.FC = () => {
     );
   };
 
-  // Mock warranty info (replace with real data integration as needed)
-  const warrantyInfo = useMemo(() => ({
-    status: safeDevice.warrantyStatus || 'None',
-    startDate: safeDevice.warrantyStart,
-    endDate: safeDevice.warrantyEnd,
-    durationMonths: safeDevice.warrantyStart && safeDevice.warrantyEnd
-      ? Math.round((new Date(safeDevice.warrantyEnd).getTime() - new Date(safeDevice.warrantyStart).getTime()) / (1000 * 60 * 60 * 24 * 30))
-      : 0,
-  }), [safeDevice.warrantyStatus, safeDevice.warrantyStart, safeDevice.warrantyEnd]);
-
-  // Device repair history (other devices with same serial number, excluding current)
-  const deviceHistory = useMemo(() => devices.filter(
-    d => d.serialNumber === safeDevice.serialNumber && d.id !== safeDevice.id
-  ), [devices, safeDevice.serialNumber, safeDevice.id]);
-
-  // Payments for this device
-  const totalPaid = useMemo(() => payments.filter((p: any) => p.status === 'completed').reduce((sum: number, p: any) => sum + (p.amount || 0), 0), [payments]);
-  // Try to get invoice total from attachments (if any invoice has an amount in file_name, e.g., 'invoice-1234-amount-500.pdf')
-  const invoiceAttachments = useMemo(() => attachments.filter(att => att.type === 'invoice'), [attachments]);
+  // Calculate invoice total from attachments (if any invoice has an amount in file_name, e.g., 'invoice-1234-amount-500.pdf')
   let invoiceTotal = 0;
   invoiceAttachments.forEach(att => {
     const match = att.file_name.match(/amount[-_](\d+)/i);
@@ -614,39 +842,6 @@ const DeviceDetailPage: React.FC = () => {
     }
   };
 
-  // Minimal countdown string: only two most significant units, with color
-  const getMinimalCountdown = useMemo(() => {
-    return (dateString: string) => {
-      const target = new Date(dateString);
-      const diff = target.getTime() - now.getTime();
-      let color = '#22c55e'; // green-500
-      if (diff <= 0) color = '#ef4444'; // red-500
-      else if (diff < 24 * 60 * 60 * 1000) color = '#f59e42'; // orange-400
-      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-      const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
-      const minutes = Math.floor((diff / (1000 * 60)) % 60);
-      const seconds = Math.floor((diff / 1000) % 60);
-      if (diff <= 0) return <span style={{fontFamily: 'monospace', fontSize: '0.95em', color, fontWeight: 600}}>Overdue</span>;
-      let units = [];
-      if (days > 0) units.push(`${days}d`);
-      if (hours > 0 || days > 0) units.push(`${hours}h`);
-      if (minutes > 0 && days === 0) units.push(`${minutes}m`);
-      if (days === 0 && hours === 0) units.push(`${seconds}s`);
-      units = units.slice(0, 2);
-      const dot = <span style={{opacity: dotVisible ? 1 : 0.2, transition: 'opacity 0.3s', fontWeight: 'bold', color}}>.</span>;
-      return (
-        <span style={{fontFamily: 'monospace', fontSize: '0.95em', letterSpacing: '0.5px', color, fontWeight: 600}}>
-          {units.map((u, i) => (
-            <React.Fragment key={i}>
-              {u}
-              {i < units.length - 1 && dot}
-            </React.Fragment>
-          ))}
-        </span>
-      );
-    };
-  }, [now, dotVisible]);
-
   // Helper to format duration
   function formatDuration(ms?: number) {
     if (!ms || ms < 0 || isNaN(ms)) return '-';
@@ -672,138 +867,10 @@ const DeviceDetailPage: React.FC = () => {
   const technicianDuration = (inRepairTime && repairCompleteTime) ? repairCompleteTime - inRepairTime : undefined;
   const handoverDuration = (repairCompleteTime && doneTime) ? doneTime - repairCompleteTime : undefined;
 
-  // Fetch audit logs, points transactions, and SMS logs on mount
-  useEffect(() => {
-    let isMounted = true;
-    async function fetchTimelineExtras() {
-      setTimelineLoading(true);
-      try {
-        // Audit logs
-        const logs = await auditService.getEntityAuditLogs('device', safeDevice.id);
-        // Points transactions
-        const { data: points, error: pointsError } = await supabase
-          .from('points_transactions')
-          .select('*')
-          .eq('device_id', safeDevice.id);
-        // SMS logs
-        const { data: sms, error: smsError } = await supabase
-          .from('sms_logs')
-          .select('*')
-          .eq('device_id', safeDevice.id);
-        if (isMounted) {
-          setAuditLogs(logs || []);
-          setPointsTransactions(points || []);
-          setSmsLogs(sms || []);
-        }
-      } catch (err) {
-        if (isMounted) {
-          setAuditLogs([]);
-          setPointsTransactions([]);
-          setSmsLogs([]);
-        }
-      } finally {
-        if (isMounted) setTimelineLoading(false);
-      }
-    }
-    if (safeDevice.id) fetchTimelineExtras();
-    return () => { isMounted = false; };
-  }, [safeDevice.id]);
 
-  // Fetch all device activity on mount or when device ID changes
-  const fetchAllDeviceActivity = useCallback(async () => {
-    if (!safeDevice.id) return;
-    // Payments
-    const { data: paymentsData } = await supabase
-      .from('customer_payments')
-      .select(`
-        *,
-        customers(name)
-      `)
-      .eq('device_id', safeDevice.id);
-    
-    // Transform payments to include customer names
-    const transformedPayments = (paymentsData || []).map((payment: any) => ({
-      ...payment,
-      customer_name: payment.customers?.name || undefined
-    }));
-    setAllPayments(transformedPayments);
-    // Transitions
-    const { data: transitionsData } = await supabase
-      .from('device_transitions')
-      .select('*')
-      .eq('device_id', safeDevice.id);
-    setAllTransitions(transitionsData || []);
-    // Remarks
-    const { data: remarksData } = await supabase
-      .from('device_remarks')
-      .select('*')
-      .eq('device_id', safeDevice.id);
-    setAllRemarks(remarksData || []);
-    // Ratings
-    const { data: ratingsData } = await supabase
-      .from('device_ratings')
-      .select('*')
-      .eq('device_id', safeDevice.id);
-    setAllRatings(ratingsData || []);
-    // Attachments
-    const { data: attachmentsData } = await supabase
-      .from('device_attachments')
-      .select('*')
-      .eq('device_id', safeDevice.id);
-    setAllAttachments(attachmentsData || []);
-  }, [safeDevice.id]);
 
-  // Fetch device checklist and additional device info - commented out device_checklists until table is created
-  const fetchDeviceDetails = useCallback(async () => {
-    if (!safeDevice.id) return;
-    
-    setDeviceChecklistLoading(true);
-    setDbDeviceLoading(true);
-    
-    try {
-      // Fetch device checklist - commented out until device_checklists table is created
-      // const { data: checklistData, error: checklistError } = await supabase
-      //   .from('device_checklists')
-      //   .select('*')
-      //   .eq('device_id', safeDevice.id)
-      //   .maybeSingle();
-      
-      // if (checklistError) {
-      //   console.error('Error fetching device checklist:', checklistError);
-      //   setDeviceChecklist(null);
-      // } else {
-      //   setDeviceChecklist(checklistData);
-      // }
-      
-      // Fetch additional device info from devices table
-      const { data: deviceData, error: deviceError } = await supabase
-        .from('devices')
-        .select('*')
-        .eq('id', safeDevice.id)
-        .single();
-      
-      if (deviceError) {
-        console.error('Error fetching device data:', deviceError);
-        setDbDevice(null);
-      } else {
-        setDbDevice(deviceData);
-      }
-    } catch (error) {
-      console.error('Error fetching device details:', error);
-      setDeviceChecklist(null);
-      setDbDevice(null);
-    } finally {
-      setDeviceChecklistLoading(false);
-      setDbDeviceLoading(false);
-    }
-  }, [safeDevice.id]);
-  // Fetch all device activity effect
-  useEffect(() => {
-    if (id) {
-      fetchAllDeviceActivity();
-      fetchDeviceDetails();
-    }
-  }, [id, fetchAllDeviceActivity, fetchDeviceDetails]);
+
+
 
   // Helper: normalize all events to a common structure
   function getTimelineEvents() {
@@ -921,48 +988,7 @@ const DeviceDetailPage: React.FC = () => {
 
   const [userNames, setUserNames] = useState<{ [id: string]: string }>({});
 
-  // Fetch user names for all unique user IDs in timeline events
-  useEffect(() => {
-    async function fetchUserNames() {
-      // Gather all unique user IDs from device transitions, remarks, payments, attachments, ratings, auditLogs, pointsTransactions, smsLogs
-      const ids = new Set<string>();
-      
-      // Add assigned technician
-      if (safeDevice.assignedTo) {
-        ids.add(safeDevice.assignedTo);
-      }
-      
-      allTransitions.forEach((t: any) => t.performed_by && ids.add(t.performed_by));
-      allRemarks.forEach((r: any) => r.created_by && ids.add(r.created_by));
-      allPayments.forEach((p: any) => p.created_by && ids.add(p.created_by));
-      allAttachments.forEach((a: any) => a.uploaded_by && ids.add(a.uploaded_by));
-      allRatings.forEach((r: any) => r.technician_id && ids.add(r.technician_id));
-      auditLogs.forEach(a => a.user_id && ids.add(a.user_id));
-      pointsTransactions.forEach(pt => pt.created_by && ids.add(pt.created_by));
-      smsLogs.forEach(sms => (sms.sent_by || sms.created_by) && ids.add(sms.sent_by || sms.created_by));
-      
-      // Remove empty/undefined/null
-      const uniqueIds = Array.from(ids).filter(Boolean);
-      if (uniqueIds.length === 0) return;
-      
-      // Only fetch those not already in userNames
-      const idsToFetch = uniqueIds.filter(id => !(id in userNames));
-      if (idsToFetch.length === 0) return;
-      
-      // Query auth_users for these IDs
-      const { data, error } = await supabase
-        .from('auth_users')
-        .select('id, username')
-        .in('id', idsToFetch);
-      if (!error && data) {
-        const newNames: { [id: string]: string } = {};
-        data.forEach((u: any) => { newNames[u.id] = u.username; });
-        setUserNames(prev => ({ ...prev, ...newNames }));
-      }
-    }
-    fetchUserNames();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [safeDevice.assignedTo, allPayments.length, allTransitions.length, allRemarks.length, allRatings.length, allAttachments.length, auditLogs.length, pointsTransactions.length, smsLogs.length]);
+
 
   // Replace getUserById with this:
   const getUserName = (userId: string) => {
@@ -975,140 +1001,529 @@ const DeviceDetailPage: React.FC = () => {
 
   // Fetch customer info directly from Supabase
   const [dbCustomer, setDbCustomer] = useState<any>(null);
-  useEffect(() => {
-    async function fetchCustomer() {
-      if (!safeDevice.customerId) return;
-      const { data, error } = await supabase
-        .from('customers')
-        .select('*')
-        .eq('id', safeDevice.customerId)
-        .single();
-      if (!error && data) setDbCustomer(data);
-    }
-    fetchCustomer();
-  }, [safeDevice.customerId]);
   return (
     <>
-      <div className="p-2 sm:p-4 max-w-6xl mx-auto w-full">
-        <div className="space-y-6">
-          {/* Device Header */}
+      {/* Main Tablet-Optimized Layout */}
+      <div className="p-3 md:p-6 lg:p-8 max-w-7xl mx-auto w-full">
+        {/* Device Header - Full Width */}
+        <div className="mb-6 md:mb-8">
           <DeviceDetailHeader device={safeDevice} />
+        </div>
+
+        {/* Tablet Grid Layout */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
           
-          {/* Customer Information Section */}
-          {(customer || dbCustomer) && (
-            <GlassCard className="bg-gradient-to-br from-blue-500/10 to-blue-400/5">
-              <h3 className="text-lg sm:text-xl font-bold text-blue-900 mb-4">Customer Information</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs sm:text-sm text-gray-500">Name</p>
-                  <p className="text-gray-800 text-sm sm:text-base">{dbCustomer?.name || customer?.name || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-xs sm:text-sm text-gray-500">Phone</p>
-                  <p className="text-gray-800 text-sm sm:text-base">{dbCustomer?.phone || customer?.phone || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-xs sm:text-sm text-gray-500">City</p>
-                  <p className="text-gray-800 text-sm sm:text-base">{dbCustomer?.city || customer?.city || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-xs sm:text-sm text-gray-500">Loyalty Level</p>
-                  <p className="text-gray-800 text-sm sm:text-base">{dbCustomer?.loyaltyLevel || customer?.loyaltyLevel || 'N/A'}</p>
-                </div>
+          {/* Left Column - Device Info & Customer */}
+          <div className="md:col-span-1 lg:col-span-1 space-y-6">
+            
+            {/* Device Quick Actions Card */}
+            <GlassCard className="bg-gradient-to-br from-purple-500/10 to-purple-400/5">
+              <h3 className="text-xl md:text-2xl font-bold text-purple-900 mb-6">Quick Actions</h3>
+              <div className="grid grid-cols-1 gap-4">
+                <GlassButton
+                  variant="primary"
+                  icon={<Printer size={20} />}
+                  className="h-12 md:h-14 text-base md:text-lg w-full justify-center"
+                  onClick={handlePrintReceipt}
+                >
+                  Print Receipt
+                </GlassButton>
+                
+                {currentUser.role === 'customer-care' && (
+                  <GlassButton
+                    variant="secondary"
+                    icon={<Send size={20} />}
+                    className="h-12 md:h-14 text-base md:text-lg w-full justify-center"
+                    onClick={() => setShowSmsModal(true)}
+                  >
+                    Send SMS
+                  </GlassButton>
+                )}
+                
+                <GlassButton
+                  variant="secondary"
+                  icon={<Stethoscope size={20} />}
+                  className="h-12 md:h-14 text-base md:text-lg w-full justify-center"
+                  onClick={() => setShowDiagnosticChecklist(true)}
+                >
+                  Diagnostic
+                </GlassButton>
+                
+                <GlassButton
+                  variant="secondary"
+                  icon={<Wrench size={20} />}
+                  className="h-12 md:h-14 text-base md:text-lg w-full justify-center"
+                  onClick={() => setShowRepairChecklist(true)}
+                >
+                  Repair Checklist
+                </GlassButton>
               </div>
             </GlassCard>
-          )}
-            
-          {/* Payments Section - Mobile Optimized */}
-          {(currentUser.role === 'admin' || currentUser.role === 'customer-care') && (
-            <GlassCard className="bg-gradient-to-br from-green-500/10 to-green-400/5">
-              <h3 className="text-lg sm:text-xl sm:text-2xl font-bold text-green-900 mb-4">Payments</h3>
-              
-              {payments.length === 0 ? (
-                <div className="text-center py-6">
-                  <CreditCard className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                  <div className="text-gray-700 text-sm sm:text-base">No payments recorded for this device.</div>
+
+            {/* Device Status Card */}
+            <GlassCard className="bg-gradient-to-br from-indigo-500/10 to-indigo-400/5">
+              <h3 className="text-xl md:text-2xl font-bold text-indigo-900 mb-6">Device Status</h3>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm md:text-base text-gray-600">Current Status:</span>
+                  <StatusBadge status={safeDevice.status} />
                 </div>
-              ) : (
-                <div className="space-y-3 mb-4">
-                  {payments.map((p: any) => (
-                    <div key={p.id} className="bg-white rounded-lg border border-green-200 p-3 sm:p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <CreditCard className="w-4 h-4 text-green-600" />
-                          <span className="font-semibold text-green-700 text-lg">{formatCurrency(p.amount)}</span>
-                        </div>
-                        <span className="text-xs text-gray-500 capitalize">{p.method}</span>
-                      </div>
-                      
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        <div>
-                          <span className="text-gray-500">Type:</span>
-                          <p className="font-medium capitalize">{p.payment_type === 'payment' ? 'Payment' : p.payment_type === 'deposit' ? 'Deposit' : 'Refund'}</p>
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Status:</span>
-                          <p className="font-medium capitalize">{p.status}</p>
-                        </div>
-                      </div>
-                      
-                      <div className="mt-2 text-xs text-gray-500">
-                        {p.payment_date ? formatRelativeTime(p.payment_date) : ''}
-                        {p.created_by && (
-                          <span className="ml-2 text-blue-700">by {p.created_by}</span>
-                        )}
+                
+                {safeDevice.expectedReturnDate && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm md:text-base text-gray-600">Expected Return:</span>
+                      <span className="text-sm md:text-base font-medium">
+                        {new Date(safeDevice.expectedReturnDate).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm md:text-base text-gray-600">Time Remaining:</span>
+                      <div className="text-sm md:text-base">
+                        {getMinimalCountdown(safeDevice.expectedReturnDate)}
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-              
-              <div className="bg-green-50 rounded-lg p-3 sm:p-4 space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-green-900 font-semibold">Total Paid:</span>
-                  <span className="text-green-700 font-bold text-lg">{formatCurrency(totalPaid)}</span>
-                </div>
-                {invoiceTotal > 0 && outstanding !== null && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-amber-900 font-semibold">Outstanding:</span>
-                    <span className="text-amber-700 font-bold">{formatCurrency(outstanding)}</span>
+                  </div>
+                )}
+                
+                {safeDevice.assignedTo && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm md:text-base text-gray-600">Assigned To:</span>
+                    <span className="text-sm md:text-base font-medium">
+                      {getUserName(safeDevice.assignedTo)}
+                    </span>
                   </div>
                 )}
               </div>
-              
-              {currentUser.role === 'customer-care' || currentUser.role === 'admin' ? (
-                <GlassButton
-                  variant="primary"
-                  icon={<CreditCard size={16} className="sm:w-[18px] sm:h-[18px]" />}
-                  className="mt-4 w-full sm:w-auto text-sm"
-                  onClick={() => setShowPaymentModal(true)}
-                >
-                  Record Payment
-                </GlassButton>
-              ) : (
-                <div className="mt-4">
+            </GlassCard>
+
+            {/* Device Barcode */}
+            <DeviceBarcodeCard device={safeDevice} />
+          </div>
+
+          {/* Middle Column - Customer & Details */}
+          <div className="md:col-span-1 lg:col-span-1 space-y-6">
+            
+            {/* Customer Information Section */}
+            {(customer || dbCustomer) && (
+              <GlassCard className="bg-gradient-to-br from-blue-500/10 to-blue-400/5">
+                <h3 className="text-xl md:text-2xl font-bold text-blue-900 mb-6">Customer Information</h3>
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm md:text-base text-gray-500 mb-1">Name</p>
+                    <p className="text-gray-800 text-base md:text-lg font-medium">
+                      {dbCustomer?.name || customer?.name || 'N/A'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm md:text-base text-gray-500 mb-1">Phone</p>
+                    <p className="text-gray-800 text-base md:text-lg font-medium">
+                      {dbCustomer?.phone || customer?.phone || 'N/A'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm md:text-base text-gray-500 mb-1">City</p>
+                    <p className="text-gray-800 text-base md:text-lg font-medium">
+                      {dbCustomer?.city || customer?.city || 'N/A'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm md:text-base text-gray-500 mb-1">Loyalty Level</p>
+                    <p className="text-gray-800 text-base md:text-lg font-medium">
+                      {dbCustomer?.loyaltyLevel || customer?.loyaltyLevel || 'N/A'}
+                    </p>
+                  </div>
+                </div>
+              </GlassCard>
+            )}
+
+            {/* Device Information */}
+            <GlassCard className="bg-gradient-to-br from-slate-500/10 to-slate-400/5">
+              <h3 className="text-xl md:text-2xl font-bold text-slate-900 mb-6">Device Details</h3>
+              <div className="space-y-4">
+
+                <div>
+                  <p className="text-sm md:text-base text-gray-500 mb-1">Model</p>
+                  <p className="text-gray-800 text-base md:text-lg font-medium">{safeDevice.model || 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-sm md:text-base text-gray-500 mb-1">Serial Number</p>
+                  <p className="text-gray-800 text-base md:text-lg font-medium">{safeDevice.serialNumber || 'N/A'}</p>
+                </div>
+                {safeDevice.unlockCode && (
+                  <div>
+                    <p className="text-sm md:text-base text-gray-500 mb-1">Unlock Code</p>
+                    <p className="text-gray-800 text-base md:text-lg font-medium font-mono">
+                      {safeDevice.unlockCode}
+                    </p>
+                  </div>
+                )}
+                {safeDevice.issueDescription && (
+                  <div>
+                    <p className="text-sm md:text-base text-gray-500 mb-1">Issue Description</p>
+                    <p className="text-gray-800 text-base md:text-lg">
+                      {safeDevice.issueDescription}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </GlassCard>
+          </div>
+
+          {/* Right Column - Payments & Actions */}
+          <div className="md:col-span-2 lg:col-span-1 space-y-6">
+            
+            {/* Payments Section - Tablet Optimized */}
+            {(currentUser.role === 'admin' || currentUser.role === 'customer-care') && (
+              <GlassCard className="bg-gradient-to-br from-green-500/10 to-green-400/5">
+                <h3 className="text-xl md:text-2xl font-bold text-green-900 mb-6">Payments</h3>
+                
+                {payments.length === 0 ? (
+                  <div className="text-center py-8 md:py-12">
+                    <CreditCard className="w-16 h-16 md:w-20 md:h-20 text-gray-400 mx-auto mb-4" />
+                    <div className="text-gray-700 text-base md:text-lg">No payments recorded for this device.</div>
+                  </div>
+                ) : (
+                  <div className="space-y-4 mb-6">
+                    {payments.map((p: any) => (
+                      <div key={p.id} className="bg-white rounded-xl border border-green-200 p-4 md:p-6">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-3">
+                            <CreditCard className="w-5 h-5 md:w-6 md:h-6 text-green-600" />
+                            <span className="font-bold text-green-700 text-xl md:text-2xl">
+                              {formatCurrency(p.amount)}
+                            </span>
+                          </div>
+                          <span className="text-sm md:text-base text-gray-500 capitalize bg-gray-100 px-3 py-1 rounded-full">
+                            {p.method}
+                          </span>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-4 text-sm md:text-base">
+                          <div>
+                            <span className="text-gray-500">Type:</span>
+                            <p className="font-medium capitalize">
+                              {p.payment_type === 'payment' ? 'Payment' : p.payment_type === 'deposit' ? 'Deposit' : 'Refund'}
+                            </p>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Status:</span>
+                            <p className="font-medium capitalize">{p.status}</p>
+                          </div>
+                        </div>
+                        
+                        <div className="mt-3 text-sm md:text-base text-gray-500">
+                          {p.payment_date ? formatRelativeTime(p.payment_date) : ''}
+                          {p.created_by && (
+                            <span className="ml-2 text-blue-700">by {p.created_by}</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                <div className="bg-green-50 rounded-xl p-4 md:p-6 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-green-900 font-semibold text-base md:text-lg">Total Paid:</span>
+                    <span className="text-green-700 font-bold text-xl md:text-2xl">
+                      {formatCurrency(totalPaid)}
+                    </span>
+                  </div>
+                  {invoiceTotal > 0 && outstanding !== null && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-amber-900 font-semibold text-base md:text-lg">Outstanding:</span>
+                      <span className="text-amber-700 font-bold text-xl md:text-2xl">
+                        {formatCurrency(outstanding)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                
+                {currentUser.role === 'customer-care' || currentUser.role === 'admin' ? (
                   <GlassButton
                     variant="primary"
-                    icon={<CreditCard size={16} className="sm:w-[18px] sm:h-[18px]" />}
-                    className="opacity-50 cursor-not-allowed w-full sm:w-auto text-sm"
-                    disabled
+                    icon={<CreditCard size={20} />}
+                    className="mt-6 h-12 md:h-14 w-full text-base md:text-lg justify-center"
+                    onClick={() => setShowPaymentModal(true)}
                   >
                     Record Payment
                   </GlassButton>
-                  <div className="text-xs text-gray-500 mt-2 text-center sm:text-left">Only customer care can record payments.</div>
+                ) : (
+                  <div className="mt-6">
+                    <GlassButton
+                      variant="primary"
+                      icon={<CreditCard size={20} />}
+                      className="opacity-50 cursor-not-allowed h-12 md:h-14 w-full text-base md:text-lg justify-center"
+                      disabled
+                    >
+                      Record Payment
+                    </GlassButton>
+                    <div className="text-sm md:text-base text-gray-500 mt-3 text-center">
+                      Only customer care can record payments.
+                    </div>
+                  </div>
+                )}
+              </GlassCard>
+            )}
+
+            {/* Status Update Section */}
+            {(isAssignedTechnician || currentUser.role === 'admin') && (
+              <GlassCard className="bg-gradient-to-br from-orange-500/10 to-orange-400/5">
+                <h3 className="text-xl md:text-2xl font-bold text-orange-900 mb-6">Update Status</h3>
+                <StatusUpdateForm
+                  device={safeDevice}
+                  onStatusUpdate={handleStatusUpdate}
+                />
+              </GlassCard>
+            )}
+
+            {/* Technician Assignment */}
+            {currentUser.role === 'admin' && (
+              <GlassCard className="bg-gradient-to-br from-purple-500/10 to-purple-400/5">
+                <h3 className="text-xl md:text-2xl font-bold text-purple-900 mb-6">Assign Technician</h3>
+                <AssignTechnicianForm device={safeDevice} />
+              </GlassCard>
+            )}
+          </div>
+        </div>
+
+        {/* Full Width Sections */}
+        <div className="mt-8 space-y-8">
+          
+          {/* Device Timeline & Activity - Full Width for tablets */}
+          <GlassCard className="bg-gradient-to-br from-gray-500/10 to-gray-400/5">
+            <h3 className="text-xl md:text-2xl font-bold text-gray-900 mb-6">Device Timeline</h3>
+            
+            {timelineLoading ? (
+              <div className="text-center py-8">
+                <Loader2 className="animate-spin h-8 w-8 mx-auto mb-4 text-blue-600" />
+                <p className="text-gray-600">Loading activity...</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Status Timeline */}
+                <div className="space-y-4">
+                  {getTimelineEvents().length === 0 ? (
+                    <div className="text-center py-8">
+                      <History className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                      <p className="text-gray-600">No status changes recorded yet.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {getTimelineEvents().slice(0, 6).map((event, index) => (
+                        <div key={index} className="bg-white rounded-lg border border-gray-200 p-4">
+                          <div className="flex items-start gap-3">
+                            {event.icon}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-sm font-medium text-gray-900">
+                                  {event.typeLabel}
+                                </span>
+                                <span className="text-xs text-gray-500">
+                                  {formatRelativeTime(event.timestamp)}
+                                </span>
+                              </div>
+                              <p className="text-sm text-gray-600 mb-2">{event.description}</p>
+                              {event.durationLabel && (
+                                <span className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
+                                  Duration: {event.durationLabel}
+                                </span>
+                              )}
+                              <div className="text-xs text-gray-500 mt-1">
+                                by {getUserName(event.user)}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </GlassCard>
+
+          {/* Attachments Section */}
+          <GlassCard className="bg-gradient-to-br from-amber-500/10 to-amber-400/5">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
+              <h3 className="text-xl md:text-2xl font-bold text-amber-900 mb-4 md:mb-0">Attachments</h3>
+              
+              {(currentUser.role === 'admin' || currentUser.role === 'customer-care' || isAssignedTechnician) && (
+                <div className="flex gap-3">
+                  <label className="cursor-pointer">
+                    <input
+                      type="file"
+                      multiple
+                      onChange={handleAttachmentUpload}
+                      className="hidden"
+                      accept="image/*,.pdf,.doc,.docx,.txt"
+                    />
+                    <GlassButton
+                      variant="primary"
+                      icon={<Upload size={20} />}
+                      className="h-12 md:h-14 px-6 text-base md:text-lg"
+                      disabled={attachmentsLoading}
+                    >
+                      Upload Files
+                    </GlassButton>
+                  </label>
+                  
+                  {selectedAttachmentsForDelete.length > 0 && (
+                    <GlassButton
+                      variant="secondary"
+                      icon={<Trash2 size={20} />}
+                      className="h-12 md:h-14 px-6 text-base md:text-lg"
+                      onClick={() => setShowBulkDeleteModal(true)}
+                    >
+                      Delete ({selectedAttachmentsForDelete.length})
+                    </GlassButton>
+                  )}
                 </div>
               )}
+            </div>
+
+            {uploadProgress !== null && (
+              <div className="mb-4">
+                <div className="bg-blue-200 rounded-full h-2">
+                  <div 
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                    style={{ width: `${uploadProgress}%` }}
+                  ></div>
+                </div>
+                <p className="text-sm text-blue-600 mt-1">Uploading... {uploadProgress}%</p>
+              </div>
+            )}
+
+            {attachmentsError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
+                {attachmentsError}
+              </div>
+            )}
+
+            {attachments.length === 0 ? (
+              <div className="text-center py-8 md:py-12">
+                <Upload className="w-16 h-16 md:w-20 md:h-20 text-gray-400 mx-auto mb-4" />
+                <div className="text-gray-700 text-base md:text-lg">No attachments uploaded yet.</div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {attachments.map((att) => (
+                  <div key={att.id} className="bg-white rounded-lg border border-amber-200 p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="flex-shrink-0">
+                        {getFilePreview(att)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{att.file_name}</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {att.uploaded_at ? formatRelativeTime(att.uploaded_at) : ''}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          by {getUserName(att.uploaded_by)}
+                        </p>
+                        <div className="mt-3 flex gap-2">
+                          <a 
+                            href={att.file_url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200"
+                          >
+                            View
+                          </a>
+                          {(currentUser.role === 'admin' || att.uploaded_by === currentUser.id) && att.type !== 'invoice' && (
+                            <button
+                              onClick={() => toggleAttachmentSelection(att.id)}
+                              className={`text-xs px-2 py-1 rounded ${
+                                selectedAttachmentsForDelete.includes(att.id)
+                                  ? 'bg-red-100 text-red-700'
+                                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                              }`}
+                            >
+                              {selectedAttachmentsForDelete.includes(att.id) ? 'Selected' : 'Select'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </GlassCard>
+
+          {/* Warranty Information */}
+          {hasWarrantyData() && (
+            <GlassCard className="bg-gradient-to-br from-cyan-500/10 to-cyan-400/5">
+              <h3 className="text-xl md:text-2xl font-bold text-cyan-900 mb-6">Warranty Information</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                  <p className="text-sm md:text-base text-gray-500 mb-1">Status</p>
+                  <p className="text-gray-800 text-base md:text-lg font-medium">{warrantyInfo.status}</p>
+                </div>
+                {warrantyInfo.startDate && (
+                  <div>
+                    <p className="text-sm md:text-base text-gray-500 mb-1">Start Date</p>
+                    <p className="text-gray-800 text-base md:text-lg font-medium">
+                      {new Date(warrantyInfo.startDate).toLocaleDateString()}
+                    </p>
+                  </div>
+                )}
+                {warrantyInfo.endDate && (
+                  <div>
+                    <p className="text-sm md:text-base text-gray-500 mb-1">End Date</p>
+                    <p className="text-gray-800 text-base md:text-lg font-medium">
+                      {new Date(warrantyInfo.endDate).toLocaleDateString()}
+                    </p>
+                  </div>
+                )}
+              </div>
             </GlassCard>
           )}
-            
+
+          {/* Device Repair History */}
+          {hasRepairHistory() && (
+            <GlassCard className="bg-gradient-to-br from-rose-500/10 to-rose-400/5">
+              <h3 className="text-xl md:text-2xl font-bold text-rose-900 mb-6">Previous Repairs</h3>
+              <div className="space-y-4">
+                {deviceHistory.slice(0, 3).map((historyDevice) => (
+                  <div key={historyDevice.id} className="bg-white rounded-lg border border-rose-200 p-4">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div>
+                        <span className="text-sm text-gray-500">Date:</span>
+                        <p className="font-medium">{new Date(historyDevice.createdAt).toLocaleDateString()}</p>
+                      </div>
+                      <div>
+                        <span className="text-sm text-gray-500">Status:</span>
+                        <StatusBadge status={historyDevice.status} />
+                      </div>
+                      <div>
+                        <span className="text-sm text-gray-500">Customer:</span>
+                        <p className="font-medium">{historyDevice.customerName}</p>
+                      </div>
+                      <div>
+                        <span className="text-sm text-gray-500">Issue:</span>
+                        <p className="text-sm">{historyDevice.issueDescription || 'N/A'}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+          )}
         </div>
       </div>
       
       <PrintableSlip ref={printRef} device={safeDevice} />
 
-      {/* SMS Modal: Only Customer Care can use */}
+      {/* SMS Modal: Only Customer Care can use - Tablet Optimized */}
       {currentUser.role === 'customer-care' && (
-        <Modal isOpen={showSmsModal} onClose={() => { setShowSmsModal(false); setSmsMessage(''); setSmsResult(null); }} title="Send SMS" maxWidth="400px">
+        <Modal 
+          isOpen={showSmsModal} 
+          onClose={() => { setShowSmsModal(false); setSmsMessage(''); setSmsResult(null); }} 
+          title="Send SMS" 
+          maxWidth="600px"
+        >
           <form
             onSubmit={async e => {
               e.preventDefault();
@@ -1135,31 +1550,193 @@ const DeviceDetailPage: React.FC = () => {
                 setSmsResult(`Failed: ${smsResultObj.error}`);
               }
             }}
-            className="space-y-4"
+            className="space-y-6"
           >
             <div>
-              <label className="block text-gray-700 mb-1 font-medium">To</label>
-              <div className="py-2 px-4 bg-gray-100 rounded">{dbCustomer?.phone || customer?.phone || safeDevice.phoneNumber || 'N/A'}</div>
+              <label className="block text-gray-700 mb-3 font-semibold text-base md:text-lg">To</label>
+              <div className="py-4 px-6 bg-gray-100 rounded-lg text-base md:text-lg font-medium">
+                {dbCustomer?.phone || customer?.phone || safeDevice.phoneNumber || 'N/A'}
+              </div>
             </div>
             <div>
-              <label className="block text-gray-700 mb-1 font-medium">Message</label>
+              <label className="block text-gray-700 mb-3 font-semibold text-base md:text-lg">Message</label>
               <textarea
                 value={smsMessage}
                 onChange={e => setSmsMessage(e.target.value)}
-                rows={3}
-                className="w-full py-2 px-4 bg-white/30 backdrop-blur-md border border-white/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                rows={6}
+                className="w-full py-4 px-6 bg-white/30 backdrop-blur-md border border-white/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-base md:text-lg"
                 placeholder="Type your message here"
                 required
               />
+              <div className="mt-2 text-sm text-gray-500">
+                Character count: {smsMessage.length}/160
+              </div>
             </div>
-            {smsResult && <div className={`text-sm ${smsResult.startsWith('Failed') ? 'text-red-600' : 'text-green-600'}`}>{smsResult}</div>}
-            <div className="flex gap-3 justify-end mt-4">
-              <GlassButton type="button" variant="secondary" onClick={() => { setShowSmsModal(false); setSmsMessage(''); setSmsResult(null); }}>Cancel</GlassButton>
-              <GlassButton type="submit" variant="primary" disabled={smsSending}>{smsSending ? 'Sending...' : 'Send SMS'}</GlassButton>
+            {smsResult && (
+              <div className={`p-4 rounded-lg text-base md:text-lg ${
+                smsResult.startsWith('Failed') 
+                  ? 'bg-red-50 text-red-700 border border-red-200' 
+                  : 'bg-green-50 text-green-700 border border-green-200'
+              }`}>
+                {smsResult}
+              </div>
+            )}
+            <div className="flex gap-4 justify-end mt-6">
+              <GlassButton 
+                type="button" 
+                variant="secondary" 
+                onClick={() => { setShowSmsModal(false); setSmsMessage(''); setSmsResult(null); }}
+                className="h-12 md:h-14 px-6 md:px-8 text-base md:text-lg"
+              >
+                Cancel
+              </GlassButton>
+              <GlassButton 
+                type="submit" 
+                variant="primary" 
+                disabled={smsSending}
+                className="h-12 md:h-14 px-6 md:px-8 text-base md:text-lg"
+              >
+                {smsSending ? 'Sending...' : 'Send SMS'}
+              </GlassButton>
             </div>
           </form>
         </Modal>
       )}
+
+      {/* Payment Modal - Tablet Optimized */}
+      <Modal 
+        isOpen={showPaymentModal} 
+        onClose={() => {
+          setShowPaymentModal(false);
+          setPaymentAmount('');
+          setPaymentMethod('cash');
+          setPaymentError(null);
+        }} 
+        title="Record Payment" 
+        maxWidth="700px"
+      >
+        <form
+          onSubmit={async e => {
+            e.preventDefault();
+            await handleRecordPayment();
+          }}
+          className="space-y-6"
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-gray-700 mb-3 font-semibold text-base md:text-lg">Amount</label>
+              <input
+                type="number"
+                value={paymentAmount}
+                onChange={e => setPaymentAmount(e.target.value)}
+                step="0.01"
+                min="0"
+                className="w-full py-4 px-6 bg-white/30 backdrop-blur-md border border-white/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-base md:text-lg"
+                placeholder="0.00"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-gray-700 mb-3 font-semibold text-base md:text-lg">Payment Method</label>
+              <select
+                value={paymentMethod}
+                onChange={e => setPaymentMethod(e.target.value as 'cash' | 'card' | 'transfer')}
+                className="w-full py-4 px-6 bg-white/30 backdrop-blur-md border border-white/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-base md:text-lg"
+              >
+                <option value="cash">Cash</option>
+                <option value="card">Card</option>
+                <option value="transfer">Transfer</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="bg-gray-50 rounded-lg p-4 md:p-6">
+            <h4 className="font-semibold text-base md:text-lg text-gray-800 mb-3">Payment Summary</h4>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Customer:</span>
+                <span className="font-medium">{dbCustomer?.name || customer?.name || 'N/A'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Device:</span>
+                <span className="font-medium">{safeDevice.brand} {safeDevice.model}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Amount:</span>
+                <span className="font-bold text-lg">{paymentAmount ? formatCurrency(Number(paymentAmount)) : '0.00'}</span>
+              </div>
+            </div>
+          </div>
+
+          {paymentError && (
+            <div className="p-4 rounded-lg bg-red-50 text-red-700 border border-red-200 text-base md:text-lg">
+              {paymentError}
+            </div>
+          )}
+
+          <div className="flex gap-4 justify-end mt-6">
+            <GlassButton 
+              type="button" 
+              variant="secondary" 
+              onClick={() => {
+                setShowPaymentModal(false);
+                setPaymentAmount('');
+                setPaymentMethod('cash');
+                setPaymentError(null);
+              }}
+              className="h-12 md:h-14 px-6 md:px-8 text-base md:text-lg"
+            >
+              Cancel
+            </GlassButton>
+            <GlassButton 
+              type="submit" 
+              variant="primary" 
+              disabled={recordingPayment}
+              className="h-12 md:h-14 px-6 md:px-8 text-base md:text-lg"
+            >
+              {recordingPayment ? 'Recording...' : 'Record Payment'}
+            </GlassButton>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Payment Confirmation Modal */}
+      <Modal 
+        isOpen={showPaymentConfirmation} 
+        onClose={() => setShowPaymentConfirmation(false)} 
+        title="Payment Recorded" 
+        maxWidth="500px"
+      >
+        <div className="text-center py-6">
+          <CheckCircle className="w-16 h-16 md:w-20 md:h-20 text-green-600 mx-auto mb-4" />
+          <h3 className="text-xl md:text-2xl font-bold text-green-800 mb-4">Payment Successfully Recorded!</h3>
+          {lastPayment && (
+            <div className="bg-green-50 rounded-lg p-4 md:p-6 text-left">
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Amount:</span>
+                  <span className="font-bold text-lg">{formatCurrency(lastPayment.amount)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Method:</span>
+                  <span className="font-medium capitalize">{lastPayment.method}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Date:</span>
+                  <span className="font-medium">{new Date(lastPayment.payment_date).toLocaleDateString()}</span>
+                </div>
+              </div>
+            </div>
+          )}
+          <GlassButton 
+            variant="primary" 
+            onClick={() => setShowPaymentConfirmation(false)}
+            className="mt-6 h-12 md:h-14 px-6 md:px-8 text-base md:text-lg"
+          >
+            Close
+          </GlassButton>
+        </div>
+      </Modal>
 
       {/* Diagnostic Checklist Modal */}
       <DiagnosticChecklist
@@ -1176,6 +1753,47 @@ const DeviceDetailPage: React.FC = () => {
         onClose={() => setShowRepairChecklist(false)}
         onStatusUpdate={handleChecklistStatusUpdate}
       />
+
+      {/* Bulk Delete Confirmation Modal */}
+      <Modal 
+        isOpen={showBulkDeleteModal} 
+        onClose={() => setShowBulkDeleteModal(false)} 
+        title="Delete Attachments" 
+        maxWidth="500px"
+      >
+        <div className="space-y-6">
+          <div className="text-center py-4">
+            <AlertTriangle className="w-16 h-16 md:w-20 md:h-20 text-orange-500 mx-auto mb-4" />
+            <h3 className="text-lg md:text-xl font-bold text-gray-900 mb-2">
+              Confirm Deletion
+            </h3>
+            <p className="text-base text-gray-600">
+              Are you sure you want to delete {selectedAttachmentsForDelete.length} attachment(s)? 
+              This action cannot be undone.
+            </p>
+          </div>
+
+          <div className="flex gap-4 justify-end">
+            <GlassButton 
+              type="button" 
+              variant="secondary" 
+              onClick={() => setShowBulkDeleteModal(false)}
+              className="h-12 md:h-14 px-6 md:px-8 text-base md:text-lg"
+            >
+              Cancel
+            </GlassButton>
+            <GlassButton 
+              type="button" 
+              variant="primary" 
+              onClick={handleBulkDeleteAttachments}
+              disabled={attachmentsLoading}
+              className="h-12 md:h-14 px-6 md:px-8 text-base md:text-lg bg-red-600 hover:bg-red-700"
+            >
+              {attachmentsLoading ? 'Deleting...' : 'Delete'}
+            </GlassButton>
+          </div>
+        </div>
+      </Modal>
     </>
   );
 };

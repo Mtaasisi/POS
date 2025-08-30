@@ -103,7 +103,7 @@ const GlassInput = forwardRef<HTMLInputElement, GlassInputProps>(({
   // Size classes
   const sizeClasses = {
     sm: ['px-3 py-1.5 text-sm', 'min-h-8'],
-    md: ['px-4 py-2 text-sm', 'min-h-10'],
+    md: ['px-4 py-3 text-sm', 'min-h-10'],
     lg: ['px-4 py-3 text-base', 'min-h-12']
   };
 

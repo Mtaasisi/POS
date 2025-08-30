@@ -38,12 +38,12 @@ export const APP_CONFIG = {
     productUpdateInterval: 10000, // 10 seconds
     // Real-time connection settings
     connection: {
-      maxRetries: 2, // Reduced from 3 to 2 to prevent excessive retries
-      retryDelay: 3000, // Increased from 2 seconds to 3 seconds
-      maxRetryDelay: 10000, // Reduced from 15 seconds to 10 seconds
-      connectionTimeout: 5000, // 5 seconds
-      cooldownPeriod: 15000, // Increased from 10 seconds to 15 seconds between connection attempts
-      circuitBreakerTimeout: 60000, // 1 minute circuit breaker timeout
+      maxRetries: 1, // Reduced to 1 to prevent excessive retries
+      retryDelay: 5000, // Increased to 5 seconds
+      maxRetryDelay: 15000, // Increased to 15 seconds
+      connectionTimeout: 10000, // Increased to 10 seconds
+      cooldownPeriod: 30000, // Increased to 30 seconds between connection attempts
+      circuitBreakerTimeout: 120000, // 2 minutes circuit breaker timeout
     },
   },
 

@@ -11,7 +11,7 @@ interface Product {
   price: number;
   stockQuantity: number;
   category: string;
-  brand: string;
+
   image: string;
   barcode: string;
   variants?: any[];
@@ -26,8 +26,7 @@ interface ProductSearchSectionProps {
   setShowAdvancedFilters: (show: boolean) => void;
   selectedCategory: string;
   setSelectedCategory: (category: string) => void;
-  selectedBrand: string;
-  setSelectedBrand: (brand: string) => void;
+
   priceRange: { min: string; max: string };
   setPriceRange: (range: { min: string; max: string }) => void;
   stockFilter: 'all' | 'in-stock' | 'low-stock' | 'out-of-stock';
@@ -37,7 +36,7 @@ interface ProductSearchSectionProps {
   sortOrder: 'asc' | 'desc';
   setSortOrder: (order: 'asc' | 'desc') => void;
   categories: string[];
-  brands: string[];
+
   onAddToCart: (product: Product, variant?: any) => void;
   onAddExternalProduct: () => void;
   onSearch: (query: string) => void;
@@ -57,8 +56,7 @@ const ProductSearchSection: React.FC<ProductSearchSectionProps> = ({
   setShowAdvancedFilters,
   selectedCategory,
   setSelectedCategory,
-  selectedBrand,
-  setSelectedBrand,
+
   priceRange,
   setPriceRange,
   stockFilter,
@@ -68,7 +66,7 @@ const ProductSearchSection: React.FC<ProductSearchSectionProps> = ({
   sortOrder,
   setSortOrder,
   categories,
-  brands,
+
   onAddToCart,
   onAddExternalProduct,
   onSearch,
@@ -91,7 +89,7 @@ const ProductSearchSection: React.FC<ProductSearchSectionProps> = ({
       const suggestions = products.filter(product => 
         product.name.toLowerCase().includes(query.toLowerCase()) ||
         product.sku.toLowerCase().includes(query.toLowerCase()) ||
-        product.brand.toLowerCase().includes(query.toLowerCase()) ||
+
         product.category.toLowerCase().includes(query.toLowerCase())
       ).slice(0, 5);
       
@@ -135,8 +133,7 @@ const ProductSearchSection: React.FC<ProductSearchSectionProps> = ({
     // Category filter
     if (selectedCategory && product.category !== selectedCategory) return false;
     
-    // Brand filter
-    if (selectedBrand && product.brand !== selectedBrand) return false;
+    
     
     // Price range filter
     if (priceRange.min && product.price < parseFloat(priceRange.min)) return false;
@@ -200,7 +197,7 @@ const ProductSearchSection: React.FC<ProductSearchSectionProps> = ({
             <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-6 h-6 text-blue-500" />
             <input
               type="text"
-              placeholder="Search products by name, SKU, brand, category, or scan barcode..."
+              placeholder="Search products by name, SKU, category, or scan barcode..."
               value={searchQuery}
               onChange={handleSearchInputChange}
               onKeyPress={handleSearchInputKeyPress}
@@ -262,9 +259,9 @@ const ProductSearchSection: React.FC<ProductSearchSectionProps> = ({
                       <div className="text-2xl">{product.image}</div>
                       <div className="flex-1">
                         <div className="font-medium text-gray-900">{product.name}</div>
-                        <div className="text-sm text-gray-500">
-                          {product.sku} • {product.brand} • {product.category}
-                        </div>
+                                        <div className="text-sm text-gray-500">
+                  {product.sku} • {product.category}
+                </div>
                       </div>
                       <div className="text-right">
                         <div className="font-semibold text-green-600">
@@ -313,20 +310,7 @@ const ProductSearchSection: React.FC<ProductSearchSectionProps> = ({
                   </select>
                 </div>
 
-                {/* Brand Filter */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Brand</label>
-                  <select
-                    value={selectedBrand}
-                    onChange={(e) => setSelectedBrand(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">All Brands</option>
-                    {brands.map((brand) => (
-                      <option key={brand} value={brand}>{brand}</option>
-                    ))}
-                  </select>
-                </div>
+
 
                 {/* Price Range */}
                 <div>

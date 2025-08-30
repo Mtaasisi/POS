@@ -50,10 +50,7 @@ export function validateProductCompleteness(product: Product): ProductValidation
     missingProductFields.push('categoryId');
   }
 
-  if (!product.brandId) {
-    warnings.push('Product brand is not assigned');
-    missingProductFields.push('brandId');
-  }
+
 
   if (!product.supplierId) {
     warnings.push('Product supplier is not assigned');
@@ -95,10 +92,7 @@ export function validateProductCompleteness(product: Product): ProductValidation
         variantMissingFields.push('minQuantity');
       }
 
-      if (!variant.barcode) {
-        warnings.push(`Variant ${index + 1}: Barcode is recommended`);
-        variantMissingFields.push('barcode');
-      }
+      
 
       
 
@@ -140,11 +134,11 @@ export function calculateProductCompleteness(product: Product): ProductCompleten
   const optionalFields = [
     'description',
     'categoryId',
-    'brandId',
+
     'supplierId',
     'minQuantity',
     'maxQuantity',
-    'barcode',
+    
 
     'attributes'
   ];
@@ -176,12 +170,7 @@ export function calculateProductCompleteness(product: Product): ProductCompleten
   }
   totalFields++;
 
-  if (product.brandId) {
-    completedFields++;
-  } else {
-    missingOptional.push('brandId');
-  }
-  totalFields++;
+
 
   if (product.supplierId) {
     completedFields++;
@@ -233,12 +222,7 @@ export function calculateProductCompleteness(product: Product): ProductCompleten
       }
       totalFields++;
 
-      if (variant.barcode) {
-        completedFields++;
-      } else {
-        missingOptional.push(`variant-${variant.id}-barcode`);
-      }
-      totalFields++;
+
 
 
     });
@@ -278,7 +262,7 @@ export function getDefaultVariantValues(): Partial<ProductVariant> {
     costPrice: 0,
     quantity: 0,
 
-    barcode: '',
+
     attributes: {},
     isActive: true
   };
@@ -331,10 +315,7 @@ export function autoFixProductData(product: Product): Product {
         fixedVariant.maxQuantity = 100;
       }
 
-      // Set default barcode if missing
-      if (!fixedVariant.barcode) {
-        fixedVariant.barcode = `${fixedVariant.sku}-${Date.now()}`;
-      }
+
 
 
 

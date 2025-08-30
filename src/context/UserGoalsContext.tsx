@@ -10,6 +10,7 @@ import {
   getOrCreateDefaultGoals,
   getUserGoalProgress
 } from '../lib/userGoalsApi';
+import { supabase } from '../lib/supabaseClient';
 
 interface UserGoalsContextType {
   userGoals: UserDailyGoal[];
@@ -36,8 +37,39 @@ export const UserGoalsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [userGoals, setUserGoals] = useState<UserDailyGoal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tableExists, setTableExists] = useState<boolean | null>(null);
   const authContext = useContext(AuthContext);
   const currentUser = authContext?.currentUser || null;
+
+  // Check if user_daily_goals table exists
+  const checkTableExists = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('user_daily_goals')
+        .select('id')
+        .limit(1);
+      
+      if (error) {
+        if (error.code === '42P01' || error.message?.includes('does not exist')) {
+          console.warn('user_daily_goals table does not exist');
+          setTableExists(false);
+          return false;
+        }
+        if (error.code === '406' || error.message?.includes('Not Acceptable')) {
+          console.warn('RLS policy issue with user_daily_goals table');
+          setTableExists(false);
+          return false;
+        }
+      }
+      
+      setTableExists(true);
+      return true;
+    } catch (error) {
+      console.error('Error checking if user_daily_goals table exists:', error);
+      setTableExists(false);
+      return false;
+    }
+  }, []);
 
   const refreshGoals = useCallback(async () => {
     if (!currentUser?.id) {
@@ -50,6 +82,15 @@ export const UserGoalsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setLoading(true);
       setError(null);
       
+      // Check if table exists first
+      const tableExists = await checkTableExists();
+      if (!tableExists) {
+        console.log('user_daily_goals table not available, skipping goals loading');
+        setUserGoals([]);
+        setLoading(false);
+        return;
+      }
+      
       // Get or create default goals for the user
       const goals = await getOrCreateDefaultGoals(currentUser.id, currentUser.role);
       setUserGoals(goals);
@@ -61,10 +102,10 @@ export const UserGoalsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     } finally {
       setLoading(false);
     }
-  }, [currentUser?.id, currentUser?.role]);
+  }, [currentUser?.id, currentUser?.role, checkTableExists]);
 
   const getGoalProgress = useCallback(async (goalType: UserDailyGoal['goal_type']) => {
-    if (!currentUser?.id) {
+    if (!currentUser?.id || !tableExists) {
       return { current: 0, goal: 5, progress: 0 };
     }
 
@@ -74,9 +115,14 @@ export const UserGoalsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       console.error('Error getting goal progress:', err);
       return { current: 0, goal: 5, progress: 0 };
     }
-  }, [currentUser?.id, currentUser]);
+  }, [currentUser?.id, currentUser, tableExists]);
 
   const updateGoal = useCallback(async (goalId: string, updates: { goal_value?: number; is_active?: boolean }) => {
+    if (!tableExists) {
+      console.warn('Cannot update goal: user_daily_goals table not available');
+      return false;
+    }
+    
     try {
       const updatedGoal = await updateUserDailyGoal(goalId, updates);
       if (updatedGoal) {
@@ -90,10 +136,10 @@ export const UserGoalsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       console.error('Error updating goal:', err);
       return false;
     }
-  }, []);
+  }, [tableExists]);
 
   const createGoal = useCallback(async (goalData: { goal_type: UserDailyGoal['goal_type']; goal_value: number }) => {
-    if (!currentUser?.id) return false;
+    if (!currentUser?.id || !tableExists) return false;
 
     try {
       const newGoal = await createUserDailyGoal({
@@ -110,9 +156,14 @@ export const UserGoalsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       console.error('Error creating goal:', err);
       return false;
     }
-  }, [currentUser?.id]);
+  }, [currentUser?.id, tableExists]);
 
   const deleteGoal = useCallback(async (goalId: string) => {
+    if (!tableExists) {
+      console.warn('Cannot delete goal: user_daily_goals table not available');
+      return false;
+    }
+    
     try {
       const success = await deleteUserDailyGoal(goalId);
       if (success) {
@@ -124,7 +175,7 @@ export const UserGoalsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       console.error('Error deleting goal:', err);
       return false;
     }
-  }, []);
+  }, [tableExists]);
 
   // Load goals when user changes
   useEffect(() => {

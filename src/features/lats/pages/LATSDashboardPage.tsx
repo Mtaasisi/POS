@@ -13,7 +13,7 @@ import ErrorState from '../components/ui/ErrorState';
 import {
   ShoppingCart, Package, Users, BarChart3, TrendingUp, FileText, Crown, CreditCard,
   DollarSign, Activity, Target, Award, Calendar, Clock, ArrowRight, Plus, Settings,
-  MessageSquare, Zap, Globe
+  MessageSquare, Zap, Globe, Truck
 } from 'lucide-react';
 
 const LATSDashboardPage: React.FC = () => {
@@ -176,6 +176,13 @@ const LATSDashboardPage: React.FC = () => {
               Start New Sale
             </GlassButton>
             <GlassButton
+              onClick={() => handleNavigation('/lats/purchase-order/create')}
+              icon={<Truck size={18} />}
+              className="bg-gradient-to-r from-orange-500 to-amber-600 text-white"
+            >
+              Create Purchase Order
+            </GlassButton>
+            <GlassButton
               onClick={() => handleNavigation('/lats/add-product')}
               icon={<Plus size={18} />}
               className="bg-gradient-to-r from-green-500 to-green-600 text-white"
@@ -185,7 +192,7 @@ const LATSDashboardPage: React.FC = () => {
             <GlassButton
               onClick={() => handleNavigation('/lats/analytics')}
               icon={<BarChart3 size={18} />}
-              className="bg-gradient-to-r from-orange-500 to-orange-600 text-white"
+              className="bg-gradient-to-r from-purple-500 to-purple-600 text-white"
             >
               View Analytics
             </GlassButton>

@@ -16,7 +16,7 @@ import CountdownTimer from '../../../features/shared/components/ui/CountdownTime
 import { useAuth } from '../../../context/AuthContext';
 import deviceModels from '../../../data/deviceModels';
 import ModelSuggestionInput from '../../../features/shared/components/ui/ModelSuggestionInput';
-import BrandInput from '../../../features/shared/components/ui/BrandInput';
+
 
 import ConditionAssessment from '../components/ConditionAssessment';
 import DeviceQRCodePrint from '../components/DeviceQRCodePrint';
@@ -70,7 +70,7 @@ const DeviceIntakeUnifiedPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [deviceImages, setDeviceImages] = useState<string[]>([]);
   const [showModelSuggestions, setShowModelSuggestions] = useState(false);
-  const [showBrandSuggestions, setShowBrandSuggestions] = useState(false);
+
   const navigate = useNavigate();
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [showCustomerModal, setShowCustomerModal] = useState(false);
@@ -322,8 +322,8 @@ const DeviceIntakeUnifiedPage: React.FC = () => {
 
   // Enhanced AI Analysis function with offline capabilities
   const analyzeDeviceProblem = async () => {
-    if (!formData.brand || !formData.model || !formData.issueDescription.trim()) {
-      toast.error('Please fill in brand, model, and issue description for AI analysis');
+    if (!formData.model || !formData.issueDescription.trim()) {
+      toast.error('Please fill in model and issue description for AI analysis');
       return;
     }
 
@@ -347,7 +347,6 @@ const DeviceIntakeUnifiedPage: React.FC = () => {
         toast.info('Working offline - using local AI analysis');
         
         const offlineResult = await offlineAIService.analyzeDevice(
-          formData.brand,
           formData.model,
           formData.issueDescription,
           aiLanguage
@@ -397,7 +396,7 @@ const DeviceIntakeUnifiedPage: React.FC = () => {
         if (aiLanguage === 'swahili') {
           prompt = `Analyze this device repair problem and provide detailed solutions in SIMPLE SWAHILI with TECHNICAL TERMS IN ENGLISH:
 
-Device: ${formData.brand} ${formData.model}
+Device: ${formData.model}
 Issue Description: ${formData.issueDescription}
 Device Conditions: ${selectedConditions.join(', ')} ${otherConditionText ? `, ${otherConditionText}` : ''}
 
@@ -445,7 +444,7 @@ TECHNICAL TERMS TO USE IN ENGLISH:
         } else {
           prompt = `Analyze this device repair problem and provide detailed solutions in ENGLISH:
 
-Device: ${formData.brand} ${formData.model}
+Device: ${formData.model}
 Issue Description: ${formData.issueDescription}
 Device Conditions: ${selectedConditions.join(', ')} ${otherConditionText ? `, ${otherConditionText}` : ''}
 
@@ -1460,20 +1459,7 @@ IMPORTANT INSTRUCTIONS:
               
               <form className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Brand */}
-                  <div>
-                    <label className={`block mb-2 font-medium ${fieldErrors.brand ? 'text-red-600' : 'text-gray-700'}`}>
-                      Brand *
-                      {!formData.brand && <span className="text-xs text-gray-400 ml-2">(Required)</span>}
-                    </label>
-                    <BrandInput
-                      value={formData.brand}
-                      onChange={val => setFormData(prev => ({ ...prev, brand: val }))}
-                      placeholder="Enter brand"
-                      required
-                      className={`w-full ${!formData.brand ? 'ring-2 ring-yellow-200' : ''}`}
-                    />
-                  </div>
+
                   {/* Model */}
                   <div>
                     <label className={`block mb-2 font-medium ${fieldErrors.model ? 'text-red-600' : 'text-gray-700'}`}>
@@ -1487,7 +1473,7 @@ IMPORTANT INSTRUCTIONS:
                       required
                       className={`w-full ${!formData.model ? 'ring-2 ring-yellow-200' : ''}`}
                       modelLogos={modelLogos}
-                      brand={formData.brand}
+
                     />
                   </div>
                   {/* IMEI or Serial Number */}

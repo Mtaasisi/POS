@@ -173,10 +173,10 @@ const DeviceQRCodePrint: React.FC<DeviceQRCodePrintProps> = ({
                     <span class="label">Device ID:</span>
                     <span class="value">${device.id}</span>
                   </div>
-                  <div class="info-row">
-                    <span class="label">Brand/Model:</span>
-                    <span class="value">${device.brand} ${device.model}</span>
-                  </div>
+                                      <div class="info-row">
+                      <span class="label">Model:</span>
+                      <span class="value">${device.model}</span>
+                    </div>
                   <div class="info-row">
                     <span class="label">Serial/IMEI:</span>
                     <span class="value">${device.serialNumber}</span>
@@ -275,10 +275,10 @@ const DeviceQRCodePrint: React.FC<DeviceQRCodePrintProps> = ({
             <span className="font-medium text-gray-700">Device ID:</span>
             <span className="text-gray-900 font-mono">{device.id}</span>
           </div>
-          <div className="flex justify-between items-center">
-            <span className="font-medium text-gray-700">Brand/Model:</span>
-            <span className="text-gray-900">{device.brand} {device.model}</span>
-          </div>
+                      <div className="flex justify-between items-center">
+              <span className="font-medium text-gray-700">Model:</span>
+              <span className="text-gray-900">{device.model}</span>
+            </div>
           <div className="flex justify-between items-center">
             <span className="font-medium text-gray-700">Customer:</span>
             <span className="text-gray-900">{device.customerName}</span>

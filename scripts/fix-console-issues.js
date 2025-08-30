@@ -1,282 +1,136 @@
 #!/usr/bin/env node
 
 /**
- * Console Issues Fix Script
+ * Fix Console Issues Script
  * 
- * This script addresses multiple console issues:
- * 1. HTTP 431 "Request Header Fields Too Large" errors
- * 2. QUIC Protocol errors
- * 3. Excessive console logging
- * 4. localStorage cleanup
+ * This script addresses the console spam and connection issues in the LATS application.
  */
 
-console.log('🔧 Console Issues Fix Script');
-console.log('============================\n');
+const fs = require('fs');
+const path = require('path');
 
-// Function to get size of localStorage item
-function getItemSize(key) {
-  const value = localStorage.getItem(key);
-  return value ? new Blob([value]).size : 0;
+console.log('🔧 Fixing Console Issues...\n');
+
+// 1. Reduce real-time stock logging
+const realTimeStockPath = path.join(process.cwd(), 'src/features/lats/lib/realTimeStock.ts');
+if (fs.existsSync(realTimeStockPath)) {
+  console.log('📋 Reducing real-time stock logging...');
+  let content = fs.readFileSync(realTimeStockPath, 'utf8');
+  
+  // Reduce retry logging
+  content = content.replace(
+    /console\.log\('🔄 Retry attempt \d+\/\d+ in \d+ms'\);/g,
+    '// console.log(\'🔄 Retry attempt \' + this.retryCount + \'/\' + this.maxRetries + \' in \' + retryDelay + \'ms\');'
+  );
+  
+  // Reduce connection logging
+  content = content.replace(
+    /console\.log\('🔌 WebSocket connection closed:'/g,
+    '// console.log(\'🔌 WebSocket connection closed:\''
+  );
+  
+  fs.writeFileSync(realTimeStockPath, content, 'utf8');
+  console.log('✅ Reduced real-time stock logging');
 }
 
-// Function to format bytes
-function formatBytes(bytes) {
-  if (bytes === 0) return '0 Bytes';
-  const k = 1024;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+// 2. Reduce PaymentTrackingModal logging
+const paymentTrackingPath = path.join(process.cwd(), 'src/features/lats/components/pos/PaymentTrackingModal.tsx');
+if (fs.existsSync(paymentTrackingPath)) {
+  console.log('📋 Reducing PaymentTrackingModal logging...');
+  let content = fs.readFileSync(paymentTrackingPath, 'utf8');
+  
+  // Reduce modal rendering logs
+  content = content.replace(
+    /console\.log\('🔍 PaymentTrackingModal: Modal is open, rendering\.\.\.'\);/g,
+    '// console.log(\'🔍 PaymentTrackingModal: Modal is open, rendering...\');'
+  );
+  
+  // Reduce fetch logs
+  content = content.replace(
+    /console\.log\('🔄 PaymentTrackingModal: Fetching payment data\.\.\.'\);/g,
+    '// console.log(\'🔄 PaymentTrackingModal: Fetching payment data...\');'
+  );
+  
+  fs.writeFileSync(paymentTrackingPath, content, 'utf8');
+  console.log('✅ Reduced PaymentTrackingModal logging');
 }
 
-// Function to analyze localStorage
-function analyzeLocalStorage() {
-  console.log('📋 Analyzing localStorage...');
+// 3. Reduce payment tracking service logging
+const paymentServicePath = path.join(process.cwd(), 'src/lib/paymentTrackingService.ts');
+if (fs.existsSync(paymentServicePath)) {
+  console.log('📋 Reducing payment tracking service logging...');
+  let content = fs.readFileSync(paymentServicePath, 'utf8');
   
-  const items = [];
-  let totalSize = 0;
+  // Reduce fetch logs
+  content = content.replace(
+    /console\.log\('🔍 PaymentTrackingService: Fetching payment transactions\.\.\.'\);/g,
+    '// console.log(\'🔍 PaymentTrackingService: Fetching payment transactions...\');'
+  );
   
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    const size = getItemSize(key);
-    items.push({ key, size });
-    totalSize += size;
-  }
+  // Reduce found logs
+  content = content.replace(
+    /console\.log\(`📊 PaymentTrackingService: Found \$\{devicePayments\.length\} device payments`\);/g,
+    '// console.log(`📊 PaymentTrackingService: Found ${devicePayments.length} device payments`);'
+  );
   
-  // Sort by size (largest first)
-  items.sort((a, b) => b.size - a.size);
+  content = content.replace(
+    /console\.log\(`📊 PaymentTrackingService: Found \$\{posSales\.length\} POS sales`\);/g,
+    '// console.log(`📊 PaymentTrackingService: Found ${posSales.length} POS sales`);'
+  );
   
-  console.log(`📊 Found ${items.length} items, total size: ${formatBytes(totalSize)}`);
-  
-  // Show largest items
-  console.log('\n🔍 Largest localStorage items:');
-  items.slice(0, 5).forEach((item, index) => {
-    console.log(`  ${index + 1}. ${item.key}: ${formatBytes(item.size)}`);
-  });
-  
-  return { items, totalSize };
+  fs.writeFileSync(paymentServicePath, content, 'utf8');
+  console.log('✅ Reduced payment tracking service logging');
 }
 
-// Function to clean up large localStorage items
-function cleanupLocalStorage() {
-  console.log('\n🧹 Cleaning up localStorage...');
+// 4. Reduce WhatsApp context logging
+const whatsappContextPath = path.join(process.cwd(), 'src/context/WhatsAppContext.tsx');
+if (fs.existsSync(whatsappContextPath)) {
+  console.log('📋 Reducing WhatsApp context logging...');
+  let content = fs.readFileSync(whatsappContextPath, 'utf8');
   
-  const { items, totalSize } = analyzeLocalStorage();
-  const largeItems = items.filter(item => item.size > 50 * 1024); // 50KB threshold
+  // Reduce fetch logs
+  content = content.replace(
+    /console\.log\('🔍 Fetching WhatsApp instances for user:'/g,
+    '// console.log(\'🔍 Fetching WhatsApp instances for user:\''
+  );
   
-  if (largeItems.length === 0) {
-    console.log('✅ No large items found, localStorage is clean');
-    return;
-  }
+  // Reduce success logs
+  content = content.replace(
+    /console\.log\('✅ Successfully fetched \d+ WhatsApp instances'\);/g,
+    '// console.log(\'✅ Successfully fetched \' + instances.length + \' WhatsApp instances\');'
+  );
   
-  console.log(`⚠️ Found ${largeItems.length} large items that may cause 431 errors:`);
-  
-  // Remove large auth tokens and session data
-  const itemsToRemove = [
-    'supabase.auth.token',
-    'repair-app-auth-token',
-    'supabase.auth.expires_at',
-    'supabase.auth.refresh_token',
-    'supabase.auth.access_token'
-  ];
-  
-  let removedCount = 0;
-  let removedSize = 0;
-  
-  itemsToRemove.forEach(key => {
-    const size = getItemSize(key);
-    if (size > 0) {
-      localStorage.removeItem(key);
-      removedCount++;
-      removedSize += size;
-      console.log(`  🗑️ Removed ${key}: ${formatBytes(size)}`);
-    }
-  });
-  
-  // Remove other large items that might cause issues
-  largeItems.forEach(item => {
-    if (item.size > 100 * 1024 && !itemsToRemove.includes(item.key)) { // 100KB threshold
-      localStorage.removeItem(item.key);
-      removedCount++;
-      removedSize += item.size;
-      console.log(`  🗑️ Removed large item ${item.key}: ${formatBytes(item.size)}`);
-    }
-  });
-  
-  console.log(`\n✅ Cleanup complete: removed ${removedCount} items, freed ${formatBytes(removedSize)}`);
+  fs.writeFileSync(whatsappContextPath, content, 'utf8');
+  console.log('✅ Reduced WhatsApp context logging');
 }
 
-// Function to fix network configuration
-function fixNetworkConfig() {
-  console.log('\n🌐 Fixing network configuration...');
+// 5. Reduce external barcode scanner logging
+const barcodeScannerPath = path.join(process.cwd(), 'src/hooks/useExternalBarcodeScanner.ts');
+if (fs.existsSync(barcodeScannerPath)) {
+  console.log('📋 Reducing external barcode scanner logging...');
+  let content = fs.readFileSync(barcodeScannerPath, 'utf8');
   
-  // Check if we're in a browser environment
-  if (typeof window === 'undefined') {
-    console.log('⚠️ Not in browser environment, skipping network fixes');
-    return;
-  }
+  // Reduce initialization logs
+  content = content.replace(
+    /console\.log\('🔍 External barcode scanner initialized successfully'\);/g,
+    '// console.log(\'🔍 External barcode scanner initialized successfully\');'
+  );
   
-  // Override fetch to handle QUIC protocol errors
-  const originalFetch = window.fetch;
-  window.fetch = async (input, init) => {
-    try {
-      return await originalFetch(input, init);
-    } catch (error) {
-      // Handle QUIC protocol errors
-      if (error.message && error.message.includes('ERR_QUIC_PROTOCOL_ERROR')) {
-        console.warn('🌐 QUIC protocol error detected, retrying with different protocol...');
-        
-        // Try to modify the request to use HTTP/1.1 instead of HTTP/3
-        const modifiedInit = {
-          ...init,
-          headers: {
-            ...init?.headers,
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1'
-          }
-        };
-        
-        try {
-          return await originalFetch(input, modifiedInit);
-        } catch (retryError) {
-          console.error('🌐 Retry failed:', retryError.message);
-          throw retryError;
-        }
-      }
-      throw error;
-    }
-  };
+  // Reduce stop logs
+  content = content.replace(
+    /console\.log\('🔍 External barcode scanning stopped'\);/g,
+    '// console.log(\'🔍 External barcode scanning stopped\');'
+  );
   
-  console.log('✅ Network error handling configured');
+  fs.writeFileSync(barcodeScannerPath, content, 'utf8');
+  console.log('✅ Reduced external barcode scanner logging');
 }
 
-// Function to reduce console logging
-function reduceConsoleLogging() {
-  console.log('\n🔇 Reducing console logging...');
-  
-  if (typeof window === 'undefined') {
-    console.log('⚠️ Not in browser environment, skipping console fixes');
-    return;
-  }
-  
-  // Override console methods to reduce spam
-  const originalLog = console.log;
-  const originalWarn = console.warn;
-  const originalError = console.error;
-  
-  // Filter out common spam patterns
-  const spamPatterns = [
-    'AudioContext: User interaction detected',
-    'AudioContext: Initialized successfully',
-    'AudioContext: Waiting for user interaction',
-    'EnhancedInventoryTab Debug:',
-    'LATS Unified Inventory: Loading data',
-    'Loading essential data in parallel',
-    'Categories loaded',
-    'Brands loaded',
-    'Suppliers loaded',
-    'Products loaded',
-    'Sales loaded',
-    'Running database diagnostics',
-    'Database connection successful',
-    'User authenticated:'
-  ];
-  
-  console.log = (...args) => {
-    const message = args.join(' ');
-    const isSpam = spamPatterns.some(pattern => message.includes(pattern));
-    
-    if (!isSpam) {
-      originalLog.apply(console, args);
-    }
-  };
-  
-  console.warn = (...args) => {
-    const message = args.join(' ');
-    const isSpam = spamPatterns.some(pattern => message.includes(pattern));
-    
-    if (!isSpam) {
-      originalWarn.apply(console, args);
-    }
-  };
-  
-  console.error = (...args) => {
-    // Don't filter error messages
-    originalError.apply(console, args);
-  };
-  
-  console.log('✅ Console logging reduced (spam filtered)');
-}
-
-// Function to check for HTTP 431 errors
-function checkFor431Errors() {
-  console.log('\n🔍 Checking for HTTP 431 errors...');
-  
-  if (typeof window === 'undefined') {
-    console.log('⚠️ Not in browser environment, skipping 431 check');
-    return;
-  }
-  
-  // Override fetch to detect 431 errors
-  const originalFetch = window.fetch;
-  window.fetch = async (input, init) => {
-    try {
-      const response = await originalFetch(input, init);
-      
-      if (response.status === 431) {
-        console.error('❌ HTTP 431 error detected!');
-        console.error('   URL:', typeof input === 'string' ? input : input.url);
-        console.error('   This usually means request headers are too large');
-        console.error('   Consider cleaning localStorage or reducing header size');
-        
-        // Automatically trigger cleanup
-        cleanupLocalStorage();
-      }
-      
-      return response;
-    } catch (error) {
-      throw error;
-    }
-  };
-  
-  console.log('✅ HTTP 431 error detection configured');
-}
-
-// Main function
-async function main() {
-  try {
-    // Check if we're in a browser environment
-    if (typeof window !== 'undefined') {
-      console.log('🌐 Browser environment detected');
-      
-      // Run all fixes
-      analyzeLocalStorage();
-      cleanupLocalStorage();
-      fixNetworkConfig();
-      reduceConsoleLogging();
-      checkFor431Errors();
-      
-      console.log('\n🎉 All fixes applied successfully!');
-      console.log('\n📋 Summary of changes:');
-      console.log('  ✅ localStorage cleaned up');
-      console.log('  ✅ Network error handling improved');
-      console.log('  ✅ Console logging reduced');
-      console.log('  ✅ HTTP 431 error detection added');
-      
-      console.log('\n💡 Tips:');
-      console.log('  • Refresh the page to see the improvements');
-      console.log('  • Monitor the console for any remaining issues');
-      console.log('  • If 431 errors persist, manually clear localStorage');
-      
-    } else {
-      console.log('🖥️ Node.js environment detected');
-      console.log('⚠️ This script is designed for browser environments');
-      console.log('💡 Run this in your browser console instead');
-    }
-    
-  } catch (error) {
-    console.error('❌ Error running fixes:', error.message);
-  }
-}
-
-// Run the script
-main();
+console.log('\n✅ Console issues fixed!');
+console.log('📝 Changes made:');
+console.log('   - Reduced real-time stock retry logging');
+console.log('   - Reduced PaymentTrackingModal rendering logs');
+console.log('   - Reduced payment tracking service fetch logs');
+console.log('   - Reduced WhatsApp context fetch logs');
+console.log('   - Reduced external barcode scanner logs');
+console.log('\n🔄 Please restart your development server to see the changes.');

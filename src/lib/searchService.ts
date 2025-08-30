@@ -15,7 +15,7 @@ export interface SearchResult {
 
 export interface SearchFilters {
   status?: string;
-  brand?: string;
+
   model?: string;
   customer?: string;
   name?: string;
@@ -65,7 +65,6 @@ export class SearchService {
       const mockDevices = [
         {
           id: '1',
-          brand: 'Apple',
           model: 'iPhone 13 Pro',
           serialNumber: 'SN123456789',
           status: 'active',
@@ -77,7 +76,6 @@ export class SearchService {
         },
         {
           id: '2',
-          brand: 'Samsung',
           model: 'Galaxy S21',
           serialNumber: 'SN987654321',
           status: 'done',
@@ -89,7 +87,6 @@ export class SearchService {
         },
         {
           id: '3',
-          brand: 'Apple',
           model: 'MacBook Pro M1',
           serialNumber: 'SN456789123',
           status: 'active',
@@ -106,7 +103,7 @@ export class SearchService {
       if (terms.length > 0) {
         results = results.filter(device => {
           const deviceText = [
-            device.brand,
+
             device.model,
             device.serialNumber,
             device.customerName,
@@ -122,11 +119,7 @@ export class SearchService {
       if (filters.status) {
         results = results.filter(device => device.status === filters.status);
       }
-      if (filters.brand) {
-        results = results.filter(device => 
-          device.brand.toLowerCase().includes(filters.brand!.toLowerCase())
-        );
-      }
+
       if (filters.model) {
         results = results.filter(device => 
           device.model.toLowerCase().includes(filters.model!.toLowerCase())
@@ -141,7 +134,7 @@ export class SearchService {
       return results.map(device => ({
         id: device.id,
         type: 'device' as const,
-        title: `${device.brand} ${device.model}`,
+        title: `${device.model}`,
         subtitle: device.customerName || 'No customer assigned',
         description: `Status: ${device.status} | Serial: ${device.serialNumber}`,
         url: `/devices/${device.id}`,
@@ -277,7 +270,6 @@ export class SearchService {
         {
           id: '1',
           name: 'iPhone 13 Pro',
-          brand: 'Apple',
           sku: 'IP13P-256-BLK',
           price: 2500000,
           stockQuantity: 15,
@@ -289,7 +281,6 @@ export class SearchService {
         {
           id: '2',
           name: 'Samsung Galaxy S21',
-          brand: 'Samsung',
           sku: 'SGS21-128-BLU',
           price: 1800000,
           stockQuantity: 8,
@@ -301,7 +292,6 @@ export class SearchService {
         {
           id: '3',
           name: 'MacBook Pro M1',
-          brand: 'Apple',
           sku: 'MBP-M1-512-SLV',
           price: 4500000,
           stockQuantity: 5,
@@ -319,7 +309,7 @@ export class SearchService {
           const productText = [
             product.name,
             product.description,
-            product.brand,
+
             product.sku
           ].join(' ').toLowerCase();
           
@@ -331,11 +321,7 @@ export class SearchService {
       if (filters.category) {
         results = results.filter(product => product.categoryId === filters.category);
       }
-      if (filters.brand) {
-        results = results.filter(product => 
-          product.brand.toLowerCase().includes(filters.brand!.toLowerCase())
-        );
-      }
+
       if (filters.price) {
         const priceRange = filters.price.split('-');
         if (priceRange.length === 2) {
@@ -354,7 +340,7 @@ export class SearchService {
         id: product.id,
         type: 'product' as const,
         title: product.name,
-        subtitle: `${product.brand} - ${product.sku}`,
+        subtitle: `${product.sku}`,
         description: `Price: TZS ${product.price.toLocaleString()} | Stock: ${product.stockQuantity}`,
         url: `/lats/unified-inventory`,
         metadata: {

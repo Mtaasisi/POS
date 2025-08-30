@@ -1,19 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { z } from 'zod';
 import { useNavigate } from 'react-router-dom';
 import GlassCard from '../../shared/components/ui/GlassCard';
 import GlassButton from '../../shared/components/ui/GlassButton';
 import { BackButton } from '../../shared/components/ui/BackButton';
 import { toast } from 'react-hot-toast';
-import { Save, ArrowLeft, MapPin, Store, X, Plus, Check, Layers, Palette, HardDrive, Zap, Cpu, Monitor, Battery, Camera, Ruler, FileText, Building } from 'lucide-react';
+import { Save, ArrowLeft, MapPin, Store, X, Plus, Check, Layers, Palette, HardDrive, Zap, Cpu, Monitor, Battery, Camera, Ruler, FileText, Clock } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useAuth } from '../../../context/AuthContext';
 import { retryWithBackoff } from '../../../lib/supabaseClient';
-import { getActiveBrands, Brand } from '../../../lib/brandApi';
+
 import { getActiveCategories, Category } from '../../../lib/categoryApi';
 import { getActiveSuppliers, Supplier } from '../../../lib/supplierApi';
 import { StoreLocation } from '../../settings/types/storeLocation';
 import { storeLocationApi } from '../../settings/utils/storeLocationApi';
+import { generateSKU } from '../lib/skuUtils';
+import { duplicateProduct, generateProductReport, exportProductData } from '../lib/productUtils';
 
 // Extracted components
 import ProductInformationForm from '../components/product/ProductInformationForm';
@@ -21,12 +23,12 @@ import PricingAndStockForm from '../components/product/PricingAndStockForm';
 import ProductImagesSection from '../components/product/ProductImagesSection';
 import ProductVariantsSection from '../components/product/ProductVariantsSection';
 import StorageLocationForm from '../components/product/StorageLocationForm';
+import ProductSuccessModal from '../components/product/ProductSuccessModal';
 
 // Import ProductVariant type
 interface ProductVariant {
   name: string;
   sku: string;
-  barcode: string;
   costPrice: number;
   price: number;
   stockQuantity: number;
@@ -60,14 +62,15 @@ const ProductImageSchema = z.object({
 // Validation schema for product form
 const productFormSchema = z.object({
   name: z.string().min(1, 'Product name must be provided').max(100, 'Product name must be less than 100 characters'),
-  description: z.string().max(500, 'Description must be less than 500 characters').optional(),
+  description: z.string().max(200, 'Description must be less than 200 characters').optional(),
   specification: z.string().max(1000, 'Specification must be less than 1000 characters').optional(),
-  sku: z.string().min(1, 'SKU must be provided').max(50, 'SKU must be less than 50 characters'),
-  barcode: z.string().optional(),
+  sku: z.string().max(50, 'SKU must be less than 50 characters').optional(),
   categoryId: z.string().min(1, 'Category must be selected'),
-  brandId: z.string().optional(),
+
   supplierId: z.string().optional(),
-  condition: z.string().min(1, 'Product condition must be selected'),
+  condition: z.enum(['new', 'used', 'refurbished'], {
+    errorMap: () => ({ message: 'Please select a condition' })
+  }),
   
   price: z.number().min(0, 'Price must be 0 or greater'),
   costPrice: z.number().min(0, 'Cost price must be 0 or greater'),
@@ -88,7 +91,6 @@ type ProductImage = z.infer<typeof ProductImageSchema>;
 const AddProductPageOptimized: React.FC = () => {
   const navigate = useNavigate();
   const [categories, setCategories] = useState<Category[]>([]);
-  const [brands, setBrands] = useState<Brand[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [storeLocations, setStoreLocations] = useState<StoreLocation[]>([]);
   const [currentErrors, setCurrentErrors] = useState<Record<string, string>>({});
@@ -96,14 +98,16 @@ const AddProductPageOptimized: React.FC = () => {
   // Generate a temporary product ID for image uploads
   const [tempProductId] = useState(`temp-product-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`);
 
+  // Generate auto SKU using utility function
+  const generateAutoSKU = () => {
+    return generateSKU();
+  };
+
   // Initial form data
   const [formData, setFormData] = useState({
     name: '',
-    sku: '',
-    barcode: '',
+    sku: generateAutoSKU(),
     categoryId: '',
-    brand: '',
-    brandId: '',
     supplierId: '',
     condition: '',
     description: '',
@@ -111,7 +115,7 @@ const AddProductPageOptimized: React.FC = () => {
     price: 0,
     costPrice: 0,
     stockQuantity: 0,
-    minStockLevel: 0,
+    minStockLevel: 2, // Set default min stock level to 2 pcs
     storageRoomId: '',
     shelfId: '',
     images: [] as ProductImage[],
@@ -144,23 +148,189 @@ const AddProductPageOptimized: React.FC = () => {
   const [isCheckingName, setIsCheckingName] = useState(false);
   const [nameExists, setNameExists] = useState(false);
 
+  // Draft management
+  const [isDraftSaved, setIsDraftSaved] = useState(false);
+  const [lastDraftSave, setLastDraftSave] = useState<Date | null>(null);
+  const [draftSaveTimer, setDraftSaveTimer] = useState<NodeJS.Timeout | null>(null);
+
+  // Success modal state
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [createdProductId, setCreatedProductId] = useState<string>('');
+  const [createdProductName, setCreatedProductName] = useState<string>('');
+
   const { currentUser } = useAuth();
+
+  // Draft storage key
+  const DRAFT_KEY = `product_draft_${currentUser?.id || 'anonymous'}`;
+
+  // Success modal action handlers
+  const handleViewProduct = () => {
+    setShowSuccessModal(false);
+    navigate(`/lats/products/${createdProductId}`);
+  };
+
+  const handleEditProduct = () => {
+    setShowSuccessModal(false);
+    navigate(`/lats/products/${createdProductId}/edit`);
+  };
+
+  const handleDuplicateProduct = () => {
+    setShowSuccessModal(false);
+    
+    // Use utility function to duplicate product
+    const { productData: duplicatedFormData, variants: duplicatedVariants } = duplicateProduct(formData, variants);
+    
+    setFormData(duplicatedFormData);
+    setVariants(duplicatedVariants);
+    setUseVariants(useVariants);
+    navigate('/lats/add-product');
+  };
+
+  const handleCreateAnother = () => {
+    setShowSuccessModal(false);
+    // Reset form completely
+    setFormData({
+      name: '',
+      sku: generateAutoSKU(),
+      categoryId: '',
+      supplierId: '',
+      condition: '',
+      description: '',
+      specification: '',
+      price: 0,
+      costPrice: 0,
+      stockQuantity: 0,
+      minStockLevel: 2,
+      storageRoomId: '',
+      shelfId: '',
+      images: [],
+      metadata: {},
+      variants: []
+    });
+    setVariants([]);
+    setUseVariants(false);
+    setShowVariants(false);
+    navigate('/lats/add-product');
+  };
+
+  const handleCopyProductLink = async () => {
+    try {
+      const productUrl = `${window.location.origin}/lats/products/${createdProductId}`;
+      await navigator.clipboard.writeText(productUrl);
+      toast.success('Product link copied to clipboard!');
+    } catch (error) {
+      toast.error('Failed to copy link');
+    }
+  };
+
+  const handleDownloadDetails = () => {
+    // Generate comprehensive product report
+    const productReport = generateProductReport(formData, variants);
+    
+    const blob = new Blob([productReport], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${createdProductName.replace(/[^a-zA-Z0-9]/g, '_')}_report.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success('Product report downloaded!');
+  };
+
+  const handleShareProduct = async () => {
+    try {
+      const productUrl = `${window.location.origin}/lats/products/${createdProductId}`;
+      const shareData = {
+        title: `Product: ${createdProductName}`,
+        text: `Check out this product: ${createdProductName}`,
+        url: productUrl
+      };
+
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        // Fallback to copying link
+        await navigator.clipboard.writeText(productUrl);
+        toast.success('Product link copied to clipboard!');
+      }
+    } catch (error) {
+      toast.error('Failed to share product');
+    }
+  };
+
+  const handleGoToInventory = () => {
+    setShowSuccessModal(false);
+    navigate('/lats/unified-inventory');
+  };
+
+  // Auto-save draft
+  const saveDraft = useCallback(() => {
+    try {
+      const draftData = {
+        formData,
+        variants,
+        useVariants,
+        savedAt: new Date().toISOString()
+      };
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(draftData));
+      setIsDraftSaved(true);
+      setLastDraftSave(new Date());
+      
+      // Clear success indicator after 2 seconds
+      setTimeout(() => setIsDraftSaved(false), 2000);
+    } catch (error) {
+      console.error('Failed to save draft:', error);
+    }
+  }, [formData, variants, useVariants, DRAFT_KEY]);
+
+  // Load draft from localStorage
+  const loadDraft = useCallback(() => {
+    try {
+      const draftData = localStorage.getItem(DRAFT_KEY);
+      if (draftData) {
+        const parsed = JSON.parse(draftData);
+        setFormData(parsed.formData);
+        setVariants(parsed.variants || []);
+        setUseVariants(parsed.useVariants || false);
+        setLastDraftSave(new Date(parsed.savedAt));
+        toast.success('Draft restored successfully!');
+        return true;
+      }
+    } catch (error) {
+      console.error('Failed to load draft:', error);
+    }
+    return false;
+  }, [DRAFT_KEY]);
+
+  // Clear draft
+  const clearDraft = useCallback(() => {
+    try {
+      localStorage.removeItem(DRAFT_KEY);
+      setLastDraftSave(null);
+      setIsDraftSaved(false);
+    } catch (error) {
+      console.error('Failed to clear draft:', error);
+    }
+  }, [DRAFT_KEY]);
 
   // Load data on component mount
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [categoriesData, locationsData, brandsData, suppliersData] = await Promise.all([
+        const [categoriesData, locationsData, suppliersData] = await Promise.all([
           getActiveCategories(),
           storeLocationApi.getAll(),
-          getActiveBrands(),
           getActiveSuppliers()
         ]);
 
         setCategories(categoriesData || []);
         setStoreLocations(locationsData || []);
-        setBrands(brandsData || []);
         setSuppliers(suppliersData || []);
+
+        // Try to load draft after data is loaded
+        loadDraft();
       } catch (error) {
         console.error('Error loading data:', error);
         toast.error('Failed to load form data');
@@ -168,7 +338,82 @@ const AddProductPageOptimized: React.FC = () => {
     };
 
     loadData();
-  }, []);
+  }, [loadDraft]);
+
+  // Auto-save draft when form data changes
+  useEffect(() => {
+    // Clear previous timer
+    if (draftSaveTimer) {
+      clearTimeout(draftSaveTimer);
+    }
+
+    // Set new timer to save draft after 2 seconds of inactivity
+    const timer = setTimeout(() => {
+      if (formData.name.trim() || formData.description.trim() || variants.length > 0) {
+        saveDraft();
+      }
+    }, 2000);
+
+    setDraftSaveTimer(timer);
+
+    // Cleanup timer on unmount
+    return () => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    };
+  }, [formData, variants, useVariants, saveDraft]);
+
+  // Load draft on page load if available
+  useEffect(() => {
+    const checkForDraft = async () => {
+      try {
+        const draftData = localStorage.getItem(DRAFT_KEY);
+        if (draftData) {
+          const parsed = JSON.parse(draftData);
+          const draftAge = new Date().getTime() - new Date(parsed.savedAt).getTime();
+          const hoursSinceDraft = draftAge / (1000 * 60 * 60);
+          
+          // Only restore if draft is less than 24 hours old
+          if (hoursSinceDraft < 24) {
+            // Show toast asking if user wants to restore draft
+            toast((t) => (
+              <div className="flex flex-col gap-2">
+                <span>Found a saved draft from {new Date(parsed.savedAt).toLocaleDateString()}</span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      loadDraft();
+                      toast.dismiss(t.id);
+                    }}
+                    className="px-3 py-1 bg-blue-600 text-white rounded text-sm"
+                  >
+                    Restore Draft
+                  </button>
+                  <button
+                    onClick={() => {
+                      clearDraft();
+                      toast.dismiss(t.id);
+                    }}
+                    className="px-3 py-1 bg-gray-400 text-white rounded text-sm"
+                  >
+                    Discard
+                  </button>
+                </div>
+              </div>
+            ), { duration: 10000 });
+          } else {
+            // Clear old draft
+            clearDraft();
+          }
+        }
+      } catch (error) {
+        console.error('Error checking for draft:', error);
+      }
+    };
+
+    checkForDraft();
+  }, [DRAFT_KEY, loadDraft, clearDraft]);
 
   // Check if product name exists
   const checkProductName = async (name: string) => {
@@ -195,12 +440,7 @@ const AddProductPageOptimized: React.FC = () => {
     }
   };
 
-  // Convert brand name to brand ID
-  const getBrandIdFromName = (brandName: string): string | null => {
-    if (!brandName || !brands.length) return null;
-    const brand = brands.find(b => b.name.toLowerCase() === brandName.toLowerCase());
-    return brand?.id || null;
-  };
+
 
   // Handle name check with debouncing
   useEffect(() => {
@@ -268,15 +508,18 @@ const AddProductPageOptimized: React.FC = () => {
 
       // Prepare product data WITHOUT images (images will be saved separately)
       // When using variants, don't put variant data in main product fields
+      
+      // Generate SKU if empty
+      const finalSku = useVariants ? null : (formData.sku || generateAutoSKU());
+      
       const productData = {
         name: formData.name,
         description: formData.description || null,
         specification: formData.specification || null,
-        // Don't set SKU, barcode, prices, stock in main product when using variants
-        sku: useVariants ? null : (formData.sku || null),
-        barcode: useVariants ? null : (formData.barcode || null),
+        // Don't set SKU, prices, stock in main product when using variants
+        sku: finalSku,
         category_id: formData.categoryId || null,
-        brand_id: getBrandIdFromName(formData.brand) || null,
+
         supplier_id: formData.supplierId || null,
         condition: formData.condition || 'new',
         // Only set these fields if NOT using variants
@@ -375,15 +618,14 @@ const AddProductPageOptimized: React.FC = () => {
           console.log('🔍 DEBUG: Creating user-defined variants for product:', createdProduct.id);
           console.log('🔍 DEBUG: Variants to create:', variants);
           
-          variantsToCreate = variants.map(variant => ({
+          variantsToCreate = variants.map((variant, index) => ({
             product_id: createdProduct.id,
-            sku: variant.sku,
+            sku: variant.sku || `${formData.sku}-V${index + 1}`,
             name: variant.name,
             cost_price: variant.costPrice,
             selling_price: variant.price,
             quantity: variant.stockQuantity,
             min_quantity: variant.minStockLevel,
-            barcode: variant.barcode,
             attributes: {
               ...variant.attributes,
               specification: variant.specification || null
@@ -401,7 +643,6 @@ const AddProductPageOptimized: React.FC = () => {
             selling_price: formData.price || 0,
             quantity: formData.stockQuantity || 0,
             min_quantity: formData.minStockLevel || 0,
-            barcode: formData.barcode || formData.sku || `BAR-${Date.now()}`,
             attributes: {
               specification: formData.specification || null
             }
@@ -428,8 +669,15 @@ const AddProductPageOptimized: React.FC = () => {
         console.log('🔍 DEBUG: No product created, cannot create variants');
       }
 
-      toast.success('Product created successfully!');
-      navigate('/lats/unified-inventory');
+      // Store created product info for success modal
+      setCreatedProductId(createdProduct.id);
+      setCreatedProductName(formData.name);
+      
+      // Clear draft after successful submission
+      clearDraft();
+      
+      // Show success modal instead of navigating away
+      setShowSuccessModal(true);
       
     } catch (error) {
       console.error('Error creating product:', error);
@@ -519,63 +767,63 @@ const AddProductPageOptimized: React.FC = () => {
   };
 
   return (
-    <div className="p-4 sm:p-6 h-full overflow-y-auto pt-8">
-      <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6">
+    <div className="p-2 sm:p-4 h-full overflow-y-auto pt-4">
+      <div className="max-w-4xl mx-auto space-y-3">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <BackButton to="/lats/unified-inventory" />
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Add New Product</h1>
-              <p className="text-gray-600">Create a new product in your inventory</p>
+              <h1 className="text-xl font-bold text-gray-900">Add Product</h1>
+              <p className="text-sm text-gray-600">Create new inventory item</p>
             </div>
+          </div>
+          
+          {/* Draft Status Indicator */}
+          <div className="flex items-center gap-2">
+            {isDraftSaved && (
+              <div className="flex items-center gap-1 px-2 py-1 bg-green-50 border border-green-200 rounded text-xs">
+                <Check className="w-3 h-3 text-green-600" />
+                <span className="text-green-700 font-medium">Saved</span>
+              </div>
+            )}
+            
+            {lastDraftSave && !isDraftSaved && (
+              <div className="flex items-center gap-1 px-2 py-1 bg-blue-50 border border-blue-200 rounded text-xs">
+                <Clock className="w-3 h-3 text-blue-600" />
+                <span className="text-blue-700">{lastDraftSave.toLocaleTimeString()}</span>
+              </div>
+            )}
+            
+            {lastDraftSave && (
+              <button
+                onClick={clearDraft}
+                className="px-2 py-1 text-xs text-gray-600 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                title="Clear draft"
+              >
+                Clear
+              </button>
+            )}
           </div>
         </div>
 
-        <GlassCard className="mb-6">
-          <div className="space-y-6">
+        <GlassCard className="mb-3">
+          <div className="space-y-4">
             {/* Product Information Form */}
             <ProductInformationForm
               formData={formData}
               setFormData={setFormData}
               categories={categories}
+              suppliers={suppliers}
               currentErrors={currentErrors}
               isCheckingName={isCheckingName}
               nameExists={nameExists}
               onNameCheck={checkProductName}
               onSpecificationsClick={handleProductSpecificationsClick}
+              onGenerateSku={() => setFormData(prev => ({ ...prev, sku: generateAutoSKU() }))}
             />
 
-            {/* Supplier Selection */}
-            <div className="border-b border-gray-200 pb-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                <Building size={20} className="text-purple-600" />
-                Supplier Information
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label 
-                    htmlFor="supplier-select"
-                    className="block mb-2 font-medium text-gray-700"
-                  >
-                    Supplier (optional)
-                  </label>
-                  <select
-                    id="supplier-select"
-                    value={formData.supplierId}
-                    onChange={(e) => setFormData(prev => ({ ...prev, supplierId: e.target.value }))}
-                    className="w-full py-3 px-4 bg-white/30 backdrop-blur-md border-2 rounded-lg focus:outline-none transition-colors border-gray-300 focus:border-blue-500"
-                  >
-                    <option value="">Select a supplier</option>
-                    {suppliers.map((supplier) => (
-                      <option key={supplier.id} value={supplier.id}>
-                        {supplier.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
+
 
             {/* Pricing and Stock Form */}
             <PricingAndStockForm
@@ -616,12 +864,12 @@ const AddProductPageOptimized: React.FC = () => {
             />
 
             {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row gap-4 pt-6">
+            <div className="flex flex-col sm:flex-row gap-3 pt-4">
               <GlassButton
                 onClick={() => navigate('/lats/unified-inventory')}
                 variant="secondary"
-                icon={<ArrowLeft size={18} />}
-                className="flex-1 sm:flex-none"
+                icon={<ArrowLeft size={16} />}
+                className="flex-1 sm:flex-none text-sm py-2"
               >
                 Cancel
               </GlassButton>
@@ -631,8 +879,8 @@ const AddProductPageOptimized: React.FC = () => {
               <GlassButton
                 onClick={handleSubmit}
                 loading={isSubmitting}
-                icon={<Save size={18} />}
-                className="bg-gradient-to-r from-blue-500 to-blue-600 text-white flex-1 sm:flex-none"
+                icon={<Save size={16} />}
+                className="bg-gradient-to-r from-blue-500 to-blue-600 text-white flex-1 sm:flex-none text-sm py-2"
                 disabled={isSubmitting || isCheckingName}
               >
                 {isSubmitting ? 'Creating...' : 'Create Product'}
@@ -677,8 +925,8 @@ const AddProductPageOptimized: React.FC = () => {
             </div>
 
             {/* Content */}
-            <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
-              <div className="space-y-6">
+            <div className="p-4 overflow-y-auto max-h-[calc(90vh-140px)]">
+              <div className="space-y-4">
                 {/* Quick Add Section */}
                 <div>
                   <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center gap-2">
@@ -848,15 +1096,14 @@ const AddProductPageOptimized: React.FC = () => {
       {/* Product Specifications Modal */}
       {showProductSpecificationsModal && (
         <div 
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
           role="dialog"
           aria-modal="true"
           aria-labelledby="product-specifications-modal-title"
-          style={{ backdropFilter: 'blur(4px)' }}
         >
-          <div className="bg-white rounded-2xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden mx-auto">
+          <div className="bg-white rounded-xl shadow-lg max-w-4xl w-full max-h-[90vh] overflow-hidden mx-auto">
             {/* Header */}
-            <div className="bg-white border-b border-gray-200 p-6 rounded-t-2xl">
+            <div className="border-b border-gray-200 p-6">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <FileText className="w-6 h-6 text-blue-600" />
@@ -865,7 +1112,7 @@ const AddProductPageOptimized: React.FC = () => {
                       Product Specifications
                     </h2>
                     <p className="text-gray-600 text-sm mt-1">
-                      Add and manage product specifications
+                      Add product specifications
                     </p>
                   </div>
                 </div>
@@ -898,7 +1145,7 @@ const AddProductPageOptimized: React.FC = () => {
                       { name: 'Screen Size', icon: Monitor },
                       { name: 'Battery', icon: Battery },
                       { name: 'Camera', icon: Camera },
-                      { name: 'Size', icon: Ruler }
+                      { name: 'Weight', icon: Ruler }
                     ].map((spec) => (
                       <button 
                         key={spec.name}
@@ -1020,7 +1267,7 @@ const AddProductPageOptimized: React.FC = () => {
             </div>
 
             {/* Footer */}
-            <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 rounded-b-2xl">
+            <div className="bg-gray-50 px-6 py-4 border-t border-gray-200">
               <div className="flex justify-between items-center">
                 <div className="text-sm text-gray-600">
                   {(() => {
@@ -1054,6 +1301,22 @@ const AddProductPageOptimized: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Product Success Modal */}
+      <ProductSuccessModal
+        isOpen={showSuccessModal}
+        onClose={() => setShowSuccessModal(false)}
+        productId={createdProductId}
+        productName={createdProductName}
+        onViewProduct={handleViewProduct}
+        onEditProduct={handleEditProduct}
+        onDuplicateProduct={handleDuplicateProduct}
+        onCreateAnother={handleCreateAnother}
+        onCopyProductLink={handleCopyProductLink}
+        onDownloadDetails={handleDownloadDetails}
+        onShareProduct={handleShareProduct}
+        onGoToInventory={handleGoToInventory}
+      />
     </div>
   );
 };

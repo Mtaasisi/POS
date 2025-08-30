@@ -15,7 +15,7 @@ interface Product {
   price: number;
   stockQuantity: number;
   categoryName?: string;
-  brandName?: string;
+
   images?: string[];
   isActive: boolean;
 }

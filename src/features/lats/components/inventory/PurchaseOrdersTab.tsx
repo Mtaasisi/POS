@@ -116,11 +116,18 @@ const PurchaseOrdersTab: React.FC<PurchaseOrdersTabProps> = ({
           
           <div className="flex gap-2">
             <GlassButton
-              onClick={() => navigate('/lats/purchase-orders/new')}
+              onClick={() => navigate('/lats/purchase-order/create')}
               icon={<Plus size={18} />}
+              className="bg-gradient-to-r from-orange-500 to-amber-600 text-white font-semibold"
+            >
+              Create Purchase Order
+            </GlassButton>
+            <GlassButton
+              onClick={() => navigate('/lats/purchase-orders/new')}
+              icon={<FileText size={18} />}
               className="bg-purple-600 hover:bg-purple-700 text-white"
             >
-              New Purchase Order
+              Form-based PO
             </GlassButton>
             <GlassButton
               onClick={() => navigate('/lats/purchase-orders')}
@@ -133,19 +140,48 @@ const PurchaseOrdersTab: React.FC<PurchaseOrdersTabProps> = ({
         </div>
       </GlassCard>
 
-      {/* Placeholder for now */}
-      <GlassCard className="text-center py-12">
-        <ShoppingCart className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">Purchase Orders Management</h3>
-        <p className="text-gray-600 mb-4">Full purchase order functionality is available in the dedicated Purchase Orders page</p>
+      {/* Featured Purchase Order Creation */}
+      <GlassCard className="text-center py-12 bg-gradient-to-br from-orange-50 to-amber-50 border-orange-200">
+        <div className="relative">
+          <div className="absolute -top-2 -right-2 bg-gradient-to-r from-orange-500 to-amber-600 text-white text-xs px-2 py-1 rounded-full font-bold">
+            NEW
+          </div>
+          <ShoppingCart className="w-16 h-16 text-orange-500 mx-auto mb-4" />
+        </div>
+        <h3 className="text-lg font-semibold text-gray-900 mb-2">Interactive Purchase Order Creation</h3>
+        <p className="text-gray-600 mb-4">Create purchase orders with our new interactive interface - similar to POS but for purchasing from suppliers</p>
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
           <GlassButton
-            onClick={() => navigate('/lats/purchase-orders')}
-            icon={<ShoppingCart size={18} />}
-            className="bg-purple-600 hover:bg-purple-700 text-white"
+            onClick={() => navigate('/lats/purchase-order/create')}
+            icon={<Plus size={18} />}
+            className="bg-gradient-to-r from-orange-500 to-amber-600 text-white font-bold text-lg px-8 py-3"
           >
-            Go to Purchase Orders
+            🛒 Start Creating Purchase Order
           </GlassButton>
+          <GlassButton
+            onClick={() => navigate('/lats/purchase-orders')}
+            icon={<Eye size={18} />}
+            variant="outline"
+            className="border-orange-300 text-orange-600 hover:bg-orange-50"
+          >
+            View Existing Orders
+          </GlassButton>
+        </div>
+        
+        {/* Feature highlights */}
+        <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+          <div className="flex items-center gap-2 text-orange-700">
+            <CheckCircle className="w-4 h-4" />
+            <span>Multi-currency support</span>
+          </div>
+          <div className="flex items-center gap-2 text-orange-700">
+            <CheckCircle className="w-4 h-4" />
+            <span>Supplier management</span>
+          </div>
+          <div className="flex items-center gap-2 text-orange-700">
+            <CheckCircle className="w-4 h-4" />
+            <span>Interactive product selection</span>
+          </div>
         </div>
       </GlassCard>
     </div>

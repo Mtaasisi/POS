@@ -14,7 +14,7 @@ interface ProductExportData {
   sku: string;
   barcode?: string;
   categoryId: string;
-  brandId?: string;
+
   supplierId?: string;
   images?: string[];
   isActive: boolean;
@@ -31,7 +31,6 @@ interface ProductExportData {
   
   // Related data
   categoryName?: string;
-  brandName?: string;
   supplierName?: string;
   
   // All variant data (not just main variant)
@@ -77,7 +76,6 @@ interface ProductExportData {
 
   // Additional related data for CSV export
   category?: { name: string; description?: string; color?: string };
-  brand?: { name: string; description?: string; logo?: string; website?: string };
   supplier?: { name: string; contact_person?: string; email?: string; phone?: string; address?: string; website?: string; notes?: string };
 }
 
@@ -99,7 +97,6 @@ const ProductExcelExport: React.FC = () => {
         .select(`
           *,
           lats_categories(name, description, color),
-          lats_brands(name, description, logo, website),
           lats_suppliers(name, contact_person, email, phone, address, website, notes),
           lats_product_variants(*),
           lats_stock_movements(
@@ -123,7 +120,6 @@ const ProductExcelExport: React.FC = () => {
       
       products?.forEach(product => {
         const category = product.lats_categories;
-        const brand = product.lats_brands;
         const supplier = product.lats_suppliers;
         const variants = product.lats_product_variants || [];
         const stockMovements = product.lats_stock_movements || [];
@@ -159,7 +155,7 @@ const ProductExcelExport: React.FC = () => {
             sku: product.sku,
             barcode: product.barcode,
             categoryId: product.category_id,
-            brandId: product.brand_id,
+
             supplierId: product.supplier_id,
             images: product.images || [],
             isActive: product.is_active,
@@ -175,7 +171,6 @@ const ProductExcelExport: React.FC = () => {
             
             // Related data
             categoryName: category?.name || 'Uncategorized',
-            brandName: brand?.name || 'No Brand',
             supplierName: supplier?.name || 'No Supplier',
             
             // All variant data
@@ -208,7 +203,6 @@ const ProductExcelExport: React.FC = () => {
             
             // Additional related data for CSV export
             category: category,
-            brand: brand,
             supplier: supplier
           });
         } else {
@@ -223,7 +217,7 @@ const ProductExcelExport: React.FC = () => {
               sku: product.sku,
               barcode: product.barcode,
               categoryId: product.category_id,
-              brandId: product.brand_id,
+  
               supplierId: product.supplier_id,
               images: product.images || [],
               isActive: product.is_active,
@@ -239,7 +233,6 @@ const ProductExcelExport: React.FC = () => {
               
               // Related data
               categoryName: category?.name || 'Uncategorized',
-              brandName: brand?.name || 'No Brand',
               supplierName: supplier?.name || 'No Supplier',
               
               // All variant data
@@ -287,9 +280,8 @@ const ProductExcelExport: React.FC = () => {
               } : undefined,
               
               // Additional related data for CSV export
-              category: category,
-              brand: brand,
-              supplier: supplier
+                          category: category,
+            supplier: supplier
             });
           });
         }
@@ -303,7 +295,7 @@ const ProductExcelExport: React.FC = () => {
         // Product Information
         'Product ID', 'Product Name', 'Description', 'Short Description', 'SKU', 'Barcode',
         'Category ID', 'Category Name', 'Category Description', 'Category Color',
-        'Brand ID', 'Brand Name', 'Brand Description', 'Brand Logo', 'Brand Website',
+
         'Supplier ID', 'Supplier Name', 'Supplier Contact Person', 'Supplier Email', 'Supplier Phone', 'Supplier Address', 'Supplier Website', 'Supplier Notes',
         'Images', 'Active',
         'Tax Rate (%)', 'Total Quantity', 'Total Value', 'Condition', 'Store Shelf',
@@ -338,11 +330,8 @@ const ProductExcelExport: React.FC = () => {
           `"${(product.categoryName || '').replace(/"/g, '""')}"`,
           `"${(product.category?.description || '').replace(/"/g, '""')}"`,
           `"${(product.category?.color || '').replace(/"/g, '""')}"`,
-          `"${(product.brandId || '').replace(/"/g, '""')}"`,
-          `"${(product.brandName || '').replace(/"/g, '""')}"`,
-          `"${(product.brand?.description || '').replace(/"/g, '""')}"`,
-          `"${(product.brand?.logo || '').replace(/"/g, '""')}"`,
-          `"${(product.brand?.website || '').replace(/"/g, '""')}"`,
+
+
           `"${(product.supplierId || '').replace(/"/g, '""')}"`,
           `"${(product.supplierName || '').replace(/"/g, '""')}"`,
           `"${(product.supplier?.contact_person || '').replace(/"/g, '""')}"`,
@@ -444,7 +433,7 @@ const ProductExcelExport: React.FC = () => {
               <p className="font-medium mb-1">What's included in the export:</p>
               <ul className="space-y-1 text-xs">
                 <li>• All product details (name, description, SKU, barcode, etc.)</li>
-                <li>• Complete category, brand, and supplier information</li>
+                <li>• Complete category and supplier information</li>
                 <li>• All variant details (price, stock, dimensions, attributes)</li>
                 <li>• Product status, metadata, and debut information</li>
                 <li>• Images and configuration settings</li>

@@ -9,9 +9,10 @@ import { Save, ArrowLeft, MapPin, Store, X, Plus, Check, Layers, Palette, HardDr
 import { supabase } from '../../../lib/supabaseClient';
 import { useAuth } from '../../../context/AuthContext';
 import { retryWithBackoff } from '../../../lib/supabaseClient';
-import { getActiveBrands, Brand } from '../../../lib/brandApi';
+
 import { getActiveCategories, Category } from '../../../lib/categoryApi';
 import { getActiveSuppliers, Supplier } from '../../../lib/supplierApi';
+import { validateProductData } from '../lib/databaseDiagnostics';
 import { StoreLocation } from '../../settings/types/storeLocation';
 import { storeLocationApi } from '../../settings/utils/storeLocationApi';
 
@@ -26,7 +27,6 @@ import StorageLocationForm from '../components/product/StorageLocationForm';
 interface ProductVariant {
   name: string;
   sku: string;
-  barcode: string;
   costPrice: number;
   price: number;
   stockQuantity: number;
@@ -61,7 +61,7 @@ const ProductImageSchema = z.object({
 // Validation schema for product form
 const productFormSchema = z.object({
   name: z.string().min(1, 'Product name must be provided').max(100, 'Product name must be less than 100 characters'),
-  description: z.string().max(500, 'Description must be less than 500 characters').optional(),
+  description: z.string().max(200, 'Description must be less than 200 characters').optional(),
   specification: z.string().max(1000, 'Specification must be less than 1000 characters').optional().refine((val) => {
     if (!val) return true; // Allow empty strings
     try {
@@ -74,11 +74,13 @@ const productFormSchema = z.object({
     message: "Specification must be valid JSON"
   }),
   sku: z.string().min(1, 'SKU must be provided').max(50, 'SKU must be less than 50 characters'),
-  barcode: z.string().optional(),
+
   categoryId: z.string().min(1, 'Category must be selected'),
-  brandId: z.string().optional(),
+
   supplierId: z.string().optional(),
-  condition: z.string().min(1, 'Product condition must be selected'),
+  condition: z.enum(['new', 'used', 'refurbished'], {
+    errorMap: () => ({ message: 'Please select a condition' })
+  }),
   
   price: z.number().min(0, 'Price must be 0 or greater'),
   costPrice: z.number().min(0, 'Cost price must be 0 or greater'),
@@ -100,7 +102,6 @@ const EditProductPage: React.FC = () => {
   const { productId } = useParams<{ productId: string }>();
   const navigate = useNavigate();
   const [categories, setCategories] = useState<Category[]>([]);
-  const [brands, setBrands] = useState<Brand[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [storeLocations, setStoreLocations] = useState<StoreLocation[]>([]);
   const [currentErrors, setCurrentErrors] = useState<Record<string, string>>({});
@@ -109,10 +110,8 @@ const EditProductPage: React.FC = () => {
   const [formData, setFormData] = useState({
     name: '',
     sku: '',
-    barcode: '',
     categoryId: '',
-    brand: '',
-    brandId: '',
+
     supplierId: '',
     condition: '',
     description: '',
@@ -135,6 +134,7 @@ const EditProductPage: React.FC = () => {
   const [variants, setVariants] = useState<ProductVariant[]>([]);
   const [showVariants, setShowVariants] = useState(false);
   const [useVariants, setUseVariants] = useState(false);
+  const [originallyHadVariants, setOriginallyHadVariants] = useState(false); // Remember original intent
   const [isReorderingVariants, setIsReorderingVariants] = useState(false);
   const [draggedVariantIndex, setDraggedVariantIndex] = useState<number | null>(null);
 
@@ -159,16 +159,14 @@ const EditProductPage: React.FC = () => {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [categoriesData, locationsData, brandsData, suppliersData] = await Promise.all([
+        const [categoriesData, locationsData, suppliersData] = await Promise.all([
           getActiveCategories(),
           storeLocationApi.getAll(),
-          getActiveBrands(),
           getActiveSuppliers()
         ]);
 
         setCategories(categoriesData || []);
         setStoreLocations(locationsData || []);
-        setBrands(brandsData || []);
         setSuppliers(suppliersData || []);
       } catch (error) {
         console.error('Error loading data:', error);
@@ -212,19 +210,14 @@ const EditProductPage: React.FC = () => {
     }
   };
 
-  // Convert brand name to brand ID
-  const getBrandIdFromName = (brandName: string): string | null => {
-    if (!brandName || !brands.length) return null;
-    const brand = brands.find(b => b.name.toLowerCase() === brandName.toLowerCase());
-    return brand?.id || null;
-  };
+
 
   // Ensure variants are always shown for products with original variants
   useEffect(() => {
-    if (useVariants) {
+    if (useVariants || originallyHadVariants) {
       setShowVariants(true);
     }
-  }, [useVariants]);
+  }, [useVariants, originallyHadVariants]);
 
   // Handle name check with debouncing
   useEffect(() => {
@@ -253,12 +246,7 @@ const EditProductPage: React.FC = () => {
       if (error) throw error;
       
       if (product) {
-        // Find brand name from brandId if available
-        let brandName = '';
-        if (product.brand_id) {
-          const brand = brands.find(b => b.id === product.brand_id);
-          brandName = brand?.name || '';
-        }
+
         
         setFormData({
           name: product.name || '',
@@ -283,10 +271,7 @@ const EditProductPage: React.FC = () => {
             }
           })(),
           sku: product.sku || '',
-          barcode: product.barcode || '',
           categoryId: product.category_id || '',
-          brand: brandName,
-          brandId: product.brand_id || '',
           supplierId: product.supplier_id || '',
           condition: product.condition || '',
           
@@ -301,12 +286,38 @@ const EditProductPage: React.FC = () => {
           variants: []
         });
         
+        // Determine if product originally had variants
+        const hadVariantsOriginally = (
+          // Check metadata first (most reliable)
+          product.metadata?.useVariants === true ||
+          // Check if product was designed for variants by looking for:
+          // 1. Multiple variants, OR
+          // 2. Any variant with meaningful data, OR 
+          // 3. A has_variants flag if it exists in the product
+          product.has_variants === true || 
+          (product.variants && product.variants.length > 1) ||
+          (product.variants && product.variants.some((variant: any) => 
+            variant.name || 
+            (variant.sku && variant.sku !== product.sku) ||
+            (variant.attributes && Object.keys(variant.attributes).length > 0)
+          ))
+        );
+        
+        setOriginallyHadVariants(hadVariantsOriginally);
+        console.log('🔍 Product variant analysis:', {
+          productId: product.id,
+          variantCount: product.variants?.length || 0,
+          hadVariantsOriginally,
+          hasVariantsFlag: product.has_variants,
+          metadataUseVariants: product.metadata?.useVariants,
+          originalAttributes: product.attributes
+        });
+        
         // Load variants if they exist
         if (product.variants && product.variants.length > 0) {
           const processedVariants = product.variants.map((variant: any) => ({
             name: variant.name || '',
             sku: variant.sku || '',
-            barcode: variant.barcode || '',
             costPrice: variant.cost_price || 0,
             price: variant.selling_price || 0,
             stockQuantity: variant.quantity || 0,
@@ -314,9 +325,17 @@ const EditProductPage: React.FC = () => {
             specification: variant.attributes?.specification || '',
             attributes: variant.attributes || {}
           }));
+          
           setVariants(processedVariants);
-          setUseVariants(true);
-          setShowVariants(true);
+          
+          // Respect the original intention - if product originally had variants, keep them enabled
+          setUseVariants(hadVariantsOriginally);
+          setShowVariants(hadVariantsOriginally);
+        } else {
+          // No variants in database
+          setOriginallyHadVariants(false);
+          setUseVariants(false);
+          setShowVariants(false);
         }
       }
     } catch (error) {
@@ -391,39 +410,66 @@ const EditProductPage: React.FC = () => {
         ? variants.reduce((sum, variant) => sum + ((variant.stockQuantity || 0) * (variant.price || 0)), 0)
         : ((formData.stockQuantity || 0) * (formData.price || 0));
 
-      // Prepare comprehensive product data with all fields
-      const productData = {
+      // Prepare comprehensive product data with only fields that exist in the database
+      const productData: any = {
         name: formData.name,
         description: formData.description || null,
-        specification: formData.specification || null,
-        sku: formData.sku || null,
-        barcode: formData.barcode || null,
         category_id: formData.categoryId || null,
-        brand_id: getBrandIdFromName(formData.brand) || null,
+
         supplier_id: formData.supplierId || null,
         condition: formData.condition || 'new',
-        cost_price: formData.costPrice || 0,
-        selling_price: formData.price || 0,
-        stock_quantity: formData.stockQuantity || 0,
-        min_stock_level: formData.minStockLevel || 0,
         total_quantity: totalQuantity,
         total_value: totalValue,
         storage_room_id: formData.storageRoomId || null,
         store_shelf_id: formData.shelfId || null,
         images: formData.images || [],
         tags: [],
-        attributes: formData.metadata || {},
-        metadata: {
-          useVariants: useVariants,
-          variantCount: useVariants ? variants.length : 0,
-          updatedBy: currentUser?.id,
-          updatedAt: new Date().toISOString()
-        }
+        attributes: formData.metadata || {}
+      };
+
+      // Only add fields that exist in the database schema
+      if (formData.specification) {
+        productData.specification = formData.specification;
+      }
+      if (formData.sku) {
+        productData.sku = formData.sku;
+      }
+      if (formData.costPrice !== undefined) {
+        productData.cost_price = formData.costPrice;
+      }
+      if (formData.price !== undefined) {
+        productData.selling_price = formData.price;
+      }
+      if (formData.stockQuantity !== undefined) {
+        productData.stock_quantity = formData.stockQuantity;
+      }
+      if (formData.minStockLevel !== undefined) {
+        productData.min_stock_level = formData.minStockLevel;
+      }
+
+      // Fallback: If validation fails, try with only basic fields
+      const basicProductData = {
+        name: formData.name,
+        description: formData.description || null,
+        category_id: formData.categoryId || null,
+        supplier_id: formData.supplierId || null,
+        images: formData.images || [],
+        tags: [],
+        attributes: formData.metadata || {}
       };
 
       console.log('Product data being updated:', productData);
+      console.log('Product data keys:', Object.keys(productData));
 
-      const { data: updatedProduct, error } = await retryWithBackoff(async () => {
+      // Validate the product data against the database schema
+      const validation = await validateProductData(productData);
+      if (!validation.valid) {
+        console.error('❌ Product data validation failed:', validation.errors);
+        toast.error(`Database schema mismatch: ${validation.errors.join(', ')}`);
+        return;
+      }
+
+      let { data: updatedProduct, error } = await retryWithBackoff(async () => {
         return await supabase!
           .from('lats_products')
           .update(productData)
@@ -432,7 +478,27 @@ const EditProductPage: React.FC = () => {
           .single();
       });
 
-      if (error) throw error;
+      // If the full update fails, try with basic fields only
+      if (error) {
+        console.log('❌ Full update failed, trying with basic fields only:', error);
+        console.log('Basic product data:', basicProductData);
+        
+        const basicResult = await retryWithBackoff(async () => {
+          return await supabase!
+            .from('lats_products')
+            .update(basicProductData)
+            .eq('id', productId)
+            .select()
+            .single();
+        });
+        
+        if (basicResult.error) {
+          throw basicResult.error;
+        }
+        
+        updatedProduct = basicResult.data;
+        console.log('✅ Basic update succeeded');
+      }
 
       // If using variants, update them
       if (useVariants && variants.length > 0 && updatedProduct) {
@@ -455,7 +521,6 @@ const EditProductPage: React.FC = () => {
           selling_price: variant.price,
           quantity: variant.stockQuantity,
           min_quantity: variant.minStockLevel,
-          barcode: variant.barcode,
           attributes: {
             ...variant.attributes,
             specification: variant.specification || null
@@ -609,7 +674,7 @@ const EditProductPage: React.FC = () => {
                     id="supplier-select"
                     value={formData.supplierId}
                     onChange={(e) => setFormData(prev => ({ ...prev, supplierId: e.target.value }))}
-                    className="w-full py-3 px-4 bg-white/30 backdrop-blur-md border-2 rounded-lg focus:outline-none transition-colors border-gray-300 focus:border-blue-500"
+                    className="w-full py-4 px-4 bg-white/30 backdrop-blur-md border-2 rounded-lg focus:outline-none transition-colors border-gray-300 focus:border-blue-500"
                   >
                     <option value="">Select a supplier</option>
                     {suppliers.map((supplier) => (

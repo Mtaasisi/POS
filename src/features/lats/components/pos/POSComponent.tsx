@@ -169,9 +169,9 @@ const POSComponent: React.FC = () => {
                             <div className="flex-1">
                               <h4 className="font-medium text-gray-900">{product.name}</h4>
                               <p className="text-sm text-gray-600">{product.description}</p>
-                              <p className="text-xs text-gray-500">
-                                {product.categoryName} • {product.brandName || 'No Brand'}
-                              </p>
+                                                              <p className="text-xs text-gray-500">
+                                  {product.categoryName}
+                                </p>
                             </div>
                             <div className="ml-4">
                               {product.variants.map((variant) => (

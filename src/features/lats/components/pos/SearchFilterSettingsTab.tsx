@@ -167,9 +167,8 @@ const SearchFilterSettingsTab = forwardRef<SearchFilterSettingsTabRef>((props, r
             onChange={(checked) => handleSettingChange('enable_category_filter', checked)}
           />
           <ToggleSwitch
-            label="Enable Brand Filter"
-            checked={settings.enable_brand_filter}
-            onChange={(checked) => handleSettingChange('enable_brand_filter', checked)}
+
+            
           />
           <ToggleSwitch
             label="Enable Price Filter"

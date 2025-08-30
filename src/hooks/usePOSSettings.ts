@@ -38,7 +38,9 @@ const defaultGeneralSettings: GeneralSettings = {
   enable_caching: true,
   cache_duration: 300,
   enable_lazy_loading: true,
-  max_search_results: 50
+  max_search_results: 50,
+  enable_tax: true,
+  tax_rate: 16
 };
 
 const defaultDynamicPricingSettings: DynamicPricingSettings = {
@@ -175,7 +177,7 @@ const defaultSearchFilterSettings: SearchFilterSettings = {
   search_by_barcode: true,
   search_by_sku: true,
   search_by_category: true,
-  search_by_brand: true,
+  
   search_by_supplier: true,
   search_by_description: false,
   search_by_tags: false,

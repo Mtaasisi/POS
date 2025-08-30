@@ -135,7 +135,7 @@ export const COMMON_TABLES = {
   SALES: 'lats_sales',
   NOTIFICATION_SETTINGS: 'notification_settings',
   CATEGORIES: 'lats_categories',
-  BRANDS: 'lats_brands',
+
   SUPPLIERS: 'lats_suppliers'
 } as const;
 

@@ -12,13 +12,14 @@ import { BackButton } from '../../../features/shared/components/ui/BackButton';
 import LATSBreadcrumb from '../components/ui/LATSBreadcrumb';
 import POSTopBar from '../components/pos/POSTopBar';
 import {
-  ShoppingCart, Search, Barcode, CreditCard, Receipt, Plus, Minus, Trash2, DollarSign, Package, TrendingUp, Users, Activity, Calculator, Scan, ArrowLeft, ArrowRight, CheckCircle, XCircle, RefreshCw, AlertCircle, User, Phone, Mail, Crown, ChevronDown, ChevronUp, Clock, Smartphone, Warehouse, Command, FileText, BarChart3, Settings, Truck, Zap, Star, Gift, Clock as ClockIcon, Hash as HashIcon, TestTube, Camera
+  ShoppingCart, Search, CreditCard, Receipt, Plus, Minus, Trash2, DollarSign, Package, TrendingUp, Users, Activity, Calculator, Scan, ArrowLeft, ArrowRight, CheckCircle, XCircle, RefreshCw, AlertCircle, User, Phone, Mail, Crown, ChevronDown, ChevronUp, Clock, Smartphone, Warehouse, Command, FileText, BarChart3, Settings, Truck, Zap, Star, Gift, Clock as ClockIcon, Hash as HashIcon, TestTube, Camera, Barcode
 } from 'lucide-react';
 import { useDynamicDataStore, simulateSale } from '../lib/data/dynamicDataStore';
 import { useInventoryStore } from '../stores/useInventoryStore';
 import { posService } from '../../../lib/posService';
 import { supabase } from '../../../lib/supabaseClient';
 import { getExternalProductBySku, markExternalProductAsSold } from '../../../lib/externalProductApi';
+import { saleProcessingService } from '../../../lib/saleProcessingService';
 import { 
   isSingleVariantProduct, 
   isMultiVariantProduct, 
@@ -55,7 +56,6 @@ import DynamicPricingDisplay from '../components/pos/DynamicPricingDisplay';
 import POSPricingSettings from '../components/pos/POSPricingSettings';
 import DynamicPricingSettings from '../components/pos/DynamicPricingSettings';
 import ReceiptSettings from '../components/pos/ReceiptSettings';
-import BarcodeScannerSettingsTab from '../components/pos/BarcodeScannerSettingsTab';
 import DeliverySettingsTab from '../components/pos/DeliverySettingsTab';
 import SearchFilterSettingsTab from '../components/pos/SearchFilterSettingsTab';
 import UserPermissionsSettingsTab from '../components/pos/UserPermissionsSettingsTab';
@@ -85,7 +85,6 @@ import {
   useDynamicPricingSettings,
   useGeneralSettings,
   useReceiptSettings,
-  useBarcodeScannerSettings,
   useDeliverySettings,
   useSearchFilterSettings,
   useUserPermissionsSettings,
@@ -372,9 +371,7 @@ const POSPage: React.FC = () => {
   const { settings: generalSettings } = useGeneralSettings();
   const { settings: dynamicPricingSettings } = useDynamicPricingSettings();
   const { settings: receiptSettings } = useReceiptSettings();
-  const { settings: barcodeScannerSettings } = useBarcodeScannerSettings();
-  const { settings: deliverySettings } = useDeliverySettings();
-  const dynamicDelivery = useDynamicDelivery(deliverySettings);
+
   const [selectedDeliveryArea, setSelectedDeliveryArea] = useState<string>('');
   const { settings: searchFilterSettings } = useSearchFilterSettings();
   const { settings: userPermissionsSettings } = useUserPermissionsSettings();
@@ -382,6 +379,8 @@ const POSPage: React.FC = () => {
   const { settings: analyticsReportingSettings } = useAnalyticsReportingSettings();
   const { settings: notificationSettings } = useNotificationSettings();
   const { settings: advancedSettings } = useAdvancedSettings();
+  const { settings: deliverySettings } = useDeliverySettings();
+  const dynamicDelivery = useDynamicDelivery(deliverySettings);
 
   // Global loading system - not used in this component
   
@@ -389,12 +388,10 @@ const POSPage: React.FC = () => {
   const { 
     products: dbProducts,
     categories,
-    brands,
     suppliers,
     isLoading: productsLoading,
     loadProducts,
     loadCategories,
-    loadBrands,
     loadSuppliers,
     searchProducts,
     adjustStock,
@@ -498,7 +495,6 @@ const POSPage: React.FC = () => {
 
   // Add state for enhanced search and filtering - moved to top to avoid temporal dead zone
   const [selectedCategory, setSelectedCategory] = useState<string>('');
-  const [selectedBrand, setSelectedBrand] = useState<string>('');
   const [priceRange, setPriceRange] = useState({ min: '', max: '' });
   const [stockFilter, setStockFilter] = useState<'all' | 'in-stock' | 'low-stock' | 'out-of-stock'>('all');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
@@ -523,15 +519,20 @@ const POSPage: React.FC = () => {
   // Settings save state
   const [isSavingSettings, setIsSavingSettings] = useState(false);
 
-  // Use database products instead of demo data and transform them to include required properties
+  // Use database products with embedded category data
   const products = useMemo(() => {
-    return dbProducts.map(product => ({
-      ...product,
-      categoryName: categories.find(c => c.id === product.categoryId)?.name || 'Unknown Category',
-              brandName: product.brand?.name || undefined,
-      images: product.images || []
-    }));
-  }, [dbProducts, categories, brands]);
+    return dbProducts.map(product => {
+      // Use categories array for category names
+      const categoryName = categories.find(c => c.id === product.categoryId)?.name || 
+                          (categories.length === 0 ? 'No Categories' : 'Uncategorized');
+      
+      return {
+        ...product,
+        categoryName: categoryName,
+        images: product.images || []
+      };
+    });
+  }, [dbProducts, categories]);
 
   // Optimized filtered products with pagination
   const filteredProducts = useMemo(() => {
@@ -548,16 +549,16 @@ const POSPage: React.FC = () => {
       filtered = filtered.filter(product => {
         const mainVariant = product.variants?.[0];
         const category = categories.find(c => c.id === product.categoryId)?.name || '';
-        const brand = product.brand?.name || '';
+
         
         // Enhanced barcode search - check all variants for barcode matches
         const hasBarcodeMatch = product.variants?.some(variant => 
-          variant.barcode && variant.barcode.includes(query)
+          variant.sku && variant.sku.includes(query)
         ) || false;
         
         return (product.name?.toLowerCase() || '').includes(query) ||
                (mainVariant?.sku?.toLowerCase() || '').includes(query) ||
-               (brand.toLowerCase() || '').includes(query) ||
+
                (category.toLowerCase() || '').includes(query) ||
                hasBarcodeMatch;
       });
@@ -568,10 +569,7 @@ const POSPage: React.FC = () => {
       filtered = filtered.filter(product => product.categoryId === selectedCategory);
     }
     
-    // Brand filter
-    if (selectedBrand) {
-      filtered = filtered.filter(product => product.brandId === selectedBrand);
-    }
+
     
     // Price range filter
     if (priceRange.min || priceRange.max) {
@@ -647,7 +645,7 @@ const POSPage: React.FC = () => {
     });
     
     return filtered;
-  }, [products, categories, brands, debouncedSearchQuery, selectedCategory, selectedBrand, priceRange, stockFilter, sortBy, sortOrder, showSearchResults, searchResults]);
+  }, [products, categories, debouncedSearchQuery, selectedCategory, priceRange, stockFilter, sortBy, sortOrder, showSearchResults, searchResults]);
 
   // Paginated products
   const paginatedProducts = useMemo(() => {
@@ -684,7 +682,6 @@ const POSPage: React.FC = () => {
       await Promise.all([
         loadProducts({ page: 1, limit: 50 }),
         loadCategories(),
-        loadBrands(),
         loadSuppliers(),
         loadSales()
       ]);
@@ -693,7 +690,7 @@ const POSPage: React.FC = () => {
       console.log(`📊 LATS POS: Data loaded successfully in ${(endTime - startTime).toFixed(2)}ms`);
       console.log('📦 Products available for POS:', products.length);
       console.log('📂 Categories loaded:', categories.length);
-      console.log('🏷️ Brands loaded:', brands.length);
+      console.log('📂 Categories data:', categories);
       console.log('🏢 Suppliers loaded:', suppliers.length);
       
       setDataLoaded(true);
@@ -701,7 +698,7 @@ const POSPage: React.FC = () => {
     } catch (error) {
       console.error('Error loading data for POS:', error);
     }
-  }, [dataLoaded, lastLoadTime, loadProducts, loadCategories, loadBrands, loadSuppliers, products.length, categories.length, brands.length, suppliers.length]);
+  }, [dataLoaded, lastLoadTime, loadProducts, loadCategories, loadSuppliers, products.length, categories.length, suppliers.length]);
 
   // Initialize real-time stock monitoring
   useEffect(() => {
@@ -749,11 +746,20 @@ const POSPage: React.FC = () => {
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
   // Add state for recent scans
-  const [recentScans, setRecentScans] = useState<string[]>([]);
-  const [scanHistory, setScanHistory] = useState<Array<{barcode: string, product: any, timestamp: Date}>>([]);
+  // const [recentScans, setRecentScans] = useState<string[]>([]);
+  // const [scanHistory, setScanHistory] = useState<Array<{barcode: string, product: any, timestamp: Date}>>([]);
 
   // POS-specific modal states only
   const [showAddExternalProductModal, setShowAddExternalProductModal] = useState(false);
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
+  const [isBarcodeScannerEnabled, setIsBarcodeScannerEnabled] = useState(true);
+  const [showReceiptHistory, setShowReceiptHistory] = useState(false);
+  const [receiptHistory, setReceiptHistory] = useState<any[]>([]);
+  const [selectedReceipt, setSelectedReceipt] = useState<any>(null);
+  const [showInventoryAlerts, setShowInventoryAlerts] = useState(false);
+  const [inventoryAlerts, setInventoryAlerts] = useState<any[]>([]);
+  const [selectedProductForAdjustment, setSelectedProductForAdjustment] = useState<any>(null);
+  const [showStockAdjustment, setShowStockAdjustment] = useState(false);
   // QuickCash state removed - not using this functionality
   const [showDeliverySection, setShowDeliverySection] = useState(false);
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
@@ -779,6 +785,21 @@ const POSPage: React.FC = () => {
     deliveryInfo: showDeliverySection ? { enabled: true } : undefined,
     notes: draftNotes
   });
+
+  // External barcode scanner configuration
+  const externalBarcodeConfig = {
+    enableAutoScan: true,
+    enableKeyboard: true,
+    autoAddToCart: true,
+    playSound: true,
+    vibrate: false,
+    scanTimeout: 1000,
+    barcodeLength: {
+      min: 8,
+      max: 20
+    },
+    endCharacter: 'Enter'
+  };
 
   // Show draft notification on mount if drafts exist
   React.useEffect(() => {
@@ -825,85 +846,6 @@ const POSPage: React.FC = () => {
 
 
 
-  // Add state for barcode scanner functionality - only enable if barcode scanner is enabled in settings
-  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
-  const [scannerError, setScannerError] = useState<string>('');
-  const [isScanning, setIsScanning] = useState(false);
-  const [scannedBarcodes, setScannedBarcodes] = useState<string[]>([]);
-  const isBarcodeScannerEnabled = barcodeScannerSettings?.enable_barcode_scanner;
-
-  // External barcode scanner configuration - Optimized for USB/Bluetooth scanners
-  const externalBarcodeConfig = {
-    enableAutoScan: true, // Always enable automatic scanning
-    enableKeyboard: true, // Enable keyboard input from external scanner
-    autoAddToCart: true, // Auto-add to cart for single matches
-    playSound: true, // Play beep sound on detection
-    vibrate: true, // Vibrate on detection
-    scanTimeout: 1000, // 1 second timeout between characters
-    barcodeLength: {
-      min: 8, // Minimum barcode length
-      max: 20 // Maximum barcode length
-    },
-    endCharacter: 'Enter', // Most scanners send Enter key
-    startCharacter: undefined // Some scanners send start character
-  };
-
-
-
-  // Handle barcode detection
-  const handleBarcodeDetected = useCallback((barcode: string) => {
-    console.log('🔍 Auto barcode detected:', barcode);
-    
-    // Set the search query with the detected barcode
-    setSearchQuery(barcode);
-    
-    // Trigger the unified search
-    handleUnifiedSearch(barcode);
-    
-    // Focus on the search input to show the barcode
-    if (searchInputRef.current) {
-      searchInputRef.current.focus();
-    }
-  }, []);
-
-
-
-  // Initialize external barcode scanner
-  const {
-    isScanning: isExternalScanning,
-    scannerError: externalScannerError,
-    scanHistory: externalScanHistory,
-    isInitialized: isScannerInitialized,
-    startExternalScanning,
-    stopExternalScanning
-  } = useExternalBarcodeScanner(handleBarcodeDetected, externalBarcodeConfig);
-
-  // Add state for receipt management - use settings for default values
-  const [receiptTemplate, setReceiptTemplate] = useState({
-    showLogo: receiptSettings?.receipt_template === 'detailed',
-    showTax: receiptSettings?.receipt_template !== 'minimal',
-    showDiscount: receiptSettings?.receipt_template !== 'minimal',
-    showCustomerInfo: receiptSettings?.receipt_template === 'detailed',
-    footerText: 'Thank you for your purchase!'
-  });
-  const [receiptHistory, setReceiptHistory] = useState<Receipt[]>([]);
-  const [showReceiptHistory, setShowReceiptHistory] = useState(false);
-  const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
-  const [receiptPrintMode, setReceiptPrintMode] = useState<'thermal' | 'a4' | 'email'>('thermal');
-
-  // Add state for inventory management
-  const [showInventoryAlerts, setShowInventoryAlerts] = useState(false);
-  const [lowStockThreshold, setLowStockThreshold] = useState(10);
-  const [inventoryAlerts, setInventoryAlerts] = useState<Array<{
-    productId: string;
-    productName: string;
-    currentStock: number;
-    threshold: number;
-    type: 'low' | 'out' | 'critical';
-  }>>([]);
-  const [showStockAdjustment, setShowStockAdjustment] = useState(false);
-  const [selectedProductForAdjustment, setSelectedProductForAdjustment] = useState<any>(null);
-
   // Add state for enhanced customer management
   const [customerLoyaltyPoints, setCustomerLoyaltyPoints] = useState<{[key: string]: number}>({});
   const [customerPurchaseHistory, setCustomerPurchaseHistory] = useState<{[key: string]: any[]}>({});
@@ -943,8 +885,8 @@ const POSPage: React.FC = () => {
     }
   }, [showSettings, activeSettingsTab]);
   const [posSettings, setPosSettings] = useState({
-    taxRate: 16,
-    currency: 'TZS',
+    taxRate: generalSettings?.tax_rate || 16,
+    currency: generalSettings?.currency || 'TZS',
     receiptFooter: 'Thank you for your purchase!',
     autoPrint: false,
     soundEnabled: true,
@@ -986,13 +928,11 @@ const POSPage: React.FC = () => {
         await Promise.all([
           loadProducts(),
           loadCategories(),
-          loadBrands(),
           loadSuppliers()
         ]);
         console.log('📊 LATS POS: Data loaded successfully');
         console.log('📦 Products available for POS:', products.length);
         console.log('📂 Categories loaded:', categories.length);
-        console.log('🏷️ Brands loaded:', brands.length);
         console.log('🏢 Suppliers loaded:', suppliers.length);
       } catch (error) {
         console.error('Error loading data for POS:', error);
@@ -1000,7 +940,7 @@ const POSPage: React.FC = () => {
     };
     
     loadData();
-  }, [loadProducts, loadCategories, loadBrands, loadSuppliers]);
+  }, [loadProducts, loadCategories, loadSuppliers]);
 
 
 
@@ -1017,7 +957,7 @@ const POSPage: React.FC = () => {
 
   // Computed values
   const subtotal = cartItems.reduce((sum, item) => sum + item.totalPrice, 0);
-  const tax = subtotal * 0.16; // 16% tax
+  const tax = generalSettings?.enable_tax ? subtotal * (generalSettings.tax_rate / 100) : 0;
   
   // Dynamic pricing calculation with smart discounts - only apply if enabled
   const { finalPrice, appliedDiscounts } = useMemo(() => {
@@ -1049,12 +989,12 @@ const POSPage: React.FC = () => {
     console.log('🔧 POS Dynamic Pricing: Cart items:', cartItems);
 
     cartItems.forEach((item, index) => {
-      const basePrice = item.unitPrice;
+      const basePrice = item.price;
       console.log(`🔧 POS Dynamic Pricing: Item ${index + 1}:`, {
-        name: item.productName,
+        name: item.name,
         basePrice,
         quantity: item.quantity,
-        unitPrice: item.unitPrice,
+        unitPrice: item.price,
         totalPrice: item.totalPrice
       });
       
@@ -1129,7 +1069,7 @@ const POSPage: React.FC = () => {
     // Get low stock items
     const lowStockItems = products.filter(product => {
       const mainVariant = product.variants?.[0];
-      return mainVariant && (mainVariant.quantity || 0) < 10;
+              return mainVariant && (mainVariant.stockQuantity || 0) < 10;
     }).slice(0, 5);
     
     setDailyStats({
@@ -1156,7 +1096,7 @@ const POSPage: React.FC = () => {
 
     const price = selectedVariant.sellingPrice || 0;
     const sku = selectedVariant.sku || 'N/A';
-    const currentStock = selectedVariant.quantity || 0;
+    const currentStock = selectedVariant.stockQuantity || 0;
     
     if (currentStock <= 0) {
       alert(`Cannot add ${product.name} - ${selectedVariant.name}. No stock available.`);
@@ -1220,37 +1160,36 @@ const POSPage: React.FC = () => {
     setShowSearchResults(false);
   }, []);
 
-  // Barcode scanner functions
-  const handleBarcodeScan = useCallback((barcode: string) => {
-    setScannedBarcodes(prev => [...prev, barcode]);
+  // Handle barcode detection
+  const handleBarcodeDetected = useCallback((barcode: string) => {
+    console.log('🔍 Barcode detected:', barcode);
     
-    // Find product by barcode
-    const product = products.find(p => {
-      const mainVariant = p.variants?.[0];
-      return mainVariant?.barcode === barcode || mainVariant?.sku === barcode;
-    });
+    // Search for product with this barcode (using SKU as barcode)
+    const product = products.find(p => 
+      p.variants?.some(variant => variant.sku === barcode)
+    );
     
     if (product) {
-      handleAddToCart(product);
-      setScannerError('');
+      const variant = product.variants?.find(v => v.sku === barcode);
+      if (variant) {
+        handleAddToCart(product, variant);
+        toast.success(`Added ${product.name} to cart`);
+      }
     } else {
-      setScannerError(`Product not found for barcode: ${barcode}`);
+      toast.error(`No product found for barcode: ${barcode}`);
     }
   }, [products, handleAddToCart]);
 
-  const startBarcodeScanner = useCallback(() => {
-    setShowBarcodeScanner(true);
-    setIsScanning(true);
-    setScannerError('');
-    
-    // Simulate barcode scanning (in real app, this would use camera API)
-    setTimeout(() => {
-      const mockBarcodes = ['1234567890123', '1234567890124', '1234567890125'];
-      const randomBarcode = mockBarcodes[Math.floor(Math.random() * mockBarcodes.length)];
-      handleBarcodeScan(randomBarcode);
-      setIsScanning(false);
-    }, 2000);
-  }, [handleBarcodeScan]);
+  // Initialize external barcode scanner
+  const {
+    isScanning: isExternalScanning,
+    scannerError,
+    scanHistory,
+    isInitialized: isScannerInitialized,
+    startExternalScanning,
+    stopExternalScanning,
+    playBeepSound
+  } = useExternalBarcodeScanner(handleBarcodeDetected, externalBarcodeConfig);
 
   // Handle navigation state from variant selection
   useEffect(() => {
@@ -1297,7 +1236,7 @@ const POSPage: React.FC = () => {
         // Direct barcode search in local products
         const barcodeMatches = products.filter(product => 
           product.variants?.some(variant => 
-            variant.barcode && variant.barcode === trimmedQuery
+            variant.sku && variant.sku === trimmedQuery
           )
         );
         
@@ -1313,7 +1252,7 @@ const POSPage: React.FC = () => {
           if (barcodeMatches.length === 1) {
             const product = barcodeMatches[0];
             const matchingVariant = product.variants?.find(variant => 
-              variant.barcode === trimmedQuery
+              variant.sku === trimmedQuery
             );
             if (matchingVariant) {
               handleAddToCart(product, matchingVariant);
@@ -1339,7 +1278,7 @@ const POSPage: React.FC = () => {
         
         if (smartSearchResults.length > 0) {
           // Get suggestions for better UX if enabled
-          if (searchFilterSettings?.show_search_suggestions) {
+          if (searchFilterSettings?.enable_search_suggestions) {
             const suggestions = await smartSearchService.getSearchSuggestions(trimmedQuery, 5);
             setSearchSuggestions(suggestions);
           }
@@ -1357,11 +1296,11 @@ const POSPage: React.FC = () => {
       const filtered = products.filter(product => {
         const mainVariant = product.variants?.[0];
         const category = categories.find(c => c.id === product.categoryId)?.name || '';
-        const brand = product.brand?.name || '';
+        const brand = product.attributes?.brand || '';
         
         // Enhanced barcode search - check all variants for barcode matches
         const hasBarcodeMatch = product.variants?.some(variant => 
-          variant.barcode && variant.barcode.includes(trimmedQuery)
+          variant.sku && variant.sku.includes(trimmedQuery)
         ) || false;
         
         return (product.name?.toLowerCase() || '').includes(trimmedQuery.toLowerCase()) ||
@@ -1375,7 +1314,7 @@ const POSPage: React.FC = () => {
     } finally {
       setIsSearching(false);
     }
-  }, [products, handleAddToCart, categories, brands, isSmartSearchEnabled, searchFilterSettings]);
+  }, [products, handleAddToCart, categories, isSmartSearchEnabled, searchFilterSettings]);
 
   // Handle search input changes
   const handleSearchInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1488,7 +1427,7 @@ const POSPage: React.FC = () => {
           return {
             ...item,
             quantity: newQuantity,
-            totalPrice: newQuantity * item.unitPrice
+            totalPrice: newQuantity * item.price
           };
         }
         return item;
@@ -1551,6 +1490,19 @@ const POSPage: React.FC = () => {
     }
   }, [selectedCustomer, total]);
 
+  // Format money utility function
+  const formatMoney = useCallback((amount: number) => {
+    const formatted = new Intl.NumberFormat('en-TZ', {
+      style: 'currency',
+      currency: 'TZS',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2
+    }).format(amount);
+    
+    // Remove trailing .00 and .0 [[memory:6327226]]
+    return formatted.replace(/\.00$/, '').replace(/\.0$/, '');
+  }, []);
+
   // Handle payment completion
   const handlePaymentComplete = useCallback(async () => {
     if (!selectedCustomer) {
@@ -1565,373 +1517,119 @@ const POSPage: React.FC = () => {
 
     setIsProcessingPayment(true);
     try {
-      // Simulate payment processing
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Process payment using optimized sale processing service
+      console.log('🔧 LATS POS: Processing payment with optimized service...');
       
-      // Deduct stock for all items in cart (skip external products)
-      console.log('🔧 LATS POS: Deducting stock for sale...');
-      const stockDeductionPromises = cartItems.map(async (item) => {
-        try {
-          // Skip stock deduction for external products
-          if (item.variantId === 'external') {
-            console.log(`⏭️ Skipping stock deduction for external product: ${item.name}`);
-            return { success: true, product: item.name, quantity: item.quantity, isExternal: true };
-          }
-
-          // Find the product in the database
-          const product = products.find(p => p.id === item.productId);
-          if (!product) {
-            console.warn(`Product not found for cart item: ${item.name}`);
-            return { success: false, error: 'Product not found' };
-          }
-
-          // Get the specific variant for this cart item
-          const variant = product.variants?.find(v => v.id === item.variantId);
-          if (!variant) {
-            console.warn(`Variant not found for product: ${product.name}, variant ID: ${item.variantId}`);
-            return { success: false, error: 'Product variant not found' };
-          }
-
-          // Check if enough stock is available for this variant
-          const currentStock = variant.quantity || 0;
-          if (currentStock < item.quantity) {
-            console.warn(`Insufficient stock for ${product.name} - ${variant.name}: ${currentStock} available, ${item.quantity} requested`);
-            return { success: false, error: `Insufficient stock for ${product.name} - ${variant.name}` };
-          }
-
-          // Deduct stock (negative quantity for deduction)
-          const deductionQuantity = -item.quantity;
-          const receiptNumber = `RCP-${Date.now().toString().slice(-6)}`;
-          const reason = `POS Sale - Receipt: ${receiptNumber}`;
-          
-          const stockResponse = await adjustStock(
-            product.id, 
-            variant.id, 
-            deductionQuantity, 
-            reason
-          );
-
-          if (stockResponse.ok) {
-            console.log(`✅ Stock deducted for ${product.name} - ${variant.name}: ${item.quantity} units`);
-            return { success: true, product: `${product.name} - ${variant.name}`, quantity: item.quantity };
-          } else {
-            console.error(`❌ Failed to deduct stock for ${product.name} - ${variant.name}:`, stockResponse.message);
-            return { success: false, error: stockResponse.message };
-          }
-        } catch (error) {
-          console.error(`❌ Error deducting stock for ${item.name}:`, error);
-          return { success: false, error: 'Stock deduction failed' };
-        }
+      // Process sale with all optimizations (stock validation, inventory update, receipt generation)
+      const saleResult = await saleProcessingService.processSale({
+        customerId: selectedCustomer?.id,
+        customerName: selectedCustomer?.name || 'Walk-in Customer',
+        customerPhone: selectedCustomer?.phone,
+        customerEmail: selectedCustomer?.email,
+        items: cartItems.map(item => ({
+          id: item.id,
+          productId: item.productId,
+          variantId: item.variantId,
+          productName: item.name,
+          variantName: item.variantName || item.name,
+          sku: item.sku || `SKU-${item.id}`,
+          quantity: item.quantity,
+          unitPrice: item.price,
+          totalPrice: item.price * item.quantity,
+          costPrice: 0, // Will be calculated by service
+          profit: 0 // Will be calculated by service
+        })),
+        subtotal: subtotal,
+        tax: tax,
+        discount: discount,
+        total: total,
+        paymentMethod: {
+          type: selectedPaymentMethod?.type || 'cash',
+          details: selectedPaymentMethod,
+          amount: total
+        },
+        paymentStatus: 'completed',
+        soldBy: cashierName,
+        soldAt: new Date().toISOString(),
+        notes: `Processed via POS - Payment: ${selectedPaymentMethod?.name || 'Cash'}`
       });
 
-      // Wait for all stock deductions to complete
-      const stockResults = await Promise.all(stockDeductionPromises);
-      
-      // Check if any stock deductions failed
-      const failedDeductions = stockResults.filter(result => !result.success);
-      if (failedDeductions.length > 0) {
-        const errorMessage = failedDeductions.map(f => f.error).join('\n');
-        alert(`Payment completed but some stock deductions failed:\n${errorMessage}`);
-        console.error('❌ Some stock deductions failed:', failedDeductions);
-      } else {
-        console.log('✅ All stock deductions completed successfully');
+      if (!saleResult.success) {
+        throw new Error(saleResult.error || 'Failed to process sale');
       }
 
-      // Save the sale to the database
-      console.log('💾 Saving sale to database...');
-      const saleNumber = `SALE-${Date.now().toString().slice(-6)}`;
+      // Sale processing service handled everything (validation, saving, inventory update)
+      console.log('✅ Sale processed successfully:', saleResult.saleId);
+
+      // Generate receipt from sale result
+      const receipt: Receipt = {
+        id: saleResult.saleId!,
+        date: new Date().toLocaleDateString(),
+        time: new Date().toLocaleTimeString(),
+        items: cartItems,
+        customer: selectedCustomer,
+        subtotal: subtotal,
+        tax: tax,
+        discount: discount,
+        total: total,
+        paymentMethod: selectedPaymentMethod!,
+        cashier: cashierName,
+        receiptNumber: saleResult.sale?.saleNumber || `SALE-${Date.now().toString().slice(-6)}`
+      };
+
+      setCurrentReceipt(receipt);
+      setShowReceipt(true);
       
-              // Validate that all cart items have valid variants before saving (skip external products)
-        const invalidItems = cartItems.filter(item => {
-          // Skip validation for external products
-          if (item.variantId === 'external') return false;
-          
-          const product = products.find(p => p.id === item.productId);
-          if (!product) return true;
-          
-          const variant = product.variants?.find(v => v.id === item.variantId);
-          return !variant;
+      // Clear cart and reset UI state
+      setCartItems([]);
+      setSelectedCustomer(null);
+      setSelectedPaymentMethod(null);
+      setShowPaymentModal(false);
+      
+      // Smart inventory update - update only affected products in memory
+      const updatedProducts = products.map(product => {
+        const productSaleItems = cartItems.filter(item => item.productId === product.id);
+        if (productSaleItems.length === 0) return product;
+
+        // Update variants quantities
+        const updatedVariants = product.variants?.map(variant => {
+          const variantSaleItem = productSaleItems.find(item => item.variantId === variant.id);
+          if (!variantSaleItem) return variant;
+
+          return {
+            ...variant,
+            quantity: Math.max(0, (variant.stockQuantity || 0) - variantSaleItem.quantity)
+          };
         });
-        
-        if (invalidItems.length > 0) {
-          const invalidItemNames = invalidItems.map(item => item.name).join(', ');
-          throw new Error(`Cannot save sale: Some items have invalid variants: ${invalidItemNames}`);
-        }
-      
-      try {
-        // Create sale record
-        const { data: sale, error: saleError } = await supabase
-          .from('lats_sales')
-          .insert([{
-            sale_number: saleNumber,
-            customer_id: selectedCustomer?.id || null,
-            total_amount: total,
-            payment_method: selectedPaymentMethod?.id || 'cash',
-            status: 'completed',
-            created_by: null
-          }])
-          .select()
-          .single();
 
-        if (saleError) {
-          console.error('❌ Failed to create sale:', saleError);
-          throw new Error(`Failed to create sale: ${saleError.message}`);
-        }
-        
-        // Additional validation: Check if all referenced records exist in database
-        console.log('🔍 Validating foreign key references...');
-        console.log('🔍 Sale ID to validate:', sale.id);
-        console.log('🔍 Products in cart:', cartItems.map(item => ({ id: item.productId, name: item.name })));
-        
-        // Validate that the sale record exists
-        const { data: saleCheck, error: saleCheckError } = await supabase
-          .from('lats_sales')
-          .select('id')
-          .eq('id', sale.id)
-          .single();
-          
-        if (saleCheckError || !saleCheck) {
-          throw new Error(`Sale record not found in database: ${sale.id}`);
-        }
-        
-        // Validate that all products exist (skip external products)
-        const regularProductIds = [...new Set(cartItems
-          .filter(item => item.variantId !== 'external')
-          .map(item => item.productId)
-        )];
-        
-        if (regularProductIds.length > 0) {
-          const { data: productsCheck, error: productsCheckError } = await supabase
-            .from('lats_products')
-            .select('id, name')
-            .in('id', regularProductIds);
-            
-          if (productsCheckError) {
-            throw new Error(`Failed to validate products: ${productsCheckError.message}`);
-          }
-          
-          if (productsCheck.length !== regularProductIds.length) {
-            const foundIds = productsCheck.map(p => p.id);
-            const missingIds = regularProductIds.filter(id => !foundIds.includes(id));
-            throw new Error(`Some products not found in database: ${missingIds.join(', ')}`);
-          }
-        }
-        
-        // Validate that all variants exist (skip external products)
-        const regularVariantIds = [...new Set(cartItems
-          .filter(item => item.variantId !== 'external')
-          .map(item => item.variantId)
-        )];
-        
-        if (regularVariantIds.length > 0) {
-          const { data: variantsCheck, error: variantsCheckError } = await supabase
-            .from('lats_product_variants')
-            .select('id, name, product_id')
-            .in('id', regularVariantIds);
-            
-          if (variantsCheckError) {
-            throw new Error(`Failed to validate variants: ${variantsCheckError.message}`);
-          }
-          
-          if (variantsCheck.length !== regularVariantIds.length) {
-            const foundIds = variantsCheck.map(v => v.id);
-            const missingIds = regularVariantIds.filter(id => !foundIds.includes(id));
-            throw new Error(`Some variants not found in database: ${missingIds.join(', ')}`);
-          }
-        }
-        
-        console.log('✅ All foreign key references validated successfully');
-
-        // Create sale items
-        const saleItemsData = await Promise.all(cartItems.map(async (item) => {
-          const isExternalProduct = item.variantId === 'external';
-          
-          if (isExternalProduct) {
-            // Handle external products - they don't exist in inventory
-            // First, get the external product from database
-            let externalProductId = null;
-            try {
-              const externalProduct = await getExternalProductBySku(item.sku);
-              if (externalProduct) {
-                // Mark the external product as sold
-                await markExternalProductAsSold(externalProduct.id);
-                externalProductId = externalProduct.id;
-                console.log(`✅ External product marked as sold: ${externalProduct.name} (${externalProduct.sku})`);
-              }
-            } catch (error) {
-              console.warn(`⚠️ Could not find or update external product with SKU: ${item.sku}`, error);
-            }
-            
-            const saleItem = {
-              sale_id: sale.id,
-              product_id: null, // External products don't have a product_id in inventory
-              variant_id: null, // External products don't have a variant_id in inventory
-              external_product_id: externalProductId, // Link to external product record
-              quantity: item.quantity,
-              unit_price: item.unitPrice,
-              total_price: item.totalPrice,
-              product_name: item.name, // Store product name for external products
-              variant_name: item.variantName || 'External Product',
-              sku: item.sku,
-              // Enhanced metadata for supplier tracking and returns
-              supplier_name: item.metadata?.supplierName || '',
-              supplier_phone: item.metadata?.supplierPhone || '',
-              purchase_date: item.metadata?.purchaseDate || '',
-              purchase_price: item.metadata?.purchasePrice || 0,
-              purchase_quantity: item.metadata?.purchaseQuantity || 0,
-              warranty_info: item.metadata?.warrantyInfo || '',
-              return_policy: item.metadata?.returnPolicy || '',
-              product_condition: item.metadata?.productCondition || 'new',
-
-              category: item.metadata?.category || '',
-              brand: item.metadata?.brand || '',
-              barcode: item.metadata?.barcode || '',
-              notes: item.metadata?.notes || ''
-            };
-            
-            console.log('📦 Creating external sale item with supplier info:', {
-              product: item.name,
-              variant: item.variantName || 'External Product',
-              quantity: item.quantity,
-              unit_price: item.unitPrice,
-              total_price: item.totalPrice,
-              supplier: item.metadata?.supplierName,
-              purchase_date: item.metadata?.purchaseDate,
-              purchase_price: item.metadata?.purchasePrice,
-              external_product_id: externalProductId
-            });
-            
-            return saleItem;
-          } else {
-            // Handle regular inventory products
-            const product = products.find(p => p.id === item.productId);
-            if (!product) {
-              throw new Error(`Product not found for cart item: ${item.name}`);
-            }
-            
-            const variant = product.variants?.find(v => v.id === item.variantId) || product.variants?.[0];
-            if (!variant) {
-              throw new Error(`No variant found for product: ${product.name}. All products must have at least one variant.`);
-            }
-            
-            const saleItem = {
-              sale_id: sale.id,
-              product_id: item.productId,
-              variant_id: variant.id,
-              quantity: item.quantity,
-              unit_price: item.unitPrice,
-              total_price: item.totalPrice
-            };
-            
-            console.log('📦 Creating inventory sale item:', {
-              product: product.name,
-              variant: variant.name,
-              variant_id: variant.id,
-              quantity: item.quantity,
-              unit_price: item.unitPrice,
-              total_price: item.totalPrice
-            });
-            
-            return saleItem;
-          }
-        }));
-
-        console.log('💾 Inserting sale items into database...');
-        console.log('🔍 Sale ID:', sale.id);
-        console.log('🔍 Sale items data to insert:', JSON.stringify(saleItemsData, null, 2));
-        
-        // Validate data types before insertion
-        const validatedSaleItems = saleItemsData.map(item => ({
-          sale_id: item.sale_id,
-          product_id: item.product_id,
-          variant_id: item.variant_id,
-          quantity: parseInt(item.quantity.toString()),
-          unit_price: parseFloat(item.unit_price.toString()),
-          total_price: parseFloat(item.total_price.toString())
-        }));
-        
-        console.log('🔍 Validated sale items data:', JSON.stringify(validatedSaleItems, null, 2));
-        
-        const { error: itemsError } = await supabase
-          .from('lats_sale_items')
-          .insert(validatedSaleItems);
-
-        if (itemsError) {
-          console.error('❌ Failed to create sale items:', itemsError);
-          console.error('❌ Error details:', {
-            message: itemsError.message,
-            details: itemsError.details,
-            hint: itemsError.hint,
-            code: itemsError.code
-          });
-          console.error('❌ Sale items data that failed:', JSON.stringify(validatedSaleItems, null, 2));
-          throw new Error(`Failed to create sale items: ${itemsError.message}. Details: ${itemsError.details || 'No additional details'}`);
-        }
-
-        console.log('✅ Sale saved successfully:', sale.id);
-        
-        // Generate receipt
-        const receipt: Receipt = {
-          id: sale.id,
-          date: new Date().toLocaleDateString(),
-          time: new Date().toLocaleTimeString(),
-          items: cartItems,
-          customer: selectedCustomer,
-          subtotal: subtotal,
-          tax: tax,
-          discount: discount,
-          total: total,
-          paymentMethod: selectedPaymentMethod!,
-          cashier: cashierName,
-          receiptNumber: saleNumber
+        return {
+          ...product,
+          variants: updatedVariants
         };
+      });
 
-        setCurrentReceipt(receipt);
-        setShowReceipt(true);
-        
-        // Clear cart
-        setCartItems([]);
-        setSelectedCustomer(null);
-        setSelectedPaymentMethod(null);
-        
-        console.log('✅ Sale saved successfully:', sale.id);
-        
-        // Reload products to get updated stock levels
-        await loadProducts({ page: 1, limit: 50 });
-        
-        // Calculate loyalty points earned (1 point per 100 TZS) - only if dynamic pricing is enabled
-        const pointsEarned = dynamicPricingSettings?.enable_dynamic_pricing ? Math.floor(total / 100) : 0;
-        
-        // Clear cart after successful payment
-        setCartItems([]);
-        setSelectedCustomer(null);
-        setSelectedPaymentMethod(null);
-        setShowPaymentModal(false);
-        
-        // Show success message - only show notifications if enabled
-        const customerInfo = selectedCustomer 
-          ? `\nCustomer: ${selectedCustomer.name}${dynamicPricingSettings?.enable_dynamic_pricing ? `\nLoyalty Points Earned: ${pointsEarned}` : ''}`
-          : '\nWalk-in Customer';
-        
-        const stockInfo = failedDeductions.length > 0 
-          ? `\n⚠️ ${failedDeductions.length} stock deduction(s) failed`
-          : '\n✅ Stock updated successfully';
-        
-        if (notificationSettings?.enable_notifications) {
-          alert(`Payment completed successfully!\nTotal: ${formatMoney(total)}${customerInfo}${stockInfo}`);
-        }
-        
-      } catch (error) {
-        console.error('❌ Error saving sale:', error);
-        alert(`Payment completed but sale was not saved: ${error}`);
+      // Update inventory store state directly (no database reload needed)
+      useInventoryStore.setState({ products: updatedProducts });
+
+      // Calculate loyalty points for UI display
+      const pointsEarned = dynamicPricingSettings?.enable_dynamic_pricing ? Math.floor(total / 100) : 0;
+      
+      // Show success notification
+      const customerInfo = selectedCustomer 
+        ? `\nCustomer: ${selectedCustomer.name}${dynamicPricingSettings?.enable_dynamic_pricing ? `\nLoyalty Points Earned: ${pointsEarned}` : ''}`
+        : '\nWalk-in Customer';
+
+      if (notificationSettings?.enable_notifications) {
+        alert(`Payment completed successfully!\nTotal: ${formatMoney(total)}${customerInfo}\n✅ Inventory updated`);
       }
+
     } catch (error) {
       console.error('Payment error:', error);
       alert('Payment failed. Please try again.');
     } finally {
       setIsProcessingPayment(false);
     }
-  }, [total, selectedCustomer, selectedPaymentMethod, generateReceipt, cartItems, products, adjustStock, loadProducts]);
+  }, [total, selectedCustomer, selectedPaymentMethod, cartItems, products, dynamicPricingSettings, notificationSettings, formatMoney, cashierName]);
 
   // Handle clear cart
   const handleClearCart = useCallback(() => {
@@ -1960,7 +1658,7 @@ const POSPage: React.FC = () => {
     });
   }, []);
 
-  // Auto-expand the latest item and minimize previous items when cart changes
+  // Auto-expand the latest item and minimize previous items when cart changes  
   useEffect(() => {
     if (cartItems.length > 0) {
       const latestItemId = cartItems[cartItems.length - 1].id;
@@ -1985,7 +1683,7 @@ const POSPage: React.FC = () => {
         continue;
       }
 
-      const currentStock = mainVariant.quantity || 0;
+              const currentStock = mainVariant.stockQuantity || 0;
       if (currentStock < item.quantity) {
         stockIssues.push(`${item.name}: Insufficient stock (${currentStock} available, ${item.quantity} requested)`);
       }
@@ -2017,19 +1715,6 @@ const POSPage: React.FC = () => {
     setShowPaymentModal(true);
   }, [cartItems.length, selectedCustomer, checkStockAvailability]);
 
-  // Format money
-  const formatMoney = (amount: number) => {
-    const formatted = new Intl.NumberFormat('en-TZ', {
-      style: 'currency',
-      currency: 'TZS',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2
-    }).format(amount);
-    
-    // Remove trailing .00 and .0
-    return formatted.replace(/\.00$/, '').replace(/\.0$/, '');
-  };
-
   // Receipt management functions
   const printReceipt = useCallback((receipt: Receipt, mode: 'thermal' | 'a4' | 'email' = 'thermal') => {
     const receiptContent = `
@@ -2042,18 +1727,18 @@ const POSPage: React.FC = () => {
       Items:
       ${receipt.items.map(item => 
         `${item.name}${item.variantName ? ` (${item.variantName})` : ''}
-         ${item.quantity} x ${formatMoney(item.unitPrice)} = ${formatMoney(item.totalPrice)}`
+         ${item.quantity} x ${formatMoney(item.price)} = ${formatMoney(item.totalPrice)}`
       ).join('\n')}
       
       ========================================
       Subtotal: ${formatMoney(receipt.subtotal)}
-      ${receiptTemplate.showTax ? `Tax (16%): ${formatMoney(receipt.tax)}` : ''}
-      ${receiptTemplate.showDiscount && receipt.discount > 0 ? `Discount: -${formatMoney(receipt.discount)}` : ''}
+      ${receiptSettings.show_tax ? `Tax (16%): ${formatMoney(receipt.tax)}` : ''}
+${receiptSettings.show_discount && receipt.discount > 0 ? `Discount: -${formatMoney(receipt.discount)}` : ''}
       ========================================
       TOTAL: ${formatMoney(receipt.total)}
       ========================================
       
-      ${receiptTemplate.showCustomerInfo && receipt.customer ? `
+      ${receiptSettings.show_customer_info && receipt.customer ? `
       Customer: ${receipt.customer.name}
       Phone: ${receipt.customer.phone}
       ` : ''}
@@ -2062,7 +1747,7 @@ const POSPage: React.FC = () => {
       Cashier: ${receipt.cashier}
       
       ========================================
-      ${receiptTemplate.footerText}
+      ${receiptSettings.footer_text}
       ========================================
     `;
 
@@ -2090,7 +1775,7 @@ const POSPage: React.FC = () => {
       console.log('Sending receipt via email:', receiptContent);
       alert('Receipt sent via email');
     }
-  }, [receiptTemplate, formatMoney]);
+  }, [receiptSettings, formatMoney]);
 
   const sendReceiptViaWhatsApp = useCallback((receipt: Receipt) => {
     const message = `Receipt #${receipt.receiptNumber}\nTotal: ${formatMoney(receipt.total)}\nDate: ${receipt.date}`;
@@ -2111,7 +1796,7 @@ const POSPage: React.FC = () => {
     for (const product of products) {
       const mainVariant = product.variants?.[0];
       if (mainVariant) {
-        const currentStock = mainVariant.quantity || 0;
+        const currentStock = mainVariant.stockQuantity || 0;
         
         if (currentStock === 0) {
           alerts.push({
@@ -2129,12 +1814,12 @@ const POSPage: React.FC = () => {
             threshold: 5,
             type: 'critical' as const
           });
-        } else if (currentStock <= lowStockThreshold) {
+        } else if (currentStock <= posSettings.lowStockThreshold) {
           alerts.push({
             productId: product.id,
             productName: product.name,
             currentStock,
-            threshold: lowStockThreshold,
+            threshold: posSettings.lowStockThreshold,
             type: 'low' as const
           });
         }
@@ -2142,7 +1827,7 @@ const POSPage: React.FC = () => {
     }
     
     setInventoryAlerts(alerts);
-  }, [products, lowStockThreshold]);
+  }, [products, posSettings.lowStockThreshold]);
 
   // Update inventory alerts when products change
   useEffect(() => {
@@ -2229,6 +1914,17 @@ const POSPage: React.FC = () => {
     return new Date(date).toLocaleDateString();
   };
 
+  // Remove all barcode-related code blocks and replace with SKU functionality
+  const handleSKUSearch = useCallback((sku: string) => {
+    console.log('🔍 SKU search:', sku);
+    setSearchQuery(sku);
+    handleUnifiedSearch(sku);
+  }, [handleUnifiedSearch]);
+
+  const startBarcodeScanner = useCallback(() => {
+    setShowBarcodeScanner(true);
+  }, []);
+
   return (
     <div className="min-h-screen">
       {/* External scanner status indicator */}
@@ -2248,7 +1944,7 @@ const POSPage: React.FC = () => {
       )}
       
       {/* Scanner error indicator */}
-      {externalScannerError && (
+      {scannerError && (
         <div className="fixed top-4 right-4 z-50 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2">
           <div className="w-2 h-2 bg-white rounded-full" />
           <span className="text-sm font-medium">Scanner error</span>
@@ -2326,13 +2022,6 @@ const POSPage: React.FC = () => {
                   </div>
                 )}
                 
-                {/* Barcode indicator */}
-                {searchQuery.trim() && searchQuery.length >= 8 && /^[A-Za-z0-9]+$/.test(searchQuery) && (
-                  <div className="absolute left-14 top-1/2 transform -translate-y-1/2">
-                    <Barcode className="w-4 h-4 text-green-500" />
-                  </div>
-                )}
-                
                 {/* External scanner indicator */}
                 {isExternalScanning && (
                   <div className="absolute left-14 top-1/2 transform -translate-y-1/2">
@@ -2348,9 +2037,9 @@ const POSPage: React.FC = () => {
                 )}
                 
                 {/* Scanner error indicator */}
-                {externalScannerError && (
+                {scannerError && (
                   <div className="absolute left-14 top-1/2 transform -translate-y-1/2">
-                    <div className="w-4 h-4 bg-red-500 rounded-full" title={`Scanner error: ${externalScannerError}`} />
+                    <div className="w-4 h-4 bg-red-500 rounded-full" title={`Scanner error: ${scannerError}`} />
                   </div>
                 )}
                 
@@ -2456,39 +2145,36 @@ const POSPage: React.FC = () => {
               {showAdvancedFilters && (
                 <div className="p-4 bg-gradient-to-br from-gray-50 to-blue-50 rounded-xl border border-gray-200">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {/* Category Filter */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
-                      <select
-                        value={selectedCategory}
-                        onChange={(e) => setSelectedCategory(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                      {/* Category Filter */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
+                    <select
+                      value={selectedCategory}
+                      onChange={(e) => setSelectedCategory(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">All Categories ({categories.length})</option>
+                      {categories.map(category => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </select>
+                    {/* Debug info */}
+                    <div className="text-xs text-gray-500 mt-1">
+                      Categories loaded: {categories.length} | 
+                      Selected: {selectedCategory || 'None'} | 
+                      First category: {categories[0]?.name || 'None'}
+                      <button 
+                        onClick={() => loadCategories()} 
+                        className="ml-2 px-2 py-1 bg-blue-100 text-blue-600 rounded text-xs hover:bg-blue-200"
                       >
-                        <option value="">All Categories</option>
-                        {categories.map(category => (
-                          <option key={category.id} value={category.id}>
-                            {category.name}
-                          </option>
-                        ))}
-                      </select>
+                        Refresh
+                      </button>
                     </div>
+                  </div>
 
-                    {/* Brand Filter */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Brand</label>
-                      <select
-                        value={selectedBrand}
-                        onChange={(e) => setSelectedBrand(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="">All Brands</option>
-                        {brands.map(brand => (
-                          <option key={brand.id} value={brand.id}>
-                            {brand.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+
 
                     {/* Stock Filter */}
                     <div>
@@ -2562,7 +2248,7 @@ const POSPage: React.FC = () => {
                     <button
                       onClick={() => {
                         setSelectedCategory('');
-                        setSelectedBrand('');
+
                         setPriceRange({ min: '', max: '' });
                         setStockFilter('all');
                         setSortBy('sales');
@@ -2580,7 +2266,7 @@ const POSPage: React.FC = () => {
             {/* Scrollable Products Section */}
             <div className="flex-1 overflow-y-auto">
             {/* Recent Scans History */}
-                             {autoScanHistory.length > 0 && (
+                             {scanHistory.length > 0 && (
               <div className="mb-6 p-4 bg-gradient-to-br from-purple-50 to-indigo-100 rounded-xl border border-purple-200">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="p-2 bg-purple-100 rounded-lg">
@@ -2612,13 +2298,13 @@ const POSPage: React.FC = () => {
                   ))}
                 </div>
                 
-                                 {autoScanHistory.length > 6 && (
+                                 {scanHistory.length > 6 && (
                   <div className="mt-3 text-center">
                     <button
                       onClick={() => setScanHistory([])}
                       className="text-xs text-purple-600 hover:text-purple-800"
                     >
-                      Clear History ({autoScanHistory.length} items)
+                      Clear History ({scanHistory.length} items)
                     </button>
                   </div>
                 )}
@@ -2742,7 +2428,7 @@ const POSPage: React.FC = () => {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
                         <div>• Product name (e.g., "iPhone")</div>
                         <div>• SKU code (e.g., "IPH14P-128")</div>
-                        <div>• Brand name (e.g., "Apple")</div>
+        
                         <div>• Category (e.g., "Smartphones")</div>
                         <div>• Barcode number</div>
                         <div>• Partial matches</div>
@@ -2923,7 +2609,7 @@ const POSPage: React.FC = () => {
                         name: variant.name,
                         sku: variant.sku,
                         price: variant.sellingPrice,
-                        quantity: variant.quantity,
+                        quantity: variant.stockQuantity,
                         attributes: variant.attributes || {}
                       })) || [];
 
@@ -3622,7 +3308,7 @@ const POSPage: React.FC = () => {
                 productCondition: product.productCondition,
 
                 category: product.category,
-                brand: product.brand,
+          
                 barcode: product.barcode,
                 notes: product.notes
               }
@@ -4083,14 +3769,14 @@ const POSPage: React.FC = () => {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Low Stock Threshold</label>
                     <input
                       type="number"
-                      value={lowStockThreshold}
-                      onChange={(e) => setLowStockThreshold(parseInt(e.target.value) || 10)}
+                      value={posSettings.lowStockThreshold}
+                      onChange={(e) => setPosSettings(prev => ({ ...prev, lowStockThreshold: parseInt(e.target.value) || 10 }))}
                       className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       min="1"
                     />
                   </div>
                   <div className="text-sm text-gray-600">
-                    Items with stock ≤ {lowStockThreshold} will trigger alerts
+                    Items with stock ≤ {posSettings.lowStockThreshold} will trigger alerts
                   </div>
                 </div>
               </div>
@@ -4518,7 +4204,7 @@ const POSPage: React.FC = () => {
           variantName: item.variantName || '',
           sku: item.sku,
           quantity: item.quantity,
-          unitPrice: item.unitPrice,
+          unitPrice: item.price,
           totalPrice: item.totalPrice,
           availableQuantity: item.availableQuantity || 0
         }))}

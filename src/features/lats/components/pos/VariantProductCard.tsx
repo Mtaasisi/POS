@@ -16,6 +16,7 @@ import {
   getProductStockStatus,
   getBestVariant 
 } from '../../lib/productUtils';
+import { RealTimeStockService } from '../../lib/realTimeStock';
 import VariantSelectionPage from '../../pages/VariantSelectionPage';
 import { SimpleImageDisplay } from '../../../../components/SimpleImageDisplay';
 import { ProductImage } from '../../../../lib/robustImageService';
@@ -29,8 +30,11 @@ interface VariantProductCardProps {
   variant?: 'default' | 'compact' | 'detailed';
   showStockInfo?: boolean;
   showCategory?: boolean;
-  showBrand?: boolean;
+
   className?: string;
+  primaryColor?: 'blue' | 'orange' | 'green' | 'purple';
+  actionText?: string;
+  allowOutOfStockSelection?: boolean; // For purchase orders where we want to allow selecting out-of-stock products
 }
 
 const VariantProductCard: React.FC<VariantProductCardProps> = ({
@@ -40,37 +44,22 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
   variant = 'default',
   showStockInfo = true,
   showCategory = true,
-  showBrand = true,
-  className = ''
+  
+  className = '',
+  primaryColor = 'blue',
+  actionText = 'Add to Cart',
+  allowOutOfStockSelection = false
 }) => {
   // Add error state for React refresh issues
   const [hasError, setHasError] = useState(false);
 
-  // Defensive check for product
-  if (!product) {
-    console.error('VariantProductCard: Product is null or undefined');
-    return (
-      <div className="p-4 border border-red-200 bg-red-50 rounded-lg">
-        <p className="text-red-600 text-sm">Product data is missing</p>
-      </div>
-    );
-  }
+  // Real-time stock state
+  const [realTimeStock, setRealTimeStock] = useState<Map<string, number>>(new Map());
+  const [isLoadingStock, setIsLoadingStock] = useState(false);
+  const [lastStockUpdate, setLastStockUpdate] = useState<Date | null>(null);
 
-  // Get general settings with error handling
-  let generalSettings;
-  try {
-    generalSettings = useGeneralSettingsUI();
-  } catch (error) {
-    console.error('Error getting general settings:', error);
-    // Fallback to default settings
-    generalSettings = {
-      showProductImages: true,
-      showStockLevels: true,
-      showPrices: true,
-      showBarcodes: true
-    };
-  }
-
+  // Get general settings
+  const generalSettings = useGeneralSettingsUI();
   const {
     showProductImages,
     showStockLevels,
@@ -87,6 +76,68 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
   useEffect(() => {
     setHasError(false);
   }, []);
+
+  // Fetch real-time stock when component mounts (with debouncing)
+  useEffect(() => {
+    if (product?.id) {
+      // Add a small delay to prevent multiple rapid requests
+      const timer = setTimeout(() => {
+        fetchRealTimeStock();
+      }, 100);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [product?.id]);
+
+  // Theme configuration based on primaryColor
+  const getThemeConfig = () => {
+    switch (primaryColor) {
+      case 'orange':
+        return {
+          hoverBorder: 'hover:border-orange-300',
+          textColor: 'text-orange-600',
+          iconColor: 'text-orange-600',
+          priceColor: 'text-orange-900',
+          errorColor: 'text-orange-600'
+        };
+      case 'green':
+        return {
+          hoverBorder: 'hover:border-green-300',
+          textColor: 'text-green-600',
+          iconColor: 'text-green-600',
+          priceColor: 'text-green-900',
+          errorColor: 'text-green-600'
+        };
+      case 'purple':
+        return {
+          hoverBorder: 'hover:border-purple-300',
+          textColor: 'text-purple-600',
+          iconColor: 'text-purple-600',
+          priceColor: 'text-purple-900',
+          errorColor: 'text-purple-600'
+        };
+      default: // blue
+        return {
+          hoverBorder: 'hover:border-blue-300',
+          textColor: 'text-blue-600',
+          iconColor: 'text-blue-600',
+          priceColor: 'text-blue-900',
+          errorColor: 'text-blue-600'
+        };
+    }
+  };
+
+  const theme = getThemeConfig();
+
+  // Defensive check for product
+  if (!product) {
+    console.error('VariantProductCard: Product is null or undefined');
+    return (
+      <div className="p-4 border border-red-200 bg-red-50 rounded-lg">
+        <p className="text-red-600 text-sm">Product data is missing</p>
+      </div>
+    );
+  }
 
   // Get primary variant using utility function with error handling
   let primaryVariant;
@@ -149,8 +200,39 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
     return `$${prices[0].toFixed(2)}`;
   };
 
-  // Get total stock using utility function
+  // Fetch real-time stock data
+  const fetchRealTimeStock = async () => {
+    if (!product?.id) return;
+    
+    try {
+      setIsLoadingStock(true);
+      console.log('📊 Fetching real-time stock for product:', product.id);
+      
+      const stockService = RealTimeStockService.getInstance();
+      const stockLevels = await stockService.getStockLevels([product.id]);
+      
+      console.log('📊 Real-time stock levels received:', stockLevels);
+      setRealTimeStock(stockLevels);
+      setLastStockUpdate(new Date());
+    } catch (error) {
+      console.error('❌ Error fetching real-time stock:', error);
+    } finally {
+      setIsLoadingStock(false);
+    }
+  };
+
+  // Get real-time stock for current product
+  const getRealTimeStockForProduct = (): number => {
+    if (!product?.id) return 0;
+    return realTimeStock.get(product.id) || 0;
+  };
+
+  // Get total stock using real-time data if available, otherwise fall back to cached data
   const getTotalStock = () => {
+    const realTimeStockValue = getRealTimeStockForProduct();
+    if (realTimeStockValue > 0 || realTimeStock.has(product.id)) {
+      return realTimeStockValue;
+    }
     return getProductTotalStock(product);
   };
 
@@ -162,7 +244,18 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
       return;
     }
     
-    if (!primaryVariant || primaryVariant.quantity <= 0) return; // Don't do anything if out of stock
+    // If onViewDetails is provided (like in purchase orders), use that instead
+    if (onViewDetails) {
+      onViewDetails(product);
+      return;
+    }
+    
+    // For purchase orders, allow out-of-stock products; for POS, block them
+    if (!primaryVariant || (!allowOutOfStockSelection && primaryVariant.quantity <= 0)) {
+      if (!allowOutOfStockSelection) {
+        return; // Don't do anything if out of stock in POS mode
+      }
+    }
     
     if (isMultiVariantProduct(product)) {
       // If product has multiple variants, open the variant selection modal
@@ -207,17 +300,17 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
   // Compact variant with subtle colors
   if (variant === 'compact') {
     const hasNoVariants = !product.variants || product.variants.length === 0;
-    const isDisabled = hasNoVariants || !primaryVariant || primaryVariant.quantity <= 0;
+    const isDisabled = hasNoVariants || !primaryVariant || (!allowOutOfStockSelection && primaryVariant.quantity <= 0);
     
     return (
       <>
         <div 
           className={`bg-white border border-gray-200 rounded-lg p-4 transition-all duration-200 ${className} ${
-            isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-blue-300 hover:shadow-md active:scale-95'
+            isDisabled ? 'opacity-50 cursor-not-allowed' : `cursor-pointer ${theme.hoverBorder} hover:shadow-md active:scale-95`
           } ${hasNoVariants ? 'border-gray-300 bg-gray-50' : ''}`}
           onClick={handleCardClick}
           style={{ minHeight: '60px' }}
-          title={hasNoVariants ? 'This product has no variants and cannot be added to cart. Please add variants in the inventory management.' : ''}
+          title={hasNoVariants ? 'This product has no variants and cannot be added to cart. Please add variants in the inventory management.' : `Click to ${actionText.toLowerCase()}`}
         >
           
 
@@ -284,7 +377,7 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
             {/* Price */}
             <div className="text-right">
               {showPrices && (
-                <div className={`font-semibold text-sm ${hasNoVariants ? 'text-gray-500' : 'text-blue-900'}`}>{getPriceDisplay()}</div>
+                <div className={`font-semibold text-sm ${hasNoVariants ? 'text-gray-500' : theme.priceColor}`}>{getPriceDisplay()}</div>
               )}
               {showStockLevels && (
                 <div className="text-xs text-gray-500">Stock: {getTotalStock()}</div>
@@ -299,16 +392,16 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
 
   // Default detailed variant with cart-style UI
   const hasNoVariants = !product.variants || product.variants.length === 0;
-  const isDisabled = hasNoVariants || !primaryVariant || primaryVariant.quantity <= 0;
+  const isDisabled = hasNoVariants || !primaryVariant || (!allowOutOfStockSelection && primaryVariant.quantity <= 0);
   
   return (
     <>
       <div 
         className={`relative bg-white border-2 rounded-xl transition-all duration-300 ${className} ${
-          isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-gray-300 hover:shadow-md active:scale-95'
+          isDisabled ? 'opacity-50 cursor-not-allowed' : `cursor-pointer ${theme.hoverBorder} hover:shadow-md active:scale-95`
         } ${hasNoVariants ? 'border-gray-300 bg-gray-50' : 'border-gray-200'}`}
         onClick={handleCardClick}
-        title={hasNoVariants ? 'This product has no variants and cannot be added to cart. Please add variants in the inventory management.' : ''}
+        title={hasNoVariants ? 'This product has no variants and cannot be added to cart. Please add variants in the inventory management.' : `Click to ${actionText.toLowerCase()}`}
       >
         
         
@@ -320,8 +413,13 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
             'bg-gradient-to-r from-green-500 to-emerald-500'
           }`}>
             <span className="text-sm font-bold text-white">
-              {getTotalStock() >= 1000 ? `${(getTotalStock() / 1000).toFixed(1)}K` : getTotalStock()}
+              {isLoadingStock ? '...' : (getTotalStock() >= 1000 ? `${(getTotalStock() / 1000).toFixed(1)}K` : getTotalStock())}
             </span>
+            {isLoadingStock && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+              </div>
+            )}
           </div>
         )}
         {/* Product Card Header */}
@@ -330,7 +428,7 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
             <div className="flex items-center gap-4 flex-1 min-w-0">
               {/* Product Icon */}
               {showProductImages && (
-                <div className="relative w-20 h-20 rounded-xl flex items-center justify-center text-lg font-bold text-blue-600">
+                <div className={`relative w-20 h-20 rounded-xl flex items-center justify-center text-lg font-bold ${theme.iconColor}`}>
                   <SimpleImageDisplay
                     images={productImages}
                     productName={product.name}
@@ -409,23 +507,34 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
             <div className="flex items-center justify-between text-sm">
               <div className="flex items-center gap-4">
                 {showStockInfo && (
-                  <span className="text-gray-600">Stock: {getTotalStock()} units</span>
+                  <span className="text-gray-600">
+                    Stock: {isLoadingStock ? 'Loading...' : `${getTotalStock()} units`}
+                    {isLoadingStock && <span className="ml-1 text-orange-500">🔄</span>}
+                    {!isLoadingStock && realTimeStock.has(product.id) && (
+                      <span className="ml-1 text-green-500" title="Real-time data">✓</span>
+                    )}
+                  </span>
                 )}
               </div>
               <div className="flex items-center gap-2">
-                {showCategory && product.categoryName && (
+                {showCategory && (
                   <span className="inline-flex items-center px-2 py-1 rounded-md bg-purple-50 text-purple-700 border border-purple-200 text-xs">
-                    {product.categoryName}
+                    {product.categoryName || 'Uncategorized'}
                   </span>
                 )}
-                {showBrand && product.brandName && (
-                  <span className="inline-flex items-center px-2 py-1 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs">
-                    {product.brandName}
-                  </span>
-                )}
+
               </div>
             </div>
           </div>
+
+          {/* Action Indicator */}
+          {!isDisabled && (
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <div className={`text-center text-sm font-medium ${theme.textColor} opacity-70 hover:opacity-100 transition-opacity`}>
+                Click to {actionText}
+              </div>
+            </div>
+          )}
 
           {/* Stock Warning */}
           {/* {primaryVariant && primaryVariant.quantity <= 5 && primaryVariant.quantity > 0 && (

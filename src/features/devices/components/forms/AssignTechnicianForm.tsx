@@ -62,7 +62,7 @@ const AssignTechnicianForm: React.FC<AssignTechnicianFormProps> = ({ deviceId, c
                 id: `remark-${Date.now()}`,
                 device_id: deviceId,
                 content: `FAILED TO REPAIR: ${remark}`,
-                created_by: currentUser.id,
+                created_by: currentUser?.id || '',
                 created_at: new Date().toISOString()
               });
           } else {
@@ -73,7 +73,7 @@ const AssignTechnicianForm: React.FC<AssignTechnicianFormProps> = ({ deviceId, c
                 id: `remark-${Date.now()}`,
                 device_id: deviceId,
                 content: 'FAILED TO REPAIR: Device marked as failed to repair by technician',
-                created_by: currentUser.id,
+                created_by: currentUser?.id || '',
                 created_at: new Date().toISOString()
               });
           }
@@ -173,7 +173,7 @@ const AssignTechnicianForm: React.FC<AssignTechnicianFormProps> = ({ deviceId, c
           </button>
       )}
       {/* Only show Mark as Failed to Repair button for assigned technician only */}
-      {currentUser.role === 'technician' && currentTechId === currentUser.id && (
+      {currentUser?.role === 'technician' && currentTechId === currentUser?.id && (
         <div className="space-y-3">
           <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
             <div className="flex items-center gap-2 text-red-800 mb-2">

@@ -1,0 +1,40 @@
+{
+  "timestamp": "2025-08-28T21:56:54.228Z",
+  "environment": "Production",
+  "supabaseConfigured": true,
+  "commonIssues": [
+    "Green API account plan limitations",
+    "WhatsApp version compatibility",
+    "Instance authorization issues",
+    "API endpoint configuration"
+  ],
+  "solutions": [
+    "Verify Green API account features",
+    "Check instance authorization status",
+    "Update WhatsApp client versions",
+    "Try alternative message formats"
+  ],
+  "testPayload": {
+    "chatId": "YOUR_NUMBER@c.us",
+    "message": "Test Poll: What's your favorite color?",
+    "options": [
+      {
+        "optionName": "Red"
+      },
+      {
+        "optionName": "Blue"
+      },
+      {
+        "optionName": "Green"
+      }
+    ],
+    "multipleAnswers": false
+  },
+  "nextSteps": [
+    "1. Check Green API console for account status",
+    "2. Verify WhatsApp instance is authorized",
+    "3. Test with minimal poll (2 options)",
+    "4. Check WhatsApp client version",
+    "5. Try sending to different number"
+  ]
+}

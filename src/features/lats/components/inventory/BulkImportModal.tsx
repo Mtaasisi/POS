@@ -10,7 +10,7 @@ import { toast } from 'react-hot-toast';
 interface BulkImportData {
   file: File;
   categoryId?: string;
-  brandId?: string;
+
   supplierId?: string;
   defaultPrice?: number;
   defaultCost?: number;
@@ -34,7 +34,7 @@ const BulkImportModal: React.FC<{
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { categories, brands, suppliers, createProduct } = useInventoryStore();
+  const { categories, suppliers, createProduct } = useInventoryStore();
 
   const {
     register,
@@ -133,7 +133,7 @@ const BulkImportModal: React.FC<{
             sku: row.sku,
             barcode: row.barcode || '',
             categoryId: data.categoryId || row.category_id || '',
-            brandId: data.brandId || row.brand_id || '',
+
             supplierId: data.supplierId || row.supplier_id || '',
             variants: [{
               sku: row.sku,
@@ -197,14 +197,14 @@ Instructions:
 
 3. Prices should be numbers only (no currency symbols)
 4. Stock quantities should be whole numbers
-5. Category, Brand, and Supplier IDs can be left empty if not available
+5. Category and Supplier IDs can be left empty if not available
 
-Required Fields (*),name*,sku*,barcode,description,price,cost_price,stock_quantity,min_stock,max_stock,category_id,brand_id,supplier_id,variant_name
-Sample Product 1,iPhone 14 Pro,IPH14P-128,1234567890123,Latest iPhone model with A16 chip,159999,120000,15,5,50,,,smartphone,apple,Default Variant
-Sample Product 2,Samsung Galaxy S23,SAMS23-256,1234567890124,Flagship Android phone with Snapdragon,129999,100000,12,5,50,,,smartphone,samsung,Default Variant
-Sample Product 3,MacBook Air M2,MBA-M2-256,1234567890125,13-inch laptop with Apple M2 chip,899999,750000,8,3,25,,,laptop,apple,Default Variant
-Sample Product 4,AirPods Pro,APP-GEN2,1234567890126,Wireless earbuds with noise cancellation,299999,200000,20,10,100,,,audio,apple,Default Variant
-Sample Product 5,Galaxy Watch 6,GW6-44MM,1234567890127,Smartwatch with health tracking,199999,150000,10,5,30,,,wearable,samsung,Default Variant
+Required Fields (*),name*,sku*,barcode,description,price,cost_price,stock_quantity,min_stock,max_stock,category_id,supplier_id,variant_name
+Sample Product 1,iPhone 14 Pro,IPH14P-128,1234567890123,Latest iPhone model with A16 chip,159999,120000,15,5,50,,smartphone,Default Variant
+Sample Product 2,Samsung Galaxy S23,SAMS23-256,1234567890124,Flagship Android phone with Snapdragon,129999,100000,12,5,50,,smartphone,Default Variant
+Sample Product 3,MacBook Air M2,MBA-M2-256,1234567890125,13-inch laptop with Apple M2 chip,899999,750000,8,3,25,,laptop,Default Variant
+Sample Product 4,AirPods Pro,APP-GEN2,1234567890126,Wireless earbuds with noise cancellation,299999,200000,20,10,100,,audio,Default Variant
+Sample Product 5,Galaxy Watch 6,GW6-44MM,1234567890127,Smartwatch with health tracking,199999,150000,10,5,30,,wearable,Default Variant
 
 Field Descriptions:
 name* - Product name (required)
@@ -217,7 +217,6 @@ stock_quantity - Current stock level
 min_stock - Minimum stock level for alerts
 max_stock - Maximum stock level
 category_id - Category UUID (optional)
-brand_id - Brand UUID (optional)
 supplier_id - Supplier UUID (optional)
 
 variant_name - Product variant name (optional)`;
@@ -330,22 +329,7 @@ variant_name - Product variant name (optional)`;
                   </select>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Default Brand
-                  </label>
-                  <select
-                    {...register('brandId')}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">Select Brand</option>
-                    {brands.map(brand => (
-                      <option key={brand.id} value={brand.id}>
-                        {brand.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">

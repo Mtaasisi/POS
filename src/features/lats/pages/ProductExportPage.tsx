@@ -77,7 +77,7 @@ const ProductExportPage: React.FC = () => {
                 <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
                 <div>
                   <p className="text-sm font-medium text-gray-900">Product Information</p>
-                  <p className="text-xs text-gray-600">Name, description, SKU, barcode, tags</p>
+                  <p className="text-xs text-gray-600">Name, description, SKU, tags</p>
                 </div>
               </div>
               

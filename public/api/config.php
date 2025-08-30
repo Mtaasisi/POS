@@ -5,8 +5,8 @@
  */
 
 // Set WhatsApp credentials directly
-putenv('GREENAPI_INSTANCE_ID=7105306911');
-putenv('GREENAPI_API_TOKEN=b3cd0d668a7c471e8ab88c14fafab28f4a66d266172a4c6294');
+putenv('GREENAPI_INSTANCE_ID=7105284900');
+putenv('GREENAPI_API_TOKEN=b3cd0d668a7c471e8ab88c14fafab28f4a66d266172a4c6294
 putenv('GREENAPI_API_URL=https://7105.api.greenapi.com');
 
 // Set Supabase credentials with the correct service role key

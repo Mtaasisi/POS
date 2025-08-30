@@ -12,6 +12,32 @@ export {
   createCustomer
 } from './customerApi/core';
 
+// Appointment functions
+export {
+  fetchAllAppointments,
+  fetchCustomerAppointments,
+  createAppointment,
+  updateAppointment,
+  deleteAppointment,
+  getAppointmentStats,
+  searchAppointments,
+  type Appointment,
+  type CreateAppointmentData,
+  type UpdateAppointmentData
+} from './customerApi/appointments';
+
+// Revenue functions
+export {
+  fetchCustomerRevenue,
+  getCustomerRevenueSummary,
+  addCustomerRevenue,
+  getAllCustomersRevenueSummary,
+  getRevenueByDateRange,
+  getTopCustomersByRevenue,
+  type CustomerRevenue,
+  type CustomerRevenueSummary
+} from './customerApi/revenue';
+
 // Search functions
 export {
   searchCustomers,

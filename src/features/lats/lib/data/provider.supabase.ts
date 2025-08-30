@@ -2,9 +2,9 @@ import { supabase } from '../../../../lib/supabaseClient';
 import { latsEventBus } from './eventBus';
 import { LatsDataProvider } from './provider';
 import { 
-  Category, Brand, Supplier, Product, ProductVariant, StockMovement,
+  Category, Supplier, Product, ProductVariant, StockMovement,
   PurchaseOrder, SparePart, SparePartUsage,
-  CategoryFormData, BrandFormData, SupplierFormData, ProductFormData,
+  CategoryFormData, SupplierFormData, ProductFormData,
   ApiResponse, PaginatedResponse
 } from '../../types/inventory';
 import { 
@@ -191,85 +191,8 @@ class SupabaseDataProvider implements LatsDataProvider {
     }
   }
 
-  // Brands
-  async getBrands(): Promise<ApiResponse<Brand[]>> {
-    try {
-      // Brands have public read access, so no authentication check needed for reading
-      const { data, error } = await supabase
-        .from('lats_brands')
-        .select('*')
-        .order('name');
 
-      if (error) {
-        console.error('❌ Database error:', error);
-        if (error.code === 'PGRST116') {
-          return { 
-            ok: false, 
-            message: 'Row Level Security (RLS) policy violation. Please ensure you are properly authenticated.' 
-          };
-        }
-        throw error;
-      }
-      return { ok: true, data: data || [] };
-    } catch (error) {
-      console.error('Error fetching brands:', error);
-      return { ok: false, message: 'Failed to fetch brands' };
-    }
-  }
 
-  async createBrand(data: BrandFormData): Promise<ApiResponse<Brand>> {
-    try {
-      const { data: brand, error } = await supabase
-        .from('lats_brands')
-        .insert([data])
-        .select()
-        .single();
-
-      if (error) throw error;
-      
-      latsEventBus.emit('lats:brand.created', brand);
-      return { ok: true, data: brand };
-    } catch (error) {
-      console.error('Error creating brand:', error);
-      return { ok: false, message: 'Failed to create brand' };
-    }
-  }
-
-  async updateBrand(id: string, data: BrandFormData): Promise<ApiResponse<Brand>> {
-    try {
-      const { data: brand, error } = await supabase
-        .from('lats_brands')
-        .update(data)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      
-      latsEventBus.emit('lats:brand.updated', brand);
-      return { ok: true, data: brand };
-    } catch (error) {
-      console.error('Error updating brand:', error);
-      return { ok: false, message: 'Failed to update brand' };
-    }
-  }
-
-  async deleteBrand(id: string): Promise<ApiResponse<void>> {
-    try {
-      const { error } = await supabase
-        .from('lats_brands')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-      
-      latsEventBus.emit('lats:brand.deleted', { id });
-      return { ok: true };
-    } catch (error) {
-      console.error('Error deleting brand:', error);
-      return { ok: false, message: 'Failed to delete brand' };
-    }
-  }
 
   // Suppliers
   async getSuppliers(): Promise<ApiResponse<Supplier[]>> {
@@ -562,7 +485,6 @@ class SupabaseDataProvider implements LatsDataProvider {
           name,
           description,
           category_id,
-          brand_id,
           supplier_id,
           images,
           tags,
@@ -589,16 +511,7 @@ class SupabaseDataProvider implements LatsDataProvider {
         }
         query = query.eq('category_id', String(filters.categoryId).trim());
       }
-      if (filters?.brandId) {
-        if (typeof filters.brandId === 'object') {
-          console.error('❌ getProducts: Object passed as brandId:', filters.brandId);
-          return { 
-            ok: false, 
-            message: 'Invalid brand ID format. Expected string, received object.' 
-          };
-        }
-        query = query.eq('brand_id', String(filters.brandId).trim());
-      }
+
       if (filters?.supplierId) {
         if (typeof filters.supplierId === 'object') {
           console.error('❌ getProducts: Object passed as supplierId:', filters.supplierId);
@@ -643,7 +556,7 @@ class SupabaseDataProvider implements LatsDataProvider {
         try {
           const fallbackQuery = supabase
             .from('lats_products')
-            .select('id, name, category_id, brand_id, supplier_id, tags, is_active, total_quantity, total_value, condition, store_shelf_id, internal_notes, created_at, updated_at', { count: 'exact' })
+            .select('id, name, category_id, supplier_id, tags, is_active, total_quantity, total_value, condition, store_shelf_id, internal_notes, created_at, updated_at', { count: 'exact' })
             .order('name')
             .range(offset, offset + limit - 1);
 
@@ -662,9 +575,9 @@ class SupabaseDataProvider implements LatsDataProvider {
             name: product.name,
             shortDescription: '',
             sku: '', // SKU is not in the main products table
-            barcode: '', // Barcode is not in the main products table
+
             categoryId: product.category_id,
-            brandId: product.brand_id,
+
             supplierId: product.supplier_id,
             images: replacePlaceholderImages([]),
             isActive: product.is_active ?? true,
@@ -679,7 +592,7 @@ class SupabaseDataProvider implements LatsDataProvider {
             internalNotes: '',
             attributes: product.attributes || {},
             category: undefined,
-            brand: undefined,
+    
             supplier: undefined,
             createdAt: product.created_at,
             updatedAt: product.updated_at
@@ -710,7 +623,7 @@ class SupabaseDataProvider implements LatsDataProvider {
       const productImages: any[] = [];
       const productVariants: any[] = [];
       const categories: any[] = [];
-      const brands: any[] = [];
+
       const suppliers: any[] = [];
       
       // Limit the number of products to process to avoid overwhelming the database
@@ -743,7 +656,7 @@ class SupabaseDataProvider implements LatsDataProvider {
                 try {
                   const { data: variants, error } = await supabase
                     .from('lats_product_variants')
-                    .select('id, product_id, name, sku, barcode, cost_price, selling_price, quantity, min_quantity, attributes, created_at, updated_at')
+                    .select('id, product_id, name, sku, cost_price, selling_price, quantity, min_quantity, attributes, created_at, updated_at')
                     .eq('product_id', productId)
                     .order('name');
                   
@@ -785,7 +698,7 @@ class SupabaseDataProvider implements LatsDataProvider {
                 product_id: productId,
                 name: 'Default Variant',
                 sku: `SKU-${Math.random().toString(36).substr(2, 8).toUpperCase()}`,
-                barcode: `BAR-${Math.random().toString(36).substr(2, 8).toUpperCase()}`,
+
                 cost_price: Math.floor(Math.random() * 50) + 10,
                 selling_price: Math.floor(Math.random() * 100) + 50,
                 quantity: Math.floor(Math.random() * 50) + 5,
@@ -806,9 +719,10 @@ class SupabaseDataProvider implements LatsDataProvider {
             }
           }
 
-          // Fetch categories
+          // Fetch categories efficiently with caching
           const categoryIds = [...new Set((data || []).map(p => p.category_id).filter(Boolean))];
           if (categoryIds.length > 0) {
+            console.log(`📂 Fetching ${categoryIds.length} categories for products...`);
             const { data: categoriesData, error: categoriesError } = await supabase
               .from('lats_categories')
               .select('id, name, description, color, created_at, updated_at')
@@ -816,19 +730,9 @@ class SupabaseDataProvider implements LatsDataProvider {
 
             if (!categoriesError) {
               categories.push(...(categoriesData || []));
-            }
-          }
-
-          // Fetch brands
-          const brandIds = [...new Set((data || []).map(p => p.brand_id).filter(Boolean))];
-          if (brandIds.length > 0) {
-            const { data: brandsData, error: brandsError } = await supabase
-              .from('lats_brands')
-              .select('id, name, logo, website, description, created_at, updated_at')
-              .in('id', brandIds);
-
-            if (!brandsError) {
-              brands.push(...(brandsData || []));
+              console.log(`✅ Fetched ${categoriesData?.length || 0} categories`);
+            } else {
+              console.error('❌ Error fetching categories:', categoriesError);
             }
           }
 
@@ -876,7 +780,7 @@ class SupabaseDataProvider implements LatsDataProvider {
             })));
           }
           
-          console.log(`📊 Summary: ${categories.length} categories, ${brands.length} brands, ${suppliers.length} suppliers, ${productImages.length} images`);
+          console.log(`📊 Summary: ${categories.length} categories, ${suppliers.length} suppliers, ${productImages.length} images`);
         } catch (error) {
           console.error('❌ Exception fetching related data:', error);
           // Continue processing even if related data fetching fails
@@ -914,7 +818,7 @@ class SupabaseDataProvider implements LatsDataProvider {
 
         // Get related data
         const productCategory = categories.find(c => c.id === product.category_id);
-        const productBrand = brands.find(b => b.id === product.brand_id);
+
         const productSupplier = suppliers.find(s => s.id === product.supplier_id);
 
         // Get price information from variants
@@ -933,9 +837,9 @@ class SupabaseDataProvider implements LatsDataProvider {
           name: product.name,
           shortDescription: '',
           sku: productVariantList[0]?.sku || '',
-          barcode: productVariantList[0]?.barcode || '',
+
           categoryId: product.category_id,
-          brandId: product.brand_id,
+
           supplierId: product.supplier_id,
           images: replacePlaceholderImages(productImageList.length > 0 ? productImageList : []),
           isActive: product.is_active ?? true,
@@ -958,15 +862,7 @@ class SupabaseDataProvider implements LatsDataProvider {
             createdAt: productCategory.created_at,
             updatedAt: productCategory.updated_at
           } : undefined,
-          brand: productBrand ? {
-            id: productBrand.id,
-            name: productBrand.name,
-            logo: productBrand.logo,
-            website: productBrand.website,
-            description: productBrand.description,
-            createdAt: productBrand.created_at,
-            updatedAt: productBrand.updated_at
-          } : undefined,
+
           supplier: productSupplier ? {
             id: productSupplier.id,
             name: productSupplier.name,
@@ -991,7 +887,7 @@ class SupabaseDataProvider implements LatsDataProvider {
             quantity: variant.quantity || 0,
             min_quantity: variant.min_quantity || 0,
             max_quantity: null, // Column was removed in migration
-            barcode: variant.barcode || null,
+  
             weight: null, // Column was removed in migration
             dimensions: null, // Column was removed in migration
             createdAt: variant.created_at || new Date().toISOString(),
@@ -1065,7 +961,7 @@ class SupabaseDataProvider implements LatsDataProvider {
         .select(`
           *,
           lats_categories(id, name, description, color, created_at, updated_at),
-          lats_brands(id, name, logo, website, description, created_at, updated_at),
+
           lats_suppliers(id, name, contact_person, email, phone, address, website, notes, created_at, updated_at)
         `)
         .eq('id', id)
@@ -1102,9 +998,9 @@ class SupabaseDataProvider implements LatsDataProvider {
         name: product.name,
         shortDescription: '',
         sku: variants && variants.length > 0 ? variants[0].sku : '', // Get SKU from first variant
-        barcode: variants && variants.length > 0 ? variants[0].barcode : '', // Get barcode from first variant
+
         categoryId: product.category_id,
-        brandId: product.brand_id,
+        
         supplierId: product.supplier_id,
         images: (images || []).map(img => img.image_url),
                     isActive: product.is_active ?? true,
@@ -1140,15 +1036,7 @@ class SupabaseDataProvider implements LatsDataProvider {
           createdAt: product.lats_categories.created_at,
           updatedAt: product.lats_categories.updated_at
         } : undefined,
-        brand: product.lats_brands ? {
-          id: product.lats_brands.id,
-          name: product.lats_brands.name,
-          logo: product.lats_brands.logo,
-          website: product.lats_brands.website,
-          description: product.lats_brands.description,
-          createdAt: product.lats_brands.created_at,
-          updatedAt: product.lats_brands.updated_at
-        } : undefined,
+
         supplier: product.lats_suppliers ? {
           id: product.lats_suppliers.id,
           name: product.lats_suppliers.name,
@@ -1172,7 +1060,7 @@ class SupabaseDataProvider implements LatsDataProvider {
           quantity: variant.quantity || 0,
           min_quantity: variant.min_quantity || 0,
           max_quantity: null, // Column was removed in migration
-          barcode: variant.barcode || null,
+
           weight: null, // Column was removed in migration
           dimensions: null, // Column was removed in migration
           createdAt: variant.created_at || new Date().toISOString(),
@@ -1187,7 +1075,7 @@ class SupabaseDataProvider implements LatsDataProvider {
         name: transformedProduct.name,
         variantsCount: transformedProduct.variants?.length || 0,
         hasCategory: !!transformedProduct.category,
-        hasBrand: !!transformedProduct.brand,
+
         hasSupplier: !!transformedProduct.supplier,
         totalQuantity: transformedProduct.totalQuantity,
         totalValue: transformedProduct.totalValue,
@@ -1228,7 +1116,7 @@ class SupabaseDataProvider implements LatsDataProvider {
       // Query with only existing columns (max_quantity, weight, and dimensions were removed in migrations)
       const { data: variants, error } = await supabase
         .from('lats_product_variants')
-        .select('id, product_id, name, sku, barcode, cost_price, selling_price, quantity, min_quantity, attributes, created_at, updated_at')
+        .select('id, product_id, name, sku, cost_price, selling_price, quantity, min_quantity, attributes, created_at, updated_at')
         .eq('product_id', productId)
         .order('name');
 
@@ -1256,7 +1144,7 @@ class SupabaseDataProvider implements LatsDataProvider {
         quantity: variant.quantity || 0,
         min_quantity: variant.min_quantity || 0,
         max_quantity: null, // Column was removed in migration
-        barcode: variant.barcode || null,
+
         weight: null, // Column was removed in migration
         dimensions: null, // Column was removed in migration
         createdAt: variant.created_at || new Date().toISOString(),
@@ -1364,13 +1252,7 @@ class SupabaseDataProvider implements LatsDataProvider {
         return { ok: false, message: 'Invalid category ID format. Please select a valid category.' };
       }
       
-      // Only add brand_id if it's a valid UUID
-      if (data.brandId && isValidUUID(data.brandId)) {
-        mainProductCreateData.brand_id = data.brandId;
-      } else if (data.brandId) {
-        console.warn('⚠️ [DEBUG] Invalid brand ID format:', data.brandId);
-        // Don't fail for invalid brand ID, just skip it
-      }
+
       
       // Only add supplier_id if it's a valid UUID
       if (data.supplierId && isValidUUID(data.supplierId)) {
@@ -1463,7 +1345,7 @@ class SupabaseDataProvider implements LatsDataProvider {
             selling_price: variant.price || variant.sellingPrice || variant.selling_price || 0,
             quantity: variant.stockQuantity || variant.quantity || 0,
             min_quantity: variant.minStockLevel || variant.minQuantity || variant.min_quantity || 0,
-            barcode: variant.barcode || null,
+  
             weight: variant.weight || null,
             dimensions: variant.dimensions || null,
             attributes: variant.attributes || {}
@@ -1553,7 +1435,7 @@ class SupabaseDataProvider implements LatsDataProvider {
         name: data.name,
 
         category_id: data.categoryId,
-        brand_id: data.brandId || null,
+
         supplier_id: data.supplierId || null,
         images: data.images || [],
         tags: data.tags || [],
@@ -1599,7 +1481,7 @@ class SupabaseDataProvider implements LatsDataProvider {
             const updateData = {
               sku: variant.sku || '',
               name: variant.name || '',
-              barcode: variant.barcode || null,
+    
               selling_price: Number(variant.price) || 0, // Use price from form data
               cost_price: Number(variant.costPrice) || 0,
               quantity: Number(variant.stockQuantity) || 0,
@@ -1635,7 +1517,7 @@ class SupabaseDataProvider implements LatsDataProvider {
               product_id: id,
               sku: variant.sku || '',
               name: variant.name || '',
-              barcode: variant.barcode || null,
+    
               selling_price: Number(variant.price) || 0, // Use price from form data
               cost_price: Number(variant.costPrice) || 0,
               quantity: Number(variant.stockQuantity) || 0,
@@ -1722,7 +1604,7 @@ class SupabaseDataProvider implements LatsDataProvider {
         .select(`
           *,
           lats_categories(name),
-          lats_brands(name),
+
           lats_product_variants(*)
         `)
         .or(`name.ilike.%${query}%`)
@@ -1752,8 +1634,8 @@ class SupabaseDataProvider implements LatsDataProvider {
 
           categoryId: product.category_id,
           categoryName: product.lats_categories?.name || '',
-          brandId: product.brand_id,
-          brandName: product.lats_brands?.name,
+
+
           variants: (product.lats_product_variants || []).map((variant: any) => ({
             id: variant.id,
             sku: variant.sku,
@@ -1761,7 +1643,7 @@ class SupabaseDataProvider implements LatsDataProvider {
             attributes: variant.attributes,
             sellingPrice: variant.selling_price,
             quantity: variant.quantity,
-            barcode: variant.barcode
+
           })),
           images: imageUrls,
           tags: []
@@ -2353,7 +2235,7 @@ class SupabaseDataProvider implements LatsDataProvider {
         .from('lats_products')
         .select(`
           *,
-          lats_product_variants!inner(*)
+          lats_product_variants(*)
         `)
         .eq('id', data.productId)
         .eq('lats_product_variants.id', data.variantId)

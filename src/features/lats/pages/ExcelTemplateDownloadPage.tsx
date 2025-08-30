@@ -39,19 +39,19 @@ Instructions:
 2. Use commas to separate multiple tags
 3. Prices should be numbers only (no currency symbols)
 4. Stock quantities should be whole numbers
-5. Category, Brand, and Supplier IDs can be left empty if not available
+5. Category and Supplier IDs can be left empty if not available
 
-Required Fields (*),name*,sku*,barcode,description,price,cost_price,stock_quantity,min_stock,max_stock,category_id,brand_id,supplier_id,tags,variant_name
-Product 1,Example Product 1,PROD-001,1234567890123,Example product description,159999,120000,15,5,50,,,electronics,example,Default Variant
-Product 2,Example Product 2,PROD-002,1234567890124,Another example product,129999,100000,12,5,50,,,electronics,example,Default Variant
-Product 3,Example Product 3,PROD-003,1234567890125,Third example product,899999,750000,8,3,25,,,electronics,example,Default Variant
-Product 4,Example Product 4,PROD-004,1234567890126,Fourth example product,299999,200000,20,10,100,,,electronics,example,Default Variant
-Product 5,Example Product 5,PROD-005,1234567890127,Fifth example product,199999,150000,10,5,30,,,electronics,example,Default Variant
+Required Fields (*),name*,sku*,description,price,cost_price,stock_quantity,min_stock,max_stock,category_id,supplier_id,tags,variant_name
+Product 1,Example Product 1,PROD-001,Example product description,159999,120000,15,5,50,,,electronics,example,Default Variant
+Product 2,Example Product 2,PROD-002,Another example product,129999,100000,12,5,50,,,electronics,example,Default Variant
+Product 3,Example Product 3,PROD-003,Third example product,899999,750000,8,3,25,,,electronics,example,Default Variant
+Product 4,Example Product 4,PROD-004,Fourth example product,299999,200000,20,10,100,,,electronics,example,Default Variant
+Product 5,Example Product 5,PROD-005,Fifth example product,199999,150000,10,5,30,,,electronics,example,Default Variant
 
 Field Descriptions:
 name* - Product name (required)
 sku* - Stock Keeping Unit (required, unique identifier)
-barcode - Product barcode (optional)
+
 description - Product description (optional)
 price - Selling price in cents (e.g., 159999 = 1,599.99)
 cost_price - Cost price in cents (e.g., 120000 = 1,200.00)
@@ -59,7 +59,7 @@ stock_quantity - Current stock level
 min_stock - Minimum stock level for alerts
 max_stock - Maximum stock level
 category_id - Category UUID (optional)
-brand_id - Brand UUID (optional)
+
 supplier_id - Supplier UUID (optional)
 tags - Comma-separated tags (optional)
 variant_name - Product variant name (optional)`;

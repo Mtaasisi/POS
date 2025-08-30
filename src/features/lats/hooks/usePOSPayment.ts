@@ -33,8 +33,7 @@ export const usePOSPayment = () => {
     setLastPaymentResult(null);
 
     try {
-      // Simulate payment processing delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Process payment immediately
 
       // Generate transaction reference
       const transactionId = `TXN-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;

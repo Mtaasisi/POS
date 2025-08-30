@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../../../context/AuthContext';
 import GlassCard from '../../../../features/shared/components/ui/GlassCard';
 import GlassButton from '../../../../features/shared/components/ui/GlassButton';
-import { X, Save, Package, AlertCircle, QrCode, Download, DollarSign, Image as ImageIcon, MapPin, Layers } from 'lucide-react';
+import CategoryInput from '../../../shared/components/ui/CategoryInput';
+
+import { X, Save, Package, AlertCircle, QrCode, Download, DollarSign, Image as ImageIcon, MapPin, Layers, FileText } from 'lucide-react';
 import { useInventoryStore } from '../../stores/useInventoryStore';
 import { SparePart } from '../../types/inventory';
 import { SimpleImageUpload } from '../../../../components/SimpleImageUpload';
@@ -55,7 +57,9 @@ const SparePartForm: React.FC<SparePartFormProps> = ({
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
   const [tempSparePartId, setTempSparePartId] = useState('temp-sparepart-' + Date.now());
   const [showSummaryModal, setShowSummaryModal] = useState(false);
+
   const [createdSparePart, setCreatedSparePart] = useState<any>(null);
+  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
 
   // Load categories and suppliers on mount
   useEffect(() => {
@@ -315,41 +319,18 @@ const SparePartForm: React.FC<SparePartFormProps> = ({
                     <label className="block mb-2 font-medium text-gray-700">
                       Category *
                     </label>
-                    <select
-                      className={`w-full py-3 px-3 bg-white/30 backdrop-blur-md border-2 rounded-lg focus:outline-none transition-colors ${
-                        errors.categoryId ? 'border-red-500 focus:border-red-600' : 'border-gray-300 focus:border-blue-500'
-                      }`}
+                    <CategoryInput
                       value={formData.categoryId}
-                      onChange={(e) => handleInputChange('categoryId', e.target.value)}
-                    >
-                      <option value="">Select Category</option>
-                      {categories.map((category) => (
-                        <option key={category.id} value={category.id}>
-                          {category.name}
-                        </option>
-                      ))}
-                    </select>
-                    {errors.categoryId && (
-                      <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
-                        <AlertCircle className="w-3 h-3" />
-                        {errors.categoryId}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Brand */}
-                  <div>
-                    <label className="block mb-2 font-medium text-gray-700">
-                      Brand
-                    </label>
-                    <input
-                      type="text"
-                      className="w-full py-3 px-3 bg-white/30 backdrop-blur-md border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 transition-colors"
-                      placeholder="e.g., Apple, Samsung"
-                      value={formData.brand}
-                      onChange={(e) => handleInputChange('brand', e.target.value)}
+                      onChange={(categoryId) => handleInputChange('categoryId', categoryId)}
+                      placeholder="Search categories..."
+                      categories={categories}
+                      required
+                      error={errors.categoryId}
+                      className="w-full"
                     />
                   </div>
+
+
 
                   {/* Supplier */}
                   <div>
@@ -357,7 +338,7 @@ const SparePartForm: React.FC<SparePartFormProps> = ({
                       Supplier
                     </label>
                     <select
-                      className="w-full py-3 px-3 bg-white/30 backdrop-blur-md border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 transition-colors"
+                      className="w-full py-4 px-3 bg-white/30 backdrop-blur-md border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 transition-colors"
                       value={formData.supplierId}
                       onChange={(e) => handleInputChange('supplierId', e.target.value)}
                     >
@@ -375,17 +356,26 @@ const SparePartForm: React.FC<SparePartFormProps> = ({
                     <label className="block mb-2 font-medium text-gray-700">
                       Condition
                     </label>
-                    <select
-                      className="w-full py-3 px-3 bg-white/30 backdrop-blur-md border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 transition-colors"
-                      value={formData.condition}
-                      onChange={(e) => handleInputChange('condition', e.target.value)}
-                    >
-                      <option value="">Select Condition</option>
-                      <option value="new">New</option>
-                      <option value="refurbished">Refurbished</option>
-                      <option value="used">Used</option>
-                      <option value="damaged">Damaged</option>
-                    </select>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { value: 'new', label: 'New', color: 'bg-green-500 hover:bg-green-600' },
+                        { value: 'used', label: 'Used', color: 'bg-blue-500 hover:bg-blue-600' },
+                        { value: 'refurbished', label: 'Refurbished', color: 'bg-purple-500 hover:bg-purple-600' }
+                      ].map((condition) => (
+                        <button
+                          key={condition.value}
+                          type="button"
+                          onClick={() => handleInputChange('condition', condition.value)}
+                          className={`px-3 py-3 text-sm font-medium rounded-lg border-2 transition-colors ${
+                            formData.condition === condition.value
+                              ? `${condition.color} text-white border-transparent shadow-md`
+                              : 'bg-white/30 backdrop-blur-md text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
+                          }`}
+                        >
+                          {condition.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -518,7 +508,7 @@ const SparePartForm: React.FC<SparePartFormProps> = ({
                     {/* Shelf Selection */}
                     <div>
                       <label className="block mb-2 font-medium text-gray-700">
-                        <Building className="w-4 h-4 inline mr-2" />
+                        <MapPin className="w-4 h-4 inline mr-2" />
                         Storage Room
                       </label>
                       <select
@@ -575,13 +565,31 @@ const SparePartForm: React.FC<SparePartFormProps> = ({
                     <label className="block mb-2 font-medium text-gray-700">
                       Description
                     </label>
-                    <textarea
-                      className="w-full py-3 px-3 bg-white/30 backdrop-blur-md border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 transition-colors"
-                      placeholder="Describe the spare part, its specifications, and any important details..."
-                      value={formData.description}
-                      onChange={(e) => handleInputChange('description', e.target.value)}
-                      rows={3}
-                    />
+                    <div className="relative">
+                      {isDescriptionExpanded ? (
+                        <textarea
+                          className="w-full py-3 pl-10 pr-4 bg-white/30 backdrop-blur-md border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 transition-all duration-200 resize-none"
+                          placeholder="Describe the spare part, its specifications, and any important details..."
+                          value={formData.description}
+                          onChange={(e) => handleInputChange('description', e.target.value)}
+                          onBlur={() => setIsDescriptionExpanded(false)}
+                          rows={4}
+                          autoFocus
+                        />
+                      ) : (
+                        <input
+                          type="text"
+                          className="w-full py-3 pl-10 pr-4 bg-white/30 backdrop-blur-md border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 transition-all duration-200"
+                          placeholder="Brief description..."
+                          value={formData.description}
+                          onChange={(e) => handleInputChange('description', e.target.value)}
+                          onFocus={() => setIsDescriptionExpanded(true)}
+                        />
+                      )}
+                      <FileText className={`absolute left-3 text-gray-500 transition-all duration-200 ${
+                        isDescriptionExpanded ? 'top-4' : 'top-1/2 -translate-y-1/2'
+                      }`} size={16} />
+                    </div>
                   </div>
 
                   {/* Compatible Devices */}

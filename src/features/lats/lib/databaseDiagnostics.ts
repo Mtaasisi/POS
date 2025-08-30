@@ -1,27 +1,73 @@
+// Database Diagnostics Utility for LATS System
+
 import { supabase } from '../../../lib/supabaseClient';
 
-export interface DatabaseDiagnosticResult {
+// Simplified interfaces for basic validation
+
+// Simplified database diagnostics - removed complex schema queries to avoid import issues
+
+/**
+ * Validate product data against known database schema
+ */
+export const validateProductData = async (productData: any): Promise<{
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+}> => {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  // Known fields that exist in lats_products table
+  const knownFields = [
+    'id', 'name', 'description', 'category_id', 'brand_id', 'supplier_id',
+    'condition', 'total_quantity', 'total_value', 'storage_room_id', 'store_shelf_id',
+    'images', 'tags', 'attributes', 'metadata', 'created_at', 'updated_at',
+    'sku', 'specification', 'cost_price', 'selling_price', 'stock_quantity', 'min_stock_level'
+  ];
+
+  // Check each field in the product data
+  for (const [fieldName, value] of Object.entries(productData)) {
+    if (!knownFields.includes(fieldName)) {
+      errors.push(`Field '${fieldName}' may not exist in lats_products table`);
+    }
+  }
+
+  // Check for required fields
+  const requiredFields = ['name'];
+  for (const fieldName of requiredFields) {
+    if (!productData[fieldName]) {
+      errors.push(`Required field '${fieldName}' is missing from product data`);
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings
+  };
+};
+
+/**
+ * Run basic database diagnostics
+ */
+export const runDatabaseDiagnostics = async (): Promise<{
   connection: boolean;
   authentication: boolean;
   tables: {
     lats_products: boolean;
     lats_categories: boolean;
-    lats_brands: boolean;
     lats_suppliers: boolean;
     lats_product_variants: boolean;
   };
   errors: string[];
   recommendations: string[];
-}
-
-export async function runDatabaseDiagnostics(): Promise<DatabaseDiagnosticResult> {
-  const result: DatabaseDiagnosticResult = {
+}> => {
+  const result = {
     connection: false,
     authentication: false,
     tables: {
       lats_products: false,
       lats_categories: false,
-      lats_brands: false,
       lats_suppliers: false,
       lats_product_variants: false,
     },
@@ -30,41 +76,28 @@ export async function runDatabaseDiagnostics(): Promise<DatabaseDiagnosticResult
   };
 
   try {
-    // Reduced logging to prevent console spam
-
     // Test basic connection
-    try {
-      const { data, error } = await supabase.from('lats_categories').select('count').limit(1);
-      if (error) {
-        result.errors.push(`Connection error: ${error.message}`);
-      } else {
-        result.connection = true;
-        // Reduced logging to prevent console spam
-      }
-    } catch (error) {
-      result.errors.push(`Connection failed: ${error}`);
+    const { data, error } = await supabase.from('lats_categories').select('count').limit(1);
+    if (error) {
+      result.errors.push(`Connection error: ${error.message}`);
+    } else {
+      result.connection = true;
     }
 
     // Test authentication
-    try {
-      const { data: { user }, error } = await supabase.auth.getUser();
-      if (error) {
-        result.errors.push(`Authentication error: ${error.message}`);
-      } else if (user) {
-        result.authentication = true;
-        // Reduced logging to prevent console spam
-      } else {
-        result.errors.push('No authenticated user found');
-        result.recommendations.push('Please log in to access the database');
-      }
-    } catch (error) {
-      result.errors.push(`Authentication check failed: ${error}`);
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError) {
+      result.errors.push(`Authentication error: ${authError.message}`);
+    } else if (user) {
+      result.authentication = true;
+    } else {
+      result.errors.push('No authenticated user found');
+      result.recommendations.push('Please log in to access the database');
     }
 
     // Test table access
     const tables = [
       'lats_categories',
-      'lats_brands', 
       'lats_suppliers',
       'lats_products',
       'lats_product_variants'
@@ -79,39 +112,12 @@ export async function runDatabaseDiagnostics(): Promise<DatabaseDiagnosticResult
 
         if (error) {
           result.errors.push(`${table} access error: ${error.message}`);
-          if (error.code === 'PGRST116') {
-            result.recommendations.push(`RLS policy issue with ${table}. Check authentication.`);
-          }
         } else {
           result.tables[table as keyof typeof result.tables] = true;
-          // Reduced logging to prevent console spam
         }
       } catch (error) {
         result.errors.push(`${table} table error: ${error}`);
       }
-    }
-
-    // Test specific lats_products query that was failing
-    try {
-      const { data, error } = await supabase
-        .from('lats_products')
-        .select(`
-          *,
-          lats_categories(name),
-          lats_brands(name),
-          lats_suppliers(name),
-          lats_product_variants(*)
-        `)
-        .limit(1);
-
-      if (error) {
-        result.errors.push(`Complex lats_products query error: ${error.message}`);
-        result.recommendations.push('Check foreign key relationships and table names');
-      } else {
-        // Reduced logging to prevent console spam
-      }
-    } catch (error) {
-      result.errors.push(`Complex query failed: ${error}`);
     }
 
     // Generate recommendations
@@ -131,16 +137,18 @@ export async function runDatabaseDiagnostics(): Promise<DatabaseDiagnosticResult
       result.recommendations.push(`Tables with access issues: ${failedTables.join(', ')}`);
     }
 
-    console.log('📊 Database diagnostics completed');
     return result;
 
   } catch (error) {
     result.errors.push(`Diagnostic failed: ${error}`);
     return result;
   }
-}
+};
 
-export function logDiagnosticResult(result: DatabaseDiagnosticResult): void {
+/**
+ * Log diagnostic results
+ */
+export const logDiagnosticResult = (result: any): void => {
   console.log('🔍 Database Diagnostic Results:');
   console.log('Connection:', result.connection ? '✅' : '❌');
   console.log('Authentication:', result.authentication ? '✅' : '❌');
@@ -151,11 +159,11 @@ export function logDiagnosticResult(result: DatabaseDiagnosticResult): void {
   
   if (result.errors.length > 0) {
     console.log('❌ Errors:');
-    result.errors.forEach(error => console.log(`  - ${error}`));
+    result.errors.forEach((error: string) => console.log(`  - ${error}`));
   }
   
   if (result.recommendations.length > 0) {
     console.log('💡 Recommendations:');
-    result.recommendations.forEach(rec => console.log(`  - ${rec}`));
+    result.recommendations.forEach((rec: string) => console.log(`  - ${rec}`));
   }
-}
+};

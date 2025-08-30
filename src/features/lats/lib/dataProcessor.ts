@@ -4,7 +4,7 @@
  */
 
 import { processProductImages, cleanupImageData, emergencyUrlCleanup } from './imageUtils';
-import { Product, Category, Brand, Supplier } from '../types/inventory';
+import { Product, Category, Supplier } from '../types/inventory';
 
 /**
  * Generate a simple SVG placeholder image as a data URL

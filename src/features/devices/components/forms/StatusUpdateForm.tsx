@@ -101,6 +101,7 @@ const StatusUpdateForm: React.FC<StatusUpdateFormProps> = ({
 
   const getAvailableStatusTransitions = () => {
     const { status, assignedTo } = device;
+    if (!currentUser) return [];
     const { role, id } = currentUser;
     const isAssignedTechnician = assignedTo === id;
     
@@ -273,7 +274,7 @@ const StatusUpdateForm: React.FC<StatusUpdateFormProps> = ({
         payment_date: new Date().toISOString(),
         payment_type: 'payment',
         status: 'completed',
-        created_by: currentUser.id,
+        created_by: currentUser?.id || '',
         created_at: new Date().toISOString(),
       };
       const { error, data } = await supabase
@@ -298,7 +299,7 @@ const StatusUpdateForm: React.FC<StatusUpdateFormProps> = ({
 
   // Helper to check if done transition should be disabled
   const isDoneTransition = (status: DeviceStatus) => status === 'done';
-  const isCustomerCare = currentUser.role === 'customer-care';
+  const isCustomerCare = currentUser?.role === 'customer-care';
   const isPaid = (typeof outstanding === 'number' ? outstanding <= 0 : true);
 
   return (
@@ -405,7 +406,7 @@ const StatusUpdateForm: React.FC<StatusUpdateFormProps> = ({
                     </div>
                     {/* After 'Receive' (returned-to-customer-care), show Record Payment button for customer care */}
                     {transition.status === 'done' && device.status === 'returned-to-customer-care' && !hasCompletedPayment && (
-                      (isCustomerCare || currentUser.role === 'admin') ? (
+                      (isCustomerCare || currentUser?.role === 'admin') ? (
                         <div className="flex flex-col gap-2 my-2">
                           <GlassButton
                             variant="primary"
@@ -471,7 +472,7 @@ const StatusUpdateForm: React.FC<StatusUpdateFormProps> = ({
                       <div className="mb-2">Date: <span className="font-bold">{new Date(lastPayment.payment_date).toLocaleString()}</span></div>
                       <div className="mb-2">Device: <span className="font-bold">{device.brand} {device.model}</span></div>
                       <div className="mb-2">Customer ID: <span className="font-bold">{device.customerId}</span></div>
-                      <div className="mb-2">Recorded by: <span className="font-bold">{currentUser.name}</span></div>
+                      <div className="mb-2">Recorded by: <span className="font-bold">{currentUser?.name || 'Unknown'}</span></div>
                       <div className="flex gap-3 justify-end mt-4">
                         <GlassButton variant="secondary" onClick={() => { setShowPaymentConfirmation(false); }}>Close</GlassButton>
                         <GlassButton variant="primary" onClick={() => { const printContents = document.getElementById('payment-receipt-content')?.innerHTML; const printWindow = window.open('', '', 'height=600,width=400'); if (printWindow && printContents) { printWindow.document.write('<html><head><title>Payment Receipt</title></head><body>' + printContents + '</body></html>'); printWindow.document.close(); printWindow.focus(); printWindow.print(); printWindow.close(); } }}>Print Receipt</GlassButton>
@@ -481,7 +482,7 @@ const StatusUpdateForm: React.FC<StatusUpdateFormProps> = ({
                 </Modal>
                 {/* Add Mark as Failed to Repair button for assigned technician only */}
                 {((device.status === 'in-repair' || device.status === 'assigned') &&
-                  currentUser.role === 'technician' && device.assignedTo === currentUser.id) && (
+                  currentUser?.role === 'technician' && device.assignedTo === currentUser?.id) && (
                   <div className="relative group">
                     <GlassButton
                       onClick={() => {

@@ -137,63 +137,140 @@ export function useCustomers(options: UseCustomersOptions = {}): UseCustomersRet
       }
     }
 
-    // Create new request
-    setLoading(true);
-    setError(null);
-    
-    // Create abort controller for this request
-    abortControllerRef.current = new AbortController();
-    
-    try {
-      console.log(`🔍 Fetching customers (${simple ? 'simple' : 'full'})...`);
+    // Create new request with retry logic for 503 errors
+    const attemptFetch = async (retryCount = 0): Promise<Customer[]> => {
+      const maxRetries = 3;
+      const baseDelay = 2000; // Start with 2 seconds
+      let fetchTimeout: NodeJS.Timeout | undefined;
       
-      const fetchPromise = simple ? fetchAllCustomersSimple() : fetchAllCustomers();
-      
-      // Store the promise in cache to prevent duplicate requests
-      customerDataCache.set(cacheKeyWithType, {
-        data: [],
-        timestamp: Date.now(),
-        promise: fetchPromise
-      });
-      
-      const data = await fetchPromise;
-      
-      // Update cache with actual data
-      customerDataCache.set(cacheKeyWithType, {
-        data,
-        timestamp: Date.now()
-      });
-      
-      if (isMountedRef.current) {
-        setCustomers(data);
-        setLoading(false);
+      try {
+        setLoading(true);
         setError(null);
-        console.log(`✅ Successfully loaded ${data.length} customers`);
-      }
-      
-    } catch (err) {
-      if (isMountedRef.current) {
-        const errorMessage = err instanceof Error ? err.message : 'Failed to fetch customers';
-        console.error('❌ Error fetching customers:', errorMessage);
         
-        // Enhanced error logging for network issues
-        if (errorMessage.includes('QUIC_PROTOCOL_ERROR') || errorMessage.includes('net::ERR_QUIC_PROTOCOL_ERROR')) {
-          console.error('🌐 QUIC Protocol Error detected. This may be due to:');
-          console.error('   - Network instability or poor connection quality');
-          console.error('   - Firewall or proxy interference');
-          console.error('   - Browser network stack issues');
-          console.error('   - Supabase server connectivity problems');
-          console.error('   - DNS resolution issues');
+        // Create abort controller for this request
+        abortControllerRef.current = new AbortController();
+        
+        // Add timeout for the entire fetch operation
+        fetchTimeout = setTimeout(() => {
+          if (abortControllerRef.current) {
+            console.log('⏰ Customer fetch timeout - aborting request');
+            abortControllerRef.current.abort();
+          }
+        }, 60000); // 60 second timeout for entire operation
+        
+        console.log(`🔍 Fetching customers (${simple ? 'simple' : 'full'})... Attempt ${retryCount + 1}/${maxRetries + 1}`);
+        
+        const fetchPromise = simple ? fetchAllCustomersSimple() : fetchAllCustomers();
+        
+        // Store the promise in cache to prevent duplicate requests
+        customerDataCache.set(cacheKeyWithType, {
+          data: [],
+          timestamp: Date.now(),
+          promise: fetchPromise
+        });
+        
+        const data = await fetchPromise;
+        
+        // Clear timeout since we got data
+        if (fetchTimeout) {
+          clearTimeout(fetchTimeout);
         }
         
-        setError(errorMessage);
-        setLoading(false);
-      }
-      
-      // Remove failed request from cache
-      customerDataCache.delete(cacheKeyWithType);
-    } finally {
-      abortControllerRef.current = null;
+        // Update cache with actual data
+        customerDataCache.set(cacheKeyWithType, {
+          data,
+          timestamp: Date.now()
+        });
+        
+        if (isMountedRef.current) {
+          setCustomers(data);
+          setLoading(false);
+          setError(null);
+          console.log(`✅ Successfully loaded ${data.length} customers`);
+        }
+        
+        return data;
+        
+      } catch (err) {
+        // Clear timeout since we got an error
+        if (fetchTimeout) {
+          clearTimeout(fetchTimeout);
+        }
+        
+        const errorMessage = err instanceof Error ? err.message : 'Failed to fetch customers';
+        
+        // Check if it's a 503 error and we should retry
+        if ((errorMessage.includes('503') || errorMessage.includes('Service Unavailable')) && retryCount < maxRetries) {
+          const delay = baseDelay * Math.pow(2, retryCount); // Exponential backoff
+          console.log(`🔄 503 error detected, retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetries + 1})`);
+          
+          if (isMountedRef.current) {
+            setError(`Database temporarily unavailable. Retrying in ${Math.round(delay / 1000)} seconds...`);
+          }
+          
+          // Wait before retrying
+          await new Promise(resolve => setTimeout(resolve, delay));
+          
+          // Retry the fetch
+          return attemptFetch(retryCount + 1);
+        }
+        
+        // If we've exhausted retries or it's not a 503 error, handle the error
+        if (isMountedRef.current) {
+          console.error('❌ Error fetching customers:', errorMessage);
+          
+          // Enhanced error logging for network issues
+          if (errorMessage.includes('QUIC_PROTOCOL_ERROR') || errorMessage.includes('net::ERR_QUIC_PROTOCOL_ERROR')) {
+            console.error('🌐 QUIC Protocol Error detected. This may be due to:');
+            console.error('   - Network instability or poor connection quality');
+            console.error('   - Firewall or proxy interference');
+            console.error('   - Browser network stack issues');
+            console.error('   - Supabase server connectivity problems');
+            console.error('   - DNS resolution issues');
+          }
+          
+          // Check for timeout errors
+          if (errorMessage.includes('timeout') || errorMessage.includes('Request timeout')) {
+            console.error('⏰ Request timeout detected. This may be due to:');
+            console.error('   - Slow network connection');
+            console.error('   - Large dataset being fetched');
+            console.error('   - Server overload');
+            console.error('   - Network congestion');
+          }
+
+          // Handle 503 Service Unavailable errors specifically
+          if (errorMessage.includes('503') || errorMessage.includes('Service Unavailable')) {
+            console.error('🔧 503 Service Unavailable detected. This indicates:');
+            console.error('   - Supabase service is temporarily down');
+            console.error('   - Database maintenance in progress');
+            console.error('   - Service quota exceeded');
+            console.error('   - Network connectivity issues');
+            
+            // Set a more user-friendly error message
+            setError('Database service is temporarily unavailable. Please try again in a few minutes.');
+          } else {
+            setError(errorMessage);
+          }
+          
+          setLoading(false);
+        }
+        
+        // Remove failed request from cache
+        customerDataCache.delete(cacheKeyWithType);
+        throw err;
+             } finally {
+         if (fetchTimeout) {
+           clearTimeout(fetchTimeout);
+         }
+         abortControllerRef.current = null;
+       }
+    };
+
+    // Start the fetch with retry logic
+    try {
+      await attemptFetch();
+    } catch (err) {
+      // Error is already handled in attemptFetch
     }
   };
 
@@ -240,5 +317,27 @@ export function getCustomerCacheStats() {
       hasPromise: !!value.promise,
       age: Date.now() - value.timestamp
     }))
+  };
+}
+
+// Debug function to help diagnose network issues
+export function debugCustomerFetch() {
+  const networkStatus = checkNetworkStatus();
+  const connectionQuality = getConnectionQuality();
+  const cacheStats = getCustomerCacheStats();
+  
+  console.log('🔍 Customer Fetch Debug Info:', {
+    networkStatus,
+    connectionQuality,
+    cacheStats,
+    navigatorOnline: navigator.onLine,
+    userAgent: navigator.userAgent,
+    timestamp: new Date().toISOString()
+  });
+  
+  return {
+    networkStatus,
+    connectionQuality,
+    cacheStats
   };
 }

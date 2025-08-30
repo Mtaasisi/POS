@@ -5,26 +5,16 @@ export interface Category {
   description?: string;
   color?: string;
   icon?: string;
-  parentId?: string;
+  parent_id?: string;
   isActive: boolean;
   sortOrder: number;
   metadata?: Record<string, any>;
   createdAt: string;
   updatedAt: string;
+  children?: Category[];
 }
 
-export interface Brand {
-  id: string;
-  name: string;
-  description?: string;
-  logo?: string;
-  color?: string;
-  website?: string;
-  isActive: boolean;
-  metadata?: Record<string, any>;
-  createdAt: string;
-  updatedAt: string;
-}
+
 
 export interface Supplier {
   id: string;
@@ -48,7 +38,7 @@ export interface ProductVariant {
   id?: string;
   sku: string;
   name: string;
-  barcode?: string;
+
   price: number;
   costPrice: number;
   stockQuantity: number;
@@ -60,9 +50,9 @@ export interface Product {
   id: string;
   name: string;
   sku: string;
-  barcode?: string;
+
   categoryId: string;
-  brandId?: string;
+  category?: Category; // Embedded category data from join
   supplierId?: string;
   condition: string;
   internalNotes?: string;
@@ -147,14 +137,31 @@ export interface SparePartUsage {
   createdAt: string;
 }
 
+// Individual item tracking for serialized inventory
+export interface InventoryItem {
+  id: string;
+  variantId: string;
+  serialNumber: string;
+
+  status: 'available' | 'reserved' | 'sold' | 'damaged' | 'returned';
+  location?: string;
+  shelf?: string;
+  bin?: string;
+  purchaseDate?: string;
+  warrantyExpiry?: string;
+  notes?: string;
+  metadata?: Record<string, any>;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // Form Data Types
 export interface ProductFormData {
   name: string;
   shortDescription?: string;
   sku: string;
-  barcode?: string;
+
   categoryId: string;
-  brandId?: string;
   supplierId?: string;
   internalNotes?: string;
   images?: Array<{
@@ -174,7 +181,7 @@ export interface ProductFormData {
   variants: Array<{
     sku: string;
     name: string;
-    barcode?: string;
+  
     price: number;
     costPrice: number;
     stockQuantity: number;
@@ -195,15 +202,7 @@ export interface CategoryFormData {
   metadata?: Record<string, any>;
 }
 
-export interface BrandFormData {
-  name: string;
-  description?: string;
-  logo?: string;
-  color?: string;
-  website?: string;
-  isActive: boolean;
-  metadata?: Record<string, any>;
-}
+
 
 export interface SupplierFormData {
   name: string;
@@ -240,7 +239,6 @@ export interface PaginatedResponse<T> {
 export interface InventoryFilters {
   searchTerm: string;
   categoryId?: string;
-  brandId?: string;
   supplierId?: string;
   stockFilter: 'all' | 'in-stock' | 'low-stock' | 'out-of-stock';
   statusFilter: 'all' | 'active' | 'inactive';
@@ -277,7 +275,7 @@ export interface LoadingStates {
 export interface SelectionState {
   selectedProducts: string[];
   selectedCategories: string[];
-  selectedBrands: string[];
+
   selectedSuppliers: string[];
 }
 

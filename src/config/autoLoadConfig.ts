@@ -60,7 +60,7 @@ export const defaultAutoLoadConfig: AutoLoadConfig = {
     inventory: {
       enabled: true,
       priority: 1,
-      description: "Products, categories, brands, suppliers"
+      description: "Products, categories, suppliers"
     },
     customers: {
       enabled: true,

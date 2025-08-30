@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import GlassCard from '../../shared/components/ui/GlassCard';
+import InteractiveMessageCharts from '../components/charts/InteractiveMessageCharts';
 import { 
   TrendingUp,
   Send,
@@ -33,15 +35,31 @@ const WhatsAppAnalyticsPage: React.FC<WhatsAppAnalyticsPageProps> = ({
   onNavigateToGreenApi,
   isDark
 }) => {
+  const navigate = useNavigate();
+  const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d' | '1y'>('7d');
+
+  // Handle navigation to chat with optional customer selection
+  const handleNavigateToChat = (customerId?: string) => {
+    if (customerId) {
+      navigate(`/lats/whatsapp-chat?customerId=${customerId}`);
+    } else {
+      navigate('/lats/whatsapp-chat');
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Analytics Overview */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-        <GlassCard className="p-8 bg-gradient-to-br from-green-500 to-green-600 text-white min-h-[140px]">
+        <GlassCard 
+          className="p-8 bg-gradient-to-br from-green-500 to-green-600 text-white min-h-[140px] cursor-pointer hover:shadow-xl transition-all duration-300 transform hover:scale-105"
+          onClick={() => handleNavigateToChat()}
+        >
           <div className="flex items-center justify-between h-full">
             <div>
               <p className="text-green-100 text-sm font-medium">Delivery Rate</p>
               <p className="text-2xl xl:text-3xl font-bold mt-1">{metrics?.deliveryRate || 0}%</p>
+              <p className="text-green-100 text-xs mt-2 opacity-80">Click to view in chat →</p>
             </div>
             <div className="w-14 h-14 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
               <TrendingUp size={28} />
@@ -49,11 +67,15 @@ const WhatsAppAnalyticsPage: React.FC<WhatsAppAnalyticsPageProps> = ({
           </div>
         </GlassCard>
 
-        <GlassCard className="p-8 bg-gradient-to-br from-blue-500 to-blue-600 text-white min-h-[140px]">
+        <GlassCard 
+          className="p-8 bg-gradient-to-br from-blue-500 to-blue-600 text-white min-h-[140px] cursor-pointer hover:shadow-xl transition-all duration-300 transform hover:scale-105"
+          onClick={() => handleNavigateToChat()}
+        >
           <div className="flex items-center justify-between h-full">
             <div>
               <p className="text-blue-100 text-sm font-medium">Messages Sent</p>
               <p className="text-2xl xl:text-3xl font-bold mt-1">{metrics?.totalMessages || messages.length}</p>
+              <p className="text-blue-100 text-xs mt-2 opacity-80">Click to view in chat →</p>
             </div>
             <div className="w-14 h-14 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
               <Send size={28} />
@@ -61,11 +83,15 @@ const WhatsAppAnalyticsPage: React.FC<WhatsAppAnalyticsPageProps> = ({
           </div>
         </GlassCard>
 
-        <GlassCard className="p-8 bg-gradient-to-br from-purple-500 to-purple-600 text-white min-h-[140px]">
+        <GlassCard 
+          className="p-8 bg-gradient-to-br from-purple-500 to-purple-600 text-white min-h-[140px] cursor-pointer hover:shadow-xl transition-all duration-300 transform hover:scale-105"
+          onClick={() => onNavigateToGreenApi('campaigns')}
+        >
           <div className="flex items-center justify-between h-full">
             <div>
               <p className="text-purple-100 text-sm font-medium">Active Campaigns</p>
               <p className="text-2xl xl:text-3xl font-bold mt-1">{campaigns.filter(c => c.status === 'sending').length}</p>
+              <p className="text-purple-100 text-xs mt-2 opacity-80">Click to manage →</p>
             </div>
             <div className="w-14 h-14 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
               <Target size={28} />
@@ -73,11 +99,15 @@ const WhatsAppAnalyticsPage: React.FC<WhatsAppAnalyticsPageProps> = ({
           </div>
         </GlassCard>
 
-        <GlassCard className="p-8 bg-gradient-to-br from-orange-500 to-orange-600 text-white min-h-[140px]">
+        <GlassCard 
+          className="p-8 bg-gradient-to-br from-orange-500 to-orange-600 text-white min-h-[140px] cursor-pointer hover:shadow-xl transition-all duration-300 transform hover:scale-105"
+          onClick={() => handleNavigateToChat()}
+        >
           <div className="flex items-center justify-between h-full">
             <div>
               <p className="text-orange-100 text-sm font-medium">Success Rate</p>
               <p className="text-2xl xl:text-3xl font-bold mt-1">{metrics?.successRate || 0}%</p>
+              <p className="text-orange-100 text-xs mt-2 opacity-80">Click to view in chat →</p>
             </div>
             <div className="w-14 h-14 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
               <CheckCircle size={28} />
@@ -258,12 +288,16 @@ const WhatsAppAnalyticsPage: React.FC<WhatsAppAnalyticsPageProps> = ({
         </div>
       </GlassCard>
 
-      {/* Performance Charts */}
-      <GlassCard className="p-6">
+      {/* Interactive Message Charts */}
+      <div>
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-semibold text-gray-900">Performance Charts</h2>
+          <h2 className="text-xl font-semibold text-gray-900">Interactive Analytics</h2>
           <div className="flex items-center gap-3">
-            <select className="px-4 py-2 border border-gray-300 rounded-lg focus:border-green-500 focus:outline-none">
+            <select 
+              value={timeRange}
+              onChange={(e) => setTimeRange(e.target.value as '7d' | '30d' | '90d' | '1y')}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:border-green-500 focus:outline-none"
+            >
               <option value="7d">Last 7 Days</option>
               <option value="30d">Last 30 Days</option>
               <option value="90d">Last 90 Days</option>
@@ -271,57 +305,12 @@ const WhatsAppAnalyticsPage: React.FC<WhatsAppAnalyticsPageProps> = ({
             </select>
           </div>
         </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Message Volume Chart */}
-          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <h3 className="text-sm font-medium text-blue-700 mb-4">Message Volume</h3>
-            <div className="h-32 bg-white rounded-lg border border-blue-200 flex items-center justify-center">
-              <div className="text-center">
-                <BarChart3 size={32} className="text-blue-400 mx-auto mb-2" />
-                <p className="text-sm text-blue-600">Chart placeholder</p>
-                <p className="text-xs text-blue-500">Message volume over time</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Delivery Rate Chart */}
-          <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-            <h3 className="text-sm font-medium text-green-700 mb-4">Delivery Rate</h3>
-            <div className="h-32 bg-white rounded-lg border border-green-200 flex items-center justify-center">
-              <div className="text-center">
-                <TrendingUp size={32} className="text-green-400 mx-auto mb-2" />
-                <p className="text-sm text-green-600">Chart placeholder</p>
-                <p className="text-xs text-green-500">Delivery success rate</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Campaign Performance */}
-          <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
-            <h3 className="text-sm font-medium text-purple-700 mb-4">Campaign Performance</h3>
-            <div className="h-32 bg-white rounded-lg border border-purple-200 flex items-center justify-center">
-              <div className="text-center">
-                <Target size={32} className="text-purple-400 mx-auto mb-2" />
-                <p className="text-sm text-purple-600">Chart placeholder</p>
-                <p className="text-xs text-purple-500">Campaign success metrics</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Engagement Metrics */}
-          <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg">
-            <h3 className="text-sm font-medium text-orange-700 mb-4">Engagement Metrics</h3>
-            <div className="h-32 bg-white rounded-lg border border-orange-200 flex items-center justify-center">
-              <div className="text-center">
-                <Activity size={32} className="text-orange-400 mx-auto mb-2" />
-                <p className="text-sm text-orange-600">Chart placeholder</p>
-                <p className="text-xs text-orange-500">User engagement rates</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </GlassCard>
+        
+        <InteractiveMessageCharts 
+          timeRange={timeRange}
+          onNavigateToChat={handleNavigateToChat}
+        />
+      </div>
 
       {/* Quick Actions */}
       <GlassCard className="p-6">

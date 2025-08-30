@@ -8,10 +8,9 @@ const loadDataOptimized = useCallback(async () => {
   
   try {
     // Load all data in parallel instead of sequential
-    const [productsResult, categoriesResult, brandsResult, suppliersResult] = await Promise.allSettled([
+    const [productsResult, categoriesResult, suppliersResult] = await Promise.allSettled([
       loadProducts(),
       loadCategories(),
-      loadBrands(),
       loadSuppliers()
     ]);
 
@@ -32,9 +31,9 @@ const loadDataOptimized = useCallback(async () => {
     }
 
     if (brandsResult.status === 'fulfilled') {
-      console.log('✅ Brands loaded successfully');
+  
     } else {
-      console.error('❌ Brands failed to load:', brandsResult.reason);
+      
     }
 
     if (suppliersResult.status === 'fulfilled') {
@@ -137,7 +136,7 @@ const retryOperation = async (operation: () => Promise<any>, maxRetries = 3) => 
 
 // 8. Add this to your component to show loading progress
 const LoadingProgress = () => {
-  const { productsLoading, categories, brands, suppliers } = useInventoryStore();
+  const { productsLoading, categories, suppliers } = useInventoryStore();
   
   if (!productsLoading) return null;
   
@@ -161,8 +160,8 @@ const LoadingProgress = () => {
             <span>{categories.length > 0 ? 'Ready' : 'Loading...'}</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span>Brands</span>
-            <span>{brands.length > 0 ? 'Ready' : 'Loading...'}</span>
+    
+            <span>{suppliers.length > 0 ? 'Ready' : 'Loading...'}</span>
           </div>
           <div className="flex justify-between text-sm">
             <span>Suppliers</span>

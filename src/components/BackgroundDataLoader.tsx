@@ -9,7 +9,7 @@ const BackgroundDataLoader: React.FC = () => {
   const [isComplete, setIsComplete] = useState(false);
   const [progress, setProgress] = useState(0);
   
-  const { products, categories, brands, suppliers, isLoading: storeLoading } = useInventoryStore();
+  const { products, categories, suppliers, isLoading: storeLoading } = useInventoryStore();
   const { customers } = useCustomers();
   
   // Cycling loading messages
@@ -32,7 +32,7 @@ const BackgroundDataLoader: React.FC = () => {
       setIsLoading(true);
       setIsComplete(false);
       setProgress(0);
-    } else if (products.length > 0 || categories.length > 0 || brands.length > 0 || suppliers.length > 0 || customers.length > 0) {
+    } else if ((products?.length > 0) || (categories?.length > 0) || (suppliers?.length > 0) || (customers?.length > 0)) {
       // Data has been loaded
       setIsLoading(false);
       setIsComplete(true);
@@ -43,25 +43,24 @@ const BackgroundDataLoader: React.FC = () => {
         setIsComplete(false);
       }, 3000);
     }
-  }, [storeLoading, products.length, categories.length, brands.length, suppliers.length, customers.length]);
+  }, [storeLoading, products?.length, categories?.length, suppliers?.length, customers?.length]);
 
   // Calculate progress based on loaded data
   useEffect(() => {
     if (isLoading) {
-      const totalItems = 7; // products, categories, brands, suppliers, customers, devices, settings
+      const totalItems = 6; // products, categories, suppliers, customers, devices, settings
       const loadedItems = [
-        products.length > 0,
-        categories.length > 0,
-        brands.length > 0,
-        suppliers.length > 0,
-        customers.length > 0,
+        products?.length > 0,
+        categories?.length > 0,
+        suppliers?.length > 0,
+        customers?.length > 0,
         dataStates.devices,
         dataStates.settings
       ].filter(Boolean).length;
       
       setProgress((loadedItems / totalItems) * 100);
     }
-  }, [isLoading, products.length, categories.length, brands.length, suppliers.length, customers.length, dataStates]);
+  }, [isLoading, products?.length, categories?.length, suppliers?.length, customers?.length, dataStates]);
 
   if (!isLoading && !isComplete) {
     return null;
@@ -98,7 +97,7 @@ const BackgroundDataLoader: React.FC = () => {
               <div>
                 <p className="text-sm font-medium text-gray-700">Data loaded!</p>
                 <p className="text-xs text-gray-500">
-                  {products.length} products • {categories.length} categories • {brands.length} brands • {customers.length} customers
+                  {products?.length || 0} products • {categories?.length || 0} categories • {suppliers?.length || 0} suppliers • {customers?.length || 0} customers
                 </p>
               </div>
             </>

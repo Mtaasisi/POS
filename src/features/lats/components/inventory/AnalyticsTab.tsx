@@ -2,14 +2,15 @@ import React from 'react';
 import GlassCard from '../../../shared/components/ui/GlassCard';
 import { 
   Package, BarChart3, TrendingUp, TrendingDown, DollarSign, 
-  AlertTriangle, CheckCircle, XCircle, Star, Users, Crown
+  AlertTriangle, CheckCircle, XCircle, Star, Users, Crown,
+  Download, Database, Save
 } from 'lucide-react';
+import { supabase } from '../../../../lib/supabaseClient';
 
 interface AnalyticsTabProps {
   products: any[];
   metrics: any;
   categories: any[];
-  brands: any[];
   formatMoney: (amount: number) => string;
 }
 
@@ -17,51 +18,61 @@ const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   products,
   metrics,
   categories,
-  brands,
   formatMoney
 }) => {
+  const [isBackingUp, setIsBackingUp] = React.useState(false);
+  const [backupProgress, setBackupProgress] = React.useState(0);
+  const [backupStatus, setBackupStatus] = React.useState('');
+
   // Calculate additional analytics
   const analytics = React.useMemo(() => {
-    const totalProducts = products.length;
-    const activeProducts = products.filter(p => p.isActive).length;
+    const totalProducts = products?.length || 0;
+    const activeProducts = products?.filter(p => p.isActive).length || 0;
     const inactiveProducts = totalProducts - activeProducts;
-    const featuredProducts = products.filter(p => p.isFeatured).length;
+    const featuredProducts = products?.filter(p => p.isFeatured).length || 0;
     
     // Stock analytics
-    const lowStockProducts = products.filter(p => {
+    const lowStockProducts = products?.filter(p => {
       const totalStock = p.variants?.reduce((sum: number, v: any) => sum + (v.quantity || 0), 0) || 0;
       return totalStock > 0 && totalStock <= 10;
-    }).length;
+    }).length || 0;
     
-    const outOfStockProducts = products.filter(p => {
+    const outOfStockProducts = products?.filter(p => {
       const totalStock = p.variants?.reduce((sum: number, v: any) => sum + (v.quantity || 0), 0) || 0;
       return totalStock <= 0;
-    }).length;
+    }).length || 0;
     
     const wellStockedProducts = totalProducts - lowStockProducts - outOfStockProducts;
     
-    // Value analytics
-    const totalValue = products.reduce((sum, product) => {
-      const mainVariant = product.variants?.[0];
-      const totalStock = product.variants?.reduce((stockSum, variant) => stockSum + (variant.quantity || 0), 0) || 0;
-      return sum + ((mainVariant?.costPrice || 0) * totalStock);
-    }, 0);
+    // Reorder alerts (products below minimum stock level)
+    const reorderAlerts = products?.filter(p => {
+      const totalStock = p.variants?.reduce((sum: number, v: any) => sum + (v.quantity || 0), 0) || 0;
+      const minStock = p.variants?.[0]?.minQuantity || p.minStockLevel || 0;
+      return totalStock <= minStock;
+    }).length || 0;
     
-    const retailValue = products.reduce((sum, product) => {
+    // Value analytics
+    const totalValue = products?.reduce((sum, product) => {
       const mainVariant = product.variants?.[0];
-      const totalStock = product.variants?.reduce((stockSum, variant) => stockSum + (variant.quantity || 0), 0) || 0;
+      const totalStock = product.variants?.reduce((stockSum: number, variant: any) => stockSum + (variant.quantity || 0), 0) || 0;
+      return sum + ((mainVariant?.costPrice || 0) * totalStock);
+    }, 0) || 0;
+    
+    const retailValue = products?.reduce((sum, product) => {
+      const mainVariant = product.variants?.[0];
+      const totalStock = product.variants?.reduce((stockSum: number, variant: any) => stockSum + (variant.quantity || 0), 0) || 0;
       return sum + ((mainVariant?.sellingPrice || 0) * totalStock);
-    }, 0);
+    }, 0) || 0;
     
     const potentialProfit = retailValue - totalValue;
     const profitMargin = retailValue > 0 ? (potentialProfit / retailValue) * 100 : 0;
     
     // Category analytics
-    const categoryStats = categories.map(category => {
-      const categoryProducts = products.filter(p => p.categoryId === category.id);
+    const categoryStats = categories?.map(category => {
+      const categoryProducts = products?.filter(p => p.categoryId === category.id) || [];
       const categoryValue = categoryProducts.reduce((sum, product) => {
         const mainVariant = product.variants?.[0];
-        const totalStock = product.variants?.reduce((stockSum, variant) => stockSum + (variant.quantity || 0), 0) || 0;
+        const totalStock = product.variants?.reduce((stockSum: number, variant: any) => stockSum + (variant.quantity || 0), 0) || 0;
         return sum + ((mainVariant?.sellingPrice || 0) * totalStock);
       }, 0);
       
@@ -71,24 +82,7 @@ const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         value: categoryValue,
         percentage: totalProducts > 0 ? (categoryProducts.length / totalProducts) * 100 : 0
       };
-    }).sort((a, b) => b.count - a.count);
-    
-    // Brand analytics
-    const brandStats = brands.map(brand => {
-      const brandProducts = products.filter(p => p.brandId === brand.id);
-      const brandValue = brandProducts.reduce((sum, product) => {
-        const mainVariant = product.variants?.[0];
-        const totalStock = product.variants?.reduce((stockSum, variant) => stockSum + (variant.quantity || 0), 0) || 0;
-        return sum + ((mainVariant?.sellingPrice || 0) * totalStock);
-      }, 0);
-      
-      return {
-        name: brand.name,
-        count: brandProducts.length,
-        value: brandValue,
-        percentage: totalProducts > 0 ? (brandProducts.length / totalProducts) * 100 : 0
-      };
-    }).sort((a, b) => b.count - a.count);
+    }).sort((a: any, b: any) => b.count - a.count) || [];
     
     return {
       totalProducts,
@@ -98,17 +92,270 @@ const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       lowStockProducts,
       outOfStockProducts,
       wellStockedProducts,
+      reorderAlerts,
       totalValue,
       retailValue,
       potentialProfit,
       profitMargin,
-      categoryStats,
-      brandStats
+      categoryStats
     };
-  }, [products, categories, brands]);
+  }, [products, categories]);
+
+  // Database backup function
+  const performDatabaseBackup = async () => {
+    setIsBackingUp(true);
+    setBackupProgress(0);
+    setBackupStatus('Starting backup...');
+
+    try {
+      // Only backup tables that are actually used in the application
+      const ACTIVE_TABLES = [
+        // Core Business Tables (definitely exist)
+        'customers',
+        'lats_categories', 
+        'lats_products',
+        'lats_product_variants',
+        'lats_suppliers',
+        'employees',
+        'appointments',
+        'settings',
+        'devices',
+        'auth_users',
+        'integrations',
+        'system_settings',
+        'notification_templates',
+        'audit_logs',
+        'product_images',
+        'user_settings',
+        'lats_pos_general_settings',
+        'lats_pos_receipt_settings',
+        'lats_pos_advanced_settings',
+        'lats_purchase_orders',
+        'stock_movements',
+        'user_daily_goals',
+        
+        // Financial Tables (important for business)
+        'customer_payments',
+        'finance_accounts',
+        'finance_expenses',
+        'finance_expense_categories',
+        'finance_transfers',
+        'gift_cards',
+        'gift_card_transactions',
+        'installment_payments',
+        
+        // Device Management Tables
+        'device_attachments',
+        'device_checklists',
+        'device_ratings',
+        'device_remarks',
+        'device_transitions',
+        'diagnostic_checks',
+        'diagnostic_devices',
+        'diagnostic_requests',
+        'diagnostic_templates',
+        
+        // Customer Management Tables
+        'customer_notes',
+        'customer_checkins',
+        'customer_revenue',
+        'contact_history',
+        'contact_methods',
+        'contact_preferences',
+        
+        // Communication Tables
+        'communication_templates',
+        'email_logs',
+        'chat_messages',
+        
+        // WhatsApp Tables (likely exist)
+        'whatsapp_message_templates',
+        'whatsapp_campaigns',
+        'whatsapp_instance_settings_view',
+        'whatsapp_templates',
+        
+        // SMS Tables (likely exist)
+        'sms_logs',
+        'sms_triggers',
+        
+        // Admin Tables
+        'admin_settings',
+        'admin_settings_log',
+        'admin_settings_view',
+        
+        // Other Tables (likely exist)
+        'uuid_diagnostic_log'
+      ];
+
+      setBackupStatus(`Backing up ${ACTIVE_TABLES.length} active tables...`);
+
+      const backup: any = {
+        timestamp: new Date().toISOString(),
+        databaseInfo: {
+          totalTables: ACTIVE_TABLES.length,
+          backupType: 'UI BACKUP - ACTIVE TABLES ONLY'
+        },
+        tables: {},
+        summary: {
+          totalTables: 0,
+          tablesWithData: 0,
+          totalRecords: 0
+        }
+      };
+
+      let totalRecords = 0;
+      let tablesWithData = 0;
+      let processedTables = 0;
+
+      for (const tableName of ACTIVE_TABLES) {
+        try {
+          processedTables++;
+          const progress = ((processedTables / ACTIVE_TABLES.length) * 100);
+          setBackupProgress(progress);
+          setBackupStatus(`Backing up table: ${tableName} (${processedTables}/${ACTIVE_TABLES.length})`);
+
+          // Get all records from table using pagination
+          const allRecords: any[] = [];
+          let from = 0;
+          const pageSize = 1000;
+
+          while (true) {
+            const { data, error } = await supabase
+              .from(tableName)
+              .select('*')
+              .range(from, from + pageSize - 1);
+
+            if (error) {
+              // Table doesn't exist, skip it silently
+              console.log(`⚠️ Table '${tableName}' does not exist, skipping...`);
+              break;
+            }
+
+            if (!data || data.length === 0) {
+              break;
+            }
+
+            allRecords.push(...data);
+
+            if (data.length < pageSize) {
+              break;
+            }
+
+            from += pageSize;
+            await new Promise(resolve => setTimeout(resolve, 50)); // Small delay
+          }
+
+          const recordCount = allRecords.length;
+          backup.tables[tableName] = {
+            exists: true,
+            recordCount,
+            data: allRecords
+          };
+
+          totalRecords += recordCount;
+          if (recordCount > 0) tablesWithData++;
+
+        } catch (error: any) {
+          // Handle any other errors gracefully
+          const errorMessage = error?.message || 'Unknown error';
+          backup.tables[tableName] = {
+            exists: true,
+            error: errorMessage,
+            data: null
+          };
+          console.log(`❌ Error backing up '${tableName}': ${errorMessage}`);
+        }
+      }
+
+      // Update summary
+      backup.summary.totalTables = ACTIVE_TABLES.length;
+      backup.summary.tablesWithData = tablesWithData;
+      backup.summary.totalRecords = totalRecords;
+
+      // Create download
+      const backupJson = JSON.stringify(backup, null, 2);
+      const blob = new Blob([backupJson], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `database-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      setBackupStatus(`✅ Backup completed! ${totalRecords.toLocaleString()} records backed up from ${tablesWithData} tables`);
+      setBackupProgress(100);
+
+      // Reset after 3 seconds
+      setTimeout(() => {
+        setIsBackingUp(false);
+        setBackupProgress(0);
+        setBackupStatus('');
+      }, 3000);
+
+    } catch (error: any) {
+      setBackupStatus(`❌ Backup failed: ${error.message}`);
+      setIsBackingUp(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
+      {/* Database Backup Section */}
+      <GlassCard className="p-6 bg-gradient-to-br from-indigo-50 to-indigo-100">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-indigo-200 rounded-lg">
+              <Database className="w-5 h-5 text-indigo-600" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-indigo-900">Database Backup</h3>
+              <p className="text-sm text-indigo-700">Create a complete backup of all your data</p>
+            </div>
+          </div>
+          <button
+            onClick={performDatabaseBackup}
+            disabled={isBackingUp}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
+              isBackingUp
+                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                : 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95'
+            }`}
+          >
+            {isBackingUp ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                Backing Up...
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4" />
+                Backup Database
+              </>
+            )}
+          </button>
+        </div>
+
+        {isBackingUp && (
+          <div className="space-y-3">
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div 
+                className="bg-indigo-600 h-2 rounded-full transition-all duration-300" 
+                style={{ width: `${backupProgress}%` }}
+              ></div>
+            </div>
+            <p className="text-sm text-indigo-700">{backupStatus}</p>
+          </div>
+        )}
+
+        {!isBackingUp && backupStatus && (
+          <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+            <p className="text-sm text-green-700">{backupStatus}</p>
+          </div>
+        )}
+      </GlassCard>
+
       {/* Overview Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <GlassCard className="bg-gradient-to-br from-blue-50 to-blue-100">
@@ -275,30 +522,6 @@ const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         </div>
       </GlassCard>
 
-      {/* Brand Analytics */}
-      <GlassCard className="p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Brand Distribution</h3>
-        <div className="space-y-3">
-          {analytics.brandStats.slice(0, 5).map((brand, index) => (
-            <div key={brand.name} className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
-                  <Crown className="w-4 h-4 text-purple-600" />
-                </div>
-                <div>
-                  <span className="font-medium text-gray-900">{brand.name}</span>
-                  <div className="text-sm text-gray-500">{brand.count} products</div>
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="font-semibold text-gray-900">{formatMoney(brand.value)}</div>
-                <div className="text-sm text-gray-500">{brand.percentage.toFixed(1)}%</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </GlassCard>
-
       {/* Quick Insights */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <GlassCard className="p-6 bg-gradient-to-br from-blue-50 to-blue-100">
@@ -310,9 +533,9 @@ const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           </div>
           <ul className="space-y-2 text-sm text-blue-800">
             <li>• {analytics.categoryStats[0]?.name || 'No category'} is your largest category</li>
-            <li>• {analytics.brandStats[0]?.name || 'No brand'} has the highest value</li>
             <li>• {analytics.profitMargin.toFixed(1)}% average profit margin</li>
             <li>• {analytics.featuredProducts} products are featured</li>
+            <li>• {analytics.totalProducts} total products in inventory</li>
           </ul>
         </GlassCard>
 

@@ -25,6 +25,8 @@ export interface GeneralSettings {
   cache_duration: number;
   enable_lazy_loading: boolean;
   max_search_results: number;
+  enable_tax: boolean;
+  tax_rate: number;
 }
 
 export interface DynamicPricingSettings {
@@ -188,7 +190,7 @@ export interface SearchFilterSettings {
   search_by_barcode: boolean;
   search_by_sku: boolean;
   search_by_category: boolean;
-  search_by_brand: boolean;
+
   search_by_supplier: boolean;
   search_by_description: boolean;
   search_by_tags: boolean;
@@ -518,7 +520,9 @@ export class POSSettingsAPI {
           enable_caching: true,
           cache_duration: 300,
           enable_lazy_loading: true,
-          max_search_results: 50
+          max_search_results: 50,
+          enable_tax: true,
+          tax_rate: 16
         };
       
       case 'pricing':

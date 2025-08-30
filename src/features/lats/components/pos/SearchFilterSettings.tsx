@@ -17,7 +17,6 @@ interface SearchFilterSettings {
   // Filter Settings
   defaultFilters: {
     category: string;
-    brand: string;
     priceRange: { min: number; max: number };
     stockStatus: 'all' | 'in-stock' | 'low-stock' | 'out-of-stock';
   };
@@ -68,7 +67,6 @@ const SearchFilterSettings: React.FC = () => {
       autoComplete: true,
       defaultFilters: {
         category: '',
-        brand: '',
         priceRange: { min: 0, max: 1000000 },
         stockStatus: 'all'
       },

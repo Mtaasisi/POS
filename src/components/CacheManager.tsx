@@ -135,7 +135,6 @@ const CacheManager: React.FC<CacheManagerProps> = ({ isVisible = false, onClose 
       // Reload inventory data
       await inventoryStore.loadProducts({ page: 1, limit: 50 });
       await inventoryStore.loadCategories();
-      await inventoryStore.loadBrands();
       await inventoryStore.loadSuppliers();
       
       console.log('✅ Critical data reloaded');

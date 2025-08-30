@@ -12,14 +12,13 @@ import {
 import { toast } from 'react-hot-toast';
 
 // Import tab components
-import BrandsTab from '../components/inventory-management/BrandsTab';
 import CategoriesTab from '../components/inventory-management/CategoriesTab';
 import SuppliersTab from '../components/inventory-management/SuppliersTab';
 import StoreLocationsTab from '../components/inventory-management/StoreLocationsTab';
 import StorageRoomManagementPage from './StorageRoomManagementPage';
 import SystemSettingsTab from '../components/inventory-management/SystemSettingsTab';
 
-type TabType = 'brands' | 'categories' | 'suppliers' | 'store-locations' | 'storage-room' | 'system-settings';
+type TabType = 'categories' | 'suppliers' | 'store-locations' | 'storage-room' | 'system-settings';
 
 interface TabConfig {
   id: TabType;
@@ -30,13 +29,6 @@ interface TabConfig {
 }
 
 const TAB_CONFIGS: TabConfig[] = [
-  {
-    id: 'brands',
-    label: 'Brands',
-    icon: Crown,
-    color: 'blue',
-    description: 'Manage product brands and manufacturers'
-  },
   {
     id: 'categories',
     label: 'Categories',
@@ -109,8 +101,6 @@ const InventoryManagementPage: React.FC = () => {
 
   const renderTabContent = () => {
     switch (activeTab) {
-      case 'brands':
-        return <BrandsTab />;
       case 'categories':
         return <CategoriesTab />;
       case 'suppliers':
@@ -122,7 +112,7 @@ const InventoryManagementPage: React.FC = () => {
       case 'system-settings':
         return <SystemSettingsTab />;
       default:
-        return <BrandsTab />;
+        return <CategoriesTab />;
     }
   };
 

@@ -1,6 +1,6 @@
 // General Settings Tab Component
 import React, { forwardRef, useImperativeHandle } from 'react';
-import { Settings, Monitor, Eye, Zap, Database } from 'lucide-react';
+import { Settings, Monitor, Eye, Zap, Database, Calculator } from 'lucide-react';
 import UniversalSettingsTab from './UniversalSettingsTab';
 import { SettingsSection } from './UniversalFormComponents';
 import { ToggleSwitch, NumberInput, TextInput, Select } from './UniversalFormComponents';
@@ -268,6 +268,32 @@ const GeneralSettingsTab = forwardRef<GeneralSettingsTabRef>((props, ref) => {
             max={200}
             step={10}
           />
+        </div>
+      </SettingsSection>
+
+      {/* Tax Settings */}
+      <SettingsSection
+        title="Tax Settings"
+        description="Configure tax calculation for sales"
+        icon={<Calculator className="w-5 h-5" />}
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <ToggleSwitch
+            label="Enable Tax"
+            checked={settings.enable_tax}
+            onChange={(checked) => handleSettingChange('enable_tax', checked)}
+          />
+          
+          {settings.enable_tax && (
+            <NumberInput
+              label="Tax Rate (%)"
+              value={settings.tax_rate}
+              onChange={(value) => handleSettingChange('tax_rate', value)}
+              min={0}
+              max={50}
+              step={0.1}
+            />
+          )}
         </div>
       </SettingsSection>
           </UniversalSettingsTab>

@@ -47,7 +47,8 @@ const CustomerDataUpdatePage: React.FC = () => {
       const { data, error } = await supabase
         .from('customers')
         .select('*')
-        .order('name');
+        .order('name')
+        .limit(50000); // Fetch up to 50,000 customers instead of default 1000
 
       if (error) throw error;
       setCustomers(data || []);

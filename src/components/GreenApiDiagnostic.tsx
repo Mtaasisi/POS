@@ -1,235 +1,318 @@
 import React, { useState } from 'react';
+import { 
+  AlertTriangle, 
+  CheckCircle, 
+  XCircle, 
+  RefreshCw, 
+  Settings, 
+  MessageCircle,
+  Wifi,
+  WifiOff,
+  Database,
+  Code,
+  Activity,
+  Info
+} from 'lucide-react';
 import { greenApiService } from '../services/greenApiService';
 import { toast } from '../lib/toastUtils';
 
-const GreenApiDiagnostic: React.FC = () => {
-  const [isRunning, setIsRunning] = useState(false);
-  const [diagnosis, setDiagnosis] = useState<any>(null);
-  const [instanceId, setInstanceId] = useState('');
-  const [apiToken, setApiToken] = useState('');
+interface GreenApiDiagnosticProps {
+  instances: any[];
+  isDark: boolean;
+}
+
+const GreenApiDiagnostic: React.FC<GreenApiDiagnosticProps> = ({
+  instances,
+  isDark
+}) => {
+  const [isChecking, setIsChecking] = useState(false);
+  const [diagnosticResults, setDiagnosticResults] = useState<any>(null);
+  const [lastError, setLastError] = useState<string | null>(null);
 
   const runDiagnostics = async () => {
-    setIsRunning(true);
+    setIsChecking(true);
+    setLastError(null);
+    setDiagnosticResults(null);
+
     try {
-      console.log('🔍 Starting Green API diagnostics...');
-      
-      // Run connection diagnosis
-      const connectionDiagnosis = await greenApiService.diagnoseConnectionIssues();
-      
-      // Run RLS diagnosis
-      const rlsDiagnosis = await greenApiService.diagnoseRLSIssues();
-      
-      // Test instance connection if provided
-      let instanceTest = null;
-      if (instanceId && apiToken) {
-        try {
-          const isConnected = await greenApiService.checkInstanceConnection(instanceId);
-          instanceTest = {
-            success: isConnected,
-            message: isConnected ? 'Instance is connected' : 'Instance is not connected'
-          };
-        } catch (error: any) {
-          instanceTest = {
-            success: false,
-            error: error.message
-          };
-        }
-      }
-      
-      const fullDiagnosis = {
+      const results = {
         timestamp: new Date().toISOString(),
-        connection: connectionDiagnosis,
-        rls: rlsDiagnosis,
-        instance: instanceTest
+        instances: [],
+        overallStatus: 'unknown',
+        recommendations: []
       };
-      
-      setDiagnosis(fullDiagnosis);
-      console.log('✅ Diagnostics completed:', fullDiagnosis);
-      
-      // Show summary toast
-      const workingMethods = [
-        connectionDiagnosis.proxyTest.success && 'Proxy',
-        connectionDiagnosis.phpProxyTest.success && 'PHP Proxy',
-        connectionDiagnosis.netlifyTest.success && 'Netlify Function',
-        connectionDiagnosis.directTest.success && 'Direct API'
-      ].filter(Boolean);
-      
-      if (workingMethods.length > 0) {
-        toast.success(`Diagnostics complete. Working methods: ${workingMethods.join(', ')}`);
-      } else {
-        toast.error('No connection methods are working. Check the detailed results below.');
+
+      if (!instances || instances.length === 0) {
+        results.overallStatus = 'no_instances';
+        results.recommendations.push('No WhatsApp instances found. Please set up a WhatsApp instance first.');
+        setDiagnosticResults(results);
+        return;
       }
-      
+
+      for (const instance of instances) {
+        const instanceResult = {
+          id: instance.instance_id,
+          status: instance.status,
+          apiToken: instance.api_token ? 'Present' : 'Missing',
+          greenApiHost: instance.green_api_host || 'https://api.green-api.com',
+          connectionTest: 'pending',
+          error: null
+        };
+
+        try {
+          // Test connection
+          const isConnected = await greenApiService.checkInstanceConnection(instance.instance_id);
+          instanceResult.connectionTest = isConnected ? 'success' : 'failed';
+          
+          if (!isConnected) {
+            instanceResult.error = 'Instance not authorized';
+            results.recommendations.push(`Instance ${instance.instance_id}: Check if WhatsApp is connected and authorized`);
+          }
+        } catch (error: any) {
+          instanceResult.connectionTest = 'error';
+          instanceResult.error = error.message;
+          results.recommendations.push(`Instance ${instance.instance_id}: ${error.message}`);
+        }
+
+        results.instances.push(instanceResult);
+      }
+
+      // Determine overall status
+      const connectedInstances = results.instances.filter(i => i.connectionTest === 'success');
+      if (connectedInstances.length > 0) {
+        results.overallStatus = 'healthy';
+      } else if (results.instances.some(i => i.connectionTest === 'failed')) {
+        results.overallStatus = 'disconnected';
+      } else {
+        results.overallStatus = 'error';
+      }
+
+      setDiagnosticResults(results);
+      toast.success('Diagnostics completed');
     } catch (error: any) {
       console.error('❌ Diagnostic error:', error);
-      toast.error(`Diagnostic failed: ${error.message}`);
+      setLastError(error.message);
+      toast.error('Diagnostics failed');
     } finally {
-      setIsRunning(false);
+      setIsChecking(false);
     }
   };
 
-  const resetDiagnostics = () => {
-    setDiagnosis(null);
-    setInstanceId('');
-    setApiToken('');
+  const testMessageSending = async () => {
+    if (!instances || instances.length === 0) {
+      toast.error('No WhatsApp instances available');
+      return;
+    }
+
+    const activeInstance = instances.find(instance => instance.status === 'connected');
+    if (!activeInstance) {
+      toast.error('No connected WhatsApp instance found');
+      return;
+    }
+
+    try {
+      const testMessage = {
+        instanceId: activeInstance.instance_id,
+        chatId: '+255769601663', // Test number from logs
+        message: '🔧 Test message from diagnostic tool - ' + new Date().toLocaleTimeString(),
+        messageType: 'text' as const
+      };
+
+      console.log('🧪 Sending test message:', testMessage);
+      await greenApiService.sendMessage(testMessage);
+      toast.success('Test message sent successfully!');
+    } catch (error: any) {
+      console.error('❌ Test message failed:', error);
+      setLastError(`Test message failed: ${error.message}`);
+      toast.error(`Test message failed: ${error.message}`);
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'success':
+      case 'healthy':
+        return <CheckCircle className="w-5 h-5 text-green-500" />;
+      case 'failed':
+      case 'error':
+        return <XCircle className="w-5 h-5 text-red-500" />;
+      case 'disconnected':
+        return <WifiOff className="w-5 h-5 text-orange-500" />;
+      default:
+        return <AlertTriangle className="w-5 h-5 text-yellow-500" />;
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'success':
+      case 'healthy':
+        return 'text-green-500';
+      case 'failed':
+      case 'error':
+        return 'text-red-500';
+      case 'disconnected':
+        return 'text-orange-500';
+      default:
+        return 'text-yellow-500';
+    }
   };
 
   return (
-    <div className="p-6 bg-white rounded-lg shadow-md">
-      <h2 className="text-2xl font-bold mb-4 text-gray-800">Green API Connection Diagnostic</h2>
-      
-      <div className="mb-6">
+    <div className={`p-6 rounded-2xl ${isDark ? 'bg-gray-800/50' : 'bg-white/50'} backdrop-blur-xl border ${isDark ? 'border-gray-700/50' : 'border-gray-200/50'}`}>
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center space-x-3">
+          <Settings className={`w-6 h-6 ${isDark ? 'text-blue-400' : 'text-blue-600'}`} />
+          <h2 className={`text-xl font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            GreenAPI Diagnostics
+          </h2>
+        </div>
         <button
           onClick={runDiagnostics}
-          disabled={isRunning}
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+          disabled={isChecking}
+          className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all duration-200 ${
+            isChecking 
+              ? 'bg-gray-400 cursor-not-allowed' 
+              : isDark 
+                ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+                : 'bg-blue-500 hover:bg-blue-600 text-white'
+          }`}
         >
-          {isRunning ? 'Running Diagnostics...' : 'Run Diagnostics'}
+          {isChecking ? (
+            <RefreshCw className="w-4 h-4 animate-spin" />
+          ) : (
+            <Activity className="w-4 h-4" />
+          )}
+          <span>{isChecking ? 'Running...' : 'Run Diagnostics'}</span>
         </button>
-        
-        {diagnosis && (
-          <button
-            onClick={resetDiagnostics}
-            className="ml-2 px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
-          >
-            Reset
-          </button>
-        )}
       </div>
 
-      {/* Instance Test Section */}
-      <div className="mb-6 p-4 bg-gray-50 rounded">
-        <h3 className="text-lg font-semibold mb-3">Test Specific Instance (Optional)</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Instance ID</label>
-            <input
-              type="text"
-              value={instanceId}
-              onChange={(e) => setInstanceId(e.target.value)}
-              placeholder="Enter instance ID"
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">API Token</label>
-            <input
-              type="password"
-              value={apiToken}
-              onChange={(e) => setApiToken(e.target.value)}
-              placeholder="Enter API token"
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+      {lastError && (
+        <div className="mb-4 p-4 rounded-lg bg-red-100 border border-red-300">
+          <div className="flex items-center space-x-2">
+            <XCircle className="w-5 h-5 text-red-500" />
+            <span className="text-red-700 font-medium">Error:</span>
+            <span className="text-red-600">{lastError}</span>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Results Section */}
-      {diagnosis && (
-        <div className="space-y-6">
-          {/* Connection Tests */}
-          <div className="p-4 bg-gray-50 rounded">
-            <h3 className="text-lg font-semibold mb-3">Connection Tests</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className={`p-3 rounded ${diagnosis.connection.proxyTest.success ? 'bg-green-100' : 'bg-red-100'}`}>
-                <h4 className="font-medium">Proxy Connection</h4>
-                <p className="text-sm">{diagnosis.connection.proxyTest.success ? '✅ Working' : '❌ Failed'}</p>
-                {diagnosis.connection.proxyTest.error && (
-                  <p className="text-xs text-red-600 mt-1">{diagnosis.connection.proxyTest.error}</p>
-                )}
+      {diagnosticResults && (
+        <div className="space-y-4">
+          {/* Overall Status */}
+          <div className={`p-4 rounded-lg border ${
+            isDark ? 'bg-gray-700/50 border-gray-600' : 'bg-gray-50 border-gray-200'
+          }`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                {getStatusIcon(diagnosticResults.overallStatus)}
+                <div>
+                  <h3 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                    Overall Status
+                  </h3>
+                  <p className={`text-sm ${getStatusColor(diagnosticResults.overallStatus)}`}>
+                    {diagnosticResults.overallStatus === 'healthy' && 'All systems operational'}
+                    {diagnosticResults.overallStatus === 'disconnected' && 'WhatsApp instances disconnected'}
+                    {diagnosticResults.overallStatus === 'error' && 'Connection errors detected'}
+                    {diagnosticResults.overallStatus === 'no_instances' && 'No instances configured'}
+                  </p>
+                </div>
               </div>
-              
-              <div className={`p-3 rounded ${diagnosis.connection.phpProxyTest.success ? 'bg-green-100' : 'bg-red-100'}`}>
-                <h4 className="font-medium">PHP Proxy</h4>
-                <p className="text-sm">{diagnosis.connection.phpProxyTest.success ? '✅ Working' : '❌ Failed'}</p>
-                {diagnosis.connection.phpProxyTest.error && (
-                  <p className="text-xs text-red-600 mt-1">{diagnosis.connection.phpProxyTest.error}</p>
-                )}
-              </div>
-              
-              <div className={`p-3 rounded ${diagnosis.connection.netlifyTest.success ? 'bg-green-100' : 'bg-red-100'}`}>
-                <h4 className="font-medium">Netlify Function</h4>
-                <p className="text-sm">{diagnosis.connection.netlifyTest.success ? '✅ Working' : '❌ Failed'}</p>
-                {diagnosis.connection.netlifyTest.error && (
-                  <p className="text-xs text-red-600 mt-1">{diagnosis.connection.netlifyTest.error}</p>
-                )}
-              </div>
-              
-              <div className={`p-3 rounded ${diagnosis.connection.directTest.success ? 'bg-green-100' : 'bg-red-100'}`}>
-                <h4 className="font-medium">Direct Green API</h4>
-                <p className="text-sm">{diagnosis.connection.directTest.success ? '✅ Working' : '❌ Failed'}</p>
-                {diagnosis.connection.directTest.error && (
-                  <p className="text-xs text-red-600 mt-1">{diagnosis.connection.directTest.error}</p>
-                )}
-              </div>
+              <span className={`text-xs px-2 py-1 rounded-full ${
+                isDark ? 'bg-gray-600 text-gray-300' : 'bg-gray-200 text-gray-700'
+              }`}>
+                {new Date(diagnosticResults.timestamp).toLocaleTimeString()}
+              </span>
             </div>
           </div>
 
-          {/* RLS Tests */}
-          <div className="p-4 bg-gray-50 rounded">
-            <h3 className="text-lg font-semibold mb-3">Database Access (RLS)</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className={`p-3 rounded ${diagnosis.rls.countQuery.success ? 'bg-green-100' : 'bg-red-100'}`}>
-                <h4 className="font-medium">Count Query</h4>
-                <p className="text-sm">{diagnosis.rls.countQuery.success ? '✅ Working' : '❌ Failed'}</p>
-                {diagnosis.rls.countQuery.error && (
-                  <p className="text-xs text-red-600 mt-1">{diagnosis.rls.countQuery.error}</p>
-                )}
-              </div>
-              
-              <div className={`p-3 rounded ${diagnosis.rls.instanceQuery.success ? 'bg-green-100' : 'bg-red-100'}`}>
-                <h4 className="font-medium">Instance Query</h4>
-                <p className="text-sm">{diagnosis.rls.instanceQuery.success ? '✅ Working' : '❌ Failed'}</p>
-                {diagnosis.rls.instanceQuery.error && (
-                  <p className="text-xs text-red-600 mt-1">{diagnosis.rls.instanceQuery.error}</p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Instance Test */}
-          {diagnosis.instance && (
-            <div className="p-4 bg-gray-50 rounded">
-              <h3 className="text-lg font-semibold mb-3">Instance Connection Test</h3>
-              <div className={`p-3 rounded ${diagnosis.instance.success ? 'bg-green-100' : 'bg-red-100'}`}>
-                <h4 className="font-medium">Instance Status</h4>
-                <p className="text-sm">{diagnosis.instance.success ? '✅ Connected' : '❌ Not Connected'}</p>
-                {diagnosis.instance.error && (
-                  <p className="text-xs text-red-600 mt-1">{diagnosis.instance.error}</p>
-                )}
-                {diagnosis.instance.message && (
-                  <p className="text-xs text-gray-600 mt-1">{diagnosis.instance.message}</p>
-                )}
+          {/* Instance Details */}
+          {diagnosticResults.instances.length > 0 && (
+            <div className={`p-4 rounded-lg border ${
+              isDark ? 'bg-gray-700/50 border-gray-600' : 'bg-gray-50 border-gray-200'
+            }`}>
+              <h3 className={`font-semibold mb-3 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                Instance Details
+              </h3>
+              <div className="space-y-3">
+                {diagnosticResults.instances.map((instance: any, index: number) => (
+                  <div key={index} className={`p-3 rounded-lg border ${
+                    isDark ? 'bg-gray-800/50 border-gray-600' : 'bg-white border-gray-200'
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        {getStatusIcon(instance.connectionTest)}
+                        <div>
+                          <p className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                            Instance {instance.id}
+                          </p>
+                          <div className="flex items-center space-x-4 text-xs">
+                            <span className={`${instance.apiToken === 'Present' ? 'text-green-600' : 'text-red-600'}`}>
+                              API Token: {instance.apiToken}
+                            </span>
+                            <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>
+                              Status: {instance.status}
+                            </span>
+                            <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>
+                              Host: {instance.greenApiHost}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      {instance.error && (
+                        <span className="text-xs text-red-600 bg-red-100 px-2 py-1 rounded">
+                          {instance.error}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
 
           {/* Recommendations */}
-          <div className="p-4 bg-blue-50 rounded">
-            <h3 className="text-lg font-semibold mb-3">Recommendations</h3>
-            <ul className="space-y-2">
-              {diagnosis.connection.recommendations.map((rec: string, index: number) => (
-                <li key={index} className="text-sm flex items-start">
-                  <span className="text-blue-600 mr-2">•</span>
-                  {rec}
-                </li>
-              ))}
-              {diagnosis.rls.recommendations.map((rec: string, index: number) => (
-                <li key={`rls-${index}`} className="text-sm flex items-start">
-                  <span className="text-blue-600 mr-2">•</span>
-                  {rec}
-                </li>
-              ))}
-            </ul>
-          </div>
+          {diagnosticResults.recommendations.length > 0 && (
+            <div className={`p-4 rounded-lg border ${
+              isDark ? 'bg-blue-900/20 border-blue-700/50' : 'bg-blue-50 border-blue-200'
+            }`}>
+              <div className="flex items-center space-x-2 mb-3">
+                <Info className={`w-5 h-5 ${isDark ? 'text-blue-400' : 'text-blue-600'}`} />
+                <h3 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  Recommendations
+                </h3>
+              </div>
+              <ul className="space-y-2">
+                {diagnosticResults.recommendations.map((rec: string, index: number) => (
+                  <li key={index} className={`text-sm ${isDark ? 'text-blue-300' : 'text-blue-700'}`}>
+                    • {rec}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
-          {/* Raw Data */}
-          <details className="p-4 bg-gray-50 rounded">
-            <summary className="cursor-pointer font-medium">Raw Diagnostic Data</summary>
-            <pre className="mt-2 text-xs bg-gray-100 p-2 rounded overflow-auto max-h-64">
-              {JSON.stringify(diagnosis, null, 2)}
-            </pre>
-          </details>
+          {/* Test Actions */}
+          <div className="flex space-x-3">
+            <button
+              onClick={testMessageSending}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all duration-200 ${
+                isDark 
+                  ? 'bg-green-600 hover:bg-green-700 text-white' 
+                  : 'bg-green-500 hover:bg-green-600 text-white'
+              }`}
+            >
+              <MessageCircle className="w-4 h-4" />
+              <span>Test Message</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!diagnosticResults && !isChecking && (
+        <div className={`text-center py-8 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+          <AlertTriangle className="w-12 h-12 mx-auto mb-4 opacity-50" />
+          <p>Click "Run Diagnostics" to check your GreenAPI configuration</p>
         </div>
       )}
     </div>

@@ -8,21 +8,9 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useCategories } from '../../../../hooks/useCategories';
+import { createCategory, updateCategory, deleteCategory, Category } from '../../../../lib/categoryApi';
 import CategoryFormModal from '../inventory/CategoryFormModal';
 import CategoryTree from '../inventory/CategoryTree';
-
-interface Category {
-  id: string;
-  name: string;
-  description?: string;
-  parent_id?: string;
-  color?: string;
-  icon?: string;
-  is_active: boolean;
-  product_count?: number;
-  created_at: string;
-  updated_at: string;
-}
 
 interface CategoryFormData {
   name: string;
@@ -62,7 +50,16 @@ const CategoriesTab: React.FC = () => {
   };
 
   const handleEditCategory = (category: Category) => {
-    setEditingCategory(category);
+    // Map API data to form data format
+    const formCategory = {
+      ...category,
+      parentId: category.parent_id,
+      isActive: category.is_active,
+      sortOrder: category.sort_order,
+      createdAt: category.created_at,
+      updatedAt: category.updated_at
+    };
+    setEditingCategory(formCategory);
     setShowCategoryForm(true);
   };
 
@@ -72,28 +69,34 @@ const CategoriesTab: React.FC = () => {
     }
 
     try {
-      // TODO: Implement delete category API call
+      await deleteCategory(categoryId);
       toast.success('Category deleted successfully');
       refreshCategories();
-    } catch (error) {
-      toast.error('Failed to delete category');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to delete category');
     }
   };
 
   const handleSubmitCategory = async (data: any) => {
     try {
-      if (editingCategory) {
-        // TODO: Implement update category API call
+      setIsSubmitting(true);
+      
+      if (editingCategory && editingCategory.id) {
+        // Only update if we have a valid ID
+        await updateCategory(editingCategory.id, data);
         toast.success('Category updated successfully');
       } else {
-        // TODO: Implement create category API call
+        // Create new category if no ID or invalid ID
+        await createCategory(data);
         toast.success('Category created successfully');
       }
       
       setShowCategoryForm(false);
       refreshCategories();
-    } catch (error) {
-      toast.error(editingCategory ? 'Failed to update category' : 'Failed to create category');
+    } catch (error: any) {
+      toast.error(error.message || (editingCategory ? 'Failed to update category' : 'Failed to create category'));
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -104,7 +107,26 @@ const CategoriesTab: React.FC = () => {
   const handleAddSubcategory = (parentId: string) => {
     const parentCategory = categories?.find(cat => cat.id === parentId);
     setEditingCategory(null);
-    // Pre-fill the parent ID in the form
+    // Pre-fill the parent ID in the form by creating a temporary category object
+    const tempCategory = {
+      id: undefined, // Use undefined instead of empty string for new categories
+      name: '',
+      description: '',
+      parent_id: parentId,
+      color: '#3B82F6',
+      icon: '',
+      is_active: true,
+      sort_order: 0,
+      created_at: '',
+      updated_at: '',
+      // Add form-compatible fields
+      parentId: parentId,
+      isActive: true,
+      sortOrder: 0,
+      createdAt: '',
+      updatedAt: ''
+    };
+    setEditingCategory(tempCategory);
     setShowCategoryForm(true);
   };
 

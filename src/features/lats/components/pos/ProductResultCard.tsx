@@ -32,9 +32,6 @@ interface Product {
   categoryId: string;
   categoryName?: string;
   categoryColor?: string;
-  brandId?: string;
-  brandName?: string;
-  brandLogo?: string;
   images?: string[];
 
       isActive: boolean;
@@ -50,7 +47,6 @@ interface ProductResultCardProps {
   variant?: 'default' | 'compact' | 'minimal';
   showStockInfo?: boolean;
   showCategory?: boolean;
-  showBrand?: boolean;
   className?: string;
 }
 
@@ -61,7 +57,6 @@ const ProductResultCard: React.FC<ProductResultCardProps> = ({
   variant = 'default',
   showStockInfo = true,
   showCategory = true,
-  showBrand = true,
   className = ''
 }) => {
   // Get general settings
@@ -264,12 +259,7 @@ const ProductResultCard: React.FC<ProductResultCardProps> = ({
               {showCategory && product.categoryName && (
                 <span>{product.categoryName}</span>
               )}
-              {showBrand && product.brandName && (
-                <>
-                  {showCategory && <span>•</span>}
-                  <span>{product.brandName}</span>
-                </>
-              )}
+
             </div>
           </div>
 
@@ -395,16 +385,10 @@ const ProductResultCard: React.FC<ProductResultCardProps> = ({
           )}
         </div>
 
-        {/* Category & Brand */}
+                        {/* Category */}
         <div className="flex items-center gap-2 text-sm text-lats-text-secondary">
           {showCategory && product.categoryName && (
             <span>{product.categoryName}</span>
-          )}
-          {showBrand && product.brandName && (
-            <>
-              {showCategory && <span>•</span>}
-              <span>{product.brandName}</span>
-            </>
           )}
         </div>
 

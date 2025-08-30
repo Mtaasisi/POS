@@ -7,6 +7,7 @@ const REQUEST_DELAY = 100; // Delay between batches in milliseconds
 const MAX_CONCURRENT_REQUESTS = 10; // Maximum concurrent requests
 const MAX_RETRIES = 3; // Maximum retry attempts for failed requests
 const RETRY_DELAY = 1000; // Delay between retries in milliseconds
+const REQUEST_TIMEOUT = 30000; // Default timeout for requests in milliseconds
 
 // Request deduplication cache
 const requestCache = new Map<string, Promise<any>>();
@@ -47,6 +48,18 @@ async function retryRequest<T>(
   }
   
   throw lastError;
+}
+
+// Timeout wrapper function to prevent hanging requests
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number = REQUEST_TIMEOUT
+): Promise<T> {
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error(`Request timeout after ${timeoutMs}ms`)), timeoutMs);
+  });
+  
+  return Promise.race([promise, timeoutPromise]);
 }
 
 // Network status check function
@@ -191,16 +204,19 @@ async function performFetchAllCustomers() {
       console.log('🔍 Fetching customers from database...');
       
       // First, let's get a simple count to see how many customers exist
-      const { count, error: countError } = await retryRequest(async () => {
-        const result = await supabase
-          .from('customers')
-          .select('*', { count: 'exact', head: true });
-        
-        if (result.error) {
-          throw result.error;
-        }
-        return result;
-      });
+      const { count, error: countError } = await withTimeout(
+        retryRequest(async () => {
+          const result = await supabase
+            .from('customers')
+            .select('*', { count: 'exact', head: true });
+          
+          if (result.error) {
+            throw result.error;
+          }
+          return result;
+        }),
+        REQUEST_TIMEOUT
+      );
       
       if (countError) {
         console.error('❌ Error counting customers:', countError);
@@ -214,57 +230,71 @@ async function performFetchAllCustomers() {
       const totalPages = Math.ceil((count || 0) / pageSize);
       const allCustomers = [];
       
-      console.log(`📄 Fetching ${totalPages} pages of customers with batch size ${pageSize}...`);
+      // Prevent infinite loops by limiting maximum pages
+      const maxPages = Math.min(totalPages, 100);
       
-      // Fetch customers page by page with controlled concurrency
-      for (let page = 1; page <= totalPages; page++) {
-        console.log(`📄 Fetching page ${page}/${totalPages}...`);
+      console.log(`📄 Fetching ${maxPages} pages of customers with batch size ${pageSize}...`);
+      
+      // Fetch customers page by page with controlled concurrency and timeout protection
+      for (let page = 1; page <= maxPages; page++) {
+        console.log(`📄 Fetching page ${page}/${maxPages}...`);
         
         const from = (page - 1) * pageSize;
         const to = from + pageSize - 1;
         
-        const { data: pageData, error: pageError } = await retryRequest(async () => {
-          const result = await supabase
-            .from('customers')
-            .select(`
-              *,
-              customer_notes(*),
-              customer_payments(*),
-              devices(*),
-              promo_messages(*)
-            `)
-            .range(from, to)
-            .order('created_at', { ascending: false });
+        try {
+          const { data: pageData, error: pageError } = await withTimeout(
+            retryRequest(async () => {
+              const result = await supabase
+                .from('customers')
+                .select(`
+                  *,
+                  customer_notes(*),
+                  customer_payments(*),
+                  devices(*),
+                  promo_messages(*)
+                `)
+                .range(from, to)
+                .order('created_at', { ascending: false });
+              
+              if (result.error) {
+                throw result.error;
+              }
+              return result;
+            }),
+            REQUEST_TIMEOUT
+          );
           
-          if (result.error) {
-            throw result.error;
+          if (pageError) {
+            console.error(`❌ Error fetching page ${page}:`, pageError);
+            throw pageError;
           }
-          return result;
-        });
-        
-        if (pageError) {
-          console.error(`❌ Error fetching page ${page}:`, pageError);
-          throw pageError;
-        }
-        
-        if (pageData) {
-          // Process and normalize the data
-          const processedCustomers = pageData.map(customer => ({
-            ...customer,
-            colorTag: normalizeColorTag(customer.colorTag || 'new'),
-            customerNotes: customer.customer_notes || [],
-            customerPayments: customer.customer_payments || [],
-            devices: customer.devices || [],
-            promoHistory: customer.promo_messages || []
-          }));
           
-          allCustomers.push(...processedCustomers);
-          console.log(`✅ Page ${page} fetched: ${pageData.length} customers`);
-        }
-        
-        // Add delay between requests to prevent overwhelming the server
-        if (page < totalPages) {
-          await new Promise(resolve => setTimeout(resolve, REQUEST_DELAY));
+          if (pageData) {
+            // Process and normalize the data
+            const processedCustomers = pageData.map(customer => ({
+              ...customer,
+              colorTag: normalizeColorTag(customer.colorTag || 'new'),
+              customerNotes: customer.customer_notes || [],
+              customerPayments: customer.customer_payments || [],
+              devices: customer.devices || [],
+              promoHistory: customer.promo_messages || []
+            }));
+            
+            allCustomers.push(...processedCustomers);
+            console.log(`✅ Page ${page} fetched: ${pageData.length} customers`);
+          }
+          
+          // Add delay between requests to prevent overwhelming the server
+          if (page < maxPages) {
+            await new Promise(resolve => setTimeout(resolve, REQUEST_DELAY));
+          }
+          
+        } catch (error) {
+          console.error(`❌ Failed to fetch page ${page}:`, error);
+          // Continue with partial data rather than failing completely
+          console.log(`⚠️ Continuing with ${allCustomers.length} customers from ${page - 1} pages`);
+          break;
         }
       }
       
@@ -311,26 +341,29 @@ async function performFetchAllCustomersSimple() {
     try {
       console.log('🔍 Fetching customers (simple) from database...');
       
-      const { data, error } = await retryRequest(async () => {
-        const result = await supabase
-          .from('customers')
-          .select(`
-            id,
-            name,
-            phone,
-            email,
-            colorTag,
-            points,
-            created_at,
-            updated_at
-          `)
-          .order('created_at', { ascending: false });
-        
-        if (result.error) {
-          throw result.error;
-        }
-        return result;
-      });
+      const { data, error } = await withTimeout(
+        retryRequest(async () => {
+          const result = await supabase
+            .from('customers')
+            .select(`
+              id,
+              name,
+              phone,
+              email,
+              colorTag,
+              points,
+              created_at,
+              updated_at
+            `)
+            .order('created_at', { ascending: false });
+          
+          if (result.error) {
+            throw result.error;
+          }
+          return result;
+        }),
+        REQUEST_TIMEOUT
+      );
       
       if (error) {
         console.error('❌ Error fetching customers (simple):', error);
@@ -437,19 +470,39 @@ export async function updateCustomerInDb(customerId: string, updates: Partial<Cu
   try {
     console.log(`🔄 Updating customer: ${customerId}`);
     
+    // Filter out undefined values and only include valid fields
+    const cleanUpdates: any = {};
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        cleanUpdates[key] = value;
+      }
+    });
+    
+    // Add updated_at timestamp
+    cleanUpdates.updated_at = new Date().toISOString();
+    
+    // Handle colorTag normalization
+    if (cleanUpdates.colorTag) {
+      cleanUpdates.colorTag = normalizeColorTag(cleanUpdates.colorTag);
+    }
+    
+    console.log('🔧 Clean updates:', cleanUpdates);
+    
     const { data, error } = await supabase
       .from('customers')
-      .update({
-        ...updates,
-        colorTag: updates.colorTag ? normalizeColorTag(updates.colorTag) : undefined,
-        updated_at: new Date().toISOString()
-      })
+      .update(cleanUpdates)
       .eq('id', customerId)
       .select()
       .single();
     
     if (error) {
       console.error('❌ Error updating customer:', error);
+      console.error('❌ Error details:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      });
       throw error;
     }
     

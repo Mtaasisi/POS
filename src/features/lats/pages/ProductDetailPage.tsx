@@ -30,7 +30,7 @@ import {
   Store,
   Calendar,
   MapPin,
-  Barcode,
+
   Camera,
   Image as ImageIcon,
   Download,
@@ -64,7 +64,7 @@ import { getLatsProvider } from '../lib/data/provider';
 import { Product, ProductVariant } from '../types/inventory';
 import { format } from '../lib/format';
 import { RobustImageService, ProductImage } from '../../../lib/robustImageService';
-import { getActiveBrands, Brand } from '../../../lib/brandApi';
+
 import { getActiveCategories, Category } from '../../../lib/categoryApi';
 import { getActiveSuppliers, Supplier } from '../../../lib/supplierApi';
 import { StoreLocation } from '../../settings/types/storeLocation';
@@ -126,7 +126,6 @@ const ProductDetailPage: React.FC = () => {
 
   // New state for missing features
   const [categories, setCategories] = useState<Category[]>([]);
-  const [brands, setBrands] = useState<Brand[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [storeLocations, setStoreLocations] = useState<StoreLocation[]>([]);
   
@@ -214,16 +213,14 @@ const ProductDetailPage: React.FC = () => {
   // Load form data for editing
   const loadFormData = async () => {
     try {
-      const [categoriesData, locationsData, brandsData, suppliersData] = await Promise.all([
+      const [categoriesData, locationsData, suppliersData] = await Promise.all([
         getActiveCategories(),
         storeLocationApi.getAll(),
-        getActiveBrands(),
         getActiveSuppliers()
       ]);
 
       setCategories(categoriesData || []);
       setStoreLocations(locationsData || []);
-      setBrands(brandsData || []);
       setSuppliers(suppliersData || []);
     } catch (error) {
       console.error('Error loading form data:', error);
@@ -305,11 +302,7 @@ const ProductDetailPage: React.FC = () => {
     }
   };
 
-  const getBrandIdFromName = (brandName: string): string | null => {
-    if (!brandName || !brands.length) return null;
-    const brand = brands.find(b => b.name.toLowerCase() === brandName.toLowerCase());
-    return brand?.id || null;
-  };
+
 
   const handleProductSpecificationsClick = () => {
     setShowProductSpecificationsModal(true);
@@ -363,10 +356,10 @@ const ProductDetailPage: React.FC = () => {
   }
 
   return (
-    <div className="p-4 sm:p-6 h-full overflow-y-auto pt-8">
+    <div className="p-4 sm:p-6 h-full overflow-y-auto pt-8 text-[17px] md:text-[18px]">
       <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
         {/* Header Section */}
-        <GlassCard className="p-6">
+        <GlassCard className="p-8">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-4">
               <BackButton onClick={() => navigate('/lats/unified-inventory')} />
@@ -426,9 +419,9 @@ const ProductDetailPage: React.FC = () => {
           {/* Main Content */}
           <div className="xl:col-span-3 space-y-6">
             {/* Basic Information */}
-            <GlassCard className="p-4">
+            <GlassCard className="p-6">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                   <Package size={16} className="text-blue-600" />
                   Basic Information
                 </h3>
@@ -441,21 +434,20 @@ const ProductDetailPage: React.FC = () => {
                   Specifications
                 </GlassButton>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Product Name</label>
-                  <p className="text-gray-900 font-medium text-sm">{product.name}</p>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">Product Name</label>
+                  <p className="text-gray-900 font-medium text-base">{product.name}</p>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">SKU</label>
-                  <p className="text-gray-900 font-medium text-sm">{product.sku || 'N/A'}</p>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">SKU</label>
+                  <p className="text-gray-900 font-medium text-base">{product.sku || 'N/A'}</p>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Barcode</label>
-                  <p className="text-gray-900 font-medium text-sm">{product.barcode || 'N/A'}</p>
+                  
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Status</label>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">Status</label>
                   <GlassBadge 
                     variant="success"
                     className="mt-1"
@@ -466,54 +458,54 @@ const ProductDetailPage: React.FC = () => {
                 </div>
                 {product.internalNotes && (
                   <div className="md:col-span-2">
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Notes</label>
-                    <p className="text-gray-900 text-sm">{product.internalNotes}</p>
+                    <label className="block text-sm font-medium text-gray-600 mb-1">Notes</label>
+                    <p className="text-gray-900 text-base">{product.internalNotes}</p>
                   </div>
                 )}
               </div>
             </GlassCard>
 
             {/* Analytics Dashboard */}
-            <GlassCard className="p-4">
-              <h3 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <GlassCard className="p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
                 <BarChart3 size={16} className="text-green-600" />
                 Analytics Overview
               </h3>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                   <div className="flex items-center gap-2 mb-1">
                     <Package size={14} className="text-blue-600" />
-                    <span className="text-xs font-medium text-blue-700">Total Stock</span>
+                    <span className="text-sm font-medium text-blue-700">Total Stock</span>
                   </div>
                   <p className="text-xl font-bold text-blue-900">{analytics.totalStock}</p>
-                  <p className="text-xs text-blue-600">units</p>
+                  <p className="text-sm text-blue-600">units</p>
                 </div>
                 
                 <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                   <div className="flex items-center gap-2 mb-1">
                     <DollarSign size={14} className="text-green-600" />
-                    <span className="text-xs font-medium text-green-700">Cost Value</span>
+                    <span className="text-sm font-medium text-green-700">Cost Value</span>
                   </div>
                   <p className="text-xl font-bold text-green-900">{format.money(analytics.totalCostValue)}</p>
-                  <p className="text-xs text-green-600">total cost</p>
+                  <p className="text-sm text-green-600">total cost</p>
                 </div>
                 
                 <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
                   <div className="flex items-center gap-2 mb-1">
                     <TrendingUp size={14} className="text-purple-600" />
-                    <span className="text-xs font-medium text-purple-700">Retail Value</span>
+                    <span className="text-sm font-medium text-purple-700">Retail Value</span>
                   </div>
                   <p className="text-xl font-bold text-purple-900">{format.money(analytics.totalRetailValue)}</p>
-                  <p className="text-xs text-purple-600">potential sales</p>
+                  <p className="text-sm text-purple-600">potential sales</p>
                 </div>
                 
                 <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
                   <div className="flex items-center gap-2 mb-1">
                     <Zap size={14} className="text-orange-600" />
-                    <span className="text-xs font-medium text-orange-700">Profit Margin</span>
+                    <span className="text-sm font-medium text-orange-700">Profit Margin</span>
                   </div>
                   <p className="text-xl font-bold text-orange-900">{analytics.profitMargin.toFixed(1)}%</p>
-                  <p className="text-xs text-orange-600">potential profit</p>
+                  <p className="text-sm text-orange-600">potential profit</p>
                 </div>
               </div>
               
@@ -543,9 +535,9 @@ const ProductDetailPage: React.FC = () => {
             </GlassCard>
 
             {/* Enhanced Variants Section */}
-            <GlassCard className="p-4">
+            <GlassCard className="p-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                   <Layers size={16} className="text-purple-600" />
                   Product Variants ({product.variants?.length || 0})
                 </h3>
@@ -553,7 +545,7 @@ const ProductDetailPage: React.FC = () => {
                   <GlassButton
                     onClick={() => setShowStockAdjustment(true)}
                     className="bg-green-600 text-white hover:bg-green-700"
-                    size="sm"
+                    size="md"
                   >
                     <RefreshCw size={14} />
                     Adjust Stock
@@ -561,7 +553,7 @@ const ProductDetailPage: React.FC = () => {
                   <GlassButton
                     onClick={() => setShowBulkActions(true)}
                     className="bg-purple-600 text-white hover:bg-purple-700"
-                    size="sm"
+                    size="md"
                   >
                     <Settings size={14} />
                     Bulk Actions
@@ -571,16 +563,16 @@ const ProductDetailPage: React.FC = () => {
               
               {/* Enhanced Variants Table */}
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-base">
                   <thead>
                     <tr className="border-b border-gray-200">
-                      <th className="text-left py-2 px-3 font-medium text-gray-700">Variant</th>
-                      <th className="text-left py-2 px-3 font-medium text-gray-700">SKU</th>
-                      <th className="text-left py-2 px-3 font-medium text-gray-700">Price</th>
-                      <th className="text-left py-2 px-3 font-medium text-gray-700">Cost</th>
-                      <th className="text-left py-2 px-3 font-medium text-gray-700">Stock</th>
-                      <th className="text-left py-2 px-3 font-medium text-gray-700">Status</th>
-                      <th className="text-left py-2 px-3 font-medium text-gray-700">Actions</th>
+                      <th className="text-left py-3 px-3 font-medium text-gray-700">Variant</th>
+                      <th className="text-left py-3 px-3 font-medium text-gray-700">SKU</th>
+                      <th className="text-left py-3 px-3 font-medium text-gray-700">Price</th>
+                      <th className="text-left py-3 px-3 font-medium text-gray-700">Cost</th>
+                      <th className="text-left py-3 px-3 font-medium text-gray-700">Stock</th>
+                      <th className="text-left py-3 px-3 font-medium text-gray-700">Status</th>
+                      <th className="text-left py-3 px-3 font-medium text-gray-700">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -588,25 +580,23 @@ const ProductDetailPage: React.FC = () => {
                       <tr key={variant.id || index} className="border-b border-gray-100 hover:bg-gray-50">
                         <td className="py-2 px-3">
                           <div>
-                            <p className="font-medium text-gray-900 text-sm">{variant.name}</p>
-                            {variant.barcode && (
-                              <p className="text-xs text-gray-500">{variant.barcode}</p>
-                            )}
+                            <p className="font-medium text-gray-900 text-base">{variant.name}</p>
+                            
                           </div>
                         </td>
                         <td className="py-2 px-3">
-                          <span className="font-mono text-xs">{variant.sku}</span>
+                          <span className="font-mono text-sm">{variant.sku}</span>
                         </td>
                         <td className="py-2 px-3">
-                          <span className="font-medium text-green-600 text-sm">{format.money(variant.price || 0)}</span>
+                          <span className="font-medium text-green-600 text-base">{format.money(variant.price || 0)}</span>
                         </td>
                         <td className="py-2 px-3">
-                          <span className="font-medium text-gray-600 text-sm">{format.money(variant.costPrice || 0)}</span>
+                          <span className="font-medium text-gray-600 text-base">{format.money(variant.costPrice || 0)}</span>
                         </td>
                         <td className="py-2 px-3">
                           <div className="flex items-center gap-1">
-                            <span className="font-medium text-sm">{variant.stockQuantity || 0}</span>
-                            <span className="text-xs text-gray-500">units</span>
+                            <span className="font-medium text-base">{variant.stockQuantity || 0}</span>
+                            <span className="text-sm text-gray-500">units</span>
                           </div>
                         </td>
                         <td className="py-2 px-3">
@@ -624,7 +614,7 @@ const ProductDetailPage: React.FC = () => {
                         <td className="py-2 px-3">
                           <div className="flex items-center gap-1">
                             <GlassButton
-                              size="sm"
+                              size="md"
                               variant="ghost"
                               onClick={() => setSelectedVariant(variant)}
                               className="p-1"
@@ -632,7 +622,7 @@ const ProductDetailPage: React.FC = () => {
                               <Edit size={12} />
                             </GlassButton>
                             <GlassButton
-                              size="sm"
+                              size="md"
                               variant="ghost"
                               onClick={() => setShowStockAdjustment(true)}
                               className="p-1"
@@ -640,7 +630,7 @@ const ProductDetailPage: React.FC = () => {
                               <RefreshCw size={12} />
                             </GlassButton>
                             <GlassButton
-                              size="sm"
+                              size="md"
                               variant="ghost"
                               onClick={() => handleVariantSpecificationsClick(index)}
                               className="p-1"
@@ -660,8 +650,8 @@ const ProductDetailPage: React.FC = () => {
           {/* Sidebar */}
           <div className="xl:col-span-1 space-y-4">
             {/* Product Images */}
-            <GlassCard className="p-4">
-              <h3 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <GlassCard className="p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
                 <Camera size={16} className="text-pink-600" />
                 Product Images ({images.length})
               </h3>
@@ -672,7 +662,7 @@ const ProductDetailPage: React.FC = () => {
                       <img
                         src={image.url}
                         alt={`Product ${index + 1}`}
-                        className="w-full h-24 object-cover rounded-lg cursor-pointer hover:opacity-80 transition-opacity"
+                        className="w-full h-40 object-cover rounded-lg cursor-pointer hover:opacity-80 transition-opacity"
                         onClick={() => openImageModal(image)}
                       />
                       <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all rounded-lg flex items-center justify-center">
@@ -695,36 +685,28 @@ const ProductDetailPage: React.FC = () => {
             </GlassCard>
 
             {/* Product IDs Info */}
-            <GlassCard className="p-4">
-              <h3 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <GlassCard className="p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
                 <Tag size={16} className="text-indigo-600" />
                 Product IDs
               </h3>
               <div className="space-y-3">
                 {product.categoryId && (
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Category ID</label>
+                    <label className="block text-sm font-medium text-gray-600 mb-1">Category ID</label>
                     <div className="flex items-center gap-2">
                       <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                      <span className="text-gray-900 font-medium text-sm">{product.categoryId}</span>
+                      <span className="text-gray-900 font-medium text-base">{product.categoryId}</span>
                     </div>
                   </div>
                 )}
-                {product.brandId && (
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Brand ID</label>
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                      <span className="text-gray-900 font-medium text-sm">{product.brandId}</span>
-                    </div>
-                  </div>
-                )}
+
                 {product.supplierId && (
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Supplier ID</label>
+                    <label className="block text-sm font-medium text-gray-600 mb-1">Supplier ID</label>
                     <div className="flex items-center gap-2">
                       <div className="w-3 h-3 rounded-full bg-purple-500"></div>
-                      <span className="text-gray-900 font-medium text-sm">{product.supplierId}</span>
+                      <span className="text-gray-900 font-medium text-base">{product.supplierId}</span>
                     </div>
                   </div>
                 )}
@@ -732,19 +714,19 @@ const ProductDetailPage: React.FC = () => {
             </GlassCard>
 
             {/* Metadata */}
-            <GlassCard className="p-4">
-              <h3 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <GlassCard className="p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
                 <Info size={16} className="text-gray-600" />
                 Additional Information
               </h3>
-              <div className="space-y-2 text-xs">
+              <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-500">Created:</span>
-                  <span className="text-gray-900">{new Date(product.createdAt).toLocaleDateString()}</span>
+                  <span className="text-gray-900 text-base">{new Date(product.createdAt).toLocaleDateString()}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Updated:</span>
-                  <span className="text-gray-900">{new Date(product.updatedAt).toLocaleDateString()}</span>
+                  <span className="text-gray-900 text-base">{new Date(product.updatedAt).toLocaleDateString()}</span>
                 </div>
                 {product.condition && (
                   <div className="flex justify-between">
@@ -754,11 +736,11 @@ const ProductDetailPage: React.FC = () => {
                 )}
                 <div className="flex justify-between">
                   <span className="text-gray-500">Stock Quantity:</span>
-                  <span className="text-gray-900">{product.stockQuantity}</span>
+                  <span className="text-gray-900 text-base">{product.stockQuantity}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Price:</span>
-                  <span className="text-gray-900">{format.money(product.price)}</span>
+                  <span className="text-gray-900 text-base">{format.money(product.price)}</span>
                 </div>
               </div>
             </GlassCard>

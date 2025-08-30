@@ -141,26 +141,7 @@ const LocationDebugger: React.FC = () => {
           </div>
         </div>
 
-        {/* Test Buttons */}
-        <div className="flex gap-3">
-          <GlassButton
-            onClick={testLocation}
-            disabled={isLoading}
-            icon={<MapPin size={16} />}
-            className="flex-1 bg-blue-600 text-white"
-          >
-            {isLoading ? 'Testing...' : 'Test GPS Location'}
-          </GlassButton>
-          
-          <GlassButton
-            onClick={testLocationIOS}
-            disabled={isLoading}
-            icon={<Smartphone size={16} />}
-            className="flex-1 bg-green-600 text-white"
-          >
-            {isLoading ? 'Testing...' : 'Test iOS Location'}
-          </GlassButton>
-        </div>
+
 
         {/* Refresh Button */}
         <div className="flex justify-center">

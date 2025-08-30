@@ -150,47 +150,7 @@ const DynamicDataDemo: React.FC = () => {
         </GlassCard>
       </div>
 
-      <div className="text-center space-y-4">
-        <div className="flex flex-wrap justify-center gap-3">
-          <GlassButton
-            variant="primary"
-            onClick={handleSimulateSale}
-          >
-            🛒 Single Sale
-          </GlassButton>
-          
-          <GlassButton
-            variant="secondary"
-            onClick={handleSimulateMultipleSales}
-          >
-            📈 Multiple Sales
-          </GlassButton>
-          
-          <GlassButton
-            variant="secondary"
-            onClick={handleSimulateLowStock}
-          >
-            ⚠️ Low Stock Test
-          </GlassButton>
-          
-          <GlassButton
-            variant="secondary"
-            onClick={handleInitializeTestData}
-          >
-            📊 Load Test Data
-          </GlassButton>
-        </div>
-        
-        <div className="text-sm text-gray-600">
-          <p>💡 <strong>Testing Options:</strong></p>
-          <p>• <strong>Load Test Data:</strong> Initialize comprehensive historical data</p>
-          <p>• <strong>Single Sale:</strong> Create one test transaction</p>
-          <p>• <strong>Multiple Sales:</strong> Create multiple transactions with delays</p>
-          <p>• <strong>Low Stock Test:</strong> Create inventory alerts</p>
-          <p>• Navigate to any LATS page to see real-time updates</p>
-          <p>• All data is synchronized across the entire system</p>
-        </div>
-      </div>
+
     </div>
   );
 };

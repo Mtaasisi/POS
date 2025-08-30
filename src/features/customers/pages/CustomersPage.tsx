@@ -21,7 +21,7 @@ import ExcelImportModal from '../components/ExcelImportModal';
 import CustomerUpdateImportModal from '../components/CustomerUpdateImportModal';
 import DropdownPortal from '../../../features/shared/components/ui/DropdownPortal';
 import { smsService } from '../../../services/smsService';
-import { fetchAllCustomers, fetchCustomersPaginated, searchCustomers, searchCustomersFast, searchCustomersBackground, getBackgroundSearchManager } from '../../../lib/customerApi';
+import { fetchAllCustomers, fetchCustomersPaginated, searchCustomers, searchCustomersFast, searchCustomersBackground, getBackgroundSearchManager, fetchAllAppointments } from '../../../lib/customerApi';
 import { formatCurrency } from '../../../lib/customerApi';
 import AddCustomerModal from '../components/forms/AddCustomerModal';
 import { supabase } from '../../../lib/supabaseClient';
@@ -234,81 +234,20 @@ const CustomersPage = () => {
     setShowBulkSMS(false);
   }, []);
 
-  // Mock appointments data
+  // Fetch real appointments data
   useEffect(() => {
-    const mockAppointments = [
-      {
-        id: '1',
-        customerId: '1',
-        customerName: 'John Doe',
-        customerPhone: '+255 123 456 789',
-        service: 'Device Repair',
-        date: '2024-01-15',
-        time: '10:00 AM',
-        status: 'confirmed',
-        notes: 'iPhone screen replacement',
-        technician: 'Mike Johnson',
-        duration: '2 hours',
-        priority: 'high'
-      },
-      {
-        id: '2',
-        customerId: '2',
-        customerName: 'Jane Smith',
-        customerPhone: '+255 987 654 321',
-        service: 'Device Diagnosis',
-        date: '2024-01-15',
-        time: '2:00 PM',
-        status: 'pending',
-        notes: 'Laptop not turning on',
-        technician: 'Sarah Wilson',
-        duration: '1 hour',
-        priority: 'medium'
-      },
-      {
-        id: '3',
-        customerId: '3',
-        customerName: 'Bob Johnson',
-        customerPhone: '+255 555 123 456',
-        service: 'Software Installation',
-        date: '2024-01-16',
-        time: '9:00 AM',
-        status: 'completed',
-        notes: 'Windows 11 installation',
-        technician: 'David Brown',
-        duration: '3 hours',
-        priority: 'low'
-      },
-      {
-        id: '4',
-        customerId: '4',
-        customerName: 'Alice Brown',
-        customerPhone: '+255 777 888 999',
-        service: 'Hardware Upgrade',
-        date: '2024-01-16',
-        time: '11:00 AM',
-        status: 'cancelled',
-        notes: 'RAM upgrade for gaming PC',
-        technician: 'Mike Johnson',
-        duration: '1.5 hours',
-        priority: 'medium'
-      },
-      {
-        id: '5',
-        customerId: '5',
-        customerName: 'Charlie Wilson',
-        customerPhone: '+255 111 222 333',
-        service: 'Data Recovery',
-        date: '2024-01-17',
-        time: '3:00 PM',
-        status: 'confirmed',
-        notes: 'Recover photos from damaged hard drive',
-        technician: 'Sarah Wilson',
-        duration: '4 hours',
-        priority: 'high'
+    const fetchAppointments = async () => {
+      try {
+        const appointmentsData = await fetchAllAppointments();
+        setAppointments(appointmentsData);
+      } catch (error) {
+        console.error('Error fetching appointments:', error);
+        // Fallback to empty array if fetch fails
+        setAppointments([]);
       }
-    ];
-    setAppointments(mockAppointments);
+    };
+    
+    fetchAppointments();
   }, []);
 
   // Fetch total devices count from devices table
@@ -348,24 +287,41 @@ const CustomersPage = () => {
   // Calculate statistics from current page data and financial data
   const stats = useMemo(() => {
     // Ensure customers is an array to prevent undefined errors
-    const customersArray = customers || [];
+    if (!customers || !Array.isArray(customers)) {
+      return {
+        totalCustomers: 0,
+        pageCustomers: 0,
+        activeCustomers: 0,
+        vipCustomers: 0,
+        totalRevenue: 0,
+        deviceRevenue: 0,
+        posRevenue: 0,
+        totalPoints: 0,
+        platinumCustomers: 0,
+        goldCustomers: 0,
+        silverCustomers: 0,
+        bronzeCustomers: 0,
+        totalDevices,
+        devicesInRepair
+      };
+    }
     
-    const pageCustomers = customersArray.length;
-    const activeCustomers = customersArray.filter(c => c.isActive).length;
-    const vipCustomers = customersArray.filter(c => c.colorTag === 'vip').length;
+    const pageCustomers = customers.length;
+    const activeCustomers = customers.filter(c => c.isActive).length;
+    const vipCustomers = customers.filter(c => c.colorTag === 'vip').length;
     
     // Use financial data for revenue calculations instead of current page data
     const totalRevenue = summary?.totalRevenue || 0;
-    // Note: deviceRevenue and posRevenue are not available in FinancialSummary interface
-    // Using totalRevenue for all revenue types for now
-    const deviceRevenue = 0; // TODO: Add device revenue calculation if needed
-    const posRevenue = 0; // TODO: Add POS revenue calculation if needed
     
-    const totalPoints = customersArray.reduce((sum, c) => sum + (c.points || 0), 0);
-    const platinumCustomers = customersArray.filter(c => c.loyaltyLevel === 'platinum').length;
-    const goldCustomers = customersArray.filter(c => c.loyaltyLevel === 'gold').length;
-    const silverCustomers = customersArray.filter(c => c.loyaltyLevel === 'silver').length;
-    const bronzeCustomers = customersArray.filter(c => c.loyaltyLevel === 'bronze').length;
+    // For now, set device and POS revenue to 0 - this should be fetched separately
+    const deviceRevenue = 0;
+    const posRevenue = 0;
+    
+    const totalPoints = customers.reduce((sum, c) => sum + (c.points || 0), 0);
+    const platinumCustomers = customers.filter(c => c.loyaltyLevel === 'platinum').length;
+    const goldCustomers = customers.filter(c => c.loyaltyLevel === 'gold').length;
+    const silverCustomers = customers.filter(c => c.loyaltyLevel === 'silver').length;
+    const bronzeCustomers = customers.filter(c => c.loyaltyLevel === 'bronze').length;
 
     return {
       totalCustomers: totalCount, // Use total count from pagination
@@ -388,17 +344,27 @@ const CustomersPage = () => {
   // Calculate appointments statistics
   const appointmentStats = useMemo(() => {
     // Ensure appointments is an array to prevent undefined errors
-    const appointmentsArray = appointments || [];
+    if (!appointments || !Array.isArray(appointments)) {
+      return {
+        totalAppointments: 0,
+        confirmedAppointments: 0,
+        pendingAppointments: 0,
+        completedAppointments: 0,
+        cancelledAppointments: 0,
+        todaysAppointments: 0,
+        thisWeeksAppointments: 0
+      };
+    }
     
-    const totalAppointments = appointmentsArray.length;
-    const confirmedAppointments = appointmentsArray.filter(a => a.status === 'confirmed').length;
-    const pendingAppointments = appointmentsArray.filter(a => a.status === 'pending').length;
-    const completedAppointments = appointmentsArray.filter(a => a.status === 'completed').length;
-    const cancelledAppointments = appointmentsArray.filter(a => a.status === 'cancelled').length;
+    const totalAppointments = appointments.length;
+    const confirmedAppointments = appointments.filter(a => a.status === 'confirmed').length;
+    const pendingAppointments = appointments.filter(a => a.status === 'pending').length;
+    const completedAppointments = appointments.filter(a => a.status === 'completed').length;
+    const cancelledAppointments = appointments.filter(a => a.status === 'cancelled').length;
     
     // Today's appointments
     const today = new Date().toISOString().split('T')[0];
-    const todaysAppointments = appointmentsArray.filter(a => a.date === today).length;
+    const todaysAppointments = appointments.filter(a => a.appointment_date === today).length;
     
     // This week's appointments
     const startOfWeek = new Date();
@@ -406,32 +372,34 @@ const CustomersPage = () => {
     const endOfWeek = new Date();
     endOfWeek.setDate(endOfWeek.getDate() + (6 - endOfWeek.getDay()));
     
-    const thisWeeksAppointments = appointmentsArray.filter(a => {
-      const appointmentDate = new Date(a.date);
+    const thisWeeksAppointments = appointments.filter(a => {
+      const appointmentDate = new Date(a.appointment_date);
       return appointmentDate >= startOfWeek && appointmentDate <= endOfWeek;
     }).length;
 
-    return {
-      totalAppointments,
-      confirmedAppointments,
-      pendingAppointments,
-      completedAppointments,
-      cancelledAppointments,
-      todaysAppointments,
-      thisWeeksAppointments
-    };
-  }, [appointments]);
+          return {
+        totalAppointments,
+        confirmedAppointments,
+        pendingAppointments,
+        completedAppointments,
+        cancelledAppointments,
+        todaysAppointments,
+        thisWeeksAppointments
+      };
+    }, [appointments]);
 
   // Calculate today's birthdays and upcoming birthdays
   const todaysBirthdays = useMemo(() => {
     // Ensure customers is an array to prevent undefined errors
-    const customersArray = customers || [];
+    if (!customers || !Array.isArray(customers)) {
+      return [];
+    }
     
     const today = new Date();
     const currentMonth = today.getMonth() + 1; // getMonth() returns 0-11
     const currentDay = today.getDate();
     
-    return customersArray.filter(customer => {
+    return customers.filter(customer => {
       if (!customer.birthMonth || !customer.birthDay) return false;
       
       let customerMonth: number;
@@ -478,11 +446,14 @@ const CustomersPage = () => {
 
   // Calculate upcoming birthdays (next 7 days)
   const upcomingBirthdays = useMemo(() => {
-    const customersArray = customers || [];
+    if (!customers || !Array.isArray(customers)) {
+      return [];
+    }
+    
     const today = new Date();
     const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
     
-    return customersArray.filter(customer => {
+    return customers.filter(customer => {
       if (!customer.birthMonth || !customer.birthDay) return false;
       
       let customerMonth: number;
@@ -600,8 +571,11 @@ const CustomersPage = () => {
   // Clean filter implementation - now works with server-side search
   const filteredCustomers = useMemo(() => {
     // Ensure customers is an array to prevent undefined errors
-    const customersArray = customers || [];
-    let filtered = customersArray;
+    if (!customers || !Array.isArray(customers)) {
+      return [];
+    }
+    
+    let filtered = customers;
 
     // Note: Search is now handled server-side when searchQuery is provided
     // This client-side filtering is only for additional filters
@@ -893,8 +867,11 @@ const CustomersPage = () => {
 
   const filteredAppointments = useMemo(() => {
     // Ensure appointments is an array to prevent undefined errors
-    const appointmentsArray = appointments || [];
-    let filtered = appointmentsArray;
+    if (!appointments || !Array.isArray(appointments)) {
+      return [];
+    }
+    
+    let filtered = appointments;
 
     // Status filter
     if (appointmentFilters.status !== 'all') {
@@ -908,10 +885,10 @@ const CustomersPage = () => {
       
       switch (appointmentFilters.date) {
         case 'today':
-          filtered = filtered.filter(a => a.date === today);
+          filtered = filtered.filter(a => a.appointment_date === today);
           break;
         case 'tomorrow':
-          filtered = filtered.filter(a => a.date === tomorrow);
+          filtered = filtered.filter(a => a.appointment_date === tomorrow);
           break;
         case 'this-week':
           const startOfWeek = new Date();
@@ -920,7 +897,7 @@ const CustomersPage = () => {
           endOfWeek.setDate(endOfWeek.getDate() + (6 - endOfWeek.getDay()));
           
           filtered = filtered.filter(a => {
-            const appointmentDate = new Date(a.date);
+            const appointmentDate = new Date(a.appointment_date);
             return appointmentDate >= startOfWeek && appointmentDate <= endOfWeek;
           });
           break;
@@ -929,7 +906,7 @@ const CustomersPage = () => {
 
     // Customer filter
     if (appointmentFilters.customer !== 'all') {
-      filtered = filtered.filter(a => a.customerId === appointmentFilters.customer);
+      filtered = filtered.filter(a => a.customer_id === appointmentFilters.customer);
     }
 
     return filtered;
@@ -1282,26 +1259,26 @@ const CustomersPage = () => {
                     <tr key={appointment.id} className="border-b border-gray-200/30 hover:bg-blue-50 transition-colors">
                       <td className="py-4 px-4">
                         <div>
-                          <p className="font-medium text-gray-900">{appointment.customerName}</p>
-                          <p className="text-sm text-gray-600">{appointment.customerPhone}</p>
+                          <p className="font-medium text-gray-900">{appointment.customer_name}</p>
+                          <p className="text-sm text-gray-600">{appointment.customer_phone}</p>
                         </div>
                       </td>
                       <td className="py-4 px-4">
                         <div>
-                          <p className="font-medium text-gray-900">{appointment.service}</p>
+                          <p className="font-medium text-gray-900">{appointment.service_type}</p>
                           <p className="text-sm text-gray-600">{appointment.notes}</p>
                         </div>
                       </td>
                       <td className="py-4 px-4">
                         <div>
                           <p className="font-medium text-gray-900">
-                            {new Date(appointment.date).toLocaleDateString()}
+                            {new Date(appointment.appointment_date).toLocaleDateString()}
                           </p>
-                          <p className="text-sm text-gray-600">{appointment.time} ({appointment.duration})</p>
+                          <p className="text-sm text-gray-600">{appointment.appointment_time} ({appointment.duration_minutes} min)</p>
                         </div>
                       </td>
                       <td className="py-4 px-4">
-                        <p className="text-gray-900">{appointment.technician}</p>
+                        <p className="text-gray-900">{appointment.technician_name}</p>
                       </td>
                       <td className="py-4 px-4">
                         <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${getAppointmentStatusStyle(appointment.status)}`}>

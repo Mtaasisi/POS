@@ -12,7 +12,7 @@ const GlassCard: React.FC<GlassCardProps> = ({ children, className = '', onClick
       className={`
         backdrop-blur-xl rounded-xl 
         border shadow-lg 
-        p-4 sm:p-6 transition-all duration-300 
+        p-6 sm:p-8 transition-all duration-300 
         hover:shadow-xl
         ${onClick ? 'cursor-pointer active:scale-[0.98]' : ''}
         ${className}

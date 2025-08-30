@@ -8,16 +8,9 @@ interface POSSettingsDatabaseSetupProps {
 }
 
 export const POSSettingsDatabaseSetup: React.FC<POSSettingsDatabaseSetupProps> = ({ children }) => {
-  // Safely get auth context
-  let authContext = null;
-  let currentUser = null;
-  
-  try {
-    authContext = useContext(AuthContext);
-    currentUser = authContext?.currentUser;
-  } catch (err) {
-    console.warn('AuthContext not available, skipping POS setup');
-  }
+  // Always call useContext at the top level
+  const authContext = useContext(AuthContext);
+  const currentUser = authContext?.currentUser;
   
   const [isSetupComplete, setIsSetupComplete] = useState(false);
   const [isSettingUp, setIsSettingUp] = useState(false);

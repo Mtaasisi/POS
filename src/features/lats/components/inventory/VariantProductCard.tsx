@@ -27,13 +27,13 @@ interface Product {
   description?: string;
   categoryId: string;
   categoryName?: string;
-  brandId?: string;
   brandName?: string;
   images?: string[];
   tags?: string[];
   isActive: boolean;
   variants: ProductVariant[];
   totalQuantity: number;
+  attributes?: Record<string, any>; // Product specifications
   createdAt: string;
   updatedAt: string;
 }
@@ -122,6 +122,29 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
     return `${format.money(minPrice)} - ${format.money(maxPrice)}`;
   };
 
+  // Get specifications display
+  const getSpecificationsDisplay = () => {
+    if (!product.attributes || Object.keys(product.attributes).length === 0) {
+      return null;
+    }
+
+    const specs = Object.entries(product.attributes).slice(0, 3); // Show first 3 specs
+    return (
+      <div className="flex flex-wrap gap-1 mt-2">
+        {specs.map(([key, value]) => (
+          <span key={key} className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full">
+            {key}: {value}
+          </span>
+        ))}
+        {Object.keys(product.attributes).length > 3 && (
+          <span className="text-xs text-gray-500 px-2 py-1">
+            +{Object.keys(product.attributes).length - 3} more
+          </span>
+        )}
+      </div>
+    );
+  };
+
   // Handle variant selection
   const handleVariantSelect = (variant: ProductVariant) => {
     setSelectedVariant(variant);
@@ -147,9 +170,21 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
   // Check if product has multiple variants
   const hasMultipleVariants = product.variants.length > 1;
 
+  // Handle card click to view product
+  const handleCardClick = (e: React.MouseEvent) => {
+    // Don't trigger if clicking on action buttons
+    if ((e.target as Element).closest('button')) {
+      return;
+    }
+    onView?.(product);
+  };
+
   if (variant === 'compact') {
     return (
-      <div className={`transition-all duration-300 ease-in-out backdrop-blur-sm relative bg-white/80 border border-gray-200/60 p-4 rounded-2xl shadow-sm hover:shadow-xl hover:scale-[1.02] hover:border-gray-300/80 cursor-pointer group overflow-hidden ${className}`}>
+      <div 
+        className={`transition-all duration-300 ease-in-out backdrop-blur-sm relative bg-white/80 border border-gray-200/60 p-4 rounded-2xl shadow-sm hover:shadow-xl hover:scale-[1.02] hover:border-gray-300/80 cursor-pointer group overflow-hidden ${className}`}
+        onClick={handleCardClick}
+      >
         <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 to-indigo-50/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
         <div className="relative z-10">
           <div className="flex items-center justify-between">
@@ -158,7 +193,7 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
                 <ProductImageDisplay
                   images={product.images}
                   productName={product.name}
-                  size="sm"
+                  size="xl"
                   className="flex-shrink-0 rounded-xl overflow-hidden shadow-sm"
                 />
                 {product.tags?.includes('featured') && (
@@ -189,6 +224,7 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
                     {product.variants.length} variants
                   </div>
                 )}
+                {getSpecificationsDisplay()}
               </div>
             </div>
             <div className="text-right flex-shrink-0">
@@ -208,7 +244,10 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
 
   if (variant === 'detailed') {
     return (
-      <div className={`transition-all duration-300 ease-in-out backdrop-blur-sm relative bg-white/90 border border-gray-200/60 p-6 rounded-2xl shadow-sm hover:shadow-2xl hover:scale-[1.02] hover:border-gray-300/80 cursor-pointer group overflow-hidden ${className}`}>
+      <div 
+        className={`transition-all duration-300 ease-in-out backdrop-blur-sm relative bg-white/90 border border-gray-200/60 p-6 rounded-2xl shadow-sm hover:shadow-2xl hover:scale-[1.02] hover:border-gray-300/80 cursor-pointer group overflow-hidden ${className}`}
+        onClick={handleCardClick}
+      >
         <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 to-indigo-50/30 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
         <div className="relative z-10">
           {/* Product Image with Enhanced Styling */}
@@ -312,7 +351,7 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
               </div>
             </div>
 
-            {/* Enhanced Category and Brand Tags */}
+            {/* Enhanced Category Tags */}
             <div className="flex items-center gap-2 text-sm text-gray-600 flex-wrap">
               {product.categoryName && (
                 <span className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-full font-medium shadow-sm">
@@ -325,6 +364,31 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
                 </span>
               )}
             </div>
+
+            {/* Specifications Display */}
+            {product.attributes && Object.keys(product.attributes).length > 0 && (
+              <div className="mt-4">
+                <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                  <Package className="w-4 h-4" />
+                  Specifications
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {Object.entries(product.attributes).slice(0, 6).map(([key, value]) => (
+                    <div key={key} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                      <span className="text-sm font-medium text-gray-700">{key}:</span>
+                      <span className="text-sm text-gray-600">{value}</span>
+                    </div>
+                  ))}
+                  {Object.keys(product.attributes).length > 6 && (
+                    <div className="col-span-full text-center">
+                      <span className="text-xs text-gray-500">
+                        +{Object.keys(product.attributes).length - 6} more specifications
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Enhanced Actions Section */}
             {showActions && (
@@ -390,7 +454,10 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
 
   // Default variant with enhanced design
   return (
-    <div className={`transition-all duration-300 ease-in-out backdrop-blur-sm relative bg-white/90 border border-gray-200/60 p-5 rounded-2xl shadow-sm hover:shadow-xl hover:scale-[1.02] hover:border-gray-300/80 cursor-pointer group overflow-hidden ${className}`}>
+    <div 
+      className={`transition-all duration-300 ease-in-out backdrop-blur-sm relative bg-white/90 border border-gray-200/60 p-5 rounded-2xl shadow-sm hover:shadow-xl hover:scale-[1.02] hover:border-gray-300/80 cursor-pointer group overflow-hidden ${className}`}
+      onClick={handleCardClick}
+    >
       <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 to-indigo-50/30 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
       <div className="relative z-10">
         {/* Enhanced Product Header */}
@@ -438,6 +505,7 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
                   {product.variants.length} variants available
                 </div>
               )}
+              {getSpecificationsDisplay()}
               <div className="text-xs text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity mt-2">
                 Click to view details
               </div>

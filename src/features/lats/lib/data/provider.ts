@@ -1,7 +1,7 @@
 import { 
-  Category, Brand, Supplier, Product, ProductVariant, StockMovement,
+  Category, Supplier, Product, ProductVariant, StockMovement,
   PurchaseOrder, SparePart, SparePartUsage,
-  CategoryFormData, BrandFormData, SupplierFormData, ProductFormData,
+  CategoryFormData, SupplierFormData, ProductFormData,
   PurchaseOrderFormData, ApiResponse, PaginatedResponse
 } from '../../types/inventory';
 import { 
@@ -19,11 +19,7 @@ export interface LatsDataProvider {
   updateCategory(id: string, data: CategoryFormData): Promise<ApiResponse<Category>>;
   deleteCategory(id: string): Promise<ApiResponse<void>>;
 
-  // Brands
-  getBrands(): Promise<ApiResponse<Brand[]>>;
-  createBrand(data: BrandFormData): Promise<ApiResponse<Brand>>;
-  updateBrand(id: string, data: BrandFormData): Promise<ApiResponse<Brand>>;
-  deleteBrand(id: string): Promise<ApiResponse<void>>;
+
 
   // Suppliers
   getSuppliers(): Promise<ApiResponse<Supplier[]>>;

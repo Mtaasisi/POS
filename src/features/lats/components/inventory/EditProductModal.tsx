@@ -2,18 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { X, Save, Package, AlertTriangle, Upload, Trash2, MapPin, Layers } from 'lucide-react';
+import { X, Save, Package, AlertTriangle, Upload, Trash2, MapPin, Layers, FileText } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import GlassCard from '../../../shared/components/ui/GlassCard';
 import GlassInput from '../../../shared/components/ui/GlassInput';
 import GlassSelect from '../../../shared/components/ui/GlassSelect';
 import GlassButton from '../../../shared/components/ui/GlassButton';
+
+import CategoryInput from '../../../shared/components/ui/CategoryInput';
 import GlassBadge from '../../../shared/components/ui/GlassBadge';
 import PriceInput from '../../../../shared/components/ui/PriceInput';
 import { LATS_CLASSES } from '../../tokens';
 import { t } from '../../lib/i18n/t';
 import { format } from '../../lib/format';
-import { Product, Category, Brand, Supplier, ProductImage } from '../../types/inventory';
+import { Product, Category, Supplier, ProductImage } from '../../types/inventory';
 import { StoreLocation } from '../../../settings/types/storeLocation';
 import { storeLocationApi } from '../../../settings/utils/storeLocationApi';
 import { useInventoryStore } from '../../stores/useInventoryStore';
@@ -23,13 +25,15 @@ import { storeShelfApi, StoreShelf } from '../../../settings/utils/storeShelfApi
 // Validation schema for product editing
 const editProductSchema = z.object({
   name: z.string().min(1, 'Product name is required').max(200, 'Name must be less than 200 characters'),
-  description: z.string().max(1000, 'Description must be less than 1000 characters').optional(),
+  description: z.string().max(200, 'Description must be less than 200 characters').optional(),
   sku: z.string().min(1, 'SKU is required').max(100, 'SKU must be less than 100 characters'),
   barcode: z.string().max(100, 'Barcode must be less than 100 characters').optional(),
   categoryId: z.string().min(1, 'Category is required'),
-  brandId: z.string().optional(),
+
   supplierId: z.string().optional(),
-  condition: z.string().min(1, 'Condition is required'),
+  condition: z.enum(['new', 'used', 'refurbished'], {
+    errorMap: () => ({ message: 'Please select a condition' })
+  }),
   storeLocationId: z.string().optional(),
   storeShelf: z.string().optional(),
 
@@ -56,7 +60,7 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
   productId,
   onProductUpdated
 }) => {
-  const { categories, brands, suppliers, updateProduct, loadCategories, loadBrands, loadSuppliers, getProduct } = useInventoryStore();
+  const { categories, suppliers, updateProduct, loadCategories, loadSuppliers, getProduct } = useInventoryStore();
   
   const [tagInput, setTagInput] = useState('');
   const [currentTags, setCurrentTags] = useState<string[]>([]);
@@ -73,6 +77,8 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
   
   const [isLoading, setIsLoading] = useState(false);
   const [product, setProduct] = useState<Product | null>(null);
+  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
+
 
   // Don't render if modal is not open
   if (!isOpen) {
@@ -108,7 +114,7 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
       sku: '',
       barcode: '',
       categoryId: '',
-      brandId: '',
+
       supplierId: '',
       condition: 'new',
       storeLocationId: '',
@@ -197,14 +203,13 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
     loadShelvesForRoom();
   }, [selectedStorageRoomId]);
 
-  // Load categories, brands, and suppliers when modal opens
+  // Load categories and suppliers when modal opens
   useEffect(() => {
     if (isOpen) {
       loadCategories();
-      loadBrands();
       loadSuppliers();
     }
-  }, [isOpen, loadCategories, loadBrands, loadSuppliers]);
+  }, [isOpen, loadCategories, loadSuppliers]);
 
   // Load product data when product changes
   useEffect(() => {
@@ -222,7 +227,7 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
               sku: fetchedProduct.sku,
               barcode: fetchedProduct.barcode || '',
               categoryId: fetchedProduct.categoryId,
-              brandId: fetchedProduct.brandId || '',
+
               supplierId: fetchedProduct.supplierId || '',
               condition: fetchedProduct.condition || 'new',
               storeLocationId: '', // Will be set based on shelf lookup
@@ -370,56 +375,26 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
               />
             </div>
 
-            <Controller
-              name="description"
-              control={control}
-              render={({ field }) => (
-                <GlassInput
-                  {...field}
-                  label={t('Description')}
-                  placeholder={t('Enter product description')}
-                  error={errors.description?.message}
-                />
-              )}
-            />
-
-            {/* Category and Brand */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Category */}
+            <div className="grid grid-cols-1 gap-6">
               <Controller
                 name="categoryId"
                 control={control}
                 render={({ field }) => (
-                  <GlassSelect
-                    {...field}
-                    label={t('Category')}
-                    error={errors.categoryId?.message}
-                  >
-                    <option value="">{t('Select Category')}</option>
-                    {(categories || [])?.map((category) => (
-                      <option key={category.id} value={category.id}>
-                        {category.name}
-                      </option>
-                    ))}
-                  </GlassSelect>
-                )}
-              />
-
-              <Controller
-                name="brandId"
-                control={control}
-                render={({ field }) => (
-                  <GlassSelect
-                    {...field}
-                    label={t('Brand')}
-                    error={errors.brandId?.message}
-                  >
-                    <option value="">{t('Select Brand')}</option>
-                    {(brands || [])?.map((brand) => (
-                      <option key={brand.id} value={brand.id}>
-                        {brand.name}
-                      </option>
-                    ))}
-                  </GlassSelect>
+                  <div>
+                    <label className={`block mb-2 text-sm font-medium ${errors.categoryId?.message ? 'text-red-600' : 'text-gray-700'}`}>
+                      {t('Category')} *
+                    </label>
+                    <CategoryInput
+                      value={field.value || ''}
+                      onChange={field.onChange}
+                      placeholder={t('Search categories...')}
+                      categories={categories || []}
+                      required
+                      error={errors.categoryId?.message}
+                      className="w-full"
+                    />
+                  </div>
                 )}
               />
             </div>
@@ -616,47 +591,117 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
               />
             </div>
 
-            {/* Condition and Supplier */}
+            {/* Description and Condition */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Controller
-                name="condition"
+                name="description"
                 control={control}
                 render={({ field }) => (
-                  <GlassSelect
-                    {...field}
-                    label={t('Condition')}
-                    error={errors.condition?.message}
-                  >
-                    <option value="">{t('Select Condition')}</option>
-                    <option value="new">{t('New')}</option>
-                    <option value="like-new">{t('Like New')}</option>
-                    <option value="good">{t('Good')}</option>
-                    <option value="fair">{t('Fair')}</option>
-                    <option value="poor">{t('Poor')}</option>
-                    <option value="refurbished">{t('Refurbished')}</option>
-                  </GlassSelect>
+                  <div>
+                    <label className={`block mb-2 text-sm font-medium ${errors.description?.message ? 'text-red-600' : 'text-gray-700'}`}>
+                      {t('Description')}
+                    </label>
+                    <div className="relative">
+                      {isDescriptionExpanded ? (
+                        <textarea
+                          {...field}
+                          onBlur={(e) => {
+                            field.onBlur(e);
+                            setIsDescriptionExpanded(false);
+                          }}
+                          className={`w-full py-3 pl-10 pr-4 bg-white/30 backdrop-blur-md border-2 rounded-lg focus:outline-none transition-all duration-200 resize-none ${
+                            errors.description?.message
+                              ? 'border-red-500 focus:border-red-600' 
+                              : 'border-gray-300 focus:border-blue-500'
+                          }`}
+                          placeholder={t('Enter detailed description...')}
+                          maxLength={200}
+                          rows={4}
+                          autoFocus
+                        />
+                      ) : (
+                        <input
+                          {...field}
+                          type="text"
+                          onFocus={(e) => {
+                            field.onFocus?.(e);
+                            setIsDescriptionExpanded(true);
+                          }}
+                          className={`w-full py-3 pl-10 pr-4 bg-white/30 backdrop-blur-md border-2 rounded-lg focus:outline-none transition-all duration-200 ${
+                            errors.description?.message
+                              ? 'border-red-500 focus:border-red-600' 
+                              : 'border-gray-300 focus:border-blue-500'
+                          }`}
+                          placeholder={t('Enter product description')}
+                          maxLength={200}
+                        />
+                      )}
+                      <FileText className={`absolute left-3 text-gray-500 transition-all duration-200 ${
+                        isDescriptionExpanded ? 'top-4' : 'top-1/2 -translate-y-1/2'
+                      }`} size={16} />
+                    </div>
+                    {errors.description?.message && (
+                      <p className="mt-1 text-sm text-red-600">{errors.description.message}</p>
+                    )}
+                  </div>
                 )}
               />
 
               <Controller
-                name="supplierId"
+                name="condition"
                 control={control}
                 render={({ field }) => (
-                  <GlassSelect
-                    {...field}
-                    label={t('Supplier')}
-                    error={errors.supplierId?.message}
-                  >
-                    <option value="">{t('Select Supplier')}</option>
-                    {(suppliers || [])?.map((supplier) => (
-                      <option key={supplier.id} value={supplier.id}>
-                        {supplier.name}
-                      </option>
-                    ))}
-                  </GlassSelect>
+                  <div>
+                    <label className={`block mb-2 font-medium ${errors.condition?.message ? 'text-red-600' : 'text-gray-700'}`}>
+                      {t('Condition')} *
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { value: 'new', label: t('New'), color: 'bg-green-500 hover:bg-green-600' },
+                        { value: 'used', label: t('Used'), color: 'bg-blue-500 hover:bg-blue-600' },
+                        { value: 'refurbished', label: t('Refurbished'), color: 'bg-purple-500 hover:bg-purple-600' }
+                      ].map((condition) => (
+                        <button
+                          key={condition.value}
+                          type="button"
+                          onClick={() => field.onChange(condition.value)}
+                          className={`px-3 py-3 text-sm font-medium rounded-lg border-2 transition-colors ${
+                            field.value === condition.value
+                              ? `${condition.color} text-white border-transparent shadow-md`
+                              : 'bg-white/30 backdrop-blur-md text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
+                          }`}
+                        >
+                          {condition.label}
+                        </button>
+                      ))}
+                    </div>
+                    {errors.condition?.message && (
+                      <p className="mt-1 text-sm text-red-600">{errors.condition.message}</p>
+                    )}
+                  </div>
                 )}
               />
             </div>
+
+            {/* Supplier */}
+            <Controller
+              name="supplierId"
+              control={control}
+              render={({ field }) => (
+                <GlassSelect
+                  {...field}
+                  label={t('Supplier')}
+                  error={errors.supplierId?.message}
+                >
+                  <option value="">{t('Select Supplier')}</option>
+                  {(suppliers || [])?.map((supplier) => (
+                    <option key={supplier.id} value={supplier.id}>
+                      {supplier.name}
+                    </option>
+                  ))}
+                </GlassSelect>
+              )}
+            />
 
             {/* Tags */}
             <div>

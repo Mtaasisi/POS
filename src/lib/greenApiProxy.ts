@@ -20,8 +20,8 @@ class GreenApiProxy {
   constructor() {
     // Use local development proxy in development, production URL in production
     this.proxyUrl = process.env.NODE_ENV === 'development' 
-      ? 'http://localhost:8888/green-api-proxy'
-      : 'https://inauzwa.store/api/green-api-proxy';
+      ? 'http://localhost:8889/green-api-proxy'
+      : 'https://inauzwa.store/.netlify/functions/green-api-proxy';
     
     // Fallback to direct Green API if proxy fails
     this.directUrl = 'https://api.green-api.com';
@@ -54,13 +54,9 @@ class GreenApiProxy {
     } catch (error: any) {
       console.error('❌ Proxy request error:', error);
       
-      // If proxy fails, try direct Green API as fallback
-      if (error.message?.includes('ERR_CONNECTION_REFUSED') || error.message?.includes('Failed to fetch')) {
-        console.log('🔄 Proxy failed, trying direct Green API...');
-        return this.makeDirectRequest<T>(request);
-      }
-      
-      throw error;
+      // Always try direct Green API as fallback when proxy fails
+      console.log('🔄 Proxy failed, trying direct Green API...');
+      return this.makeDirectRequest<T>(request);
     }
   }
 
@@ -96,32 +92,23 @@ class GreenApiProxy {
   // Helper methods for common Green API operations
   async getSettings(instanceId: string, apiToken: string) {
     return this.makeRequest({
-      path: `/waInstance${instanceId}/getSettings`,
+      path: `/waInstance${instanceId}/getSettings/${apiToken}`,
       method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${apiToken}`,
-      },
     });
   }
 
   async setSettings(instanceId: string, apiToken: string, settings: any) {
     return this.makeRequest({
-      path: `/waInstance${instanceId}/setSettings`,
+      path: `/waInstance${instanceId}/setSettings/${apiToken}`,
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiToken}`,
-      },
       body: settings,
     });
   }
 
   async getStateInstance(instanceId: string, apiToken: string) {
     return this.makeRequest({
-      path: `/waInstance${instanceId}/getStateInstance`,
+      path: `/waInstance${instanceId}/getStateInstance/${apiToken}`,
       method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${apiToken}`,
-      },
     });
   }
 
@@ -147,11 +134,8 @@ class GreenApiProxy {
 
   async getQRCode(instanceId: string, apiToken: string) {
     return this.makeRequest({
-      path: `/waInstance${instanceId}/qr`,
+      path: `/waInstance${instanceId}/qr/${apiToken}`,
       method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${apiToken}`,
-      },
     });
   }
 
@@ -178,11 +162,8 @@ class GreenApiProxy {
 
   async getWaSettings(instanceId: string, apiToken: string) {
     return this.makeRequest({
-      path: `/waInstance${instanceId}/getWaSettings`,
+      path: `/waInstance${instanceId}/getWaSettings/${apiToken}`,
       method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${apiToken}`,
-      },
     });
   }
 
@@ -225,6 +206,34 @@ class GreenApiProxy {
       headers: {
         'Authorization': `Bearer ${apiToken}`,
       },
+    });
+  }
+
+  async setProfilePicture(instanceId: string, apiToken: string, file: File) {
+    // Convert file to base64 for Green API
+    const base64 = await this.fileToBase64(file);
+    return this.makeRequest({
+      path: `/waInstance${instanceId}/setAvatar/${apiToken}`,
+      method: 'POST',
+      body: {
+        file: base64,
+        fileName: file.name || 'profile.jpg'
+      },
+    });
+  }
+
+  // Helper method to convert file to base64
+  private async fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        const result = reader.result as string;
+        // Remove the data:image/... prefix to get just the base64 data
+        const base64 = result.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = error => reject(error);
     });
   }
 }

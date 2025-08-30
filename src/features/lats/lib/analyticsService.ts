@@ -124,9 +124,7 @@ export class AnalyticsService {
         .from('lats_categories')
         .select('*', { count: 'exact', head: true });
 
-      const { count: brandsCount } = await supabase
-        .from('lats_brands')
-        .select('*', { count: 'exact', head: true });
+
 
       const { count: suppliersCount } = await supabase
         .from('lats_suppliers')
@@ -141,7 +139,7 @@ export class AnalyticsService {
         lowStockItems,
         outOfStockItems,
         categoriesCount: categoriesCount || 0,
-        brandsCount: brandsCount || 0,
+
         suppliersCount: suppliersCount || 0
       };
 
@@ -158,7 +156,7 @@ export class AnalyticsService {
         lowStockItems: 0,
         outOfStockItems: 0,
         categoriesCount: 0,
-        brandsCount: 0,
+
         suppliersCount: 0
       };
     }

@@ -5,9 +5,7 @@ export type LatsEventType =
   | 'lats:category.created'
   | 'lats:category.updated'
   | 'lats:category.deleted'
-  | 'lats:brand.created'
-  | 'lats:brand.updated'
-  | 'lats:brand.deleted'
+
   | 'lats:supplier.created'
   | 'lats:supplier.updated'
   | 'lats:supplier.deleted'

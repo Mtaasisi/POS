@@ -9,6 +9,7 @@ import GlassInput from '../../../shared/components/ui/GlassInput';
 import GlassSelect from '../../../shared/components/ui/GlassSelect';
 import GlassButton from '../../../shared/components/ui/GlassButton';
 import GlassBadge from '../../../shared/components/ui/GlassBadge';
+import EmojiPicker from '../../../shared/components/ui/EmojiPicker';
 import { t } from '../../lib/i18n/t';
 import { format } from '../../lib/format';
 
@@ -30,14 +31,14 @@ interface Category {
   id: string;
   name: string;
   description?: string;
-  parentId?: string;
+  parent_id?: string;
   color?: string;
   icon?: string;
-  isActive: boolean;
-  sortOrder: number;
+  is_active: boolean;
+  sort_order: number;
   metadata?: Record<string, string>;
-  createdAt: string;
-  updatedAt: string;
+  created_at: string;
+  updated_at: string;
 }
 
 interface CategoryFormProps {
@@ -73,11 +74,11 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
     defaultValues: {
       name: category?.name || '',
       description: category?.description || '',
-      parentId: category?.parentId || '',
+      parentId: category?.parent_id || '',
       color: category?.color || '#3B82F6',
       icon: category?.icon || '',
-      isActive: category?.isActive ?? true,
-      sortOrder: category?.sortOrder || 0,
+      isActive: category?.is_active ?? true,
+      sortOrder: category?.sort_order || 0,
       metadata: category?.metadata || {}
     }
   });
@@ -89,7 +90,19 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
   // Handle form submission
   const handleFormSubmit = async (data: CategoryFormData) => {
     try {
-      await onSubmit(data);
+      // Map form data to API format (camelCase to snake_case)
+      const apiData = {
+        name: data.name,
+        description: data.description,
+        parent_id: data.parentId,
+        color: data.color,
+        icon: data.icon,
+        is_active: data.isActive,
+        sort_order: data.sortOrder,
+        metadata: data.metadata
+      };
+      
+      await onSubmit(apiData);
       reset(data); // Reset form with new values
     } catch (error) {
       console.error('Category form submission error:', error);
@@ -256,15 +269,49 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
               name="icon"
               control={control}
               render={({ field }) => (
-                <GlassSelect
-                  label="Category Icon"
-                  placeholder="Select icon"
-                  value={field.value}
-                  onChange={field.onChange}
-                  error={errors.icon?.message}
-                  options={iconOptions}
-                  clearable
-                />
+                <div>
+                  <label className="block text-sm font-medium text-lats-text mb-2">
+                    Category Icon
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <input
+                        type="text"
+                        placeholder="Select an emoji icon"
+                        value={field.value}
+                        onChange={field.onChange}
+                        className="w-full py-3 px-4 bg-white/30 backdrop-blur-md border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 transition-colors"
+                        maxLength={10}
+                      />
+                    </div>
+                    <EmojiPicker
+                      onEmojiSelect={(emoji) => field.onChange(emoji)}
+                      trigger={
+                        <button
+                          type="button"
+                          className="p-3 bg-white/30 backdrop-blur-md border-2 border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                        >
+                          😊
+                        </button>
+                      }
+                    />
+                    {field.value && (
+                      <button
+                        type="button"
+                        onClick={() => field.onChange('')}
+                        className="p-3 bg-red-50 border-2 border-red-200 rounded-lg hover:bg-red-100 transition-colors text-red-600"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  {errors.icon?.message && (
+                    <p className="mt-1 text-sm text-red-600">{errors.icon.message}</p>
+                  )}
+                  {field.value && (
+                    <p className="mt-1 text-sm text-gray-500">Preview: <span className="text-lg">{field.value}</span></p>
+                  )}
+                </div>
               )}
             />
           </div>

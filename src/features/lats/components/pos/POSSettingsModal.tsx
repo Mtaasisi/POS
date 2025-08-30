@@ -1,8 +1,8 @@
-import React, { useState, useRef, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useRef, forwardRef, useImperativeHandle, useMemo } from 'react';
 import { toast } from 'react-hot-toast';
 import GlassCard from '../../../../features/shared/components/ui/GlassCard';
 import GlassButton from '../../../../features/shared/components/ui/GlassButton';
-import { X, Save, Settings } from 'lucide-react';
+import { X, Save, Settings, Search } from 'lucide-react';
 
 // Import settings tabs
 import GeneralSettingsTab from './GeneralSettingsTab';
@@ -45,6 +45,7 @@ const POSSettingsModal = forwardRef<POSSettingsModalRef, POSSettingsModalProps>(
   ({ isOpen, onClose }, ref) => {
     const [activeSettingsTab, setActiveSettingsTab] = useState('general');
     const [isSavingSettings, setIsSavingSettings] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
 
     // Settings hooks
     const { settings: generalSettings, saveSettings: saveGeneralSettings } = useGeneralSettings();
@@ -71,6 +72,32 @@ const POSSettingsModal = forwardRef<POSSettingsModalRef, POSSettingsModalProps>(
     const analyticsReportingSettingsRef = useRef<any>(null);
     const notificationSettingsRef = useRef<any>(null);
     const advancedSettingsRef = useRef<any>(null);
+
+    // Settings tabs data for search functionality
+    const settingsTabs = [
+      { id: 'general', name: 'General', keywords: ['interface', 'theme', 'language', 'currency', 'display', 'behavior', 'performance', 'tax', 'rate'] },
+      { id: 'pricing', name: 'Dynamic Pricing', keywords: ['pricing', 'discount', 'loyalty', 'bulk', 'time', 'customer', 'events'] },
+      { id: 'receipt', name: 'Receipt', keywords: ['receipt', 'print', 'template', 'logo', 'format', 'email', 'sms'] },
+      { id: 'scanner', name: 'Barcode Scanner', keywords: ['barcode', 'scanner', 'camera', 'sound', 'scan', 'code'] },
+      { id: 'delivery', name: 'Delivery', keywords: ['delivery', 'shipping', 'area', 'fee', 'distance', 'driver'] },
+      { id: 'search', name: 'Search & Filter', keywords: ['search', 'filter', 'fuzzy', 'autocomplete', 'history'] },
+      { id: 'permissions', name: 'User Permissions', keywords: ['permissions', 'access', 'user', 'role', 'security'] },
+      { id: 'loyalty', name: 'Loyalty & Customer', keywords: ['loyalty', 'customer', 'points', 'reward', 'membership'] },
+      { id: 'analytics', name: 'Analytics & Reporting', keywords: ['analytics', 'report', 'stats', 'data', 'export'] },
+      { id: 'notifications', name: 'Notifications', keywords: ['notification', 'alert', 'sound', 'email', 'sms'] },
+      { id: 'advanced', name: 'Advanced', keywords: ['advanced', 'backup', 'restore', 'debug', 'log'] }
+    ];
+
+    // Filter tabs based on search query
+    const filteredTabs = useMemo(() => {
+      if (!searchQuery.trim()) return settingsTabs;
+      
+      const query = searchQuery.toLowerCase();
+      return settingsTabs.filter(tab =>
+        tab.name.toLowerCase().includes(query) ||
+        tab.keywords.some(keyword => keyword.includes(query))
+      );
+    }, [searchQuery]);
 
     // Function to save current active tab settings
     const saveCurrentTabSettings = async () => {
@@ -149,126 +176,48 @@ const POSSettingsModal = forwardRef<POSSettingsModalRef, POSSettingsModalProps>(
               <Settings className="w-6 h-6 text-blue-600" />
               <h2 className="text-2xl font-bold text-gray-900">POS Settings</h2>
             </div>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <X className="w-6 h-6 text-gray-500" />
-            </button>
+            <div className="flex items-center gap-3">
+              {/* Search Input */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <input
+                  type="text"
+                  placeholder="Search settings..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-64"
+                />
+              </div>
+              <button
+                onClick={onClose}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-6 h-6 text-gray-500" />
+              </button>
+            </div>
           </div>
 
           {/* Settings Tabs */}
           <div className="flex flex-wrap gap-2 mb-6 border-b border-gray-200">
-            <button
-              onClick={() => setActiveSettingsTab('general')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeSettingsTab === 'general'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              General
-            </button>
-            <button
-              onClick={() => setActiveSettingsTab('pricing')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeSettingsTab === 'pricing'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Dynamic Pricing
-            </button>
-            <button
-              onClick={() => setActiveSettingsTab('receipt')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeSettingsTab === 'receipt'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Receipt
-            </button>
-            <button
-              onClick={() => setActiveSettingsTab('scanner')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeSettingsTab === 'scanner'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Barcode Scanner
-            </button>
-            <button
-              onClick={() => setActiveSettingsTab('delivery')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeSettingsTab === 'delivery'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Delivery
-            </button>
-            <button
-              onClick={() => setActiveSettingsTab('search')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeSettingsTab === 'search'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Search & Filter
-            </button>
-            <button
-              onClick={() => setActiveSettingsTab('permissions')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeSettingsTab === 'permissions'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Permissions
-            </button>
-            <button
-              onClick={() => setActiveSettingsTab('loyalty')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeSettingsTab === 'loyalty'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Loyalty
-            </button>
-            <button
-              onClick={() => setActiveSettingsTab('analytics')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeSettingsTab === 'analytics'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Analytics
-            </button>
-            <button
-              onClick={() => setActiveSettingsTab('notifications')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeSettingsTab === 'notifications'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Notifications
-            </button>
-            <button
-              onClick={() => setActiveSettingsTab('advanced')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeSettingsTab === 'advanced'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Advanced
-            </button>
+            {filteredTabs.map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveSettingsTab(tab.id)}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  activeSettingsTab === tab.id
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {tab.name}
+              </button>
+            ))}
+            
+            {filteredTabs.length === 0 && searchQuery && (
+              <div className="text-gray-500 text-sm py-2">
+                No settings found matching "{searchQuery}"
+              </div>
+            )}
           </div>
 
           {/* Settings Content */}

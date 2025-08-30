@@ -41,16 +41,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             <p className="text-xs text-gray-600">Add category</p>
           </button>
 
-          <button
-            onClick={() => window.open('/brand-management', '_blank')}
-            className="p-3 bg-white rounded-lg border border-purple-200 hover:shadow-md transition-all duration-200 hover:scale-[1.02] text-left"
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <Crown className="w-4 h-4 text-purple-600" />
-              <span className="text-xs font-medium text-purple-700">Manage Brands</span>
-            </div>
-            <p className="text-xs text-gray-600">Open brand management</p>
-          </button>
+
 
           <button
             onClick={() => setShowSupplierForm(true)}

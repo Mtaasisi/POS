@@ -29,7 +29,7 @@ interface Product {
   sku: string;
   barcode?: string;
   categoryName?: string;
-  brandName?: string;
+
   images?: string[];
   isActive: boolean;
   variants: ProductVariant[];
@@ -364,12 +364,7 @@ const CartItem: React.FC<CartItemProps> = ({
                     <span>{product.categoryName}</span>
                   </>
                 )}
-                {product.brandName && (
-                  <>
-                    <span>•</span>
-                    <span>{product.brandName}</span>
-                  </>
-                )}
+
               </div>
             </div>
             {getStockStatusBadge()}

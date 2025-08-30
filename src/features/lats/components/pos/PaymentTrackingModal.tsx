@@ -311,11 +311,10 @@ const TransactionDetailsModal: React.FC<TransactionDetailsModalProps> = ({ isOpe
                           {item.sku && (
                             <div className="text-sm text-gray-600 font-mono">SKU: {item.sku}</div>
                           )}
-                          {(item.category || item.brand) && (
-                            <div className="text-sm text-gray-600">
-                              {item.category && <span className="mr-2">Category: {item.category}</span>}
-                              {item.brand && <span>Brand: {item.brand}</span>}
-                            </div>
+                                                      {item.category && (
+                                                          <div className="text-sm text-gray-600">
+                                {item.category && <span className="mr-2">Category: {item.category}</span>}
+                              </div>
                           )}
                           {item.variant && (
                             <div className="text-sm text-gray-600">Variant: {item.variant}</div>
@@ -463,7 +462,15 @@ const PaymentTrackingModal: React.FC<PaymentTrackingModalProps> = ({ isOpen, onC
       console.log('🔍 PaymentTrackingModal: Modal opened, fetching data...');
       fetchPaymentData();
     }
-  }, [isOpen, selectedDate]);
+  }, [isOpen]); // Removed selectedDate dependency to prevent excessive re-renders
+
+  // Separate effect for date changes
+  useEffect(() => {
+    if (isOpen && selectedDate) {
+      console.log('🔍 PaymentTrackingModal: Date changed, refetching data...');
+      fetchPaymentData();
+    }
+  }, [selectedDate]);
 
   // Setup real-time subscriptions for payment updates
   useEffect(() => {
@@ -471,8 +478,17 @@ const PaymentTrackingModal: React.FC<PaymentTrackingModalProps> = ({ isOpen, onC
 
     console.log('🔔 PaymentTrackingModal: Setting up real-time subscriptions...');
     
+    let posSalesSubscription: any;
+    let devicePaymentsSubscription: any;
+    
+    // Debounce function to prevent excessive API calls
+    const debouncedFetch = debounce(() => {
+      console.log('🔔 PaymentTrackingModal: Debounced fetch triggered');
+      fetchPaymentData();
+    }, 2000); // 2 second debounce
+    
     // Subscribe to POS sales updates
-    const posSalesSubscription = supabase
+    posSalesSubscription = supabase!
       .channel('payment-tracking-pos-sales-modal')
       .on(
         'postgres_changes',
@@ -483,13 +499,13 @@ const PaymentTrackingModal: React.FC<PaymentTrackingModalProps> = ({ isOpen, onC
         },
         (payload) => {
           console.log('🔔 PaymentTrackingModal: POS sale update received:', payload);
-          fetchPaymentData();
+          debouncedFetch();
         }
       )
       .subscribe();
 
     // Subscribe to device payments updates
-    const devicePaymentsSubscription = supabase
+    devicePaymentsSubscription = supabase!
       .channel('payment-tracking-device-payments-modal')
       .on(
         'postgres_changes',
@@ -500,7 +516,7 @@ const PaymentTrackingModal: React.FC<PaymentTrackingModalProps> = ({ isOpen, onC
         },
         (payload) => {
           console.log('🔔 PaymentTrackingModal: Device payment update received:', payload);
-          fetchPaymentData();
+          debouncedFetch();
         }
       )
       .subscribe();
@@ -508,10 +524,23 @@ const PaymentTrackingModal: React.FC<PaymentTrackingModalProps> = ({ isOpen, onC
     // Cleanup subscriptions on unmount
     return () => {
       console.log('🔔 PaymentTrackingModal: Cleaning up real-time subscriptions...');
-      posSalesSubscription.unsubscribe();
-      devicePaymentsSubscription.unsubscribe();
+      if (posSalesSubscription) posSalesSubscription.unsubscribe();
+      if (devicePaymentsSubscription) devicePaymentsSubscription.unsubscribe();
     };
   }, [isOpen]);
+
+  // Debounce utility function
+  const debounce = (func: Function, wait: number) => {
+    let timeout: NodeJS.Timeout;
+    return function executedFunction(...args: any[]) {
+      const later = () => {
+        clearTimeout(timeout);
+        func(...args);
+      };
+      clearTimeout(timeout);
+      timeout = setTimeout(later, wait);
+    };
+  };
 
   const fetchPaymentData = async () => {
     console.log('🔄 PaymentTrackingModal: Fetching payment data...');
@@ -627,7 +656,7 @@ const PaymentTrackingModal: React.FC<PaymentTrackingModalProps> = ({ isOpen, onC
 
   if (!isOpen) return null;
 
-  console.log('🔍 PaymentTrackingModal: Modal is open, rendering...');
+  // console.log('🔍 PaymentTrackingModal: Modal is open, rendering...');
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">

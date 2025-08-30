@@ -4,7 +4,6 @@ import { Layers, Plus, Trash2, Package, QrCode, RefreshCw, DollarSign, Move } fr
 interface ProductVariant {
   name: string;
   sku: string;
-  barcode: string;
   costPrice: number;
   price: number;
   stockQuantity: number;
@@ -48,15 +47,13 @@ const ProductVariantsSection: React.FC<ProductVariantsSectionProps> = ({
     const newVariant: ProductVariant = {
       name: `Variant ${variants.length + 1}`,
       sku: generateVariantSKU(variants.length + 1),
-      barcode: '',
       costPrice: 0,
       price: 0,
       stockQuantity: 0,
-      minStockLevel: 0,
+      minStockLevel: 2, // Set default min stock level to 2 pcs
       specification: '',
       attributes: {}
     };
-    newVariant.barcode = newVariant.sku;
     setVariants(prev => [...prev, newVariant]);
   };
 
@@ -79,17 +76,20 @@ const ProductVariantsSection: React.FC<ProductVariantsSectionProps> = ({
       const newSKU = generateVariantSKU(index + 1);
       return {
         ...variant,
-        sku: newSKU,
-        barcode: newSKU
+        sku: newSKU
       };
     }));
   };
 
+  // Import shared formatting utilities for consistency
   const formatNumber = (value: number | string): string => {
     if (!value && value !== 0) return '';
     const num = typeof value === 'string' ? parseFloat(value.replace(/,/g, '')) : value;
     if (isNaN(num)) return '';
-    return num.toLocaleString();
+    return num.toLocaleString('en-US', { 
+      minimumFractionDigits: 0, 
+      maximumFractionDigits: 2 
+    });
   };
 
   const parseNumber = (value: string): number => {
@@ -144,6 +144,128 @@ const ProductVariantsSection: React.FC<ProductVariantsSectionProps> = ({
     setDraggedVariantIndex(null);
   };
 
+  const formatSpecificationValue = (key: string, value: string) => {
+    const lowerKey = key.toLowerCase();
+    const lowerValue = value.toLowerCase();
+    
+    // Storage related
+    if (lowerKey.includes('storage') || lowerKey.includes('capacity') || lowerKey.includes('disk')) {
+      if (lowerValue.includes('gb') || lowerValue.includes('gigabyte')) {
+        return value;
+      }
+      if (lowerValue.includes('tb') || lowerValue.includes('terabyte')) {
+        return value;
+      }
+      if (lowerValue.includes('mb') || lowerValue.includes('megabyte')) {
+        return value;
+      }
+      // If it's just a number, assume GB
+      if (/^\d+$/.test(value)) {
+        return `${value} GB`;
+      }
+    }
+    
+    // RAM/Memory related
+    if (lowerKey.includes('ram') || lowerKey.includes('memory') || lowerKey.includes('ddr')) {
+      if (lowerValue.includes('gb') || lowerValue.includes('gigabyte')) {
+        return value;
+      }
+      if (lowerValue.includes('mb') || lowerValue.includes('megabyte')) {
+        return value;
+      }
+      // If it's just a number, assume GB
+      if (/^\d+$/.test(value)) {
+        return `${value} GB`;
+      }
+    }
+    
+    // Screen/Display related
+    if (lowerKey.includes('screen') || lowerKey.includes('display') || lowerKey.includes('monitor') || lowerKey.includes('size')) {
+      if (lowerValue.includes('inch') || lowerValue.includes('"') || lowerValue.includes('in')) {
+        return value;
+      }
+      // If it's just a number, assume inches
+      if (/^\d+(\.\d+)?$/.test(value)) {
+        return `${value}"`;
+      }
+    }
+    
+    // Weight related
+    if (lowerKey.includes('weight') || lowerKey.includes('mass')) {
+      if (lowerValue.includes('kg') || lowerValue.includes('kilogram')) {
+        return value;
+      }
+      if (lowerValue.includes('g') || lowerValue.includes('gram')) {
+        return value;
+      }
+      if (lowerValue.includes('lb') || lowerValue.includes('pound')) {
+        return value;
+      }
+      // If it's just a number, assume kg
+      if (/^\d+(\.\d+)?$/.test(value)) {
+        return `${value} kg`;
+      }
+    }
+    
+    // Battery related
+    if (lowerKey.includes('battery') || lowerKey.includes('mah')) {
+      if (lowerValue.includes('mah') || lowerValue.includes('milliampere')) {
+        return value;
+      }
+      if (lowerValue.includes('wh') || lowerValue.includes('watt')) {
+        return value;
+      }
+      // If it's just a number, assume mAh
+      if (/^\d+$/.test(value)) {
+        return `${value} mAh`;
+      }
+    }
+    
+    // Processor/CPU related
+    if (lowerKey.includes('processor') || lowerKey.includes('cpu') || lowerKey.includes('ghz')) {
+      if (lowerValue.includes('ghz') || lowerValue.includes('gigahertz')) {
+        return value;
+      }
+      if (lowerValue.includes('mhz') || lowerValue.includes('megahertz')) {
+        return value;
+      }
+      // If it's just a number, assume GHz
+      if (/^\d+(\.\d+)?$/.test(value)) {
+        return `${value} GHz`;
+      }
+    }
+    
+    // Resolution related
+    if (lowerKey.includes('resolution') || lowerKey.includes('pixel') || lowerKey.includes('hd')) {
+      if (lowerValue.includes('p') || lowerValue.includes('pixel')) {
+        return value;
+      }
+      if (lowerValue.includes('x') && /^\d+x\d+$/.test(value)) {
+        return value;
+      }
+    }
+    
+    // Dimensions related
+    if (lowerKey.includes('dimension') || lowerKey.includes('length') || lowerKey.includes('width') || lowerKey.includes('height')) {
+      if (lowerValue.includes('cm') || lowerValue.includes('centimeter')) {
+        return value;
+      }
+      if (lowerValue.includes('mm') || lowerValue.includes('millimeter')) {
+        return value;
+      }
+      if (lowerValue.includes('inch') || lowerValue.includes('"') || lowerValue.includes('in')) {
+        return value;
+      }
+      // If it's just a number, assume cm
+      if (/^\d+(\.\d+)?$/.test(value)) {
+        return `${value} cm`;
+      }
+    }
+    
+    // Return original value if no formatting applies
+    return value;
+  };
+
   return (
     <div className="border-b border-gray-200 pb-6">
       <div className="flex items-center justify-between mb-4">
@@ -173,9 +295,9 @@ const ProductVariantsSection: React.FC<ProductVariantsSectionProps> = ({
                 type="button"
                 onClick={autoGenerateAllSKUs}
                 className="text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-700"
-                title="Auto-generate all variant SKUs/Barcodes"
+                title="Auto-generate all variant SKUs"
               >
-                Auto-generate SKUs/Barcodes
+                Auto-generate SKUs
               </button>
             </>
           )}
@@ -283,23 +405,16 @@ const ProductVariantsSection: React.FC<ProductVariantsSectionProps> = ({
                     </div>
                   </div>
                   
-                  {/* SKU/Barcode */}
+                  {/* SKU - Auto Generated */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">SKU/Barcode</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">SKU (Auto Generated)</label>
                     <div className="relative">
                       <input
                         type="text"
                         value={variant.sku}
-                        onChange={(e) => {
-                          const newValue = e.target.value.toUpperCase();
-                          updateVariant(index, 'sku', newValue);
-                          updateVariant(index, 'barcode', newValue);
-                        }}
-                        className="w-full py-3 pl-12 pr-12 bg-white/30 backdrop-blur-md border-2 rounded-lg focus:outline-none transition-colors border-gray-300 focus:border-blue-500"
+                        readOnly
+                        className="w-full py-3 pl-12 pr-12 bg-gray-100 border-2 rounded-lg border-gray-300 text-gray-600 cursor-not-allowed"
                         placeholder="Auto-generated"
-                        autoComplete="off"
-                        autoCorrect="off"
-                        spellCheck={false}
                       />
                       <QrCode className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
                       <button
@@ -307,16 +422,15 @@ const ProductVariantsSection: React.FC<ProductVariantsSectionProps> = ({
                         onClick={() => {
                           const newSKU = generateVariantSKU(index + 1);
                           updateVariant(index, 'sku', newSKU);
-                          updateVariant(index, 'barcode', newSKU);
                         }}
                         className="absolute right-4 top-1/2 -translate-y-1/2 text-blue-600 hover:text-blue-700 p-1 rounded hover:bg-blue-50 transition-colors"
-                        title="Regenerate SKU/Barcode"
+                        title="Regenerate SKU"
                       >
                         <RefreshCw size={14} />
                       </button>
                     </div>
                     <div className="text-xs text-gray-500 mt-1">
-                      SKU and barcode are automatically synchronized
+                      SKU is automatically generated for this variant
                     </div>
                   </div>
                 </div>
@@ -328,37 +442,61 @@ const ProductVariantsSection: React.FC<ProductVariantsSectionProps> = ({
                   <button
                     type="button"
                     onClick={() => onVariantSpecificationsClick(index)}
-                    className="group w-full bg-white border-2 border-gray-300 rounded-lg hover:border-blue-500 hover:shadow-md transition-all duration-200 p-3"
+                    className="group w-full bg-gradient-to-r from-white/50 to-white/30 backdrop-blur-md border-2 border-gray-300 rounded-xl hover:border-purple-500 hover:shadow-lg hover:scale-[1.02] transition-all duration-300 p-4"
                   >
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center group-hover:bg-blue-700 transition-colors duration-200">
-                          <Layers className="w-4 h-4 text-white" />
+                      <div className="flex items-center gap-3">
+                        <div className="relative">
+                          <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center group-hover:from-purple-600 group-hover:to-purple-700 transition-all duration-300 shadow-md group-hover:shadow-lg">
+                            <Layers className="w-5 h-5 text-white" />
+                          </div>
+                          {variant.attributes && Object.keys(variant.attributes).length > 0 && (
+                            <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center shadow-md">
+                              <Check className="w-2.5 h-2.5 text-white" />
+                            </div>
+                          )}
                         </div>
                         
-                        <div className="text-left">
-                          <h4 className="text-sm font-semibold text-gray-900 group-hover:text-blue-900 transition-colors duration-200">
+                        <div className="text-left flex-1">
+                          <h4 className="text-sm font-bold text-gray-900 group-hover:text-purple-900 transition-colors duration-300">
                             Specifications
                           </h4>
-                          <p className="text-xs text-gray-600">
-                            {variant.attributes && Object.keys(variant.attributes).length > 0 
-                              ? `${Object.keys(variant.attributes).length} configured`
-                              : 'Add specifications'
-                            }
-                          </p>
+                          {variant.attributes && Object.keys(variant.attributes).length > 0 ? (
+                            <div className="mt-1">
+                              <div className="grid grid-cols-2 gap-1 max-h-12 overflow-y-auto">
+                                {Object.entries(variant.attributes).slice(0, 4).map(([key, value]) => (
+                                  <div key={key} className="bg-purple-50 border border-purple-200 rounded-md px-1.5 py-0.5">
+                                    <div className="text-xs font-medium text-purple-800 truncate">{key}</div>
+                                    <div className="text-xs text-purple-600 truncate">{formatSpecificationValue(key, String(value))}</div>
+                                  </div>
+                                ))}
+                              </div>
+                              {Object.keys(variant.attributes).length > 4 && (
+                                <div className="text-xs text-purple-600 mt-0.5">
+                                  +{Object.keys(variant.attributes).length - 4} more
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-gray-600 mt-0.5">
+                              Add variant specifications
+                            </p>
+                          )}
                         </div>
                       </div>
                       
                       <div className="flex items-center gap-2">
                         {variant.attributes && Object.keys(variant.attributes).length > 0 && (
-                          <div className="px-2 py-1 bg-blue-600 text-white text-xs font-medium rounded-md">
+                          <div className="px-2.5 py-1 bg-gradient-to-r from-purple-500 to-purple-600 text-white text-xs font-bold rounded-full shadow-md">
                             {Object.keys(variant.attributes).length}
                           </div>
                         )}
                         
-                        <svg className="w-4 h-4 text-gray-400 group-hover:text-blue-600 transition-colors duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                        </svg>
+                        <div className="w-6 h-6 bg-gray-100 group-hover:bg-purple-100 rounded-lg flex items-center justify-center transition-all duration-300">
+                          <svg className="w-3 h-3 text-gray-500 group-hover:text-purple-600 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                          </svg>
+                        </div>
                       </div>
                     </div>
                   </button>
@@ -380,7 +518,13 @@ const ProductVariantsSection: React.FC<ProductVariantsSectionProps> = ({
                         autoCorrect="off"
                         spellCheck={false}
                         value={!variant.costPrice || variant.costPrice === 0 ? '' : formatNumber(variant.costPrice)}
-                        onChange={(e) => handleVariantPriceChange(index, 'costPrice', e.target.value)}
+                        onChange={(e) => {
+                          // Allow typing with automatic comma formatting
+                          const inputValue = e.target.value;
+                          if (inputValue === '' || /^[\d,]*\.?\d*$/.test(inputValue)) {
+                            handleVariantPriceChange(index, 'costPrice', inputValue);
+                          }
+                        }}
                         onFocus={() => handleVariantPriceFocus(index, 'costPrice')}
                         onBlur={() => handleVariantPriceBlur(index, 'costPrice')}
                       />
@@ -402,7 +546,13 @@ const ProductVariantsSection: React.FC<ProductVariantsSectionProps> = ({
                         autoCorrect="off"
                         spellCheck={false}
                         value={!variant.price || variant.price === 0 ? '' : formatNumber(variant.price)}
-                        onChange={(e) => handleVariantPriceChange(index, 'price', e.target.value)}
+                        onChange={(e) => {
+                          // Allow typing with automatic comma formatting
+                          const inputValue = e.target.value;
+                          if (inputValue === '' || /^[\d,]*\.?\d*$/.test(inputValue)) {
+                            handleVariantPriceChange(index, 'price', inputValue);
+                          }
+                        }}
                         onFocus={() => handleVariantPriceFocus(index, 'price')}
                         onBlur={() => handleVariantPriceBlur(index, 'price')}
                       />
@@ -416,11 +566,20 @@ const ProductVariantsSection: React.FC<ProductVariantsSectionProps> = ({
                       Stock Quantity *
                     </label>
                     <div className="relative">
-                      <div className="w-full py-3 px-3 pr-20 pl-20 bg-white/30 backdrop-blur-md border-2 rounded-lg text-center text-lg font-semibold text-gray-900 border-gray-300 flex items-center justify-center">
-                        <span className="text-lg font-semibold text-gray-900">
-                          {variant.stockQuantity || 0}
-                        </span>
-                      </div>
+                      <input
+                        type="number"
+                        value={variant.stockQuantity === 0 ? '' : variant.stockQuantity || ''}
+                        onChange={(e) => updateVariant(index, 'stockQuantity', Math.max(0, parseInt(e.target.value) || 0))}
+                        onFocus={(e) => {
+                          if (variant.stockQuantity === 0) {
+                            e.target.value = '';
+                          }
+                        }}
+                        className="w-full py-3 px-20 bg-white/30 backdrop-blur-md border-2 rounded-lg text-center text-lg font-semibold text-gray-900 border-gray-300 focus:outline-none focus:border-blue-500 transition-colors"
+                        placeholder="0"
+                        min="0"
+                        step="1"
+                      />
                       
                       <button
                         type="button"
@@ -448,11 +607,20 @@ const ProductVariantsSection: React.FC<ProductVariantsSectionProps> = ({
                       Min Stock Level *
                     </label>
                     <div className="relative">
-                      <div className="w-full py-3 px-3 pr-20 pl-20 bg-white/30 backdrop-blur-md border-2 rounded-lg text-center text-lg font-semibold text-gray-900 border-gray-300 flex items-center justify-center">
-                        <span className="text-lg font-semibold text-gray-900">
-                          {variant.minStockLevel || 0}
-                        </span>
-                      </div>
+                      <input
+                        type="number"
+                        value={variant.minStockLevel === 0 ? '' : variant.minStockLevel || ''}
+                        onChange={(e) => updateVariant(index, 'minStockLevel', Math.max(0, parseInt(e.target.value) || 0))}
+                        onFocus={(e) => {
+                          if (variant.minStockLevel === 0) {
+                            e.target.value = '';
+                          }
+                        }}
+                        className="w-full py-3 px-20 bg-white/30 backdrop-blur-md border-2 rounded-lg text-center text-lg font-semibold text-gray-900 border-gray-300 focus:outline-none focus:border-blue-500 transition-colors"
+                        placeholder="2"
+                        min="0"
+                        step="1"
+                      />
                       
                       <button
                         type="button"
@@ -493,15 +661,7 @@ const ProductVariantsSection: React.FC<ProductVariantsSectionProps> = ({
         </div>
       )}
       
-      {!useVariants && (
-        <div className="text-center py-8 text-gray-500">
-          <Layers size={48} className="mx-auto mb-4 text-gray-300" />
-          <p className="text-lg font-medium mb-2">Product Variants Disabled</p>
-          <p className="text-sm">
-            Enable variants to create different versions of this product (e.g., different colors, sizes, or configurations)
-          </p>
-        </div>
-      )}
+
     </div>
   );
 };

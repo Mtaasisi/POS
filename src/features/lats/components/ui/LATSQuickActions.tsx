@@ -109,16 +109,16 @@ const QUICK_ACTIONS: QuickAction[] = [
     id: 'green-api-management',
     name: 'Green API',
     description: 'Manage WhatsApp integration',
-    icon: MessageCircle,
+    icon: MessageSquare,
     path: '/lats/whatsapp-hub',
     color: 'from-green-500 to-green-600',
     category: 'integration'
   },
   {
     id: 'whatsapp-hub',
-    name: 'WhatsApp Hub',
-    description: 'Centralized WhatsApp messaging',
-    icon: MessageCircle,
+    name: 'WhatsApp Manager',
+    description: 'Comprehensive WhatsApp connection management',
+    icon: MessageSquare,
     path: '/lats/whatsapp-hub',
     color: 'from-green-500 to-green-600',
     category: 'integration'

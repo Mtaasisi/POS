@@ -84,28 +84,7 @@ export const ImageUploadDebug: React.FC = () => {
     <div className="p-4 space-y-4">
       <h2 className="text-xl font-bold">Image Upload Debug</h2>
       
-      <div className="space-x-2">
-        <button 
-          onClick={testDevStorage}
-          className="px-4 py-2 bg-blue-500 text-white rounded"
-        >
-          Test Dev Storage
-        </button>
-        
-        <button 
-          onClick={simulateImageUpload}
-          className="px-4 py-2 bg-green-500 text-white rounded"
-        >
-          Simulate Upload
-        </button>
-        
-        <button 
-          onClick={testUpdateProductImages}
-          className="px-4 py-2 bg-purple-500 text-white rounded"
-        >
-          Test Update
-        </button>
-      </div>
+
       
       <div className="bg-gray-100 p-4 rounded">
         <pre className="whitespace-pre-wrap text-sm">{debugInfo || 'Click a button to run tests...'}</pre>

@@ -11,9 +11,8 @@ export interface LatsProduct {
   description?: string;
   shortDescription?: string;
   sku: string;
-  barcode?: string;
+
   categoryId: string;
-  brandId?: string;
   supplierId?: string;
   images?: string[];
   totalQuantity: number;
@@ -33,7 +32,6 @@ export interface LatsProductVariant {
   sellingPrice: number;
   quantity: number;
   minQuantity: number;
-  barcode?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -43,14 +41,13 @@ export interface CreateProductData {
   description?: string;
   shortDescription?: string;
   sku: string;
-  barcode?: string;
+
   categoryId: string;
-  brandId?: string;
   supplierId?: string;
   variants: Array<{
     sku: string;
     name: string;
-    barcode?: string;
+  
     sellingPrice: number;
     costPrice: number;
     quantity: number;
@@ -86,10 +83,7 @@ export async function createProduct(
       total_value: 0
     };
     
-    // Only add brand_id and supplier_id if they have valid values
-    if (productWithoutImages.brandId) {
-      productInsertData.brand_id = productWithoutImages.brandId;
-    }
+    // Only add supplier_id if it has valid values
     if (productWithoutImages.supplierId) {
       productInsertData.supplier_id = productWithoutImages.supplierId;
     }
@@ -116,7 +110,7 @@ export async function createProduct(
       selling_price: (variant.sellingPrice ?? variant.price) ?? 0,
       quantity: (variant.quantity ?? variant.stockQuantity) ?? 0,
       min_quantity: (variant.minQuantity ?? variant.minStockLevel) ?? 0,
-      barcode: variant.barcode,
+
       weight: variant.weight,
       dimensions: variant.dimensions
     }));
@@ -168,9 +162,8 @@ export async function createProduct(
       name: product.name,
       description: product.description,
       sku: productWithoutImages.sku,
-      barcode: productWithoutImages.barcode,
+
       categoryId: product.category_id,
-      brandId: product.brand_id,
       supplierId: product.supplier_id,
       isActive: product.is_active,
       totalQuantity: product.total_quantity,
@@ -191,7 +184,6 @@ export async function getProduct(productId: string): Promise<LatsProduct & { ima
     .select(`
       *,
       lats_categories(name),
-      lats_brands(name),
       lats_suppliers(name)
     `)
     .eq('id', productId)
@@ -207,9 +199,8 @@ export async function getProduct(productId: string): Promise<LatsProduct & { ima
     name: product.name,
     description: product.description,
     sku: product.sku,
-    barcode: product.barcode,
+
     categoryId: product.category_id,
-    brandId: product.brand_id,
     supplierId: product.supplier_id,
     isActive: product.is_active,
     totalQuantity: product.total_quantity,
@@ -229,7 +220,6 @@ export async function getProducts(): Promise<LatsProduct[]> {
       .select(`
         *,
         lats_categories(name),
-        lats_brands(name),
         lats_suppliers(name)
       `)
       .order('created_at', { ascending: false });
@@ -267,7 +257,7 @@ export async function getProducts(): Promise<LatsProduct[]> {
         try {
           const { data, error } = await supabase
             .from('lats_product_variants')
-            .select('id, product_id, name, sku, barcode, cost_price, selling_price, quantity, min_quantity, attributes, created_at, updated_at')
+            .select('id, product_id, name, sku, cost_price, selling_price, quantity, min_quantity, attributes, created_at, updated_at')
             .in('product_id', batch)
             .order('name');
 
@@ -311,7 +301,7 @@ export async function getProducts(): Promise<LatsProduct[]> {
           try {
             const { data: individualVariants, error: individualError } = await supabase
               .from('lats_product_variants')
-              .select('id, product_id, name, sku, barcode, cost_price, selling_price, quantity, min_quantity, attributes, created_at, updated_at')
+              .select('id, product_id, name, sku, cost_price, selling_price, quantity, min_quantity, attributes, created_at, updated_at')
               .eq('product_id', productId)
               .order('name');
               
@@ -343,9 +333,8 @@ export async function getProducts(): Promise<LatsProduct[]> {
       name: product.name,
       description: product.description,
       sku: product.sku,
-      barcode: product.barcode,
+  
       categoryId: product.category_id,
-      brandId: product.brand_id,
       supplierId: product.supplier_id,
       isActive: product.is_active,
       totalQuantity: product.total_quantity,
@@ -362,7 +351,7 @@ export async function getProducts(): Promise<LatsProduct[]> {
         sellingPrice: variant.selling_price,
         quantity: variant.quantity,
         minQuantity: variant.min_quantity,
-        barcode: variant.barcode,
+  
         weight: null, // Column was removed in migration
         dimensions: null, // Column was removed in migration
         createdAt: variant.created_at,
@@ -391,7 +380,6 @@ export async function updateProduct(
         name: productWithoutImages.name,
         description: productWithoutImages.description,
         category_id: productWithoutImages.categoryId,
-        brand_id: productWithoutImages.brandId,
         supplier_id: productWithoutImages.supplierId,
         tags: productWithoutImages.tags,
         is_active: productWithoutImages.isActive,
@@ -425,7 +413,7 @@ export async function updateProduct(
           selling_price: variant.sellingPrice,
           quantity: variant.stockQuantity,
           min_quantity: variant.minStockLevel,
-          barcode: variant.barcode,
+    
           weight: variant.weight,
           dimensions: variant.dimensions
         };
@@ -474,9 +462,8 @@ export async function updateProduct(
       name: product.name,
       description: product.description,
       sku: product.sku,
-      barcode: product.barcode,
+  
       categoryId: product.category_id,
-      brandId: product.brand_id,
       supplierId: product.supplier_id,
       tags: product.tags,
       isActive: product.is_active,

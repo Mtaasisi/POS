@@ -108,7 +108,7 @@ class FinanceAccountService {
         .from('finance_accounts')
         .select(`
           *,
-          payment_transactions!inner (
+          payment_transactions(
             id
           )
         `)

@@ -52,14 +52,12 @@ class SaleProcessingService {
     try {
       console.log('🔄 Processing sale...', { itemCount: saleData.items.length, total: saleData.total });
 
-      // 1. Validate stock availability
-      const stockValidation = await this.validateStock(saleData.items);
+      // 1. Combined stock validation and cost calculation (ultra-optimized)
+      const { stockValidation, itemsWithCosts } = await this.validateStockAndCalculateCosts(saleData.items);
+
       if (!stockValidation.success) {
         return { success: false, error: stockValidation.error };
       }
-
-      // 2. Calculate costs and profits
-      const itemsWithCosts = await this.calculateCostsAndProfits(saleData.items);
       
       // 3. Save sale to database
       const saleResult = await this.saveSaleToDatabase({
@@ -71,21 +69,30 @@ class SaleProcessingService {
         return { success: false, error: saleResult.error };
       }
 
-      // 4. Update inventory
-      const inventoryResult = await this.updateInventory(saleData.items);
-      if (!inventoryResult.success) {
-        console.warn('⚠️ Sale saved but inventory update failed:', inventoryResult.error);
-        // Don't fail the sale if inventory update fails, but log it
+      // 4. Run post-sale operations in parallel (non-critical for transaction completion)
+      const [inventoryResult, receiptResult] = await Promise.allSettled([
+        this.updateInventory(saleData.items),
+        this.generateReceipt(saleResult.sale!)
+      ]);
+
+      // Handle inventory update result
+      if (inventoryResult.status === 'rejected') {
+        console.warn('⚠️ Sale saved but inventory update failed:', inventoryResult.reason);
+      } else if (!inventoryResult.value.success) {
+        console.warn('⚠️ Sale saved but inventory update failed:', inventoryResult.value.error);
       }
 
-      // 5. Generate receipt
-      const receiptResult = await this.generateReceipt(saleResult.sale!);
-      if (!receiptResult.success) {
-        console.warn('⚠️ Receipt generation failed:', receiptResult.error);
+      // Handle receipt generation result
+      if (receiptResult.status === 'rejected') {
+        console.warn('⚠️ Receipt generation failed:', receiptResult.reason);
+      } else if (!receiptResult.value.success) {
+        console.warn('⚠️ Receipt generation failed:', receiptResult.value.error);
       }
 
-      // 6. Send notifications (optional)
-      await this.sendNotifications(saleResult.sale!);
+      // 5. Send notifications asynchronously (don't wait for completion)
+      this.sendNotifications(saleResult.sale!).catch(error => {
+        console.warn('⚠️ Notification sending failed:', error);
+      });
 
       console.log('✅ Sale processed successfully:', saleResult.saleId);
       toast.success('Sale completed successfully!');
@@ -105,25 +112,110 @@ class SaleProcessingService {
     }
   }
 
-  // Validate stock availability for all items
-  private async validateStock(items: SaleItem[]): Promise<{ success: boolean; error?: string }> {
+  // Combined stock validation and cost calculation (ultra-optimized single query)
+  private async validateStockAndCalculateCosts(items: SaleItem[]): Promise<{
+    stockValidation: { success: boolean; error?: string };
+    itemsWithCosts: SaleItem[];
+  }> {
     try {
-      for (const item of items) {
-        const { data: variant, error } = await supabase
-          .from('lats_product_variants')
-          .select('quantity')
-          .eq('id', item.variantId)
-          .single();
+      const variantIds = items.map(item => item.variantId);
+      
+      // Single query to get both quantity and cost_price for all variants
+      const { data: variants, error } = await supabase
+        .from('lats_product_variants')
+        .select('id, quantity, cost_price')
+        .in('id', variantIds);
 
-        if (error) {
-          console.error('❌ Error checking stock for variant:', item.variantId, error);
-          return { success: false, error: `Failed to check stock for ${item.productName}` };
+      if (error) {
+        console.error('❌ Error fetching variant data:', error);
+        return {
+          stockValidation: { success: false, error: 'Failed to check stock and costs' },
+          itemsWithCosts: items.map(item => ({ ...item, costPrice: 0, profit: item.totalPrice }))
+        };
+      }
+
+      // Create maps for quick lookup
+      const variantDataMap = new Map(variants?.map(v => [v.id, v]) || []);
+
+      // Validate stock and calculate costs in single pass
+      const itemsWithCosts: SaleItem[] = [];
+      
+      for (const item of items) {
+        const variantData = variantDataMap.get(item.variantId);
+        
+        if (!variantData) {
+          return {
+            stockValidation: { success: false, error: `Product variant not found: ${item.productName}` },
+            itemsWithCosts: []
+          };
+        }
+        
+        if (variantData.quantity < item.quantity) {
+          return {
+            stockValidation: { 
+              success: false, 
+              error: `Insufficient stock for ${item.productName} (${item.variantName}). Available: ${variantData.quantity}, Requested: ${item.quantity}` 
+            },
+            itemsWithCosts: []
+          };
         }
 
-        if (!variant || variant.quantity < item.quantity) {
+        // Calculate costs and profits
+        const costPrice = variantData.cost_price || 0;
+        const totalCost = costPrice * item.quantity;
+        const profit = item.totalPrice - totalCost;
+
+        itemsWithCosts.push({
+          ...item,
+          costPrice,
+          profit
+        });
+      }
+
+      return {
+        stockValidation: { success: true },
+        itemsWithCosts
+      };
+    } catch (error) {
+      console.error('❌ Error in combined validation and calculation:', error);
+      return {
+        stockValidation: { success: false, error: 'Failed to validate stock and calculate costs' },
+        itemsWithCosts: items.map(item => ({ ...item, costPrice: 0, profit: item.totalPrice }))
+      };
+    }
+  }
+
+  // Validate stock availability for all items (optimized with single query)
+  private async validateStock(items: SaleItem[]): Promise<{ success: boolean; error?: string }> {
+    try {
+      const variantIds = items.map(item => item.variantId);
+      
+      // Single query to get all variant quantities
+      const { data: variants, error } = await supabase
+        .from('lats_product_variants')
+        .select('id, quantity')
+        .in('id', variantIds);
+
+      if (error) {
+        console.error('❌ Error checking stock for variants:', error);
+        return { success: false, error: 'Failed to check stock availability' };
+      }
+
+      // Create a map for quick lookup
+      const variantStockMap = new Map(variants?.map(v => [v.id, v.quantity]) || []);
+
+      // Check stock for each item
+      for (const item of items) {
+        const availableStock = variantStockMap.get(item.variantId);
+        
+        if (availableStock === undefined) {
+          return { success: false, error: `Product variant not found: ${item.productName}` };
+        }
+        
+        if (availableStock < item.quantity) {
           return {
             success: false,
-            error: `Insufficient stock for ${item.productName} (${item.variantName}). Available: ${variant?.quantity || 0}, Requested: ${item.quantity}`
+            error: `Insufficient stock for ${item.productName} (${item.variantName}). Available: ${availableStock}, Requested: ${item.quantity}`
           };
         }
       }
@@ -135,33 +227,42 @@ class SaleProcessingService {
     }
   }
 
-  // Calculate costs and profits for all items
+  // Calculate costs and profits for all items (optimized with single query)
   private async calculateCostsAndProfits(items: SaleItem[]): Promise<SaleItem[]> {
     try {
-      const itemsWithCosts = await Promise.all(
-        items.map(async (item) => {
-          // Get cost price from variant
-          const { data: variant, error } = await supabase
-            .from('lats_product_variants')
-            .select('cost_price')
-            .eq('id', item.variantId)
-            .single();
+      const variantIds = items.map(item => item.variantId);
+      
+      // Single query to get all cost prices
+      const { data: variants, error } = await supabase
+        .from('lats_product_variants')
+        .select('id, cost_price')
+        .in('id', variantIds);
 
-          if (error) {
-            console.warn('⚠️ Could not get cost price for variant:', item.variantId, error);
-          }
+      if (error) {
+        console.warn('⚠️ Could not get cost prices for variants:', error);
+        // Return items with default costs if query fails
+        return items.map(item => ({
+          ...item,
+          costPrice: 0,
+          profit: item.totalPrice
+        }));
+      }
 
-          const costPrice = variant?.cost_price || 0;
-          const totalCost = costPrice * item.quantity;
-          const profit = item.totalPrice - totalCost;
+      // Create a map for quick lookup
+      const costPriceMap = new Map(variants?.map(v => [v.id, v.cost_price || 0]) || []);
 
-          return {
-            ...item,
-            costPrice,
-            profit
-          };
-        })
-      );
+      // Calculate costs and profits for each item
+      const itemsWithCosts = items.map(item => {
+        const costPrice = costPriceMap.get(item.variantId) || 0;
+        const totalCost = costPrice * item.quantity;
+        const profit = item.totalPrice - totalCost;
+
+        return {
+          ...item,
+          costPrice,
+          profit
+        };
+      });
 
       return itemsWithCosts;
     } catch (error) {
@@ -244,36 +345,59 @@ class SaleProcessingService {
     }
   }
 
-  // Update inventory after sale
+  // Update inventory after sale (optimized with batched operations)
   private async updateInventory(items: SaleItem[]): Promise<{ success: boolean; error?: string }> {
     try {
-      for (const item of items) {
-        // Update variant quantity
-        const { error: updateError } = await supabase
+      // Get current user once for all stock movements
+      const { data: { user } } = await supabase.auth.getUser();
+      const userId = user?.id || 'system';
+      
+      // Batch inventory updates and stock movements in parallel
+      const updatePromises = items.map(item => 
+        supabase
           .from('lats_product_variants')
           .update({ 
             quantity: supabase.sql`quantity - ${item.quantity}`,
             updated_at: new Date().toISOString()
           })
-          .eq('id', item.variantId);
+          .eq('id', item.variantId)
+      );
 
-        if (updateError) {
-          console.error('❌ Error updating inventory for variant:', item.variantId, updateError);
-          return { success: false, error: `Failed to update inventory for ${item.productName}` };
+      // Prepare all stock movement records for batch insert
+      const stockMovements = items.map(item => ({
+        product_id: item.productId,
+        variant_id: item.variantId,
+        movement_type: 'sale',
+        quantity: -item.quantity,
+        reference: `Sale ${item.sku}`,
+        notes: `Sold ${item.quantity} units of ${item.productName} (${item.variantName})`,
+        created_by: userId
+      }));
+
+      // Execute inventory updates in parallel
+      const updateResults = await Promise.allSettled(updatePromises);
+      
+      // Check if any inventory updates failed
+      for (let i = 0; i < updateResults.length; i++) {
+        const result = updateResults[i];
+        if (result.status === 'rejected') {
+          console.error('❌ Inventory update failed for item:', items[i], result.reason);
+          return { success: false, error: `Failed to update inventory for ${items[i].productName}` };
         }
+        if (result.status === 'fulfilled' && result.value.error) {
+          console.error('❌ Inventory update error for item:', items[i], result.value.error);
+          return { success: false, error: `Failed to update inventory for ${items[i].productName}` };
+        }
+      }
 
-        // Create stock movement record
-        await supabase
-          .from('lats_stock_movements')
-          .insert([{
-            product_id: item.productId,
-            variant_id: item.variantId,
-            movement_type: 'sale',
-            quantity: -item.quantity,
-            reference: `Sale ${item.sku}`,
-            notes: `Sold ${item.quantity} units of ${item.productName} (${item.variantName})`,
-            created_by: (await supabase.auth.getUser()).data.user?.id || 'system'
-          }]);
+      // Batch insert all stock movements
+      const { error: movementError } = await supabase
+        .from('lats_stock_movements')
+        .insert(stockMovements);
+
+      if (movementError) {
+        console.warn('⚠️ Stock movements creation failed:', movementError);
+        // Don't fail the sale if stock movements fail
       }
 
       console.log('✅ Inventory updated successfully');
@@ -350,8 +474,8 @@ class SaleProcessingService {
     try {
       const message = this.generateSMSMessage(sale);
       
-      // Use the SMS service from the reports feature
-      const { sendBulkSMS } = await import('../features/reports/utils/smsService');
+      // Use the SMS service
+      const { sendBulkSMS } = await import('../services/smsService');
       
       const result = await sendBulkSMS([sale.customerPhone!], message);
       
@@ -383,10 +507,10 @@ Thank you for choosing us!`;
     try {
       const receiptContent = this.generateEmailReceipt(sale);
       
-      // Use the email service
-      const { sendEmail } = await import('./emailService');
+      // Use the email service  
+      const { emailService } = await import('../services/emailService');
       
-      const result = await sendEmail({
+      const result = await emailService.sendEmail({
         to: sale.customerEmail!,
         subject: `Receipt for Sale #${sale.saleNumber}`,
         html: receiptContent

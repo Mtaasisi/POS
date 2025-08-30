@@ -55,7 +55,8 @@ import {
   Wrench,
   CalendarDays,
   Star,
-  ClipboardList
+  ClipboardList,
+  Wifi
 } from 'lucide-react';
 import GlassButton from '../features/shared/components/ui/GlassButton';
 
@@ -328,10 +329,24 @@ const AppLayout: React.FC = () => {
       // Communication & Integration
       {
         path: '/lats/whatsapp-hub',
-        label: 'WhatsApp Hub',
+        label: 'WhatsApp Manager',
         icon: <MessageCircle size={20} />,
         roles: ['admin'],
         count: Math.floor(Math.random() * 2) // Placeholder for WhatsApp alerts
+      },
+      {
+        path: '/lats/whatsapp-chat',
+        label: 'WhatsApp Chat',
+        icon: <MessageCircle size={20} />,
+        roles: ['admin', 'customer-care'],
+        count: Math.floor(Math.random() * 2) // Placeholder for chat alerts
+      },
+      {
+        path: '/lats/whatsapp-connection-manager',
+        label: 'WhatsApp Connections',
+        icon: <Wifi size={20} />,
+        roles: ['admin'],
+        count: Math.floor(Math.random() * 2) // Placeholder for connection alerts
       },
 
       // Admin & Settings

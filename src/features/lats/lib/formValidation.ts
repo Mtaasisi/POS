@@ -240,25 +240,7 @@ export class LatsFormValidator {
     return this.validateForm(data, schema);
   }
 
-  // Validate brand form data
-  validateBrandForm(data: any): ValidationError[] {
-    const schema: ValidationSchema = {
-      name: {
-        required: true,
-        minLength: 2,
-        maxLength: 50
-      },
-      description: {
-        maxLength: 200
-      },
-      website: {
-        pattern: /^https?:\/\/.+/,
-        message: 'Website must be a valid URL starting with http:// or https://'
-      }
-    };
 
-    return this.validateForm(data, schema);
-  }
 
   // Validate supplier form data
   validateSupplierForm(data: any): ValidationError[] {
@@ -487,8 +469,7 @@ export const validateProductForm = (data: any) =>
 export const validateCategoryForm = (data: any) => 
   latsFormValidator.validateCategoryForm(data);
 
-export const validateBrandForm = (data: any) => 
-  latsFormValidator.validateBrandForm(data);
+
 
 export const validateSupplierForm = (data: any) => 
   latsFormValidator.validateSupplierForm(data);

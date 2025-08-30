@@ -5,7 +5,8 @@ import GlassButton from '../../../shared/components/ui/GlassButton';
 import PriceInput from '../../../../shared/components/ui/PriceInput';
 import { X, Package, DollarSign, Hash, Tag, Plus, Search, UserPlus, Layers } from 'lucide-react';
 import { getCategories } from '../../../../lib/categoryApi';
-import { getActiveBrands } from '../../../../lib/brandApi';
+import CategoryInput from '@/features/shared/components/ui/CategoryInput';
+
 import { createExternalProduct } from '../../../../lib/externalProductApi';
 
 interface ExternalProductData {
@@ -14,7 +15,7 @@ interface ExternalProductData {
   price: number;
   quantity: number;
   category: string;
-  brand: string;
+
   barcode?: string;
   notes?: string;
   // Enhanced fields for supplier tracking and returns
@@ -45,7 +46,6 @@ const AddExternalProductModal: React.FC<AddExternalProductModalProps> = ({
     price: 0,
     quantity: 1,
     category: '',
-    brand: '',
     barcode: '',
     notes: '',
     // Enhanced fields for supplier tracking and returns
@@ -63,22 +63,18 @@ const AddExternalProductModal: React.FC<AddExternalProductModalProps> = ({
   const [showNotes, setShowNotes] = useState(false);
   const [showSupplierSuggestions, setShowSupplierSuggestions] = useState(false);
   const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
-  const [brands, setBrands] = useState<Array<{ id: string; name: string }>>([]);
+
   const [loadingData, setLoadingData] = useState(false);
 
-  // Fetch categories and brands when modal opens
+  // Fetch categories when modal opens
   useEffect(() => {
     const fetchData = async () => {
       if (isOpen) {
         setLoadingData(true);
         try {
-          const [categoriesData, brandsData] = await Promise.all([
-            getCategories(),
-            getActiveBrands()
-          ]);
+          const categoriesData = await getCategories();
           
           setCategories(categoriesData);
-          setBrands(brandsData);
           
           // Auto-fill purchase date and generate SKU
           const today = new Date().toISOString().split('T')[0];
@@ -92,7 +88,7 @@ const AddExternalProductModal: React.FC<AddExternalProductModalProps> = ({
             sku: sku
           }));
         } catch (error) {
-          console.error('Error fetching categories and brands:', error);
+          console.error('Error fetching categories:', error);
         } finally {
           setLoadingData(false);
         }
@@ -157,7 +153,6 @@ const AddExternalProductModal: React.FC<AddExternalProductModalProps> = ({
         name: formData.name.trim(),
         sku: formData.sku.trim(),
         category: formData.category.trim() || null,
-        brand: formData.brand.trim() || null,
         barcode: formData.barcode?.trim() || null,
         supplier_name: formData.supplierName.trim(),
         supplier_phone: formData.supplierPhone?.trim() || null,
@@ -180,7 +175,6 @@ const AddExternalProductModal: React.FC<AddExternalProductModalProps> = ({
         price: formData.price,
         quantity: formData.quantity,
         category: formData.category.trim(),
-        brand: formData.brand.trim(),
         barcode: formData.barcode?.trim() || '',
         notes: formData.notes?.trim() || '',
         // Enhanced fields for supplier tracking and returns
@@ -207,7 +201,6 @@ const AddExternalProductModal: React.FC<AddExternalProductModalProps> = ({
         price: 0,
         quantity: 1,
         category: '',
-        brand: '',
         barcode: '',
         notes: '',
         // Enhanced fields for supplier tracking and returns
@@ -334,41 +327,20 @@ const AddExternalProductModal: React.FC<AddExternalProductModalProps> = ({
                   <label className="block text-gray-700 mb-2 font-medium">
                     Category
                   </label>
-                  <div className="relative">
-                    <select
-                      value={formData.category}
-                      onChange={(e) => handleInputChange('category', e.target.value)}
-                      className="w-full py-3 pl-12 pr-4 bg-white/30 backdrop-blur-md border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                      disabled={loadingData}
-                    >
-                      <option value="">{loadingData ? 'Loading...' : 'Select category'}</option>
-                      {categories.map((category) => (
-                        <option key={category.id} value={category.name}>{category.name}</option>
-                      ))}
-                    </select>
-                    <Tag className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-                  </div>
+                  <CategoryInput
+                    value={formData.category}
+                    onChange={(categoryId) => {
+                      const selectedCategory = categories.find(cat => cat.id === categoryId);
+                      handleInputChange('category', selectedCategory?.name || '');
+                    }}
+                    categories={categories}
+                    placeholder="Select category"
+                    disabled={loadingData}
+                    className="w-full"
+                  />
                 </div>
                 
-                <div>
-                  <label className="block text-gray-700 mb-2 font-medium">
-                    Brand
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={formData.brand}
-                      onChange={(e) => handleInputChange('brand', e.target.value)}
-                      className="w-full py-3 pl-12 pr-4 bg-white/30 backdrop-blur-md border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                      disabled={loadingData}
-                    >
-                      <option value="">{loadingData ? 'Loading...' : 'Select brand'}</option>
-                      {brands.map((brand) => (
-                        <option key={brand.id} value={brand.name}>{brand.name}</option>
-                      ))}
-                    </select>
-                    <Layers className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-                  </div>
-                </div>
+
               </div>
 
               <div>
@@ -385,7 +357,7 @@ const AddExternalProductModal: React.FC<AddExternalProductModalProps> = ({
                       key={condition.value}
                       type="button"
                       onClick={() => handleInputChange('productCondition', condition.value as 'new' | 'used' | 'refurbished')}
-                      className={`px-3 py-2 text-sm rounded-lg border transition-colors ${
+                      className={`px-3 py-3 text-sm rounded-lg border transition-colors ${
                         formData.productCondition === condition.value
                           ? `${condition.color} text-white border-transparent`
                           : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'

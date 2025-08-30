@@ -74,7 +74,6 @@ const SearchHome: React.FC<SearchHomeProps> = ({
         color: 'blue',
         items: [
           { label: 'By Status', query: 'status:' },
-          { label: 'By Brand', query: 'brand:' },
           { label: 'By Model', query: 'model:' },
           { label: 'By Customer', query: 'customer:' }
         ]
@@ -100,7 +99,6 @@ const SearchHome: React.FC<SearchHomeProps> = ({
         items: [
           { label: 'By Name', query: 'product:' },
           { label: 'By Category', query: 'category:' },
-          { label: 'By Brand', query: 'brand:' },
           { label: 'By Price', query: 'price:' }
         ]
       });

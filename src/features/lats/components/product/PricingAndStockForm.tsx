@@ -33,18 +33,18 @@ const PricingAndStockForm: React.FC<PricingAndStockFormProps> = ({
   };
 
   return (
-    <div className="border-b border-gray-200 pb-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-        <DollarSign size={20} className="text-green-600" />
+    <div className="border-b border-gray-200 pb-4">
+      <h3 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
+        <DollarSign size={18} className="text-green-600" />
         Pricing & Stock
       </h3>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Cost Price */}
         <div>
           <label 
             htmlFor="cost-price"
-            className={`block mb-2 font-medium ${currentErrors.costPrice ? 'text-red-600' : 'text-gray-700'}`}
+            className={`block mb-2 text-sm font-medium ${currentErrors.costPrice ? 'text-red-600' : 'text-gray-700'}`}
           >
             Cost Price *
           </label>
@@ -64,7 +64,7 @@ const PricingAndStockForm: React.FC<PricingAndStockFormProps> = ({
         <div>
           <label 
             htmlFor="selling-price"
-            className={`block mb-2 font-medium ${currentErrors.price ? 'text-red-600' : 'text-gray-700'}`}
+            className={`block mb-2 text-sm font-medium ${currentErrors.price ? 'text-red-600' : 'text-gray-700'}`}
           >
             Selling Price *
           </label>
@@ -84,16 +84,25 @@ const PricingAndStockForm: React.FC<PricingAndStockFormProps> = ({
         <div>
           <label 
             htmlFor="stock-quantity"
-            className={`block mb-2 font-medium ${currentErrors.stockQuantity ? 'text-red-600' : 'text-gray-700'}`}
+            className={`block mb-2 text-sm font-medium ${currentErrors.stockQuantity ? 'text-red-600' : 'text-gray-700'}`}
           >
             Stock Quantity *
           </label>
           <div className="relative">
-            <div className="w-full py-3 px-3 pr-20 pl-20 bg-white/30 backdrop-blur-md border-2 rounded-lg text-center text-lg font-semibold text-gray-900 border-gray-300 flex items-center justify-center">
-              <span className="text-lg font-semibold text-gray-900">
-                {formData.stockQuantity || 0}
-              </span>
-            </div>
+            <input
+              type="number"
+              value={formData.stockQuantity === 0 ? '' : formData.stockQuantity || ''}
+              onChange={(e) => setFormData(prev => ({ ...prev, stockQuantity: Math.max(0, parseInt(e.target.value) || 0) }))}
+              onFocus={(e) => {
+                if (formData.stockQuantity === 0) {
+                  e.target.value = '';
+                }
+              }}
+              className="w-full py-3 px-20 bg-white/30 backdrop-blur-md border-2 rounded-lg text-center text-lg font-semibold text-gray-900 border-gray-300 focus:outline-none focus:border-blue-500 transition-colors"
+              placeholder="0"
+              min="0"
+              step="1"
+            />
             
             {/* Minus button on the left */}
             <button
@@ -126,16 +135,25 @@ const PricingAndStockForm: React.FC<PricingAndStockFormProps> = ({
         <div>
           <label 
             htmlFor="min-stock-level"
-            className={`block mb-2 font-medium ${currentErrors.minStockLevel ? 'text-red-600' : 'text-gray-700'}`}
+            className={`block mb-2 text-sm font-medium ${currentErrors.minStockLevel ? 'text-red-600' : 'text-gray-700'}`}
           >
             Min Stock Level *
           </label>
           <div className="relative">
-            <div className="w-full py-3 px-3 pr-20 pl-20 bg-white/30 backdrop-blur-md border-2 rounded-lg text-center text-lg font-semibold text-gray-900 border-gray-300 flex items-center justify-center">
-              <span className="text-lg font-semibold text-gray-900">
-                {formData.minStockLevel || 0}
-              </span>
-            </div>
+            <input
+              type="number"
+              value={formData.minStockLevel === 0 ? '' : formData.minStockLevel || ''}
+              onChange={(e) => setFormData(prev => ({ ...prev, minStockLevel: Math.max(0, parseInt(e.target.value) || 0) }))}
+              onFocus={(e) => {
+                if (formData.minStockLevel === 0) {
+                  e.target.value = '';
+                }
+              }}
+              className="w-full py-3 px-20 bg-white/30 backdrop-blur-md border-2 rounded-lg text-center text-lg font-semibold text-gray-900 border-gray-300 focus:outline-none focus:border-blue-500 transition-colors"
+              placeholder="2"
+              min="0"
+              step="1"
+            />
             
             {/* Minus button on the left */}
             <button

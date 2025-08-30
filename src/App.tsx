@@ -8,7 +8,6 @@ import { PaymentsProvider } from './context/PaymentsContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { LoadingProvider, useLoading } from './context/LoadingContext';
 import { GeneralSettingsProvider } from './context/GeneralSettingsContext';
-import { BrandsProvider } from './context/BrandsContext';
 import { Toaster } from 'react-hot-toast';
 
 // import BackgroundSelector from './features/settings/components/BackgroundSelector';
@@ -31,6 +30,7 @@ import IntegrationTestingPage from './features/admin/pages/IntegrationTestingPag
 import UserManagementPage from './features/users/pages/UserManagementPage';
 const UnifiedSupplierManagementPage = lazy(() => import('./features/settings/pages/UnifiedSupplierManagementPage'));
 import { SuppliersProvider } from './context/SuppliersContext';
+import { WhatsAppProvider } from './context/WhatsAppContext';
 const SMSControlCenterPage = lazy(() => import('./features/reports/pages/SMSControlCenterPage'));
 const UnifiedPaymentManagementPage = lazy(() => import('./features/finance/pages/UnifiedPaymentManagementPage'));
 
@@ -53,7 +53,7 @@ import MobileOptimizationPage from './features/mobile/pages/MobileOptimizationPa
 const UnifiedAnalyticsPage = lazy(() => import('./features/analytics/pages/UnifiedAnalyticsPage'));
 import GlobalSearchPage from './features/shared/pages/GlobalSearchPage';
 
-const BrandManagementPage = lazy(() => import('./features/settings/pages/BrandManagementPage'));
+
 const CategoryManagementPage = lazy(() => import('./features/settings/pages/CategoryManagementPage'));
 import { StoreLocationManagementPage } from './features/settings/pages/StoreLocationManagementPage';
 import DatabaseSetupPage from './features/admin/pages/DatabaseSetupPage';
@@ -67,6 +67,7 @@ const UnifiedDiagnosticManagementPage = lazy(() => import('./features/diagnostic
 const LATSDashboardPage = lazy(() => import('./features/lats/pages/LATSDashboardPage'));
 const PurchaseOrdersPage = lazy(() => import('./features/lats/pages/PurchaseOrdersPage'));
 const NewPurchaseOrderPage = lazy(() => import('./features/lats/pages/NewPurchaseOrderPage'));
+const PurchaseOrderPage = lazy(() => import('./features/lats/pages/PurchaseOrderPage'));
 const PurchaseOrderDetailPage = lazy(() => import('./features/lats/pages/PurchaseOrderDetailPage'));
 const SparePartsPage = lazy(() => import('./features/lats/pages/SparePartsPage'));
 const PaymentHistoryPage = lazy(() => import('./features/lats/pages/PaymentHistoryPage'));
@@ -92,8 +93,10 @@ const StorageRoomManagementPage = lazy(() => import('./features/lats/pages/Stora
 import StorageRoomDetailPage from './features/lats/pages/StorageRoomDetailPage';
 import BeemTestPage from './features/lats/pages/BeemTestPage';
 
-const WhatsAppHubPage = lazy(() => import('./features/lats/pages/WhatsAppHubPage'));
+const WhatsAppConnectionManager = lazy(() => import('./features/lats/pages/WhatsAppConnectionManager'));
 const WhatsAppSettingsPage = lazy(() => import('./features/lats/pages/WhatsAppSettingsPage'));
+const WhatsAppChatPage = lazy(() => import('./features/lats/pages/WhatsAppChatPage'));
+const WhatsAppHubPage = lazy(() => import('./features/lats/pages/WhatsAppHubPage'));
 const BluetoothPrinterPage = lazy(() => import('./pages/BluetoothPrinterPage'));
 
 import AITrainingManagerPage from './pages/AITrainingManagerPage';
@@ -246,7 +249,7 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
           <Route path="/devices/new" element={<Suspense fallback={<PageLoadingSpinner />}><NewDevicePage /></Suspense>} />
           <Route path="/devices/:id" element={<DeviceDetailPage />} />
 
-        <Route path="/brand-management" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><BrandManagementPage /></Suspense></RoleProtectedRoute>} />
+
         <Route path="/category-management" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><CategoryManagementPage /></Suspense></RoleProtectedRoute>} />
                   <Route path="/supplier-management" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedSupplierManagementPage /></Suspense></RoleProtectedRoute>} />
         <Route path="/store-locations" element={<RoleProtectedRoute allowedRoles={['admin']}><StoreLocationManagementPage /></RoleProtectedRoute>} />
@@ -346,6 +349,7 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
 
           <Route path="/lats/purchase-orders" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><PurchaseOrdersPage /></Suspense></RoleProtectedRoute>} />
           <Route path="/lats/purchase-orders/new" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><NewPurchaseOrderPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/lats/purchase-order/create" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><PurchaseOrderPage /></Suspense></RoleProtectedRoute>} />
           <Route path="/lats/purchase-orders/:id" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><PurchaseOrderDetailPage /></Suspense></RoleProtectedRoute>} />
 
           <Route path="/lats/spare-parts" element={<RoleProtectedRoute allowedRoles={['admin', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><SparePartsPage /></Suspense></RoleProtectedRoute>} />
@@ -357,6 +361,8 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
           
 
         <Route path="/lats/whatsapp-hub" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><WhatsAppHubPage /></Suspense></RoleProtectedRoute>} />
+        <Route path="/lats/whatsapp-connection-manager" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><WhatsAppConnectionManager /></Suspense></RoleProtectedRoute>} />
+        <Route path="/lats/whatsapp-chat" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><WhatsAppChatPage /></Suspense></RoleProtectedRoute>} />
         <Route path="/lats/whatsapp-settings/:instanceId" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><WhatsAppSettingsPage /></Suspense></RoleProtectedRoute>} />
 
         {/* Bluetooth Printer Management Route */}
@@ -586,18 +592,18 @@ function App() {
                   <PaymentsProvider>
                     <LoadingProvider>
                       <GeneralSettingsProvider>
-                        <BrandsProvider>
                           <SuppliersProvider>
-                            <POSSettingsDatabaseSetup>
-                              <AppContent 
-                                isOnline={isOnline} 
-                                isSyncing={isSyncing} 
-                              />
-                              <LoadingProgressWrapper />
-                              <BackgroundDataLoader />
-                            </POSSettingsDatabaseSetup>
+                            <WhatsAppProvider>
+                              <POSSettingsDatabaseSetup>
+                                <AppContent 
+                                  isOnline={isOnline} 
+                                  isSyncing={isSyncing} 
+                                />
+                                <LoadingProgressWrapper />
+                                <BackgroundDataLoader />
+                              </POSSettingsDatabaseSetup>
+                            </WhatsAppProvider>
                           </SuppliersProvider>
-                        </BrandsProvider>
                       </GeneralSettingsProvider>
                     </LoadingProvider>
                   </PaymentsProvider>

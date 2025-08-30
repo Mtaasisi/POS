@@ -89,9 +89,33 @@ class GreenApiSettingsService {
     try {
       console.log(`🔧 Getting state for instance: ${instanceId}`);
       
-      const result = await greenApiProxy.getStateInstance(instanceId, apiToken);
-      console.log('✅ State retrieved successfully:', result.data);
-      return result.data;
+      // Try direct API call first as a more reliable approach
+      try {
+        const directUrl = `https://api.green-api.com/waInstance${instanceId}/getStateInstance/${apiToken}`;
+        console.log(`🌐 Making direct API call to: ${directUrl}`);
+        
+        const response = await fetch(directUrl, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        console.log('✅ Direct API call successful:', data);
+        return data;
+      } catch (directError: any) {
+        console.warn('⚠️ Direct API call failed, trying proxy...', directError.message);
+        
+        // Fallback to proxy
+        const result = await greenApiProxy.getStateInstance(instanceId, apiToken);
+        console.log('✅ State retrieved successfully via proxy:', result.data);
+        return result.data;
+      }
     } catch (error: any) {
       console.error('❌ Error getting instance state:', error);
       toast.error(`Failed to get instance state: ${error.message}`);

@@ -330,7 +330,6 @@ const POSPageOptimized: React.FC = () => {
         await Promise.all([
           loadProducts(),
           loadCategories(),
-          loadBrands(),
           loadSuppliers(),
           loadSales()
         ]);

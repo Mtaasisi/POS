@@ -1507,20 +1507,7 @@ const SMSControlCenterPage: React.FC = () => {
               ))}
             </select>
           </div>
-          <div>
-            <label className="block text-gray-700 mb-1 font-medium">Device Brand (optional)</label>
-            <select
-              name="brand"
-              value={triggerForm.brand}
-              onChange={handleTriggerFormChange}
-              className="w-full py-2 px-4 bg-white/30 backdrop-blur-md border border-white/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-            >
-              <option value="">-- Any Brand --</option>
-              {['Apple','Samsung','Tecno','Infinix','Huawei','Itel','Nokia','Sony','HTC','Other'].map(brand => (
-                <option key={brand} value={brand}>{brand}</option>
-              ))}
-            </select>
-          </div>
+
           <div>
             <label className="block text-gray-700 mb-1 font-medium">Customer Tag (optional)</label>
             <select

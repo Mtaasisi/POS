@@ -1,7 +1,7 @@
 <?php
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: POST, OPTIONS');
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 
 // Handle preflight requests
@@ -10,32 +10,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit();
 }
 
-// Only allow POST requests
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+// Allow both GET and POST requests
+if ($_SERVER['REQUEST_METHOD'] !== 'GET' && $_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     echo json_encode(['error' => 'Method not allowed']);
     exit();
 }
 
 try {
-    // Get the request body
-    $input = file_get_contents('php://input');
-    $request = json_decode($input, true);
+    $method = $_SERVER['REQUEST_METHOD'];
+    $baseUrl = 'https://api.green-api.com';
     
-    if (!$request || !isset($request['path'])) {
-        http_response_code(400);
-        echo json_encode(['error' => 'Path is required']);
-        exit();
+    // Handle GET requests with URL path parameters
+    if ($method === 'GET') {
+        // Parse the URL path to extract instance ID, action, and token
+        $requestUri = $_SERVER['REQUEST_URI'];
+        $pathParts = explode('/', trim($requestUri, '/'));
+        
+        // Find the green-api-proxy.php part and extract the remaining path
+        $proxyIndex = array_search('green-api-proxy.php', $pathParts);
+        if ($proxyIndex !== false && isset($pathParts[$proxyIndex + 1])) {
+            // Extract the remaining path after green-api-proxy.php
+            $apiPath = implode('/', array_slice($pathParts, $proxyIndex + 1));
+            
+            // Parse the path: waInstance{instanceId}/{action}/{token}
+            if (preg_match('/^waInstance([^\/]+)\/([^\/]+)\/(.+)$/', $apiPath, $matches)) {
+                $instanceId = $matches[1];
+                $action = $matches[2];
+                $token = $matches[3];
+                
+                // Construct the Green API URL
+                $url = $baseUrl . "/waInstance{$instanceId}/{$action}/{$token}";
+            } else {
+                throw new Exception("Invalid URL format. Expected: waInstance{instanceId}/{action}/{token}");
+            }
+        } else {
+            throw new Exception("Invalid URL structure");
+        }
+    } else {
+        // Handle POST requests (existing logic)
+        $input = file_get_contents('php://input');
+        $request = json_decode($input, true);
+        
+        if (!$request || !isset($request['path'])) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Path is required']);
+            exit();
+        }
+        
+        $path = $request['path'];
+        $body = $request['body'] ?? null;
+        $headers = $request['headers'] ?? [];
+        $baseUrl = $request['baseUrl'] ?? 'https://api.green-api.com';
+        
+        // Construct the full URL
+        $url = $baseUrl . $path;
     }
-    
-    $path = $request['path'];
-    $method = $request['method'] ?? 'GET';
-    $body = $request['body'] ?? null;
-    $headers = $request['headers'] ?? [];
-    $baseUrl = $request['baseUrl'] ?? 'https://api.green-api.com';
-    
-    // Construct the full URL
-    $url = $baseUrl . $path;
     
     // Prepare cURL request
     $ch = curl_init();
@@ -56,15 +86,17 @@ try {
         'User-Agent: LATS-CHANCE-GreenAPI-Proxy/1.0'
     ];
     
-    // Add custom headers
-    foreach ($headers as $key => $value) {
-        $curlHeaders[] = "$key: $value";
+    // Add custom headers for POST requests
+    if ($method === 'POST' && isset($headers)) {
+        foreach ($headers as $key => $value) {
+            $curlHeaders[] = "$key: $value";
+        }
     }
     
     curl_setopt($ch, CURLOPT_HTTPHEADER, $curlHeaders);
     
-    // Add body for POST/PUT requests
-    if ($body && ($method === 'POST' || $method === 'PUT')) {
+    // Add body for POST requests
+    if ($method === 'POST' && isset($body) && ($body !== null)) {
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
     }
     

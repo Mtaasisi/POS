@@ -11,7 +11,7 @@ import { useInventoryStore } from '../stores/useInventoryStore';
 import { supabase } from '../../../lib/supabaseClient';
 import { useAuth } from '../../../context/AuthContext';
 import { retryWithBackoff } from '../../../lib/supabaseClient';
-import { getActiveBrands, Brand } from '../../../lib/brandApi';
+
 import { getActiveCategories, Category } from '../../../lib/categoryApi';
 import { getActiveSuppliers, Supplier } from '../../../lib/supplierApi';
 
@@ -47,13 +47,15 @@ const ProductImageSchema = z.object({
 // Validation schema for product form
 const productFormSchema = z.object({
   name: z.string().min(1, 'Product name must be provided').max(100, 'Product name must be less than 100 characters'),
-  description: z.string().max(500, 'Description must be less than 500 characters').optional(),
+  description: z.string().max(200, 'Description must be less than 200 characters').optional(),
   sku: z.string().min(1, 'SKU must be provided').max(50, 'SKU must be less than 50 characters'),
-  barcode: z.string().optional(),
+
   categoryId: z.string().min(1, 'Category must be selected'),
-  brandId: z.string().optional(),
+
   supplierId: z.string().optional(),
-  condition: z.string().min(1, 'Product condition must be selected'),
+  condition: z.enum(['new', 'used', 'refurbished'], {
+    errorMap: () => ({ message: 'Please select a condition' })
+  }),
   
   price: z.number().min(0, 'Price must be 0 or greater'),
   costPrice: z.number().min(0, 'Cost price must be 0 or greater'),
@@ -75,7 +77,6 @@ type ProductImage = z.infer<typeof ProductImageSchema>;
 const AddProductPageOptimized: React.FC = () => {
   const navigate = useNavigate();
   const [categories, setCategories] = useState<Category[]>([]);
-  const [brands, setBrands] = useState<Brand[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
 
   const [loading, setLoading] = useState(false);
@@ -86,10 +87,8 @@ const AddProductPageOptimized: React.FC = () => {
   const [formData, setFormData] = useState({
     name: '',
     sku: '',
-    barcode: '',
+
     categoryId: '',
-    brand: '',
-    brandId: '',
     supplierId: '',
     condition: '',
     description: '',
@@ -130,14 +129,12 @@ const AddProductPageOptimized: React.FC = () => {
   useEffect(() => {
       const loadData = async () => {
     try {
-      const [categoriesData, brandsData, suppliersData] = await Promise.all([
+      const [categoriesData, suppliersData] = await Promise.all([
         getActiveCategories(),
-        getActiveBrands(),
         getActiveSuppliers()
       ]);
 
       setCategories(categoriesData || []);
-      setBrands(brandsData || []);
       setSuppliers(suppliersData || []);
     } catch (error) {
       console.error('Error loading data:', error);
@@ -230,7 +227,6 @@ const AddProductPageOptimized: React.FC = () => {
     try {
       const productData = {
         ...formData,
-        brand_id: formData.brandId,
         supplier_id: formData.supplierId,
         category_id: formData.categoryId,
         cost_price: formData.costPrice,

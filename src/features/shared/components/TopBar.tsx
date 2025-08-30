@@ -35,6 +35,29 @@ import {
   Activity,
   ArrowLeft,
   LayoutDashboard,
+  Monitor,
+  Laptop,
+  Tablet,
+  TestTube,
+  Receipt,
+  Calendar,
+  Briefcase,
+  MapPin,
+  Layers,
+  Brain,
+  Wrench,
+  Star,
+  ClipboardList,
+  Building,
+  DollarSign,
+  Home,
+  Shield,
+  Database,
+  Upload,
+  Download,
+  Clock,
+  UserCheck,
+  MobileIcon,
 } from 'lucide-react';
 import ActivityCounter from './ui/ActivityCounter';
 import GlassButton from './ui/GlassButton';
@@ -65,14 +88,14 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, isMenuOpen, isNavCollapse
   
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showCreateDropdown, setShowCreateDropdown] = useState(false);
   const [isOnline, _setIsOnline] = useState(navigator.onLine);
   
   const { handleBackClick, previousPage } = useNavigationHistory();
   
   const userMenuRef = useRef<HTMLDivElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
-
-
+  const createDropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -82,6 +105,9 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, isMenuOpen, isNavCollapse
       }
       if (notificationsRef.current && !notificationsRef.current.contains(event.target as Node)) {
         setShowNotifications(false);
+      }
+      if (createDropdownRef.current && !createDropdownRef.current.contains(event.target as Node)) {
+        setShowCreateDropdown(false);
       }
     };
 
@@ -189,7 +215,7 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, isMenuOpen, isNavCollapse
             </button>
           </div>
 
-          {/* Center Section - Search & LATS Navigation */}
+          {/* Center Section - Search & Create Dropdown */}
           <div className="hidden md:flex items-center gap-3 flex-1 max-w-md mx-4">
             <SearchDropdown 
               placeholder="Search devices, customers..."
@@ -198,6 +224,126 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, isMenuOpen, isNavCollapse
             <div className="hidden lg:flex items-center gap-1 px-2 py-1 rounded-lg bg-gray-100/50 text-gray-500 text-xs">
               <span>⌘K</span>
             </div>
+          </div>
+
+          {/* Create Dropdown */}
+          <div className="relative" ref={createDropdownRef}>
+            <button
+              onClick={() => setShowCreateDropdown(!showCreateDropdown)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-all duration-300 shadow-sm hover:shadow-md"
+            >
+              <span className="font-medium">Create</span>
+              <ChevronDown size={16} className={`transition-transform duration-200 ${showCreateDropdown ? 'rotate-180' : ''}`} />
+            </button>
+            
+            {/* Create Dropdown Menu - Image Style */}
+            {showCreateDropdown && (
+              <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+                <div className="p-4 space-y-3">
+                  {/* New Device */}
+                  <button
+                    onClick={() => {
+                      navigate('/devices/new');
+                      setShowCreateDropdown(false);
+                    }}
+                    className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-blue-50 transition-colors group"
+                  >
+                    <div className="p-2 rounded-lg bg-blue-500 text-white">
+                      <Smartphone size={20} />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className="font-medium text-gray-900">New Device</p>
+                      <p className="text-sm text-gray-600">Add device for repair</p>
+                    </div>
+                  </button>
+                  
+                  {/* Diagnostic Request */}
+                  <button
+                    onClick={() => {
+                      navigate('/diagnostics/new');
+                      setShowCreateDropdown(false);
+                    }}
+                    className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-green-50 transition-colors group"
+                  >
+                    <div className="p-2 rounded-lg bg-green-500 text-white">
+                      <Stethoscope size={20} />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className="font-medium text-gray-900">Diagnostic Request</p>
+                      <p className="text-sm text-gray-600">Create device analysis</p>
+                    </div>
+                  </button>
+                  
+                  {/* Add Customer */}
+                  <button
+                    onClick={() => {
+                      navigate('/customers');
+                      setShowCreateDropdown(false);
+                    }}
+                    className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-purple-50 transition-colors group"
+                  >
+                    <div className="p-2 rounded-lg bg-purple-500 text-white">
+                      <Users size={20} />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className="font-medium text-gray-900">Add Customer</p>
+                      <p className="text-sm text-gray-600">Register new customer</p>
+                    </div>
+                  </button>
+                  
+                  {/* Add Product */}
+                  <button
+                    onClick={() => {
+                      navigate('/lats/add-product');
+                      setShowCreateDropdown(false);
+                    }}
+                    className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-orange-50 transition-colors group"
+                  >
+                    <div className="p-2 rounded-lg bg-orange-500 text-white">
+                      <Package size={20} />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className="font-medium text-gray-900">Add Product</p>
+                      <p className="text-sm text-gray-600">Add new inventory item</p>
+                    </div>
+                  </button>
+                  
+                  {/* New Sale */}
+                  <button
+                    onClick={() => {
+                      navigate('/pos');
+                      setShowCreateDropdown(false);
+                    }}
+                    className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-emerald-50 transition-colors group"
+                  >
+                    <div className="p-2 rounded-lg bg-emerald-500 text-white">
+                      <ShoppingCart size={20} />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className="font-medium text-gray-900">New Sale</p>
+                      <p className="text-sm text-gray-600">Start POS transaction</p>
+                    </div>
+                  </button>
+                  
+                  {/* SMS Centre */}
+                  <button
+                    onClick={() => {
+                      navigate('/sms');
+                      setShowCreateDropdown(false);
+                    }}
+                    className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-indigo-50 transition-colors group"
+                  >
+                    <div className="p-2 rounded-lg bg-indigo-500 text-white">
+                      <MessageSquare size={20} />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className="font-medium text-gray-900">SMS Centre</p>
+                      <p className="text-sm text-gray-600">Send messages to customers</p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* LATS Navigation Icons */}
@@ -546,11 +692,123 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, isMenuOpen, isNavCollapse
         </div>
       </div>
 
-      {/* Mobile Search Bar */}
+      {/* Mobile Search Bar & Create Button */}
       <div className="md:hidden px-4 py-3 bg-white/20 backdrop-blur-sm border-b border-white/20">
-        <SearchDropdown 
-          placeholder="Search devices, customers..."
-        />
+        <div className="flex items-center gap-3">
+          <SearchDropdown 
+            placeholder="Search devices, customers..."
+            className="flex-1"
+          />
+          <button
+            onClick={() => setShowCreateDropdown(!showCreateDropdown)}
+            className="p-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-all duration-300 shadow-sm"
+          >
+            <Plus size={20} />
+          </button>
+        </div>
+        
+        {/* Mobile Create Dropdown */}
+        {showCreateDropdown && (
+          <div className="mt-3 p-4 bg-white rounded-lg shadow-lg border border-gray-200">
+            <div className="space-y-3">
+              <button
+                onClick={() => {
+                  navigate('/devices/new');
+                  setShowCreateDropdown(false);
+                }}
+                className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-blue-50 transition-colors"
+              >
+                <div className="p-2 rounded-lg bg-blue-500 text-white">
+                  <Smartphone size={20} />
+                </div>
+                <div className="flex-1 text-left">
+                  <p className="font-medium text-gray-900">New Device</p>
+                  <p className="text-sm text-gray-600">Add device for repair</p>
+                </div>
+              </button>
+              
+              <button
+                onClick={() => {
+                  navigate('/diagnostics/new');
+                  setShowCreateDropdown(false);
+                }}
+                className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-green-50 transition-colors"
+              >
+                <div className="p-2 rounded-lg bg-green-500 text-white">
+                  <Stethoscope size={20} />
+                </div>
+                <div className="flex-1 text-left">
+                  <p className="font-medium text-gray-900">Diagnostic Request</p>
+                  <p className="text-sm text-gray-600">Create device analysis</p>
+                </div>
+              </button>
+              
+              <button
+                onClick={() => {
+                  navigate('/customers');
+                  setShowCreateDropdown(false);
+                }}
+                className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-purple-50 transition-colors"
+              >
+                <div className="p-2 rounded-lg bg-purple-500 text-white">
+                  <Users size={20} />
+                </div>
+                <div className="flex-1 text-left">
+                  <p className="font-medium text-gray-900">Add Customer</p>
+                  <p className="text-sm text-gray-600">Register new customer</p>
+                </div>
+              </button>
+              
+              <button
+                onClick={() => {
+                  navigate('/lats/add-product');
+                  setShowCreateDropdown(false);
+                }}
+                className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-orange-50 transition-colors"
+              >
+                <div className="p-2 rounded-lg bg-orange-500 text-white">
+                  <Package size={20} />
+                </div>
+                <div className="flex-1 text-left">
+                  <p className="font-medium text-gray-900">Add Product</p>
+                  <p className="text-sm text-gray-600">Add new inventory item</p>
+                </div>
+              </button>
+              
+              <button
+                onClick={() => {
+                  navigate('/pos');
+                  setShowCreateDropdown(false);
+                }}
+                className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-emerald-50 transition-colors"
+              >
+                <div className="p-2 rounded-lg bg-emerald-500 text-white">
+                  <ShoppingCart size={20} />
+                </div>
+                <div className="flex-1 text-left">
+                  <p className="font-medium text-gray-900">New Sale</p>
+                  <p className="text-sm text-gray-600">Start POS transaction</p>
+                </div>
+              </button>
+              
+              <button
+                onClick={() => {
+                  navigate('/sms');
+                  setShowCreateDropdown(false);
+                }}
+                className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-indigo-50 transition-colors"
+              >
+                <div className="p-2 rounded-lg bg-indigo-500 text-white">
+                  <MessageSquare size={20} />
+                </div>
+                <div className="flex-1 text-left">
+                  <p className="font-medium text-gray-900">SMS Centre</p>
+                  <p className="text-sm text-gray-600">Send messages to customers</p>
+                </div>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </header>
   );

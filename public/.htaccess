@@ -1,7 +1,7 @@
 RewriteEngine On
 
-# Handle API proxy requests
-RewriteRule ^api/green-api-proxy/?$ api/green-api-proxy.php [L,QSA]
+# Handle API proxy requests with path parameters
+RewriteRule ^api/green-api-proxy\.php/(.*)$ api/green-api-proxy.php [L,QSA]
 
 # Handle other API routes
 RewriteRule ^api/(.*)$ api/$1.php [L,QSA]

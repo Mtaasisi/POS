@@ -20,7 +20,6 @@ interface VariantProductSearchProps {
 
 interface FilterState {
   category: string;
-  brand: string;
   stockStatus: 'all' | 'in-stock' | 'low-stock' | 'out-of-stock';
   priceRange: 'all' | 'low' | 'medium' | 'high';
   hasVariants: 'all' | 'yes' | 'no';
@@ -40,7 +39,6 @@ const VariantProductSearch: React.FC<VariantProductSearchProps> = ({
   const [showFiltersPanel, setShowFiltersPanel] = useState(false);
   const [filters, setFilters] = useState<FilterState>({
     category: '',
-    brand: '',
     stockStatus: 'all',
     priceRange: 'all',
     hasVariants: 'all'
@@ -68,7 +66,6 @@ const VariantProductSearch: React.FC<VariantProductSearchProps> = ({
   const clearFilters = () => {
     setFilters({
       category: '',
-      brand: '',
       stockStatus: 'all',
       priceRange: 'all',
       hasVariants: 'all'
@@ -78,8 +75,7 @@ const VariantProductSearch: React.FC<VariantProductSearchProps> = ({
   // Get unique categories
   const categories = Array.from(new Set(products.map(p => p.categoryName).filter(Boolean)));
 
-  // Get unique brands
-  const brands = Array.from(new Set(products.map(p => p.brandName).filter(Boolean)));
+
 
   // Filter products based on search and filters
   const filteredProducts = products.filter(product => {
@@ -105,10 +101,7 @@ const VariantProductSearch: React.FC<VariantProductSearchProps> = ({
       return false;
     }
 
-    // Brand filter
-    if (filters.brand && product.brandName !== filters.brand) {
-      return false;
-    }
+
 
     // Stock status filter
     if (filters.stockStatus !== 'all') {
@@ -216,20 +209,7 @@ const VariantProductSearch: React.FC<VariantProductSearchProps> = ({
               </select>
             </div>
 
-            {/* Brand Filter */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Brand</label>
-              <select
-                value={filters.brand}
-                onChange={(e) => handleFilterChange('brand', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="">All Brands</option>
-                {brands.map(brand => (
-                  <option key={brand} value={brand}>{brand}</option>
-                ))}
-              </select>
-            </div>
+
 
             {/* Stock Status Filter */}
             <div>
@@ -340,7 +320,7 @@ const VariantProductSearch: React.FC<VariantProductSearchProps> = ({
               onViewDetails={onViewDetails}
               showStockInfo={true}
               showCategory={true}
-              showBrand={true}
+              
             />
           ))}
         </div>

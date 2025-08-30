@@ -41,15 +41,6 @@ const AdminManagementPage: React.FC = () => {
       category: 'inventory'
     },
     {
-      id: 'brand-management',
-      title: 'Brand Management',
-      description: 'Manage product brands and manufacturers',
-      icon: <Building size={24} />,
-      path: '/brand-management',
-      color: 'from-blue-500 to-blue-600',
-      category: 'inventory'
-    },
-    {
       id: 'category-management',
       title: 'Category Management',
       description: 'Organize products into categories',
@@ -284,8 +275,8 @@ const AdminManagementPage: React.FC = () => {
       case 'inventory':
         return {
           title: 'Inventory Management Tools',
-          description: 'Comprehensive tools for managing product inventory, brands, categories, and procurement.',
-          features: ['Brand & Category Management', 'Purchase Order Processing', 'Spare Parts Inventory', 'Supplier Management'],
+          description: 'Comprehensive tools for managing product inventory, categories, and procurement.',
+                      features: ['Category Management', 'Purchase Order Processing', 'Spare Parts Inventory', 'Supplier Management'],
           icon: <Package size={24} />
         };
       case 'system':
@@ -368,7 +359,7 @@ const AdminManagementPage: React.FC = () => {
             </div>
             <h3 className="font-semibold text-gray-900 mb-1">Inventory</h3>
             <p className="text-sm text-gray-600">4 tools</p>
-            <p className="text-xs text-gray-500 mt-1">Brands, Categories, Orders, Parts</p>
+            <p className="text-xs text-gray-500 mt-1">Categories, Orders, Parts</p>
           </div>
           
           <div className="text-center p-4 bg-white rounded-xl shadow-sm border border-gray-100">

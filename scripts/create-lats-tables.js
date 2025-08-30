@@ -45,20 +45,7 @@ async function createLatsTables() {
           );
         `
       },
-      {
-        name: 'lats_brands',
-        sql: `
-          CREATE TABLE IF NOT EXISTS lats_brands (
-            id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-            name TEXT NOT NULL UNIQUE,
-            logo TEXT,
-            website TEXT,
-            description TEXT,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-          );
-        `
-      },
+
       {
         name: 'lats_suppliers',
         sql: `
@@ -84,7 +71,6 @@ async function createLatsTables() {
             name TEXT NOT NULL,
             description TEXT,
             category_id UUID REFERENCES lats_categories(id) ON DELETE SET NULL,
-            brand_id UUID REFERENCES lats_brands(id) ON DELETE SET NULL,
             supplier_id UUID REFERENCES lats_suppliers(id) ON DELETE SET NULL,
             images TEXT[] DEFAULT '{}',
             tags TEXT[] DEFAULT '{}',

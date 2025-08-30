@@ -5,10 +5,8 @@ import GlassButton from '../../shared/components/ui/GlassButton';
 import { SimpleBackButton as BackButton } from '../../shared/components/ui/SimpleBackButton';
 import { toast } from '../../../lib/toastUtils';
 import { 
-  ArrowLeft, 
   MessageCircle, 
   Settings, 
-  Users, 
   BarChart3, 
   Send, 
   Plus, 
@@ -41,21 +39,35 @@ import Modal from '../../shared/components/ui/Modal';
 // Types
 interface GreenApiInstance {
   id: string;
+  user_id?: string;
   instance_id: string;
-  green_api_instance_id: string;
-  green_api_token: string;
-  api_token?: string;
+  api_token: string;
+  instance_name?: string;
+  description?: string;
   green_api_host: string;
-  phone_number: string;
-  status: 'connected' | 'disconnected' | 'connecting' | 'error';
+  green_api_url?: string;
+  state_instance: string;
+  status: string;
+  phone_number?: string;
+  wid?: string;
+  country_instance?: string;
+  type_account?: string;
+  is_active: boolean;
+  last_connected_at?: string;
+  last_activity_at?: string;
+  profile_name?: string;
+  profile_picture_url?: string;
+  created_at: string;
+  updated_at: string;
+  // Legacy fields for backward compatibility
+  green_api_instance_id?: string;
+  green_api_token?: string;
   qr_code?: string;
   webhook_url?: string;
   webhook_secret?: string;
-  is_green_api: boolean;
+  is_green_api?: boolean;
   last_connection_check?: string;
   connection_error?: string;
-  created_at: string;
-  updated_at: string;
 }
 
 interface GreenApiMessage {
@@ -129,7 +141,7 @@ const GreenApiManagementPage: React.FC = () => {
   
   // Bulk operations
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
-  const [bulkAction, setBulkAction] = useState<string>('');
+  const [_bulkAction, _setBulkAction] = useState<string>('');
   
   // Analytics data
   const [analyticsData, setAnalyticsData] = useState<any>(null);
@@ -357,7 +369,7 @@ const GreenApiManagementPage: React.FC = () => {
     setLoading(true);
     try {
       // Check authentication status
-      const { data: { user } } = await supabase!.auth.getUser();
+      const { data: { user: _user } } = await supabase!.auth.getUser();
       
       // Load all instances (not just Green API ones)
       const { data: instancesData, error: instancesError } = await supabase!
@@ -1708,7 +1720,7 @@ const CampaignsTab: React.FC<{
 };
 
 // TestMessagesTab Component
-const TestMessagesTab: React.FC<{
+const _TestMessagesTab: React.FC<{
   instances: GreenApiInstance[];
   loading: boolean;
 }> = ({ instances, loading }) => {
@@ -2067,55 +2079,45 @@ const TestMessagesTab: React.FC<{
           body: JSON.stringify(filePayload)
         });
       } else if (messageType === 'interactive-buttons') {
-        // Handle interactive buttons using SendInteractiveButtons endpoint
-        const sendInteractiveButtonsUrl = `${directApiUrl}/waInstance${instance.instance_id}/sendInteractiveButtons/${directApiToken}`;
+        // Handle interactive buttons using SendButtons endpoint (updated)
+        const sendButtonsUrl = `${directApiUrl}/waInstance${instance.instance_id}/sendButtons/${directApiToken}`;
         
         console.log('📤 Sending interactive buttons...', {
           instanceId: instance.instance_id,
           recipient: recipientNumber,
           buttonsCount: buttons.length,
-          header: buttonHeader,
-          body: buttonBody,
-          footer: buttonFooter
+          body: buttonBody
         });
         
-        console.log('🔗 SendInteractiveButtons URL:', sendInteractiveButtonsUrl);
+        console.log('🔗 SendButtons URL:', sendButtonsUrl);
         
-        // Prepare payload according to Green API SendInteractiveButtons documentation
+        // Prepare payload according to Green API SendButtons documentation
+        // Simplified structure - only reply buttons are reliably supported
         const buttonsPayload: any = {
           chatId: `${recipientNumber}@c.us`,
-          body: buttonBody
+          message: buttonBody,  // Changed from 'body' to 'message'
+          buttons: buttons
+            .filter(button => button.type === 'reply')  // Only include reply buttons
+            .map((button, _index) => ({
+              buttonId: button.buttonId,
+              buttonText: button.buttonText
+            }))
         };
         
+        // Add header and footer as part of the message if present
+        let fullMessage = '';
         if (buttonHeader) {
-          buttonsPayload.header = buttonHeader;
+          fullMessage += `*${buttonHeader}*\n\n`;
         }
-        
+        fullMessage += buttonBody;
         if (buttonFooter) {
-          buttonsPayload.footer = buttonFooter;
+          fullMessage += `\n\n_${buttonFooter}_`;
         }
+        buttonsPayload.message = fullMessage;
         
-        buttonsPayload.buttons = buttons.map((button, index) => {
-          const buttonPayload: any = {
-            type: button.type,
-            buttonId: button.buttonId,
-            buttonText: button.buttonText
-          };
-          
-          if (button.type === 'copy' && button.copyCode) {
-            buttonPayload.copyCode = button.copyCode;
-          } else if (button.type === 'call' && button.phoneNumber) {
-            buttonPayload.phoneNumber = button.phoneNumber;
-          } else if (button.type === 'url' && button.url) {
-            buttonPayload.url = button.url;
-          }
-          
-          return buttonPayload;
-        });
+        console.log('📦 Buttons payload (updated):', JSON.stringify(buttonsPayload, null, 2));
         
-        console.log('📦 Buttons payload:', JSON.stringify(buttonsPayload, null, 2));
-        
-        response = await fetch(sendInteractiveButtonsUrl, {
+        response = await fetch(sendButtonsUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

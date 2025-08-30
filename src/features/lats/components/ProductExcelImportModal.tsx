@@ -16,7 +16,6 @@ interface ImportedProduct {
   sku: string;
   barcode?: string;
   categoryId: string;
-  brandId?: string;
   supplierId?: string;
   condition: string;
   internalNotes?: string;
@@ -88,12 +87,13 @@ const ProductExcelImportModal: React.FC<ProductExcelImportModalProps> = ({
       'used': 'used',
       'refurbished': 'refurbished',
       'refurb': 'refurbished',
-      'damaged': 'damaged',
-      'broken': 'damaged',
-      'good': 'good',
-      'excellent': 'excellent',
-      'fair': 'fair',
-      'poor': 'poor'
+      'like-new': 'new',
+      'good': 'used',
+      'excellent': 'new',
+      'fair': 'used',
+      'poor': 'used',
+      'damaged': 'used',
+      'broken': 'used'
     };
     
     return conditionMap[lowerCondition] || 'new';
@@ -157,7 +157,6 @@ const ProductExcelImportModal: React.FC<ProductExcelImportModalProps> = ({
           sku: 'IPH14PRO-128GB',
           barcode: '1234567890123',
           categoryId: 'smartphones',
-          brandId: 'apple',
           supplierId: 'supplier1',
           condition: 'new',
           internalNotes: 'Latest model',
@@ -173,7 +172,6 @@ const ProductExcelImportModal: React.FC<ProductExcelImportModalProps> = ({
           sku: 'SAMS23-256GB',
           barcode: '1234567890124',
           categoryId: 'smartphones',
-          brandId: 'samsung',
           supplierId: 'supplier2',
           condition: 'new',
           internalNotes: 'Android flagship',
@@ -229,7 +227,6 @@ const ProductExcelImportModal: React.FC<ProductExcelImportModalProps> = ({
             sku: product.sku,
             barcode: product.barcode,
             categoryId: product.categoryId,
-            brandId: product.brandId,
             supplierId: product.supplierId,
             condition: product.condition,
             internalNotes: product.internalNotes,
@@ -300,8 +297,8 @@ const ProductExcelImportModal: React.FC<ProductExcelImportModalProps> = ({
   // Function to download template
   const downloadTemplate = () => {
     const template = [
-      ['Name', 'SKU', 'Barcode', 'Category ID', 'Brand ID', 'Supplier ID', 'Condition', 'Internal Notes', 'Price', 'Cost Price', 'Stock Quantity', 'Min Stock Level', 'Short Description', 'Is Active'],
-      ['iPhone 14 Pro', 'IPH14PRO-128GB', '1234567890123', 'smartphones', 'apple', 'supplier1', 'new', 'Latest model', '1200000', '1000000', '10', '2', 'Latest iPhone with advanced features', 'true']
+      ['Name', 'SKU', 'Barcode', 'Category ID', 'Supplier ID', 'Condition', 'Internal Notes', 'Price', 'Cost Price', 'Stock Quantity', 'Min Stock Level', 'Short Description', 'Is Active'],
+      ['iPhone 14 Pro', 'IPH14PRO-128GB', '1234567890123', 'smartphones', 'supplier1', 'new', 'Latest model', '1200000', '1000000', '10', '2', 'Latest iPhone with advanced features', 'true']
     ];
     const csvContent = template.map(row => row.join(',')).join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -370,7 +367,7 @@ const ProductExcelImportModal: React.FC<ProductExcelImportModalProps> = ({
                   <ul className="text-sm text-blue-800 space-y-1">
                     <li>• Required fields: Name, SKU, Category ID, Price, Cost Price</li>
                     <li>• SKU must be unique and at least 3 characters long</li>
-                    <li>• Condition can be: new, used, refurbished, damaged, good, excellent, fair, poor</li>
+                    <li>• Condition can be: new, used, refurbished</li>
                     <li>• Prices should be in Tanzanian Shillings (TZS)</li>
                     <li>• Stock quantities and minimum levels must be non-negative</li>
                   </ul>

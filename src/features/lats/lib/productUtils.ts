@@ -1,173 +1,289 @@
-import { LatsProduct } from '@/features/lats/types/inventory';
+// Product Utility Functions for LATS Inventory System
+
+import { generateSKU } from './skuUtils';
+import { ProductSearchResult, ProductSearchVariant } from '../types/pos';
+import { format } from './format';
+
+export interface ProductData {
+  name: string;
+  sku: string;
+  description?: string;
+  specification?: string;
+  categoryId: string;
+  supplierId?: string;
+  condition: string;
+  price: number;
+  costPrice: number;
+  stockQuantity: number;
+  minStockLevel: number;
+  storageRoomId?: string;
+  shelfId?: string;
+  images: any[];
+  metadata: Record<string, any>;
+  variants: any[];
+}
+
+export interface ProductVariant {
+  name: string;
+  sku: string;
+  costPrice: number;
+  price: number;
+  stockQuantity: number;
+  minStockLevel: number;
+  specification?: string;
+  attributes?: Record<string, any>;
+}
 
 /**
- * Check if a product has only one variant (single product)
- * @param product - The product to check
- * @returns true if the product has only one variant
+ * Duplicate a product with new SKUs
  */
-export function isSingleVariantProduct(product: LatsProduct): boolean {
+export const duplicateProduct = (
+  productData: ProductData,
+  variants: ProductVariant[]
+): { productData: ProductData; variants: ProductVariant[] } => {
+  // Generate new SKU for main product
+  const newSku = generateSKU();
+  
+  // Duplicate product data
+  const duplicatedProductData: ProductData = {
+    ...productData,
+    sku: newSku,
+    name: `${productData.name} (Copy)`,
+    id: undefined // Remove any existing ID
+  };
+
+  // Duplicate variants with new SKUs
+  const duplicatedVariants: ProductVariant[] = variants.map((variant, index) => ({
+    ...variant,
+    sku: `${generateSKU()}-V${index + 1}`,
+    name: `${variant.name} (Copy)`
+  }));
+
+  return {
+    productData: duplicatedProductData,
+    variants: duplicatedVariants
+  };
+};
+
+/**
+ * Export product data as JSON
+ */
+export const exportProductData = (productData: ProductData, variants: ProductVariant[]): string => {
+  const exportData = {
+    product: productData,
+    variants: variants,
+    exportedAt: new Date().toISOString(),
+    version: '1.0'
+  };
+  
+  return JSON.stringify(exportData, null, 2);
+};
+
+/**
+ * Generate product report data
+ */
+export const generateProductReport = (
+  productData: ProductData,
+  variants: ProductVariant[]
+): string => {
+  const totalValue = variants.length > 0 
+    ? variants.reduce((sum, v) => sum + (v.stockQuantity * v.price), 0)
+    : productData.stockQuantity * productData.price;
+
+  const totalCost = variants.length > 0
+    ? variants.reduce((sum, v) => sum + (v.stockQuantity * v.costPrice), 0)
+    : productData.stockQuantity * productData.costPrice;
+
+  const profit = totalValue - totalCost;
+  const profitMargin = totalValue > 0 ? (profit / totalValue) * 100 : 0;
+
+  return `
+PRODUCT REPORT
+==============
+
+Product Information:
+- Name: ${productData.name}
+- SKU: ${productData.sku}
+- Category: ${productData.categoryId}
+- Condition: ${productData.condition}
+- Description: ${productData.description || 'N/A'}
+
+Inventory Summary:
+- Total Quantity: ${productData.stockQuantity}
+- Total Value: $${totalValue.toFixed(2)}
+- Total Cost: $${totalCost.toFixed(2)}
+- Profit: $${profit.toFixed(2)}
+- Profit Margin: ${profitMargin.toFixed(1)}%
+
+Variants: ${variants.length}
+${variants.map((v, i) => `
+Variant ${i + 1}:
+- Name: ${v.name}
+- SKU: ${v.sku}
+- Quantity: ${v.stockQuantity}
+- Price: $${v.price}
+- Cost: $${v.costPrice}
+`).join('')}
+
+Generated: ${new Date().toLocaleString()}
+  `.trim();
+};
+
+/**
+ * Validate product data before submission
+ */
+export const validateProductData = (productData: ProductData): { isValid: boolean; errors: string[] } => {
+  const errors: string[] = [];
+
+  if (!productData.name?.trim()) {
+    errors.push('Product name is required');
+  }
+
+  if (!productData.sku?.trim()) {
+    errors.push('SKU is required');
+  }
+
+  if (!productData.categoryId) {
+    errors.push('Category is required');
+  }
+
+  if (productData.price < 0) {
+    errors.push('Price cannot be negative');
+  }
+
+  if (productData.costPrice < 0) {
+    errors.push('Cost price cannot be negative');
+  }
+
+  if (productData.stockQuantity < 0) {
+    errors.push('Stock quantity cannot be negative');
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors
+  };
+};
+
+/**
+ * Format product data for display
+ */
+export const formatProductData = (productData: ProductData): Record<string, any> => {
+  return {
+    ...productData,
+    name: productData.name?.trim(),
+    sku: productData.sku?.toUpperCase().trim(),
+    description: productData.description?.trim(),
+    price: Number(productData.price) || 0,
+    costPrice: Number(productData.costPrice) || 0,
+    stockQuantity: Number(productData.stockQuantity) || 0,
+    minStockLevel: Number(productData.minStockLevel) || 0
+  };
+};
+
+// ===========================================
+// POS Product Utility Functions
+// ===========================================
+
+/**
+ * Get the primary variant for a product (first active variant or first variant)
+ */
+export const getPrimaryVariant = (product: ProductSearchResult): ProductSearchVariant | null => {
+  if (!product.variants || product.variants.length === 0) {
+    return null;
+  }
+  
+  // Return first variant (ProductSearchVariant doesn't have isActive property)
+  return product.variants[0];
+};
+
+/**
+ * Check if a product has only a single variant
+ */
+export const isSingleVariantProduct = (product: ProductSearchResult): boolean => {
   return product.variants && product.variants.length === 1;
-}
+};
 
 /**
  * Check if a product has multiple variants
- * @param product - The product to check
- * @returns true if the product has multiple variants
  */
-export function isMultiVariantProduct(product: LatsProduct): boolean {
+export const isMultiVariantProduct = (product: ProductSearchResult): boolean => {
   return product.variants && product.variants.length > 1;
-}
+};
 
 /**
- * Get the primary variant for a product
- * For single-variant products, returns the only variant
- * For multi-variant products, returns the first variant
- * @param product - The product to get the primary variant for
- * @returns The primary variant or null if no variants exist
+ * Get display price for a product (single price or price range)
  */
-export function getPrimaryVariant(product: LatsProduct) {
-  if (!product.variants || product.variants.length === 0) {
-    return null;
-  }
-  return product.variants[0];
-}
-
-/**
- * Get the display price for a product
- * For single-variant products, shows the single price
- * For multi-variant products, shows price range
- * @param product - The product to get the price for
- * @returns Formatted price string
- */
-export function getProductDisplayPrice(product: LatsProduct): string {
+export const getProductDisplayPrice = (product: ProductSearchResult): string => {
   if (!product.variants || product.variants.length === 0) {
     return 'No price set';
   }
-
-  if (isSingleVariantProduct(product)) {
-    const variant = product.variants[0];
-    return variant.sellingPrice ? `$${variant.sellingPrice.toFixed(2)}` : 'No price set';
-  }
-
-  // Multi-variant product - show price range
+  
   const prices = product.variants
     .map(v => v.sellingPrice)
-    .filter(p => p > 0)
-    .sort((a, b) => a - b);
-
+    .filter(p => p > 0);
+    
   if (prices.length === 0) {
     return 'No price set';
   }
-
-  const minPrice = prices[0];
-  const maxPrice = prices[prices.length - 1];
-
+  
+  const minPrice = Math.min(...prices);
+  const maxPrice = Math.max(...prices);
+  
   if (minPrice === maxPrice) {
-    return `$${minPrice.toFixed(2)}`;
+    return format.money(minPrice);
   }
-
-  return `$${minPrice.toFixed(2)} - $${maxPrice.toFixed(2)}`;
-}
+  
+  return `${format.money(minPrice)} - ${format.money(maxPrice)}`;
+};
 
 /**
- * Get the total stock for a product
- * @param product - The product to get stock for
- * @returns Total stock across all variants
+ * Get total stock across all variants
  */
-export function getProductTotalStock(product: LatsProduct): number {
+export const getProductTotalStock = (product: ProductSearchResult): number => {
   if (!product.variants || product.variants.length === 0) {
     return 0;
   }
-
-  return product.variants.reduce((total, variant) => total + (variant.quantity || 0), 0);
-}
-
-/**
- * Check if a product is in stock
- * @param product - The product to check
- * @returns true if the product has stock available
- */
-export function isProductInStock(product: LatsProduct): boolean {
-  return getProductTotalStock(product) > 0;
-}
+  
+  return product.variants.reduce((total, variant) => total + variant.quantity, 0);
+};
 
 /**
- * Get the stock status for a product
- * @param product - The product to check
- * @returns 'in-stock', 'low-stock', or 'out-of-stock'
+ * Get stock status for a product
  */
-export function getProductStockStatus(product: LatsProduct): 'in-stock' | 'low-stock' | 'out-of-stock' {
+export const getProductStockStatus = (product: ProductSearchResult): 'out-of-stock' | 'low' | 'normal' => {
   const totalStock = getProductTotalStock(product);
   
-  if (totalStock === 0) {
+  if (totalStock <= 0) {
     return 'out-of-stock';
   }
   
-  if (totalStock <= 5) {
-    return 'low-stock';
+  // Check if any variant is low stock (assuming minQuantity of 5 as default)
+  const hasLowStock = product.variants.some(v => v.quantity <= 5);
+  
+  if (hasLowStock) {
+    return 'low';
   }
   
-  return 'in-stock';
-}
+  return 'normal';
+};
 
 /**
- * Get the best variant for a product (for single-variant products)
- * @param product - The product to get the best variant for
- * @returns The best variant or null
+ * Get the best variant (highest stock, or primary variant as fallback)
  */
-export function getBestVariant(product: LatsProduct) {
+export const getBestVariant = (product: ProductSearchResult): ProductSearchVariant | null => {
   if (!product.variants || product.variants.length === 0) {
     return null;
   }
-
-  if (isSingleVariantProduct(product)) {
-    return product.variants[0];
-  }
-
-  // For multi-variant products, return the variant with the most stock
-  return product.variants.reduce((best, current) => {
-    const bestStock = best.quantity || 0;
-    const currentStock = current.quantity || 0;
-    return currentStock > bestStock ? current : best;
-  });
-}
-
-/**
- * Format product name with variant information
- * @param product - The product to format
- * @param variant - Optional specific variant
- * @returns Formatted product name
- */
-export function formatProductName(product: LatsProduct, variant?: any): string {
-  if (!variant || isSingleVariantProduct(product)) {
-    return product.name;
-  }
-
-  return `${product.name} - ${variant.name}`;
-}
-
-/**
- * Get product attributes for display
- * @param product - The product to get attributes for
- * @returns Array of attribute strings
- */
-export function getProductAttributes(product: LatsProduct): string[] {
-  if (!product.variants || product.variants.length === 0) {
-    return [];
-  }
-
-  const attributes: string[] = [];
   
-  product.variants.forEach(variant => {
-    if (variant.attributes) {
-      Object.entries(variant.attributes).forEach(([key, value]) => {
-        const attrString = `${key}: ${value}`;
-        if (!attributes.includes(attrString)) {
-          attributes.push(attrString);
-        }
-      });
-    }
-  });
-
-  return attributes;
-}
+  // Find variant with highest stock
+  const sortedByStock = [...product.variants].sort((a, b) => b.quantity - a.quantity);
+  const highestStockVariant = sortedByStock[0];
+  
+  // Return highest stock variant if it has stock, otherwise return primary variant
+  if (highestStockVariant && highestStockVariant.quantity > 0) {
+    return highestStockVariant;
+  }
+  
+  return getPrimaryVariant(product);
+};

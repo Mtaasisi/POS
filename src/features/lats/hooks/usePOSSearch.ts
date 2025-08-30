@@ -19,7 +19,7 @@ const useDebounce = (value: string, delay: number) => {
 };
 
 export const usePOSSearch = () => {
-  const { products: dbProducts, categories, brands, getSoldQuantity } = useInventoryStore();
+  const { products: dbProducts, categories, getSoldQuantity } = useInventoryStore();
   
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -70,10 +70,7 @@ export const usePOSSearch = () => {
       filtered = filtered.filter(product => product.categoryId === selectedCategory);
     }
     
-    // Brand filter
-    if (selectedBrand) {
-      filtered = filtered.filter(product => product.brandId === selectedBrand);
-    }
+
     
     // Price range filter
     if (priceRange.min || priceRange.max) {

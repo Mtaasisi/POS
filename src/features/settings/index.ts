@@ -1,5 +1,5 @@
 // Settings feature exports
-export * from './pages/BrandManagementPage';
+
 export * from './pages/CategoryManagementPage';
 export * from './pages/StoreLocationManagementPage';
 

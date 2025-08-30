@@ -201,7 +201,7 @@ class EmailService {
         break;
     }
 
-    const { data, error } = await query;
+    const { data, error } = await query.limit(50000); // Fetch up to 50,000 customers instead of default 1000
     if (error) throw error;
     return data || [];
   }

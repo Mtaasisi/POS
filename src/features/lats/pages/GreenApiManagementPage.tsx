@@ -39,21 +39,35 @@ import Modal from '../../shared/components/ui/Modal';
 // Types
 interface GreenApiInstance {
   id: string;
+  user_id?: string;
   instance_id: string;
-  green_api_instance_id: string;
-  green_api_token: string;
-  api_token?: string;
+  api_token: string;
+  instance_name?: string;
+  description?: string;
   green_api_host: string;
-  phone_number: string;
-  status: 'connected' | 'disconnected' | 'connecting' | 'error';
+  green_api_url?: string;
+  state_instance: string;
+  status: string;
+  phone_number?: string;
+  wid?: string;
+  country_instance?: string;
+  type_account?: string;
+  is_active: boolean;
+  last_connected_at?: string;
+  last_activity_at?: string;
+  profile_name?: string;
+  profile_picture_url?: string;
+  created_at: string;
+  updated_at: string;
+  // Legacy fields for backward compatibility
+  green_api_instance_id?: string;
+  green_api_token?: string;
   qr_code?: string;
   webhook_url?: string;
   webhook_secret?: string;
-  is_green_api: boolean;
+  is_green_api?: boolean;
   last_connection_check?: string;
   connection_error?: string;
-  created_at: string;
-  updated_at: string;
 }
 
 interface GreenApiMessage {

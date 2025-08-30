@@ -360,8 +360,7 @@ export const usePOSStore = create<POSState>()(
           // In a real implementation, you would integrate with a payment processor
           console.log('Processing payment:', { amount, methodId, change });
           
-          // Simulate payment processing
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          // Process payment immediately
           
           latsAnalytics.track('payment_processed', { amount, methodId, change });
           
@@ -446,8 +445,7 @@ export const usePOSStore = create<POSState>()(
           // In a real implementation, you would call the provider
           console.log('Refunding sale:', { saleId, items, reason });
           
-          // Simulate refunding
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          // Process refund immediately
           
           // Reload sales
           await get().loadRecentSales();

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ChevronRight, ChevronDown, Folder, FolderOpen, Edit, Trash2, Plus } from 'lucide-react';
-import { Category } from '../../../types/inventory';
+import { Category } from '../../../../lib/categoryApi';
 
 interface CategoryTreeProps {
   categories: Category[];
@@ -49,7 +49,7 @@ const CategoryTreeNode: React.FC<CategoryTreeNodeProps> = ({
       {/* Category Row */}
       <div 
         className={`
-          flex items-center gap-2 p-2 rounded-md transition-colors cursor-pointer
+          flex items-center gap-2 p-2 rounded-md transition-colors cursor-pointer group
           ${isSelected 
             ? 'bg-blue-50 border border-blue-200' 
             : 'hover:bg-gray-50 border border-transparent'

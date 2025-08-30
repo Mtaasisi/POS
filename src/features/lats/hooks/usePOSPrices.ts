@@ -16,14 +16,14 @@ export interface UsePOSPricesReturn {
   // Actions
   fetchPrices: (productIds: string[]) => Promise<void>;
   fetchPriceBySKU: (sku: string) => Promise<POSPriceData | null>;
-  fetchPriceByBarcode: (barcode: string) => Promise<POSPriceData | null>;
+
   preloadPrices: (productIds: string[]) => Promise<void>;
   clearCache: () => void;
   
   // Utilities
   getPriceForProduct: (productId: string) => POSPriceData[];
   getPriceBySKU: (sku: string) => POSPriceData | null;
-  getPriceByBarcode: (barcode: string) => POSPriceData | null;
+
   getLowestPrice: (productId: string) => number;
   getHighestPrice: (productId: string) => number;
   getPriceRange: (productId: string) => { min: number; max: number };
@@ -103,35 +103,7 @@ export const usePOSPrices = (): UsePOSPricesReturn => {
     }
   }, []);
 
-  // Fetch price by barcode
-  const fetchPriceByBarcode = useCallback(async (barcode: string): Promise<POSPriceData | null> => {
-    setIsFetching(true);
-    setError(null);
-    
-    try {
-      const priceData = await posPriceService.fetchPriceByBarcode(barcode);
-      if (priceData) {
-        setPrices(prev => {
-          const existingIndex = prev.findIndex(p => p.variantId === priceData.variantId);
-          if (existingIndex >= 0) {
-            // Update existing price
-            const updated = [...prev];
-            updated[existingIndex] = priceData;
-            return updated;
-          } else {
-            // Add new price
-            return [...prev, priceData];
-          }
-        });
-      }
-      return priceData;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch price by barcode');
-      return null;
-    } finally {
-      setIsFetching(false);
-    }
-  }, []);
+
 
   // Preload prices
   const preloadPrices = useCallback(async (productIds: string[]) => {
@@ -174,9 +146,7 @@ export const usePOSPrices = (): UsePOSPricesReturn => {
     return prices.find(p => p.sku === sku) || null;
   }, [prices]);
 
-  const getPriceByBarcode = useCallback((barcode: string): POSPriceData | null => {
-    return prices.find(p => p.barcode === barcode) || null;
-  }, [prices]);
+
 
   const getLowestPrice = useCallback((productId: string): number => {
     const productPrices = priceMap[productId] || [];
@@ -219,14 +189,14 @@ export const usePOSPrices = (): UsePOSPricesReturn => {
     // Actions
     fetchPrices,
     fetchPriceBySKU,
-    fetchPriceByBarcode,
+
     preloadPrices,
     clearCache,
     
     // Utilities
     getPriceForProduct,
     getPriceBySKU,
-    getPriceByBarcode,
+
     getLowestPrice,
     getHighestPrice,
     getPriceRange,

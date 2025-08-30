@@ -5,8 +5,6 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { ArrowLeft, Plus, Edit, Trash2, Search, Filter, X, Save, RotateCcw, Tag, Smartphone, Laptop, Monitor, Headphones, Camera, Gamepad2, Printer, Watch, Speaker, Keyboard, Mouse, Router, Server, HardDrive, Package, Eye, MessageCircle, Users, Star, UserPlus } from 'lucide-react';
 import { 
-  getCategories, 
-  getActiveCategories, 
   createCategory, 
   updateCategory, 
   deleteCategory, 
@@ -15,6 +13,7 @@ import {
   CreateCategoryData,
   UpdateCategoryData
 } from '../../../lib/categoryApi';
+import { useOptimizedCategories } from '../../lats/hooks/useOptimizedCategories';
 import { useAuth } from '../../../context/AuthContext';
 
 interface CategoryFormData {
@@ -26,14 +25,17 @@ interface CategoryFormData {
 const CategoryManagementPage: React.FC = () => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
-  const [categories, setCategories] = useState<Category[]>([]);
   const [filteredCategories, setFilteredCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [showCategoryForm, setShowCategoryForm] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
-  // Note: Categories don't have is_active column, so we don't need showDeletedCategories
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Use optimized categories hook
+  const { categories, loading, error, refetch } = useOptimizedCategories({
+    activeOnly: true,
+    autoFetch: true
+  });
 
   // Color options for category selection
   const colorOptions = [
@@ -67,26 +69,18 @@ const CategoryManagementPage: React.FC = () => {
       hostname: window.location.hostname,
       url: window.location.href
     });
-    
-    fetchCategories();
   }, []);
 
   useEffect(() => {
     filterCategories();
   }, [categories, searchQuery]);
 
-  const fetchCategories = async () => {
-    try {
-      setLoading(true);
-      const data = await getActiveCategories();
-      setCategories(data);
-    } catch (error: any) {
-      console.error('Error fetching categories:', error);
-      toast.error('Failed to fetch categories: ' + (error.message || 'Unknown error'));
-    } finally {
-      setLoading(false);
+  // Show error toast if there's an error
+  useEffect(() => {
+    if (error) {
+      toast.error('Failed to fetch categories: ' + error);
     }
-  };
+  }, [error]);
 
   const filterCategories = () => {
     let filtered = categories;
@@ -116,7 +110,7 @@ const CategoryManagementPage: React.FC = () => {
         await createCategory(categoryData);
         toast.success('Category created successfully!');
       }
-      await fetchCategories();
+      await refetch(); // Use optimized refetch
     } catch (error: any) {
       toast.error(error.message || 'Failed to save category');
       throw error;
@@ -130,7 +124,7 @@ const CategoryManagementPage: React.FC = () => {
       try {
         await deleteCategory(category.id);
         toast.success('Category deleted successfully!');
-        await fetchCategories();
+        await refetch(); // Use optimized refetch
       } catch (error: any) {
         toast.error('Failed to delete category');
       }

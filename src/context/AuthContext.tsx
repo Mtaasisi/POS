@@ -114,7 +114,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const inventoryPromises = [
           inventoryStore.loadProducts({ page: 1, limit: 50 }),
           inventoryStore.loadCategories(),
-          inventoryStore.loadBrands(),
           inventoryStore.loadSuppliers()
         ];
         
