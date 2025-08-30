@@ -8,11 +8,14 @@ import LATSBreadcrumb from '../components/ui/LATSBreadcrumb';
 import { 
   Package, Edit, Save, X, AlertCircle, 
   FileText, ShoppingCart, Clock, CheckSquare, XSquare, Send, Truck,
-  DollarSign, Calendar, Printer, Download, ArrowLeft, ArrowRight
+  DollarSign, Calendar, Printer, Download, ArrowLeft, ArrowRight, 
+  MapPin, Users, Building
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useInventoryStore } from '../stores/useInventoryStore';
 import { PurchaseOrder } from '../types/inventory';
+import ShippingTracker from '../components/shipping/ShippingTracker';
+import ShippingAssignmentModal from '../components/shipping/ShippingAssignmentModal';
 
 const PurchaseOrderDetailPage: React.FC = () => {
   const { currentUser } = useAuth();
@@ -34,6 +37,68 @@ const PurchaseOrderDetailPage: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [isLoadingOrder, setIsLoadingOrder] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  
+  // Shipping state
+  const [showShippingModal, setShowShippingModal] = useState(false);
+  const [shippingAgents] = useState([
+    {
+      id: 'agent-1',
+      name: 'John Mwalimu',
+      email: 'john@dhl.co.tz',
+      phone: '+255 700 123 456',
+      company: 'DHL Tanzania',
+      isActive: true,
+      managerId: 'manager-1',
+      createdAt: '',
+      updatedAt: ''
+    }
+  ]);
+  const [shippingManagers] = useState([
+    {
+      id: 'manager-1',
+      name: 'Sarah Kimaro',
+      email: 'sarah.kimaro@dhl.co.tz',
+      phone: '+255 700 987 654',
+      department: 'Logistics Operations',
+      agents: ['agent-1'],
+      isActive: true,
+      createdAt: '',
+      updatedAt: ''
+    }
+  ]);
+  const [shippingCarriers] = useState([
+    {
+      id: 'dhl-1',
+      name: 'DHL Tanzania',
+      code: 'DHL',
+      trackingUrl: 'https://www.dhl.com/tz-en/home/tracking.html?tracking-id={tracking_number}',
+      isActive: true,
+      supportedServices: ['Express', 'Standard', 'Same Day'],
+      contactInfo: { 
+        phone: '+255 22 211 8000', 
+        email: 'info@dhl.co.tz',
+        website: 'https://www.dhl.com/tz-en'
+      },
+      createdAt: '',
+      updatedAt: ''
+    }
+  ]);
+  const [shippingSettings] = useState({
+    id: 'settings-1',
+    autoAssignAgents: true,
+    defaultCarrierId: 'dhl-1',
+    enableTracking: true,
+    enableNotifications: true,
+    notificationChannels: ['email', 'sms'] as ('email' | 'sms' | 'whatsapp')[],
+    trackingUpdateInterval: 60,
+    defaultShippingCost: 5000,
+    autoUpdateStatus: true,
+    requireSignature: false,
+    enableInsurance: false,
+    maxShippingCost: 50000,
+    createdAt: '',
+    updatedAt: ''
+  });
 
   // Load purchase order on component mount
   useEffect(() => {
@@ -109,10 +174,58 @@ const PurchaseOrderDetailPage: React.FC = () => {
     }
   };
 
+  const handleAssignShipping = async (shippingData: any) => {
+    // Simulate shipping assignment
+    const mockShippingInfo = {
+      id: 'shipping-' + Date.now(),
+      purchaseOrderId: purchaseOrder!.id,
+      carrierId: shippingData.carrierId,
+      trackingNumber: shippingData.trackingNumber,
+      agentId: shippingData.agentId,
+      managerId: shippingData.managerId,
+      status: 'pending' as const,
+      estimatedDelivery: shippingData.estimatedDelivery,
+      cost: shippingData.cost,
+      notes: shippingData.notes,
+      requireSignature: shippingData.requireSignature,
+      enableInsurance: shippingData.enableInsurance,
+      trackingEvents: [
+        {
+          id: 'event-1',
+          shippingId: 'shipping-' + Date.now(),
+          status: 'pending',
+          description: 'Shipping assignment created',
+          location: 'Origin',
+          timestamp: new Date().toISOString(),
+          notes: 'Awaiting carrier pickup'
+        }
+      ],
+      carrier: shippingCarriers.find(c => c.id === shippingData.carrierId),
+      agent: shippingAgents.find(a => a.id === shippingData.agentId),
+      manager: shippingManagers.find(m => m.id === shippingData.managerId),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    // Update purchase order with shipping info
+    setPurchaseOrder(prev => prev ? {
+      ...prev,
+      status: 'shipped' as any,
+      shipping: mockShippingInfo
+    } : null);
+
+    setShowShippingModal(false);
+    toast.success('Shipping assigned successfully');
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'draft': return 'text-yellow-600 bg-yellow-100';
       case 'sent': return 'text-blue-600 bg-blue-100';
+      case 'confirmed': return 'text-indigo-600 bg-indigo-100';
+      case 'shipped': return 'text-purple-600 bg-purple-100';
+      case 'in_transit': return 'text-orange-600 bg-orange-100';
+      case 'delivered': return 'text-emerald-600 bg-emerald-100';
       case 'received': return 'text-green-600 bg-green-100';
       case 'cancelled': return 'text-red-600 bg-red-100';
       default: return 'text-gray-600 bg-gray-100';
@@ -123,7 +236,11 @@ const PurchaseOrderDetailPage: React.FC = () => {
     switch (status) {
       case 'draft': return <FileText className="w-4 h-4" />;
       case 'sent': return <Send className="w-4 h-4" />;
-      case 'received': return <Truck className="w-4 h-4" />;
+      case 'confirmed': return <CheckSquare className="w-4 h-4" />;
+      case 'shipped': return <Truck className="w-4 h-4" />;
+      case 'in_transit': return <MapPin className="w-4 h-4" />;
+      case 'delivered': return <Package className="w-4 h-4" />;
+      case 'received': return <CheckCircle className="w-4 h-4" />;
       case 'cancelled': return <XSquare className="w-4 h-4" />;
       default: return <Clock className="w-4 h-4" />;
     }
@@ -312,6 +429,23 @@ const PurchaseOrderDetailPage: React.FC = () => {
               </div>
             </GlassCard>
 
+            {/* Shipping Information */}
+            {purchaseOrder.shipping && (
+              <GlassCard>
+                <div className="p-6">
+                  <h2 className="text-xl font-semibold text-gray-900 mb-4">Shipping Information</h2>
+                  <ShippingTracker
+                    shippingInfo={purchaseOrder.shipping}
+                    onRefresh={() => {
+                      // Refresh shipping data
+                      toast.success('Shipping data refreshed');
+                    }}
+                    compact={true}
+                  />
+                </div>
+              </GlassCard>
+            )}
+
             {/* Order Items */}
             <GlassCard>
               <div className="p-6">
@@ -409,12 +543,32 @@ const PurchaseOrderDetailPage: React.FC = () => {
                       )}
                       
                       {purchaseOrder.status === 'sent' && (
+                        <>
+                          <GlassButton
+                            onClick={() => setShowShippingModal(true)}
+                            className="w-full flex items-center justify-center gap-2 bg-purple-500 hover:bg-purple-600 text-white"
+                          >
+                            <Truck className="w-4 h-4" />
+                            Assign Shipping
+                          </GlassButton>
+                          <GlassButton
+                            onClick={handleReceive}
+                            variant="outline"
+                            className="w-full flex items-center justify-center gap-2"
+                          >
+                            <CheckSquare className="w-4 h-4" />
+                            Receive Order
+                          </GlassButton>
+                        </>
+                      )}
+                      
+                      {(purchaseOrder.status === 'shipped' || purchaseOrder.status === 'in_transit' || purchaseOrder.status === 'delivered') && (
                         <GlassButton
-                          onClick={handleReceive}
-                          className="w-full flex items-center justify-center gap-2"
+                          onClick={() => navigate('/lats/shipping')}
+                          className="w-full flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-600 text-white"
                         >
-                          <CheckSquare className="w-4 h-4" />
-                          Receive Order
+                          <MapPin className="w-4 h-4" />
+                          View Shipping Hub
                         </GlassButton>
                       )}
                     </>
@@ -476,6 +630,20 @@ const PurchaseOrderDetailPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Shipping Assignment Modal */}
+      {showShippingModal && purchaseOrder && (
+        <ShippingAssignmentModal
+          isOpen={showShippingModal}
+          onClose={() => setShowShippingModal(false)}
+          purchaseOrder={purchaseOrder}
+          agents={shippingAgents}
+          managers={shippingManagers}
+          carriers={shippingCarriers}
+          settings={shippingSettings}
+          onAssignShipping={handleAssignShipping}
+        />
+      )}
     </div>
   );
 };

@@ -95,7 +95,7 @@ export interface PurchaseOrder {
   id: string;
   orderNumber: string;
   supplierId: string;
-  status: 'draft' | 'sent' | 'confirmed' | 'received' | 'cancelled';
+  status: 'draft' | 'sent' | 'confirmed' | 'shipped' | 'in_transit' | 'delivered' | 'received' | 'cancelled';
   orderDate: string;
   expectedDeliveryDate?: string;
   receivedDate?: string;
@@ -103,6 +103,7 @@ export interface PurchaseOrder {
   notes?: string;
   items: PurchaseOrderItem[];
   supplier?: Supplier;
+  shipping?: ShippingInfo;
   createdAt: string;
   updatedAt: string;
 }
@@ -304,4 +305,156 @@ export interface ProductAnalytics {
   views: number;
   conversionRate: number;
   stockTurnover: number;
+}
+
+// Form Data Types for Purchase Orders
+export interface PurchaseOrderFormData {
+  supplierId: string;
+  expectedDelivery: string;
+  notes: string;
+  items: PurchaseOrderItemFormData[];
+  shipping?: ShippingFormData;
+}
+
+export interface PurchaseOrderItemFormData {
+  productId: string;
+  variantId: string;
+  quantity: number;
+  costPrice: number;
+  notes: string;
+}
+
+// Shipping and Tracking Types
+export interface ShippingAgent {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  company: string;
+  isActive: boolean;
+  managerId?: string;
+  avatar?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ShippingManager {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  department: string;
+  agents: string[]; // Agent IDs under this manager
+  isActive: boolean;
+  avatar?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ShippingCarrier {
+  id: string;
+  name: string;
+  code: string;
+  logo?: string;
+  trackingUrl: string;
+  isActive: boolean;
+  supportedServices: string[];
+  contactInfo: {
+    phone?: string;
+    email?: string;
+    website?: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ShippingInfo {
+  id: string;
+  purchaseOrderId: string;
+  carrierId: string;
+  trackingNumber: string;
+  agentId: string;
+  managerId: string;
+  status: 'pending' | 'picked_up' | 'in_transit' | 'out_for_delivery' | 'delivered' | 'exception';
+  estimatedDelivery: string;
+  actualDelivery?: string;
+  cost: number;
+  notes?: string;
+  trackingEvents: ShippingEvent[];
+  carrier?: ShippingCarrier;
+  agent?: ShippingAgent;
+  manager?: ShippingManager;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ShippingEvent {
+  id: string;
+  shippingId: string;
+  status: string;
+  description: string;
+  location: string;
+  timestamp: string;
+  notes?: string;
+  createdBy?: string;
+}
+
+export interface ShippingSettings {
+  id: string;
+  autoAssignAgents: boolean;
+  defaultCarrierId: string;
+  enableTracking: boolean;
+  enableNotifications: boolean;
+  notificationChannels: ('email' | 'sms' | 'whatsapp')[];
+  trackingUpdateInterval: number; // minutes
+  defaultShippingCost: number;
+  autoUpdateStatus: boolean;
+  requireSignature: boolean;
+  enableInsurance: boolean;
+  maxShippingCost: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Form Data Types for Shipping
+export interface ShippingFormData {
+  carrierId: string;
+  agentId: string;
+  managerId: string;
+  trackingNumber: string;
+  estimatedDelivery: string;
+  cost: number;
+  notes?: string;
+  requireSignature: boolean;
+  enableInsurance: boolean;
+}
+
+export interface ShippingAgentFormData {
+  name: string;
+  email: string;
+  phone: string;
+  company: string;
+  managerId?: string;
+  isActive: boolean;
+}
+
+export interface ShippingManagerFormData {
+  name: string;
+  email: string;
+  phone: string;
+  department: string;
+  isActive: boolean;
+}
+
+export interface ShippingCarrierFormData {
+  name: string;
+  code: string;
+  trackingUrl: string;
+  supportedServices: string[];
+  contactInfo: {
+    phone?: string;
+    email?: string;
+    website?: string;
+  };
+  isActive: boolean;
 }
