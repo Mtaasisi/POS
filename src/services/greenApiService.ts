@@ -1337,6 +1337,82 @@ class GreenApiService {
       throw new Error(`Failed to fetch queue status: ${error.message}`);
     }
   }
+
+  // Diagnostic function for interactive buttons
+  async diagnoseInteractiveButtonsIssues(instanceId: string, chatId: string): Promise<{
+    canSendButtons: boolean;
+    issues: string[];
+    recommendations: string[];
+  }> {
+    const issues: string[] = [];
+    const recommendations: string[] = [];
+    let canSendButtons = true;
+
+    try {
+      // Check instance status
+      const instance = await this.getInstance(instanceId);
+      if (!instance || instance.status !== 'connected') {
+        issues.push('WhatsApp instance is not connected');
+        recommendations.push('Ensure WhatsApp instance is connected and authorized');
+        canSendButtons = false;
+      }
+
+      // Check for recent customer activity (24-hour window)
+      try {
+        const supabase = ensureSupabase();
+        const { data: recentMessages } = await supabase
+          .from('whatsapp_messages')
+          .select('created_at, direction')
+          .eq('instance_id', instanceId)
+          .eq('chat_id', chatId)
+          .eq('direction', 'incoming')
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (!recentMessages || recentMessages.length === 0) {
+          issues.push('No recent incoming messages from this customer');
+          recommendations.push('Customer must send a message first to enable interactive buttons');
+          canSendButtons = false;
+        } else {
+          const lastMessage = recentMessages[0];
+          const hoursSinceLastMessage = (Date.now() - new Date(lastMessage.created_at).getTime()) / (1000 * 60 * 60);
+          
+          if (hoursSinceLastMessage > 24) {
+            issues.push(`Last customer message was ${Math.round(hoursSinceLastMessage)} hours ago (>24h limit)`);
+            recommendations.push('Ask customer to send a new message to reset the 24-hour window');
+            canSendButtons = false;
+          }
+        }
+      } catch (error) {
+        issues.push('Could not check message history');
+        recommendations.push('Check database connection and message history');
+      }
+
+      // Check Green API button support status
+      try {
+        const response = await fetch(`https://7105.api.greenapi.com/waInstance${instanceId}/getStateInstance/${instance?.api_token}`, {
+          method: 'GET'
+        });
+        
+        if (response.status === 403) {
+          issues.push('Green API interactive buttons are currently disabled (403 error)');
+          recommendations.push('Interactive buttons are temporarily unavailable on Green API - use text fallback');
+          canSendButtons = false;
+        }
+      } catch (error) {
+        issues.push('Could not verify Green API button support status');
+        recommendations.push('Check Green API service status and connectivity');
+      }
+
+      return { canSendButtons, issues, recommendations };
+    } catch (error: any) {
+      return {
+        canSendButtons: false,
+        issues: [`Diagnostic error: ${error.message}`],
+        recommendations: ['Check system connectivity and try again']
+      };
+    }
+  }
 }
 
 export const greenApiService = new GreenApiService();

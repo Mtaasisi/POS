@@ -70,6 +70,15 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
   const [newCategoryName, setNewCategoryName] = useState('');
   const [compactView, setCompactView] = useState(false);
   
+  // Interactive Buttons states
+  const [showInteractiveButtons, setShowInteractiveButtons] = useState(false);
+  const [buttonMessage, setButtonMessage] = useState('');
+  const [buttonFooter, setButtonFooter] = useState('');
+  const [interactiveButtons, setInteractiveButtons] = useState<{id: string, text: string}[]>([
+    {id: 'btn1', text: 'Yes'}
+  ]);
+  const [isInteractiveButtonsEnabled, setIsInteractiveButtonsEnabled] = useState(false);
+  
   // File upload states
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [filePreview, setFilePreview] = useState<string | null>(null);
@@ -196,6 +205,45 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
     }
     cleaned = cleaned.replace(/\+{2,}/g, '+');
     return cleaned;
+  };
+
+  // Interactive buttons helper functions
+  const addInteractiveButton = () => {
+    if (interactiveButtons.length < 3) {
+      setInteractiveButtons(prev => [...prev, {
+        id: `btn${prev.length + 1}`,
+        text: `Button ${prev.length + 1}`
+      }]);
+    }
+  };
+
+  const removeInteractiveButton = (index: number) => {
+    if (interactiveButtons.length > 1) {
+      setInteractiveButtons(prev => prev.filter((_, i) => i !== index));
+    }
+  };
+
+  const updateButtonText = (index: number, text: string) => {
+    setInteractiveButtons(prev => {
+      const newButtons = [...prev];
+      newButtons[index].text = text;
+      return newButtons;
+    });
+  };
+
+  // Check if interactive buttons might work (basic heuristics)
+  const checkInteractiveButtonsSupport = () => {
+    // Basic check - this would need more sophisticated logic in production
+    const lastCustomerMessage = chatHistory
+      .filter(msg => msg.sender === 'customer')
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+    
+    if (lastCustomerMessage) {
+      const hoursSinceLastMessage = (Date.now() - new Date(lastCustomerMessage.timestamp).getTime()) / (1000 * 60 * 60);
+      return hoursSinceLastMessage < 24;
+    }
+    
+    return false; // No recent customer message
   };
 
   // Enhanced chat input functions
@@ -612,6 +660,69 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
     setChatHistory([]);
   };
 
+  // Send interactive buttons with fallback
+  const sendInteractiveButtons = async (customerPhone: string, connectedInstance: any) => {
+    try {
+      console.log('🔘 Attempting to send interactive buttons...');
+      
+      // Format buttons for Green API
+      const formattedButtons = interactiveButtons.map(button => ({
+        type: 'replyButton',
+        buttonId: button.id,
+        buttonText: { displayText: button.text }
+      }));
+      
+      console.log('🔘 Formatted buttons:', formattedButtons);
+      
+      // Try to send interactive buttons via direct API
+      const directApiUrl = `https://7105.api.greenapi.com`;
+      const sendInteractiveButtonsUrl = `${directApiUrl}/waInstance${connectedInstance.instance_id}/sendInteractiveButtons/${connectedInstance.api_token}`;
+      
+      const buttonsPayload = {
+        chatId: customerPhone.includes('@c.us') ? customerPhone : `${customerPhone}@c.us`,
+        body: buttonMessage,
+        buttons: formattedButtons
+      };
+      
+      if (buttonFooter) {
+        buttonsPayload.footer = buttonFooter;
+      }
+      
+      console.log('📦 Sending interactive buttons payload:', buttonsPayload);
+      
+      const response = await fetch(sendInteractiveButtonsUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(buttonsPayload)
+      });
+      
+      console.log('📡 Interactive buttons response status:', response.status);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('✅ Interactive buttons sent successfully:', data);
+        return { success: true, data };
+      } else {
+        const errorData = await response.text();
+        console.error('❌ Interactive buttons failed:', response.status, errorData);
+        
+        // Check for specific error codes
+        if (response.status === 403) {
+          throw new Error('Interactive buttons are temporarily disabled by Green API (403 error)');
+        } else if (response.status === 466) {
+          throw new Error('Message sent outside 24-hour window - interactive buttons not allowed');
+        } else {
+          throw new Error(`API Error ${response.status}: ${errorData}`);
+        }
+      }
+    } catch (error: any) {
+      console.error('❌ Error sending interactive buttons:', error);
+      throw error;
+    }
+  };
+
   // Send chat message
   const handleSendChatMessage = async () => {
     if (!selectedCustomer || !instances.length) {
@@ -621,6 +732,11 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
 
     if (messageType === 'text' && !chatMessage.trim()) {
       toast.error('Please enter a message');
+      return;
+    }
+
+    if (messageType === 'button' && (!buttonMessage.trim() || interactiveButtons.length === 0)) {
+      toast.error('Please enter a message and add at least one button');
       return;
     }
 
@@ -653,7 +769,30 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
       
       let result;
       
-      if (messageType === 'image' && selectedImage) {
+      if (messageType === 'button') {
+        try {
+          // Try to send interactive buttons first
+          result = await sendInteractiveButtons(customerPhone, connectedInstance);
+          
+          if (result.success) {
+            toast.success('Interactive buttons sent successfully!');
+          }
+        } catch (error: any) {
+          console.error('❌ Interactive buttons failed, falling back to text:', error);
+          
+          // Fallback: Send as formatted text message
+          const fallbackMessage = `${buttonMessage}\n\n${interactiveButtons.map((btn, idx) => `${idx + 1}. ${btn.text}`).join('\n')}\n\n${buttonFooter ? `\n${buttonFooter}` : ''}`;
+          
+          result = await greenApiService.sendMessage({
+            instanceId: connectedInstance.instance_id,
+            chatId: customerPhone,
+            message: fallbackMessage,
+            messageType: 'text'
+          });
+          
+          toast.error(`Interactive buttons failed: ${error.message}. Sent as text instead.`, { autoClose: 5000 });
+        }
+      } else if (messageType === 'image' && selectedImage) {
         result = await greenApiService.sendMessage({
           instanceId: connectedInstance.instance_id,
           chatId: customerPhone,
@@ -691,7 +830,8 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
         id: messageId,
         content: messageType === 'image' ? 'Image shared' : 
                 messageType === 'document' ? `File: ${selectedFile?.name}` :
-                messageType === 'audio' ? 'Voice message' : chatMessage,
+                messageType === 'audio' ? 'Voice message' :
+                messageType === 'button' ? buttonMessage : chatMessage,
         sender: 'business',
         timestamp: new Date().toISOString(),
         status: 'sent',
@@ -702,7 +842,9 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
         audioUrl: messageType === 'audio' ? audioUrl : null,
         fileName: selectedFile?.name,
         fileSize: selectedFile?.size,
-        audioDuration: messageType === 'audio' ? formatRecordingTime(recordingTime) : null
+        audioDuration: messageType === 'audio' ? formatRecordingTime(recordingTime) : null,
+        buttons: messageType === 'button' ? interactiveButtons : null,
+        buttonFooter: messageType === 'button' ? buttonFooter : null
       };
       
       // Set initial status
@@ -713,7 +855,11 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
       setTimeout(() => updateMessageStatus(messageId, 'sent'), 1000);
       setTimeout(() => updateMessageStatus(messageId, 'delivered'), 2000);
       setTimeout(() => updateMessageStatus(messageId, 'read'), 5000);
+      
+      // Clear all message states
       setChatMessage('');
+      setButtonMessage('');
+      setButtonFooter('');
       setSelectedImage(null);
       setImagePreview(null);
       setSelectedFile(null);
@@ -722,8 +868,10 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
       setAudioUrl(null);
       setRecordingTime(0);
       setMessageType('text');
+      setShowInteractiveButtons(false);
       
-      toast.success(`Message sent to ${selectedCustomer.name}`);
+      const messageTypeName = messageType === 'button' ? 'Interactive buttons' : 'Message';
+      toast.success(`${messageTypeName} sent to ${selectedCustomer.name}`);
       
     } catch (error: any) {
       console.error('Error sending chat message:', error);
@@ -1047,6 +1195,19 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
                               
                               <p className="text-sm leading-relaxed">{message.content}</p>
                               
+                              {message.type === 'button' && message.buttons && (
+                                <div className="mt-2 space-y-2">
+                                  {message.buttons.map((button: any, btnIndex: number) => (
+                                    <div key={btnIndex} className="p-2 bg-white/10 rounded-lg border border-white/20 text-center">
+                                      <span className="text-sm font-medium">{button.text}</span>
+                                    </div>
+                                  ))}
+                                  {message.buttonFooter && (
+                                    <p className="text-xs opacity-80 mt-1">{message.buttonFooter}</p>
+                                  )}
+                                </div>
+                              )}
+                              
                               <div className={`flex items-center justify-between mt-1 ${
                                 message.sender === 'business' ? 'text-green-100' : 'text-gray-500'
                               }`}>
@@ -1209,6 +1370,140 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
                       <button className="p-2 bg-green-500 text-white rounded-full hover:bg-green-600 transition-colors">
                         <Play size={16} />
                       </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Interactive Buttons Builder */}
+                {showInteractiveButtons && (
+                  <div className="mb-4 p-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-3xl border border-blue-200 shadow-lg">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
+                          <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2h4a1 1 0 110 2h-1v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6H3a1 1 0 110-2h4zM6 6v12h12V6H6z" />
+                          </svg>
+                        </div>
+                        <span className="text-base font-semibold text-blue-800">Interactive Buttons</span>
+                        <div className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs rounded-full font-medium">
+                          ⚠️ May not work on all devices
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setShowInteractiveButtons(false);
+                          setMessageType('text');
+                        }}
+                        className="p-2 text-gray-400 hover:text-gray-600 hover:bg-white/50 rounded-full transition-all duration-200"
+                      >
+                        <XCircle size={18} />
+                      </button>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Message Text</label>
+                        <textarea
+                          value={buttonMessage}
+                          onChange={(e) => setButtonMessage(e.target.value)}
+                          placeholder="Enter your message text..."
+                          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 transition-all duration-200 resize-none"
+                          rows={2}
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Footer (Optional)</label>
+                        <input
+                          type="text"
+                          value={buttonFooter}
+                          onChange={(e) => setButtonFooter(e.target.value)}
+                          placeholder="Add footer text..."
+                          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 transition-all duration-200"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Buttons</label>
+                        <div className="space-y-2">
+                          {interactiveButtons.map((button, index) => (
+                            <div key={index} className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                value={button.text}
+                                onChange={(e) => {
+                                  const newButtons = [...interactiveButtons];
+                                  newButtons[index].text = e.target.value;
+                                  setInteractiveButtons(newButtons);
+                                }}
+                                placeholder={`Button ${index + 1} text...`}
+                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm"
+                              />
+                              <button
+                                onClick={() => {
+                                  setInteractiveButtons(prev => prev.filter((_, i) => i !== index));
+                                }}
+                                className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                disabled={interactiveButtons.length === 1}
+                              >
+                                <XCircle size={16} />
+                              </button>
+                            </div>
+                          ))}
+                          
+                          {interactiveButtons.length < 3 && (
+                            <button
+                              onClick={() => {
+                                setInteractiveButtons(prev => [...prev, {
+                                  id: `btn${prev.length + 1}`,
+                                  text: `Button ${prev.length + 1}`
+                                }]);
+                              }}
+                              className="w-full py-2 border-2 border-dashed border-blue-300 text-blue-600 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-all duration-200 text-sm font-medium"
+                            >
+                              + Add Button
+                            </button>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">Up to 3 buttons allowed</p>
+                      </div>
+                    </div>
+                    
+                    {/* Warning Message */}
+                    <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-xl">
+                      <div className="flex items-start gap-2">
+                        <svg className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                        </svg>
+                        <div className="text-sm flex-1">
+                          <p className="font-medium text-yellow-800">Interactive Button Limitations</p>
+                          <p className="text-yellow-700">
+                            • Only works within 24 hours of customer's last message<br />
+                            • May not display on all WhatsApp versions<br />
+                            • If buttons fail, message will be sent as formatted text
+                          </p>
+                        </div>
+                        <button
+                          onClick={async () => {
+                            const connectedInstance = instances.find(i => i.status === 'connected');
+                            if (connectedInstance && selectedCustomer) {
+                              const diagnosis = await greenApiService.diagnoseInteractiveButtonsIssues(
+                                connectedInstance.instance_id,
+                                formatPhoneNumber(selectedCustomer.phone)
+                              );
+                              
+                              if (diagnosis.canSendButtons) {
+                                toast.success('Interactive buttons should work for this customer!');
+                              } else {
+                                toast.error(`Cannot send buttons: ${diagnosis.issues.join(', ')}`, { autoClose: 8000 });
+                              }
+                            }
+                          }}
+                          className="px-3 py-1 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-colors text-xs font-medium"
+                        >
+                          Test
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1419,6 +1714,27 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
                       </label>
                       
                       <button 
+                        onClick={() => {
+                          setShowInteractiveButtons(true);
+                          setShowAttachmentMenu(false);
+                          setMessageType('button');
+                        }}
+                        className="group relative overflow-hidden bg-gradient-to-br from-blue-50 to-blue-100 rounded-2xl border-2 border-blue-200 hover:border-blue-400 hover:from-blue-100 hover:to-blue-200 transition-all duration-300 transform hover:scale-105 hover:shadow-lg"
+                      >
+                        <div className="p-4 flex flex-col items-center">
+                          <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-300">
+                            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2h4a1 1 0 110 2h-1v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6H3a1 1 0 110-2h4zM6 6v12h12V6H6z" />
+                            </svg>
+                          </div>
+                          <span className="text-sm font-medium text-blue-700">Interactive Buttons</span>
+                          <span className="text-xs text-blue-600 mt-1">
+                            {checkInteractiveButtonsSupport() ? 'Add buttons' : '⚠️ 24h window expired'}
+                          </span>
+                        </div>
+                      </button>
+                      
+                      <button 
                         onClick={isRecording ? stopRecording : startRecording}
                         className="group relative overflow-hidden bg-gradient-to-br from-red-50 to-red-100 rounded-2xl border-2 border-red-200 hover:border-red-400 hover:from-red-100 hover:to-red-200 transition-all duration-300 transform hover:scale-105 hover:shadow-lg"
                       >
@@ -1436,16 +1752,6 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
                           <span className="text-xs text-red-600 mt-1">
                             {isRecording ? formatRecordingTime(recordingTime) : 'Record audio'}
                           </span>
-                        </div>
-                      </button>
-                      
-                      <button className="group relative overflow-hidden bg-gradient-to-br from-purple-50 to-purple-100 rounded-2xl border-2 border-purple-200 hover:border-purple-400 hover:from-purple-100 hover:to-purple-200 transition-all duration-300 transform hover:scale-105 hover:shadow-lg">
-                        <div className="p-4 flex flex-col items-center">
-                          <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-300">
-                            <FileText size={24} className="text-white" />
-                          </div>
-                          <span className="text-sm font-medium text-purple-700">Document</span>
-                          <span className="text-xs text-purple-600 mt-1">Share files</span>
                         </div>
                       </button>
                       
@@ -1540,7 +1846,14 @@ const WhatsAppChatPage: React.FC<WhatsAppChatPageProps> = ({
                   </div>
                                       <button
                       onClick={handleSendChatMessage}
-                      disabled={(!chatMessage.trim() && !selectedImage) || isSendingChatMessage}
+                      disabled={
+                        (messageType === 'text' && !chatMessage.trim()) ||
+                        (messageType === 'button' && (!buttonMessage.trim() || interactiveButtons.length === 0)) ||
+                        (messageType === 'image' && !selectedImage) ||
+                        (messageType === 'document' && !selectedFile) ||
+                        (messageType === 'audio' && !audioBlob) ||
+                        isSendingChatMessage
+                      }
                       className="p-4 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-full hover:from-green-600 hover:to-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 hover:scale-110 shadow-lg"
                     >
                       {isSendingChatMessage ? (
