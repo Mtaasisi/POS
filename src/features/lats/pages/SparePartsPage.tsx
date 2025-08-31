@@ -129,11 +129,32 @@ const SparePartsPage: React.FC = () => {
     return filtered;
   }, [spareParts, searchTerm, selectedCategory, stockFilter, sortBy, sortOrder]);
 
+  // Transform form data to match database schema
+  const transformSparePartData = (formData: any) => {
+    return {
+      name: formData.name,
+      part_number: formData.partNumber,
+      category_id: formData.categoryId,
+      brand: formData.brand,
+      supplier_id: formData.supplierId,
+      condition: formData.condition,
+      description: formData.description,
+      cost_price: formData.costPrice,
+      selling_price: formData.sellingPrice,
+      quantity: formData.quantity,
+      min_quantity: formData.minQuantity,
+      location: formData.location,
+      compatible_devices: formData.compatibleDevices
+    };
+  };
+
   // Handle spare part creation/editing
   const handleSaveSparePart = async (data: any) => {
     try {
+      const transformedData = transformSparePartData(data);
+      
       if (editingSparePart) {
-        const response = await updateSparePart(editingSparePart.id, data);
+        const response = await updateSparePart(editingSparePart.id, transformedData);
         if (response.ok) {
           toast.success('Spare part updated successfully');
           setShowSparePartForm(false);
@@ -142,7 +163,7 @@ const SparePartsPage: React.FC = () => {
           toast.error(response.message || 'Failed to update spare part');
         }
       } else {
-        const response = await createSparePart(data);
+        const response = await createSparePart(transformedData);
         if (response.ok) {
           toast.success('Spare part created successfully');
           setShowSparePartForm(false);
