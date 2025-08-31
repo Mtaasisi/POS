@@ -60,11 +60,11 @@ const BusinessManagementPage: React.FC = () => {
 
     // Payments & Finance
     {
-      id: 'payment-tracking',
-      title: 'Payment Tracking',
-      description: 'Track and manage payment transactions',
+      id: 'payment-management',
+      title: 'Payment Management',
+      description: 'Centralized payment tracking and management',
       icon: <CreditCard size={24} />,
-      path: '/lats/payments',
+      path: '/points-management',
       color: 'from-green-500 to-green-600',
       category: 'payments'
     },
