@@ -58,6 +58,7 @@ const CategoryInput: React.FC<CategoryInputProps> = ({
   };
 
   const categoryTree = buildCategoryTree(categories);
+  console.log('🌳 CategoryInput: Built tree with', categoryTree.length, 'root categories');
 
   // Handle input change and search
   const handleInputChange = (inputValue: string) => {
