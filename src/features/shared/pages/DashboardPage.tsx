@@ -7,7 +7,8 @@ import { PageErrorWrapper } from '../components/PageErrorWrapper';
 import { useErrorHandler } from '../../../hooks/useErrorHandler';
 import {
   Smartphone, Users, Package, BarChart3, Settings, Plus, ArrowRight,
-  TrendingUp, DollarSign, Activity, Target, Award, Calendar, Clock
+  TrendingUp, DollarSign, Activity, Target, Award, Calendar, Clock,
+  CreditCard
 } from 'lucide-react';
 
 const DashboardPage: React.FC = () => {
@@ -114,6 +115,13 @@ const DashboardPage: React.FC = () => {
       icon: BarChart3,
       color: 'from-orange-500 to-orange-600',
       path: '/lats/analytics'
+    },
+    {
+      title: 'Payment Management',
+      description: 'Manage all payments in one place',
+      icon: CreditCard,
+      color: 'from-emerald-500 to-emerald-600',
+      path: '/points-management'
     }
   ];
 
@@ -255,7 +263,7 @@ const DashboardPage: React.FC = () => {
             </div>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {quickActions.map((action, index) => {
               const Icon = action.icon;
               return (
