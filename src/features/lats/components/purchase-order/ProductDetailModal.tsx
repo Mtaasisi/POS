@@ -73,6 +73,17 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const [isLoadingStock, setIsLoadingStock] = useState(false);
   const [lastStockUpdate, setLastStockUpdate] = useState<Date | null>(null);
 
+  // Simplified exchange rate calculation (in real app, use live rates)
+  const getExchangeRate = (fromCurrency: string, toCurrency: string): number => {
+    const rates: { [key: string]: { [key: string]: number } } = {
+      'USD': { 'KES': 150, 'EUR': 0.85, 'CNY': 7.2 },
+      'KES': { 'USD': 0.0067, 'EUR': 0.0057, 'CNY': 0.048 },
+      'EUR': { 'USD': 1.18, 'KES': 175, 'CNY': 8.5 },
+      'CNY': { 'USD': 0.14, 'KES': 21, 'EUR': 0.12 }
+    };
+    return rates[fromCurrency]?.[toCurrency] || 1;
+  };
+
   // Initialize with primary variant and supplier data
   useEffect(() => {
     if (product && !selectedVariant) {
@@ -131,16 +142,6 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     } finally {
       setIsLoadingStock(false);
     }
-  };
-
-  const getExchangeRate = (fromCurrency: string, toCurrency: string): number => {
-    const rates: { [key: string]: { [key: string]: number } } = {
-      'USD': { 'KES': 150, 'EUR': 0.85, 'CNY': 7.2 },
-      'KES': { 'USD': 0.0067, 'EUR': 0.0057, 'CNY': 0.048 },
-      'EUR': { 'USD': 1.18, 'KES': 175, 'CNY': 8.5 },
-      'CNY': { 'USD': 0.14, 'KES': 21, 'EUR': 0.12 }
-    };
-    return rates[fromCurrency]?.[toCurrency] || 1;
   };
 
   if (!isOpen || !product) return null;
