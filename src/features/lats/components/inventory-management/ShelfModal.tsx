@@ -35,12 +35,20 @@ const ShelfModal: React.FC<ShelfModalProps> = ({
 }) => {
   const [formData, setFormData] = useState({
     name: '',
-    code: ''
+    code: '',
+    shelf_type: 'standard' as const,
+    row_number: 1,
+    column_number: 1,
+    max_capacity: '',
+    zone: 'center' as const,
+    description: '',
+    is_accessible: true,
+    requires_ladder: false,
+    is_refrigerated: false
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeTab, setActiveTab] = useState('basic');
 
   // Reset form when modal opens/closes or shelf changes
   useEffect(() => {
@@ -49,17 +57,34 @@ const ShelfModal: React.FC<ShelfModalProps> = ({
         // Editing existing shelf
         setFormData({
           name: shelf.name,
-          code: shelf.code
+          code: shelf.code,
+          shelf_type: shelf.shelf_type,
+          row_number: shelf.row_number || 1,
+          column_number: shelf.column_number || 1,
+          max_capacity: shelf.max_capacity?.toString() || '',
+          zone: shelf.zone || 'center',
+          description: shelf.description || '',
+          is_accessible: shelf.is_accessible,
+          requires_ladder: shelf.requires_ladder,
+          is_refrigerated: shelf.is_refrigerated
         });
       } else {
-        // Creating new shelf
+        // Creating new shelf - auto-generate next position
         setFormData({
           name: '',
-          code: ''
+          code: '',
+          shelf_type: 'standard',
+          row_number: 1,
+          column_number: 1,
+          max_capacity: '',
+          zone: 'center',
+          description: '',
+          is_accessible: true,
+          requires_ladder: false,
+          is_refrigerated: false
         });
       }
       setErrors({});
-      setActiveTab('basic');
     }
   }, [isOpen, shelf, storageRoom]);
 
@@ -72,6 +97,18 @@ const ShelfModal: React.FC<ShelfModalProps> = ({
 
     if (!formData.code.trim()) {
       newErrors.code = 'Shelf code is required';
+    }
+
+    if (formData.max_capacity && parseInt(formData.max_capacity) <= 0) {
+      newErrors.max_capacity = 'Max capacity must be greater than 0';
+    }
+
+    if (formData.row_number < 1) {
+      newErrors.row_number = 'Row number must be at least 1';
+    }
+
+    if (formData.column_number < 1) {
+      newErrors.column_number = 'Column number must be at least 1';
     }
 
     setErrors(newErrors);
@@ -98,12 +135,17 @@ const ShelfModal: React.FC<ShelfModalProps> = ({
         storage_room_id: storageRoom.id,
         name: formData.name.trim(),
         code: formData.code.trim(),
-        shelf_type: 'standard',
+        description: formData.description.trim() || undefined,
+        shelf_type: formData.shelf_type,
+        row_number: formData.row_number,
+        column_number: formData.column_number,
+        max_capacity: formData.max_capacity ? parseInt(formData.max_capacity) : undefined,
         floor_level: storageRoom?.floor_level || 1,
+        zone: formData.zone,
         is_active: true,
-        is_accessible: true,
-        requires_ladder: false,
-        is_refrigerated: false,
+        is_accessible: formData.is_accessible,
+        requires_ladder: formData.requires_ladder,
+        is_refrigerated: formData.is_refrigerated,
         priority_order: 0
       };
 
@@ -157,22 +199,150 @@ const ShelfModal: React.FC<ShelfModalProps> = ({
           <div className="flex-1 overflow-y-auto">
             <form onSubmit={handleSubmit} className="p-6">
               <div className="space-y-6">
-                {/* Essential Fields */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Essential Information */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-medium text-gray-900 flex items-center gap-2">
+                    <Package className="w-5 h-5 text-blue-500" />
+                    Basic Information
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <GlassInput
+                      label="Shelf Name *"
+                      value={formData.name}
+                      onChange={(e) => handleInputChange('name', e.target.value)}
+                      error={errors.name}
+                      placeholder="e.g., Position A1"
+                    />
+                    <GlassInput
+                      label="Shelf Code *"
+                      value={formData.code}
+                      onChange={(e) => handleInputChange('code', e.target.value)}
+                      error={errors.code}
+                      placeholder="e.g., 04A1"
+                    />
+                  </div>
                   <GlassInput
-                    label="Shelf Name *"
-                    value={formData.name}
-                    onChange={(e) => handleInputChange('name', e.target.value)}
-                    error={errors.name}
-                    placeholder="e.g., Main Display Shelf"
+                    label="Description"
+                    value={formData.description}
+                    onChange={(e) => handleInputChange('description', e.target.value)}
+                    placeholder="Optional shelf description"
                   />
-                  <GlassInput
-                    label="Shelf Code *"
-                    value={formData.code}
-                    onChange={(e) => handleInputChange('code', e.target.value)}
-                    error={errors.code}
-                    placeholder="e.g., SHELF001"
-                  />
+                </div>
+
+                {/* Position & Layout */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-medium text-gray-900 flex items-center gap-2">
+                    <MapPin className="w-5 h-5 text-green-500" />
+                    Position & Layout
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Row Number *</label>
+                      <input
+                        type="number"
+                        value={formData.row_number}
+                        onChange={(e) => handleInputChange('row_number', parseInt(e.target.value) || 1)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        min="1"
+                      />
+                      {errors.row_number && <p className="text-red-500 text-xs mt-1">{errors.row_number}</p>}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Column Number *</label>
+                      <input
+                        type="number"
+                        value={formData.column_number}
+                        onChange={(e) => handleInputChange('column_number', parseInt(e.target.value) || 1)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        min="1"
+                      />
+                      {errors.column_number && <p className="text-red-500 text-xs mt-1">{errors.column_number}</p>}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Zone</label>
+                      <select
+                        value={formData.zone}
+                        onChange={(e) => handleInputChange('zone', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      >
+                        <option value="center">Center</option>
+                        <option value="front">Front</option>
+                        <option value="back">Back</option>
+                        <option value="left">Left</option>
+                        <option value="right">Right</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Shelf Properties */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-medium text-gray-900 flex items-center gap-2">
+                    <Settings className="w-5 h-5 text-purple-500" />
+                    Shelf Properties
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Shelf Type</label>
+                      <select
+                        value={formData.shelf_type}
+                        onChange={(e) => handleInputChange('shelf_type', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      >
+                        <option value="standard">Standard</option>
+                        <option value="refrigerated">Refrigerated</option>
+                        <option value="display">Display</option>
+                        <option value="storage">Storage</option>
+                        <option value="specialty">Specialty</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Max Capacity</label>
+                      <input
+                        type="number"
+                        value={formData.max_capacity}
+                        onChange={(e) => handleInputChange('max_capacity', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Optional"
+                        min="1"
+                      />
+                      {errors.max_capacity && <p className="text-red-500 text-xs mt-1">{errors.max_capacity}</p>}
+                    </div>
+                  </div>
+
+                  {/* Access & Special Features */}
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-medium text-gray-700">Access & Features</h4>
+                    <div className="space-y-2">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={formData.is_accessible}
+                          onChange={(e) => handleInputChange('is_accessible', e.target.checked)}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-gray-700">Easily accessible</span>
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={formData.requires_ladder}
+                          onChange={(e) => handleInputChange('requires_ladder', e.target.checked)}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-gray-700">Requires ladder</span>
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={formData.is_refrigerated}
+                          onChange={(e) => handleInputChange('is_refrigerated', e.target.checked)}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-gray-700">Refrigerated shelf</span>
+                      </label>
+                    </div>
+                  </div>
                 </div>
               </div>
             </form>
