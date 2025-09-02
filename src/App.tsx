@@ -65,10 +65,19 @@ import ProductExportPage from './features/lats/pages/ProductExportPage';
 const UnifiedDiagnosticManagementPage = lazy(() => import('./features/diagnostics/pages/UnifiedDiagnosticManagementPage'));
 
 const LATSDashboardPage = lazy(() => import('./features/lats/pages/LATSDashboardPage'));
-const PurchaseOrdersPage = lazy(() => import('./features/lats/pages/PurchaseOrdersPage'));
+
+// Purchase Orders Module (New Dedicated Module)
+const PurchaseOrdersListPage = lazy(() => import('./features/purchase-orders/pages/PurchaseOrdersListPage'));
+const CreatePurchaseOrderPage = lazy(() => import('./features/purchase-orders/pages/CreatePurchaseOrderPage'));
+const PurchaseOrderDetailPage = lazy(() => import('./features/purchase-orders/pages/PurchaseOrderDetailPage'));
+const ShippedItemsPage = lazy(() => import('./features/purchase-orders/pages/ShippedItemsPage'));
+const SuppliersManagementPage = lazy(() => import('./features/purchase-orders/pages/SuppliersManagementPage'));
+
+// Legacy LATS Purchase Order Pages (keeping for backward compatibility)
+const LegacyPurchaseOrdersPage = lazy(() => import('./features/lats/pages/PurchaseOrdersPage'));
 const NewPurchaseOrderPage = lazy(() => import('./features/lats/pages/NewPurchaseOrderPage'));
-const PurchaseOrderPage = lazy(() => import('./features/lats/pages/PurchaseOrderPage'));
-const PurchaseOrderDetailPage = lazy(() => import('./features/lats/pages/PurchaseOrderDetailPage'));
+const LegacyPurchaseOrderPage = lazy(() => import('./features/lats/pages/PurchaseOrderPage'));
+const LegacyPurchaseOrderDetailPage = lazy(() => import('./features/lats/pages/PurchaseOrderDetailPage'));
 const SparePartsPage = lazy(() => import('./features/lats/pages/SparePartsPage'));
 const PaymentHistoryPage = lazy(() => import('./features/lats/pages/PaymentHistoryPage'));
 
@@ -347,10 +356,20 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
           <Route path="/lats/loyalty" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><CustomerLoyaltyPage /></Suspense></RoleProtectedRoute>} />
           <Route path="/lats/payments" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><PaymentTrackingPage /></Suspense></RoleProtectedRoute>} />
 
-          <Route path="/lats/purchase-orders" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><PurchaseOrdersPage /></Suspense></RoleProtectedRoute>} />
+          {/* New Purchase Orders Module */}
+          <Route path="/purchase-orders" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><PurchaseOrdersListPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/purchase-orders/create" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><CreatePurchaseOrderPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/purchase-orders/:id" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><PurchaseOrderDetailPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/purchase-orders/:id/edit" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><CreatePurchaseOrderPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/purchase-orders/shipped-items" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><ShippedItemsPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/purchase-orders/:id/shipped-items" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><ShippedItemsPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/purchase-orders/suppliers" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><SuppliersManagementPage /></Suspense></RoleProtectedRoute>} />
+
+          {/* Legacy LATS Purchase Order Routes (keeping for backward compatibility) */}
+          <Route path="/lats/purchase-orders" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><LegacyPurchaseOrdersPage /></Suspense></RoleProtectedRoute>} />
           <Route path="/lats/purchase-orders/new" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><NewPurchaseOrderPage /></Suspense></RoleProtectedRoute>} />
-          <Route path="/lats/purchase-order/create" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><PurchaseOrderPage /></Suspense></RoleProtectedRoute>} />
-          <Route path="/lats/purchase-orders/:id" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><PurchaseOrderDetailPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/lats/purchase-order/create" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><LegacyPurchaseOrderPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/lats/purchase-orders/:id" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><LegacyPurchaseOrderDetailPage /></Suspense></RoleProtectedRoute>} />
 
           <Route path="/lats/spare-parts" element={<RoleProtectedRoute allowedRoles={['admin', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><SparePartsPage /></Suspense></RoleProtectedRoute>} />
           
