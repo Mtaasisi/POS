@@ -248,6 +248,13 @@ const AppLayout: React.FC = () => {
         count: Math.floor(Math.random() * 3) // Placeholder for low stock items
       },
       {
+        path: '/purchase-orders',
+        label: 'Purchase Orders',
+        icon: <ShoppingCart size={20} />,
+        roles: ['admin', 'customer-care'],
+        count: Math.floor(Math.random() * 2) // Placeholder for pending orders
+      },
+      {
         path: '/lats/storage-rooms',
         label: 'Storage Rooms',
         icon: <Building size={20} />,
