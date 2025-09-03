@@ -104,9 +104,34 @@ export interface PurchaseOrderItem {
   variantId: string;
   quantity: number;
   costPrice: number;
+  totalPrice: number;
   receivedQuantity: number;
+  notes?: string;
+  // Product and category information for UI display
+  name: string;
+  variantName?: string;
+  sku: string;
+  category: string;
+  images: string[];
+  // Optional detailed objects (for backward compatibility)
   product?: Product;
   variant?: ProductVariant;
+}
+
+export interface PurchaseOrderFormData {
+  supplierId: string;
+  expectedDelivery: string;
+  notes: string;
+  items: PurchaseOrderItemFormData[];
+}
+
+export interface PurchaseOrderItemFormData {
+  productId: string;
+  variantId: string;
+  quantity: number;
+  costPrice: number;
+  totalPrice: number;
+  notes?: string;
 }
 
 export interface SparePart {

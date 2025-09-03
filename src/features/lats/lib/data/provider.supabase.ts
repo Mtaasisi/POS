@@ -1795,6 +1795,71 @@ class SupabaseDataProvider implements LatsDataProvider {
         console.warn('Warning: Could not fetch purchase order items:', itemsError.message);
       }
 
+      // Fetch products and variants for items to get names, categories, and SKUs
+      const productIds = [...new Set((items || []).map(item => item.product_id).filter(Boolean))];
+      const variantIds = [...new Set((items || []).map(item => item.variant_id).filter(Boolean))];
+      
+      let productsMap = new Map();
+      let variantsMap = new Map();
+      let categoriesMap = new Map();
+
+      if (productIds.length > 0) {
+        console.log(`🔍 Fetching ${productIds.length} products for purchase order items...`);
+        
+        // Fetch products with category info
+        const { data: products, error: productsError } = await supabase
+          .from('lats_products')
+          .select('id, name, category_id, images')
+          .in('id', productIds);
+
+        if (productsError) {
+          console.warn('Warning: Could not fetch products:', productsError.message);
+        } else {
+          products?.forEach(product => {
+            productsMap.set(product.id, product);
+          });
+
+          // Fetch categories for these products
+          const categoryIds = [...new Set((products || []).map(p => p.category_id).filter(Boolean))];
+          if (categoryIds.length > 0) {
+            console.log(`📂 Fetching ${categoryIds.length} categories for purchase order products...`);
+            
+            const { data: categories, error: categoriesError } = await supabase
+              .from('lats_categories')
+              .select('id, name')
+              .in('id', categoryIds);
+
+            if (categoriesError) {
+              console.warn('Warning: Could not fetch categories:', categoriesError.message);
+            } else {
+              categories?.forEach(category => {
+                categoriesMap.set(category.id, category);
+              });
+              console.log(`✅ Fetched ${categories?.length || 0} categories`);
+            }
+          }
+        }
+      }
+
+      if (variantIds.length > 0) {
+        console.log(`🔍 Fetching ${variantIds.length} variants for purchase order items...`);
+        
+        // Fetch variants to get SKUs and names
+        const { data: variants, error: variantsError } = await supabase
+          .from('lats_product_variants')
+          .select('id, sku, name')
+          .in('id', variantIds);
+
+        if (variantsError) {
+          console.warn('Warning: Could not fetch variants:', variantsError.message);
+        } else {
+          variants?.forEach(variant => {
+            variantsMap.set(variant.id, variant);
+          });
+          console.log(`✅ Fetched ${variants?.length || 0} variants`);
+        }
+      }
+
       // Create lookup maps
       const suppliersMap = new Map((suppliers || []).map(s => [s.id, s]));
       const itemsMap = new Map();
@@ -1818,17 +1883,29 @@ class SupabaseDataProvider implements LatsDataProvider {
         createdBy: order.created_by,
         createdAt: order.created_at,
         updatedAt: order.updated_at,
-        items: (itemsMap.get(order.id) || []).map((item: any) => ({
-          id: item.id,
-          purchaseOrderId: item.purchase_order_id,
-          productId: item.product_id,
-          variantId: item.variant_id,
-          quantity: item.quantity,
-          costPrice: item.cost_price,
-          totalPrice: item.total_price,
-          receivedQuantity: item.received_quantity || 0,
-          notes: item.notes
-        }))
+        items: (itemsMap.get(order.id) || []).map((item: any) => {
+          const product = productsMap.get(item.product_id);
+          const variant = variantsMap.get(item.variant_id);
+          const category = product?.category_id ? categoriesMap.get(product.category_id) : null;
+          
+          return {
+            id: item.id,
+            purchaseOrderId: item.purchase_order_id,
+            productId: item.product_id,
+            variantId: item.variant_id,
+            quantity: item.quantity,
+            costPrice: item.cost_price,
+            totalPrice: item.total_price,
+            receivedQuantity: item.received_quantity || 0,
+            notes: item.notes,
+            // Add product and category information
+            name: product?.name || 'Unknown Product',
+            variantName: variant?.name || 'Default',
+            sku: variant?.sku || '',
+            category: category?.name || '',
+            images: product?.images || []
+          };
+        })
       }));
       
       return { ok: true, data: transformedData };
@@ -1869,6 +1946,71 @@ class SupabaseDataProvider implements LatsDataProvider {
       if (itemsError) {
         console.warn('Warning: Could not fetch purchase order items:', itemsError.message);
       }
+
+      // Fetch products and variants for items to get names, categories, and SKUs
+      const productIds = [...new Set((items || []).map(item => item.product_id).filter(Boolean))];
+      const variantIds = [...new Set((items || []).map(item => item.variant_id).filter(Boolean))];
+      
+      let productsMap = new Map();
+      let variantsMap = new Map();
+      let categoriesMap = new Map();
+
+      if (productIds.length > 0) {
+        console.log(`🔍 Fetching ${productIds.length} products for purchase order items...`);
+        
+        // Fetch products with category info
+        const { data: products, error: productsError } = await supabase
+          .from('lats_products')
+          .select('id, name, category_id, images')
+          .in('id', productIds);
+
+        if (productsError) {
+          console.warn('Warning: Could not fetch products:', productsError.message);
+        } else {
+          products?.forEach(product => {
+            productsMap.set(product.id, product);
+          });
+
+          // Fetch categories for these products
+          const categoryIds = [...new Set((products || []).map(p => p.category_id).filter(Boolean))];
+          if (categoryIds.length > 0) {
+            console.log(`📂 Fetching ${categoryIds.length} categories for purchase order products...`);
+            
+            const { data: categories, error: categoriesError } = await supabase
+              .from('lats_categories')
+              .select('id, name')
+              .in('id', categoryIds);
+
+            if (categoriesError) {
+              console.warn('Warning: Could not fetch categories:', categoriesError.message);
+            } else {
+              categories?.forEach(category => {
+                categoriesMap.set(category.id, category);
+              });
+              console.log(`✅ Fetched ${categories?.length || 0} categories`);
+            }
+          }
+        }
+      }
+
+      if (variantIds.length > 0) {
+        console.log(`🔍 Fetching ${variantIds.length} variants for purchase order items...`);
+        
+        // Fetch variants to get SKUs and names
+        const { data: variants, error: variantsError } = await supabase
+          .from('lats_product_variants')
+          .select('id, sku, name')
+          .in('id', variantIds);
+
+        if (variantsError) {
+          console.warn('Warning: Could not fetch variants:', variantsError.message);
+        } else {
+          variants?.forEach(variant => {
+            variantsMap.set(variant.id, variant);
+          });
+          console.log(`✅ Fetched ${variants?.length || 0} variants`);
+        }
+      }
       
       // Transform snake_case to camelCase
       const transformedData = {
@@ -1883,17 +2025,29 @@ class SupabaseDataProvider implements LatsDataProvider {
         createdBy: order.created_by,
         createdAt: order.created_at,
         updatedAt: order.updated_at,
-        items: (items || []).map((item: any) => ({
-          id: item.id,
-          purchaseOrderId: item.purchase_order_id,
-          productId: item.product_id,
-          variantId: item.variant_id,
-          quantity: item.quantity,
-          costPrice: item.cost_price,
-          totalPrice: item.total_price,
-          receivedQuantity: item.received_quantity || 0,
-          notes: item.notes
-        }))
+        items: (items || []).map((item: any) => {
+          const product = productsMap.get(item.product_id);
+          const variant = variantsMap.get(item.variant_id);
+          const category = product?.category_id ? categoriesMap.get(product.category_id) : null;
+          
+          return {
+            id: item.id,
+            purchaseOrderId: item.purchase_order_id,
+            productId: item.product_id,
+            variantId: item.variant_id,
+            quantity: item.quantity,
+            costPrice: item.cost_price,
+            totalPrice: item.total_price,
+            receivedQuantity: item.received_quantity || 0,
+            notes: item.notes,
+            // Add product and category information
+            name: product?.name || 'Unknown Product',
+            variantName: variant?.name || 'Default',
+            sku: variant?.sku || '',
+            category: category?.name || '',
+            images: product?.images || []
+          };
+        })
       };
       
       return { ok: true, data: transformedData };
