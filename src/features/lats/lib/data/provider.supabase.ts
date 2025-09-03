@@ -1810,11 +1810,20 @@ class SupabaseDataProvider implements LatsDataProvider {
         id: order.id,
         orderNumber: order.order_number,
         supplierId: order.supplier_id,
-        supplierName: suppliersMap.get(order.supplier_id)?.name || 'Unknown Supplier',
+        supplier: { id: order.supplier_id, name: suppliersMap.get(order.supplier_id)?.name || 'Unknown Supplier' },
         status: order.status,
+        orderDate: order.created_at,
+        expectedDeliveryDate: order.expected_delivery,
+        receivedDate: order.delivered_date, // Map deliveredDate to receivedDate for UI compatibility
         totalAmount: order.total_amount || 0,
-        expectedDelivery: order.expected_delivery,
         notes: order.notes,
+        // Shipping fields
+        trackingNumber: order.tracking_number,
+        shippingStatus: order.shipping_status,
+        estimatedDelivery: order.estimated_delivery_date,
+        shippingNotes: order.shipping_notes,
+        shippedDate: order.shipped_date,
+        deliveredDate: order.delivered_date,
         createdBy: order.created_by,
         createdAt: order.created_at,
         updatedAt: order.updated_at,
@@ -1875,11 +1884,20 @@ class SupabaseDataProvider implements LatsDataProvider {
         id: order.id,
         orderNumber: order.order_number,
         supplierId: order.supplier_id,
-        supplierName: supplier?.name || 'Unknown Supplier',
+        supplier: supplier ? { id: supplier.id, name: supplier.name } : undefined,
         status: order.status,
+        orderDate: order.created_at,
+        expectedDeliveryDate: order.expected_delivery,
+        receivedDate: order.delivered_date, // Map deliveredDate to receivedDate for UI compatibility
         totalAmount: order.total_amount || 0,
-        expectedDelivery: order.expected_delivery,
         notes: order.notes,
+        // Shipping fields
+        trackingNumber: order.tracking_number,
+        shippingStatus: order.shipping_status,
+        estimatedDelivery: order.estimated_delivery_date,
+        shippingNotes: order.shipping_notes,
+        shippedDate: order.shipped_date,
+        deliveredDate: order.delivered_date,
         createdBy: order.created_by,
         createdAt: order.created_at,
         updatedAt: order.updated_at,
@@ -1905,19 +1923,46 @@ class SupabaseDataProvider implements LatsDataProvider {
 
   async createPurchaseOrder(data: PurchaseOrderFormData): Promise<ApiResponse<PurchaseOrder>> {
     try {
+      // Calculate total amount from items
+      const totalAmount = data.items?.reduce((sum, item) => sum + (item.quantity * item.costPrice), 0) || 0;
+      
       const { data: order, error } = await supabase
         .from('lats_purchase_orders')
         .insert([{
           supplier_id: data.supplierId,
           expected_delivery: data.expectedDelivery,
           notes: data.notes,
+          total_amount: totalAmount,
           status: 'draft',
+          shipping_status: 'pending',
           created_by: (await supabase.auth.getUser()).data.user?.id || 'system'
         }])
         .select()
         .single();
 
       if (error) throw error;
+
+      // Create order items if provided
+      if (data.items && data.items.length > 0) {
+        const orderItems = data.items.map(item => ({
+          purchase_order_id: order.id,
+          product_id: item.productId,
+          variant_id: item.variantId,
+          quantity: item.quantity,
+          cost_price: item.costPrice,
+          total_price: item.quantity * item.costPrice,
+          notes: item.notes,
+          received_quantity: 0
+        }));
+
+        const { error: itemsError } = await supabase
+          .from('lats_purchase_order_items')
+          .insert(orderItems);
+
+        if (itemsError) {
+          console.warn('Warning: Could not create order items:', itemsError.message);
+        }
+      }
       
       // Transform snake_case to camelCase
       const transformedData = {
@@ -1925,13 +1970,22 @@ class SupabaseDataProvider implements LatsDataProvider {
         orderNumber: order.order_number,
         supplierId: order.supplier_id,
         status: order.status,
+        orderDate: order.created_at,
+        expectedDeliveryDate: order.expected_delivery,
+        receivedDate: order.delivered_date,
         totalAmount: order.total_amount || 0,
-        expectedDelivery: order.expected_delivery,
         notes: order.notes,
+        // Shipping fields
+        trackingNumber: order.tracking_number,
+        shippingStatus: order.shipping_status,
+        estimatedDelivery: order.estimated_delivery_date,
+        shippingNotes: order.shipping_notes,
+        shippedDate: order.shipped_date,
+        deliveredDate: order.delivered_date,
         createdBy: order.created_by,
         createdAt: order.created_at,
         updatedAt: order.updated_at,
-        items: []
+        items: data.items || []
       };
       
       latsEventBus.emit('lats:purchase-order.created', transformedData);
@@ -1942,13 +1996,33 @@ class SupabaseDataProvider implements LatsDataProvider {
     }
   }
 
-  async updatePurchaseOrder(id: string, data: Partial<PurchaseOrderFormData>): Promise<ApiResponse<PurchaseOrder>> {
+  async updatePurchaseOrder(id: string, data: Partial<PurchaseOrderFormData & {
+    status?: string;
+    trackingNumber?: string;
+    shippingStatus?: string;
+    estimatedDelivery?: string;
+    shippingNotes?: string;
+    shippedDate?: string;
+    deliveredDate?: string;
+  }>): Promise<ApiResponse<PurchaseOrder>> {
     try {
       // Transform camelCase to snake_case for database
       const dbData: any = {};
       if (data.supplierId !== undefined) dbData.supplier_id = data.supplierId;
       if (data.expectedDelivery !== undefined) dbData.expected_delivery = data.expectedDelivery;
       if (data.notes !== undefined) dbData.notes = data.notes;
+      
+      // Handle shipping fields
+      if (data.trackingNumber !== undefined) dbData.tracking_number = data.trackingNumber;
+      if (data.shippingStatus !== undefined) dbData.shipping_status = data.shippingStatus;
+      if (data.estimatedDelivery !== undefined) dbData.estimated_delivery_date = data.estimatedDelivery;
+      if (data.shippingNotes !== undefined) dbData.shipping_notes = data.shippingNotes;
+      if (data.shippedDate !== undefined) dbData.shipped_date = data.shippedDate;
+      if (data.deliveredDate !== undefined) dbData.delivered_date = data.deliveredDate;
+      if (data.status !== undefined) dbData.status = data.status;
+      
+      // Always update the updated_at timestamp
+      dbData.updated_at = new Date().toISOString();
       
       const { data: order, error } = await supabase
         .from('lats_purchase_orders')
@@ -1965,9 +2039,18 @@ class SupabaseDataProvider implements LatsDataProvider {
         orderNumber: order.order_number,
         supplierId: order.supplier_id,
         status: order.status,
+        orderDate: order.created_at,
+        expectedDeliveryDate: order.expected_delivery,
+        receivedDate: order.delivered_date,
         totalAmount: order.total_amount || 0,
-        expectedDelivery: order.expected_delivery,
         notes: order.notes,
+        // Shipping fields
+        trackingNumber: order.tracking_number,
+        shippingStatus: order.shipping_status,
+        estimatedDelivery: order.estimated_delivery_date,
+        shippingNotes: order.shipping_notes,
+        shippedDate: order.shipped_date,
+        deliveredDate: order.delivered_date,
         createdBy: order.created_by,
         createdAt: order.created_at,
         updatedAt: order.updated_at,
@@ -1984,27 +2067,110 @@ class SupabaseDataProvider implements LatsDataProvider {
 
   async receivePurchaseOrder(id: string): Promise<ApiResponse<PurchaseOrder>> {
     try {
-      const { data: order, error } = await supabase
+      // Start transaction to ensure data consistency
+      const { data: order, error: orderError } = await supabase
         .from('lats_purchase_orders')
-        .update({ status: 'received' })
+        .select('*, lats_purchase_order_items(*)')
+        .eq('id', id)
+        .single();
+
+      if (orderError) throw orderError;
+
+      // Get current user for stock movements
+      const { data: { user } } = await supabase.auth.getUser();
+      const currentDate = new Date().toISOString();
+
+      // Process each order item and update stock
+      for (const item of order.lats_purchase_order_items || []) {
+        // Get current variant stock
+        const { data: variant, error: variantError } = await supabase
+          .from('lats_product_variants')
+          .select('quantity')
+          .eq('id', item.variant_id)
+          .single();
+
+        if (variantError) {
+          console.warn(`Warning: Could not fetch variant ${item.variant_id}:`, variantError.message);
+          continue;
+        }
+
+        const previousQuantity = variant.quantity;
+        const newQuantity = previousQuantity + item.quantity;
+
+        // Update variant quantity
+        const { error: updateError } = await supabase
+          .from('lats_product_variants')
+          .update({ quantity: newQuantity, updated_at: currentDate })
+          .eq('id', item.variant_id);
+
+        if (updateError) {
+          console.warn(`Warning: Could not update variant ${item.variant_id}:`, updateError.message);
+          continue;
+        }
+
+        // Create stock movement record
+        const { error: movementError } = await supabase
+          .from('lats_stock_movements')
+          .insert({
+            product_id: item.product_id,
+            variant_id: item.variant_id,
+            type: 'in',
+            quantity: item.quantity,
+            previous_quantity: previousQuantity,
+            new_quantity: newQuantity,
+            reason: 'Purchase order received',
+            reference: `PO-${order.order_number}`,
+            notes: `Received from purchase order ${order.order_number}`,
+            created_by: user?.id || 'system'
+          });
+
+        if (movementError) {
+          console.warn(`Warning: Could not create stock movement for ${item.variant_id}:`, movementError.message);
+        }
+
+        // Update received quantity in order item
+        await supabase
+          .from('lats_purchase_order_items')
+          .update({ received_quantity: item.quantity })
+          .eq('id', item.id);
+      }
+
+      // Update order status and shipping information
+      const { data: updatedOrder, error: updateOrderError } = await supabase
+        .from('lats_purchase_orders')
+        .update({ 
+          status: 'received',
+          shipping_status: 'delivered',
+          delivered_date: currentDate,
+          updated_at: currentDate
+        })
         .eq('id', id)
         .select()
         .single();
 
-      if (error) throw error;
+      if (updateOrderError) throw updateOrderError;
       
       // Transform snake_case to camelCase
       const transformedData = {
-        id: order.id,
-        orderNumber: order.order_number,
-        supplierId: order.supplier_id,
-        status: order.status,
-        totalAmount: order.total_amount || 0,
-        expectedDelivery: order.expected_delivery,
-        notes: order.notes,
-        createdBy: order.created_by,
-        createdAt: order.created_at,
-        updatedAt: order.updated_at,
+        id: updatedOrder.id,
+        orderNumber: updatedOrder.order_number,
+        supplierId: updatedOrder.supplier_id,
+        status: updatedOrder.status,
+        orderDate: updatedOrder.created_at,
+        expectedDeliveryDate: updatedOrder.expected_delivery,
+        receivedDate: updatedOrder.delivered_date,
+        totalAmount: updatedOrder.total_amount || 0,
+        notes: updatedOrder.notes,
+        createdBy: updatedOrder.created_by,
+        createdAt: updatedOrder.created_at,
+        updatedAt: updatedOrder.updated_at,
+        // Shipping fields
+        trackingNumber: updatedOrder.tracking_number,
+        shippingStatus: updatedOrder.shipping_status,
+        estimatedDelivery: updatedOrder.estimated_delivery_date,
+        shippingNotes: updatedOrder.shipping_notes,
+        shippedDate: updatedOrder.shipped_date,
+        deliveredDate: updatedOrder.delivered_date,
         items: []
       };
       

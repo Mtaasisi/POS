@@ -85,7 +85,7 @@ export interface PurchaseOrder {
   id: string;
   orderNumber: string;
   supplierId: string;
-  status: 'draft' | 'sent' | 'confirmed' | 'received' | 'cancelled';
+  status: 'draft' | 'sent' | 'confirmed' | 'shipping' | 'shipped' | 'received' | 'cancelled';
   orderDate: string;
   expectedDeliveryDate?: string;
   receivedDate?: string;
@@ -93,6 +93,13 @@ export interface PurchaseOrder {
   notes?: string;
   items: PurchaseOrderItem[];
   supplier?: Supplier;
+  // Shipping fields
+  trackingNumber?: string;
+  shippingStatus?: 'pending' | 'packed' | 'shipped' | 'in_transit' | 'delivered' | 'returned';
+  estimatedDelivery?: string;
+  shippingNotes?: string;
+  shippedDate?: string;
+  deliveredDate?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -107,6 +114,28 @@ export interface PurchaseOrderItem {
   receivedQuantity: number;
   product?: Product;
   variant?: ProductVariant;
+}
+
+export interface ProductImage {
+  id: string;
+  url: string;
+  altText?: string;
+  isPrimary: boolean;
+}
+
+export interface PurchaseOrderFormData {
+  supplierId: string;
+  expectedDelivery?: string;
+  notes?: string;
+  items: PurchaseOrderItemFormData[];
+}
+
+export interface PurchaseOrderItemFormData {
+  productId: string;
+  variantId: string;
+  quantity: number;
+  costPrice: number;
+  notes?: string;
 }
 
 export interface SparePart {

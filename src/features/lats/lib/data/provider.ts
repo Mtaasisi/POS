@@ -50,7 +50,15 @@ export interface LatsDataProvider {
   getPurchaseOrders(): Promise<ApiResponse<PurchaseOrder[]>>;
   getPurchaseOrder(id: string): Promise<ApiResponse<PurchaseOrder>>;
   createPurchaseOrder(data: PurchaseOrderFormData): Promise<ApiResponse<PurchaseOrder>>;
-  updatePurchaseOrder(id: string, data: Partial<PurchaseOrderFormData>): Promise<ApiResponse<PurchaseOrder>>;
+  updatePurchaseOrder(id: string, data: Partial<PurchaseOrderFormData & {
+    status?: string;
+    trackingNumber?: string;
+    shippingStatus?: string;
+    estimatedDelivery?: string;
+    shippingNotes?: string;
+    shippedDate?: string;
+    deliveredDate?: string;
+  }>): Promise<ApiResponse<PurchaseOrder>>;
   receivePurchaseOrder(id: string): Promise<ApiResponse<PurchaseOrder>>;
   deletePurchaseOrder(id: string): Promise<ApiResponse<void>>;
 
