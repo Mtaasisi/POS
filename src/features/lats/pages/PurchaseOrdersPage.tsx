@@ -41,10 +41,7 @@ const PurchaseOrdersPage: React.FC = () => {
 
   // Load purchase orders on component mount
   useEffect(() => {
-    // Temporarily disabled to prevent 400 errors while fixing foreign key relationships
-    // TODO: Re-enable when purchase orders are properly set up
-    console.log('📝 Purchase orders loading temporarily disabled');
-    // loadPurchaseOrders();
+    loadPurchaseOrders();
   }, [loadPurchaseOrders]);
 
   // Filter and sort purchase orders
