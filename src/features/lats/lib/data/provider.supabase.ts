@@ -1818,6 +1818,11 @@ class SupabaseDataProvider implements LatsDataProvider {
         createdBy: order.created_by,
         createdAt: order.created_at,
         updatedAt: order.updated_at,
+        // Shipping fields
+        trackingNumber: order.tracking_number,
+        shippingStatus: order.shipping_status,
+        estimatedDelivery: order.estimated_delivery,
+        shippingNotes: order.shipping_notes,
         items: (itemsMap.get(order.id) || []).map((item: any) => ({
           id: item.id,
           purchaseOrderId: item.purchase_order_id,
@@ -1883,6 +1888,11 @@ class SupabaseDataProvider implements LatsDataProvider {
         createdBy: order.created_by,
         createdAt: order.created_at,
         updatedAt: order.updated_at,
+        // Shipping fields
+        trackingNumber: order.tracking_number,
+        shippingStatus: order.shipping_status,
+        estimatedDelivery: order.estimated_delivery,
+        shippingNotes: order.shipping_notes,
         items: (items || []).map((item: any) => ({
           id: item.id,
           purchaseOrderId: item.purchase_order_id,
@@ -1950,6 +1960,13 @@ class SupabaseDataProvider implements LatsDataProvider {
       if (data.expectedDelivery !== undefined) dbData.expected_delivery = data.expectedDelivery;
       if (data.notes !== undefined) dbData.notes = data.notes;
       
+      // Support for shipping fields
+      if ((data as any).status !== undefined) dbData.status = (data as any).status;
+      if ((data as any).trackingNumber !== undefined) dbData.tracking_number = (data as any).trackingNumber;
+      if ((data as any).shippingStatus !== undefined) dbData.shipping_status = (data as any).shippingStatus;
+      if ((data as any).estimatedDelivery !== undefined) dbData.estimated_delivery = (data as any).estimatedDelivery;
+      if ((data as any).shippingNotes !== undefined) dbData.shipping_notes = (data as any).shippingNotes;
+      
       const { data: order, error } = await supabase
         .from('lats_purchase_orders')
         .update(dbData)
@@ -1971,7 +1988,12 @@ class SupabaseDataProvider implements LatsDataProvider {
         createdBy: order.created_by,
         createdAt: order.created_at,
         updatedAt: order.updated_at,
-        items: []
+        items: [],
+        // Shipping fields
+        trackingNumber: order.tracking_number,
+        shippingStatus: order.shipping_status,
+        estimatedDelivery: order.estimated_delivery,
+        shippingNotes: order.shipping_notes
       };
       
       latsEventBus.emit('lats:purchase-order.updated', transformedData);
@@ -2005,6 +2027,11 @@ class SupabaseDataProvider implements LatsDataProvider {
         createdBy: order.created_by,
         createdAt: order.created_at,
         updatedAt: order.updated_at,
+        // Shipping fields
+        trackingNumber: order.tracking_number,
+        shippingStatus: order.shipping_status,
+        estimatedDelivery: order.estimated_delivery,
+        shippingNotes: order.shipping_notes,
         items: []
       };
       
