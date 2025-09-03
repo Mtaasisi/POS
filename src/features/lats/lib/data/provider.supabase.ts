@@ -1905,6 +1905,9 @@ class SupabaseDataProvider implements LatsDataProvider {
 
   async createPurchaseOrder(data: PurchaseOrderFormData): Promise<ApiResponse<PurchaseOrder>> {
     try {
+      // Calculate total amount from items
+      const totalAmount = data.items.reduce((sum, item) => sum + (item.quantity * item.costPrice), 0);
+      
       const { data: order, error } = await supabase
         .from('lats_purchase_orders')
         .insert([{
@@ -1912,12 +1915,37 @@ class SupabaseDataProvider implements LatsDataProvider {
           expected_delivery: data.expectedDelivery,
           notes: data.notes,
           status: 'draft',
+          total_amount: totalAmount,
           created_by: (await supabase.auth.getUser()).data.user?.id || 'system'
         }])
         .select()
         .single();
 
       if (error) throw error;
+
+      // Save purchase order items
+      if (data.items && data.items.length > 0) {
+        const orderItems = data.items.map(item => ({
+          purchase_order_id: order.id,
+          product_id: item.productId,
+          variant_id: item.variantId,
+          quantity: item.quantity,
+          cost_price: item.costPrice,
+          total_price: item.quantity * item.costPrice,
+          notes: item.notes || null
+        }));
+
+        const { error: itemsError } = await supabase
+          .from('lats_purchase_order_items')
+          .insert(orderItems);
+
+        if (itemsError) {
+          console.error('Error creating purchase order items:', itemsError);
+          // Try to delete the order since items failed
+          await supabase.from('lats_purchase_orders').delete().eq('id', order.id);
+          throw new Error(`Failed to save purchase order items: ${itemsError.message}`);
+        }
+      }
       
       // Transform snake_case to camelCase
       const transformedData = {
@@ -1925,20 +1953,20 @@ class SupabaseDataProvider implements LatsDataProvider {
         orderNumber: order.order_number,
         supplierId: order.supplier_id,
         status: order.status,
-        totalAmount: order.total_amount || 0,
+        totalAmount: totalAmount,
         expectedDelivery: order.expected_delivery,
         notes: order.notes,
         createdBy: order.created_by,
         createdAt: order.created_at,
         updatedAt: order.updated_at,
-        items: []
+        items: data.items || []
       };
       
       latsEventBus.emit('lats:purchase-order.created', transformedData);
       return { ok: true, data: transformedData };
     } catch (error) {
       console.error('Error creating purchase order:', error);
-      return { ok: false, message: 'Failed to create purchase order' };
+      return { ok: false, message: error instanceof Error ? error.message : 'Failed to create purchase order' };
     }
   }
 
