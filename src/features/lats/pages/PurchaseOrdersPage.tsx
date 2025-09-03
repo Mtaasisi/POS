@@ -10,11 +10,12 @@ import {
   AlertCircle, Edit, Eye, Trash2, Star, Tag, DollarSign, TrendingUp, 
   Activity, BarChart3, Settings, RefreshCw, ChevronLeft, ChevronRight,
   CheckCircle, XCircle, Users, Crown, Calendar, RotateCcw, RefreshCw as RefreshCwIcon,
-  FileText, ShoppingCart, Clock, CheckSquare, XSquare, Send, Truck
+  FileText, ShoppingCart, Clock, CheckSquare, XSquare, Send, Truck, Ship
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useInventoryStore } from '../stores/useInventoryStore';
 import { PurchaseOrder } from '../types/inventory';
+import OrderManagementModal from '../components/purchase-order/OrderManagementModal';
 
 const PurchaseOrdersPage: React.FC = () => {
   const { currentUser } = useAuth();
@@ -32,12 +33,16 @@ const PurchaseOrdersPage: React.FC = () => {
 
   // Local state
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'sent' | 'received' | 'cancelled'>('all');
-  const [sortBy, setSortBy] = useState<'createdAt' | 'orderNumber' | 'totalAmount' | 'expectedDelivery'>('createdAt');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'sent' | 'confirmed' | 'processing' | 'shipping' | 'shipped' | 'received' | 'cancelled'>('all');
+  const [sortBy, setSortBy] = useState<'createdAt' | 'orderNumber' | 'totalAmount' | 'expectedDeliveryDate'>('createdAt');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
+  
+  // Modal state
+  const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
   // Load purchase orders on component mount
   useEffect(() => {
@@ -77,9 +82,9 @@ const PurchaseOrdersPage: React.FC = () => {
           aValue = a.totalAmount;
           bValue = b.totalAmount;
           break;
-        case 'expectedDelivery':
-          aValue = a.expectedDelivery || '';
-          bValue = b.expectedDelivery || '';
+        case 'expectedDeliveryDate':
+          aValue = a.expectedDeliveryDate || '';
+          bValue = b.expectedDeliveryDate || '';
           break;
         default:
           aValue = new Date(a.createdAt).getTime();
@@ -117,10 +122,29 @@ const PurchaseOrdersPage: React.FC = () => {
     }
   };
 
+  // Modal management functions
+  const handleViewOrder = (orderId: string) => {
+    setSelectedOrderId(orderId);
+    setIsOrderModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsOrderModalOpen(false);
+    setSelectedOrderId(null);
+  };
+
+  const handleOrderUpdated = () => {
+    loadPurchaseOrders(); // Refresh the orders list
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'draft': return 'text-yellow-600 bg-yellow-100';
       case 'sent': return 'text-blue-600 bg-blue-100';
+      case 'confirmed': return 'text-purple-600 bg-purple-100';
+      case 'processing': return 'text-indigo-600 bg-indigo-100';
+      case 'shipping': return 'text-orange-600 bg-orange-100';
+      case 'shipped': return 'text-cyan-600 bg-cyan-100';
       case 'received': return 'text-green-600 bg-green-100';
       case 'cancelled': return 'text-red-600 bg-red-100';
       default: return 'text-gray-600 bg-gray-100';
@@ -131,7 +155,11 @@ const PurchaseOrdersPage: React.FC = () => {
     switch (status) {
       case 'draft': return <FileText className="w-4 h-4" />;
       case 'sent': return <Send className="w-4 h-4" />;
-      case 'received': return <Truck className="w-4 h-4" />;
+      case 'confirmed': return <CheckCircle className="w-4 h-4" />;
+      case 'processing': return <Clock className="w-4 h-4" />;
+      case 'shipping': return <Ship className="w-4 h-4" />;
+      case 'shipped': return <Truck className="w-4 h-4" />;
+      case 'received': return <Package className="w-4 h-4" />;
       case 'cancelled': return <XSquare className="w-4 h-4" />;
       default: return <Clock className="w-4 h-4" />;
     }
@@ -176,7 +204,7 @@ const PurchaseOrdersPage: React.FC = () => {
               icon={<Plus size={18} />}
               className="bg-gradient-to-r from-orange-500 to-amber-600 text-white font-semibold"
             >
-              🛒 Interactive PO Creator
+              Interactive PO Creator
             </GlassButton>
             <GlassButton
               onClick={() => navigate('/lats/purchase-orders/new')}
@@ -188,6 +216,69 @@ const PurchaseOrdersPage: React.FC = () => {
             </GlassButton>
           </div>
         </div>
+
+        {/* Order Status Statistics */}
+        {purchaseOrders && purchaseOrders.length > 0 && (
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-6">
+            <GlassCard className="p-4 bg-gradient-to-br from-yellow-50 to-yellow-100 border-yellow-200">
+              <div className="flex items-center gap-3">
+                <FileText className="w-6 h-6 text-yellow-600" />
+                <div>
+                  <p className="text-sm font-medium text-yellow-600">Draft</p>
+                  <p className="text-xl font-bold text-yellow-900">
+                    {purchaseOrders.filter(order => order.status === 'draft').length}
+                  </p>
+                </div>
+              </div>
+            </GlassCard>
+            
+            <GlassCard className="p-4 bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+              <div className="flex items-center gap-3">
+                <Send className="w-6 h-6 text-blue-600" />
+                <div>
+                  <p className="text-sm font-medium text-blue-600">Sent</p>
+                  <p className="text-xl font-bold text-blue-900">
+                    {purchaseOrders.filter(order => order.status === 'sent').length}
+                  </p>
+                </div>
+              </div>
+            </GlassCard>
+            
+            <GlassCard className="p-4 bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
+              <div className="flex items-center gap-3">
+                <Ship className="w-6 h-6 text-orange-600" />
+                <div>
+                  <p className="text-sm font-medium text-orange-600">Shipping</p>
+                  <p className="text-xl font-bold text-orange-900">
+                    {purchaseOrders.filter(order => ['shipping', 'shipped'].includes(order.status)).length}
+                  </p>
+                </div>
+              </div>
+            </GlassCard>
+            
+            <GlassCard className="p-4 bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+              <div className="flex items-center gap-3">
+                <Package className="w-6 h-6 text-green-600" />
+                <div>
+                  <p className="text-sm font-medium text-green-600">Received</p>
+                  <p className="text-xl font-bold text-green-900">
+                    {purchaseOrders.filter(order => order.status === 'received').length}
+                  </p>
+                </div>
+              </div>
+            </GlassCard>
+            
+            <GlassCard className="p-4 bg-gradient-to-br from-gray-50 to-gray-100 border-gray-200">
+              <div className="flex items-center gap-3">
+                <Activity className="w-6 h-6 text-gray-600" />
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Total</p>
+                  <p className="text-xl font-bold text-gray-900">{purchaseOrders.length}</p>
+                </div>
+              </div>
+            </GlassCard>
+          </div>
+        )}
 
         {/* Filters and Search */}
         <GlassCard className="mb-6">
@@ -215,6 +306,10 @@ const PurchaseOrdersPage: React.FC = () => {
               <option value="all">All Status</option>
               <option value="draft">Draft</option>
               <option value="sent">Sent</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="processing">Processing</option>
+              <option value="shipping">Shipping</option>
+              <option value="shipped">Shipped</option>
               <option value="received">Received</option>
               <option value="cancelled">Cancelled</option>
             </select>
@@ -228,7 +323,7 @@ const PurchaseOrdersPage: React.FC = () => {
               <option value="createdAt">Date Created</option>
               <option value="orderNumber">Order Number</option>
               <option value="totalAmount">Total Amount</option>
-              <option value="expectedDelivery">Expected Delivery</option>
+              <option value="expectedDeliveryDate">Expected Delivery</option>
             </select>
 
             {/* Sort Order */}
@@ -328,10 +423,10 @@ const PurchaseOrdersPage: React.FC = () => {
                       <span className="text-gray-600">Items:</span>
                       <span>{order.items.length} items</span>
                     </div>
-                    {order.expectedDelivery && (
+                    {order.expectedDeliveryDate && (
                       <div className="flex justify-between">
                         <span className="text-gray-600">Expected Delivery:</span>
-                        <span>{formatDate(order.expectedDelivery)}</span>
+                        <span>{formatDate(order.expectedDeliveryDate)}</span>
                       </div>
                     )}
                   </div>
@@ -339,13 +434,13 @@ const PurchaseOrdersPage: React.FC = () => {
                   {/* Actions */}
                   <div className="flex gap-2 pt-4 border-t border-gray-200">
                     <GlassButton
-                      onClick={() => navigate(`/lats/purchase-orders/${order.id}`)}
+                      onClick={() => handleViewOrder(order.id)}
                       variant="outline"
                       size="sm"
                       className="flex-1"
                     >
                       <Eye className="w-4 h-4 mr-1" />
-                      View
+                      Manage
                     </GlassButton>
                     
                     {order.status === 'draft' && (
@@ -405,6 +500,14 @@ const PurchaseOrdersPage: React.FC = () => {
           </GlassCard>
         )}
       </div>
+
+      {/* Order Management Modal */}
+      <OrderManagementModal
+        isOpen={isOrderModalOpen}
+        onClose={handleCloseModal}
+        orderId={selectedOrderId}
+        onOrderUpdated={handleOrderUpdated}
+      />
     </div>
   );
 };

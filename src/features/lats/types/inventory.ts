@@ -85,10 +85,14 @@ export interface PurchaseOrder {
   id: string;
   orderNumber: string;
   supplierId: string;
-  status: 'draft' | 'sent' | 'confirmed' | 'received' | 'cancelled';
+  status: 'draft' | 'sent' | 'confirmed' | 'processing' | 'shipping' | 'shipped' | 'received' | 'cancelled';
   orderDate: string;
   expectedDeliveryDate?: string;
   receivedDate?: string;
+  shippedDate?: string;
+  trackingNumber?: string;
+  carrier?: string;
+  shippingNotes?: string;
   totalAmount: number;
   notes?: string;
   items: PurchaseOrderItem[];
@@ -105,6 +109,7 @@ export interface PurchaseOrderItem {
   quantity: number;
   costPrice: number;
   receivedQuantity: number;
+  status?: 'pending' | 'processing' | 'shipping' | 'shipped' | 'delivered' | 'cancelled';
   product?: Product;
   variant?: ProductVariant;
 }
