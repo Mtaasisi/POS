@@ -138,6 +138,7 @@ interface InventoryState {
   getPurchaseOrder: (id: string) => Promise<ApiResponse<PurchaseOrder>>;
   createPurchaseOrder: (order: any) => Promise<ApiResponse<PurchaseOrder>>;
   updatePurchaseOrder: (id: string, order: any) => Promise<ApiResponse<PurchaseOrder>>;
+  updatePurchaseOrderShipping: (id: string, shippingInfo: any) => Promise<ApiResponse<PurchaseOrder>>;
   receivePurchaseOrder: (id: string) => Promise<ApiResponse<void>>;
   deletePurchaseOrder: (id: string) => Promise<ApiResponse<void>>;
 
@@ -901,6 +902,34 @@ export const useInventoryStore = create<InventoryState>()(
           const errorMsg = 'Failed to update purchase order';
           set({ error: errorMsg });
           console.error('Error updating purchase order:', error);
+          return { ok: false, message: errorMsg };
+        } finally {
+          set({ isUpdating: false });
+        }
+      },
+
+      updatePurchaseOrderShipping: async (id, shippingInfo) => {
+        set({ isUpdating: true, error: null });
+        try {
+          const provider = getLatsProvider();
+          const response = await provider.updatePurchaseOrder(id, {
+            status: 'shipped',
+            shippingInfo,
+            shippingDate: new Date().toISOString()
+          });
+          if (response.ok) {
+            await get().loadPurchaseOrders();
+            latsAnalytics.track('purchase_order_shipped', { 
+              orderId: id, 
+              carrier: shippingInfo.carrier,
+              trackingNumber: shippingInfo.trackingNumber 
+            });
+          }
+          return response;
+        } catch (error) {
+          const errorMsg = 'Failed to update shipping information';
+          set({ error: errorMsg });
+          console.error('Error updating shipping info:', error);
           return { ok: false, message: errorMsg };
         } finally {
           set({ isUpdating: false });

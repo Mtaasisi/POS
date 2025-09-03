@@ -85,16 +85,29 @@ export interface PurchaseOrder {
   id: string;
   orderNumber: string;
   supplierId: string;
-  status: 'draft' | 'sent' | 'confirmed' | 'received' | 'cancelled';
+  status: 'draft' | 'sent' | 'confirmed' | 'shipped' | 'received' | 'cancelled';
   orderDate: string;
   expectedDeliveryDate?: string;
   receivedDate?: string;
+  shippingDate?: string;
   totalAmount: number;
   notes?: string;
   items: PurchaseOrderItem[];
   supplier?: Supplier;
+  shippingInfo?: ShippingInfo;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ShippingInfo {
+  carrier: string;
+  trackingNumber: string;
+  shippingMethod: string;
+  estimatedDelivery: string;
+  shippingCost?: number;
+  notes?: string;
+  shippedDate: string;
+  shippedBy?: string;
 }
 
 export interface PurchaseOrderItem {

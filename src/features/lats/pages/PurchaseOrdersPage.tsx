@@ -32,7 +32,7 @@ const PurchaseOrdersPage: React.FC = () => {
 
   // Local state
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'sent' | 'received' | 'cancelled'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'sent' | 'shipped' | 'received' | 'cancelled'>('all');
   const [sortBy, setSortBy] = useState<'createdAt' | 'orderNumber' | 'totalAmount' | 'expectedDelivery'>('createdAt');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
@@ -121,6 +121,7 @@ const PurchaseOrdersPage: React.FC = () => {
     switch (status) {
       case 'draft': return 'text-yellow-600 bg-yellow-100';
       case 'sent': return 'text-blue-600 bg-blue-100';
+      case 'shipped': return 'text-purple-600 bg-purple-100';
       case 'received': return 'text-green-600 bg-green-100';
       case 'cancelled': return 'text-red-600 bg-red-100';
       default: return 'text-gray-600 bg-gray-100';
@@ -131,7 +132,8 @@ const PurchaseOrdersPage: React.FC = () => {
     switch (status) {
       case 'draft': return <FileText className="w-4 h-4" />;
       case 'sent': return <Send className="w-4 h-4" />;
-      case 'received': return <Truck className="w-4 h-4" />;
+      case 'shipped': return <Truck className="w-4 h-4" />;
+      case 'received': return <CheckSquare className="w-4 h-4" />;
       case 'cancelled': return <XSquare className="w-4 h-4" />;
       default: return <Clock className="w-4 h-4" />;
     }
@@ -171,6 +173,14 @@ const PurchaseOrdersPage: React.FC = () => {
           </div>
           
           <div className="flex gap-2">
+            <GlassButton
+              onClick={() => navigate('/lats/shipping')}
+              icon={<Truck size={18} />}
+              variant="outline"
+              className="border-purple-300 text-purple-600 hover:bg-purple-50"
+            >
+              Shipping
+            </GlassButton>
             <GlassButton
               onClick={() => navigate('/lats/purchase-order/create')}
               icon={<Plus size={18} />}
@@ -215,6 +225,7 @@ const PurchaseOrdersPage: React.FC = () => {
               <option value="all">All Status</option>
               <option value="draft">Draft</option>
               <option value="sent">Sent</option>
+              <option value="shipped">Shipped</option>
               <option value="received">Received</option>
               <option value="cancelled">Cancelled</option>
             </select>

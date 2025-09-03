@@ -13,6 +13,7 @@ import {
 import { toast } from 'react-hot-toast';
 import { useInventoryStore } from '../stores/useInventoryStore';
 import { PurchaseOrder } from '../types/inventory';
+import ShippingInfoModal from '../components/purchase-order/ShippingInfoModal';
 
 const PurchaseOrderDetailPage: React.FC = () => {
   const { currentUser } = useAuth();
@@ -23,6 +24,7 @@ const PurchaseOrderDetailPage: React.FC = () => {
   const { 
     getPurchaseOrder,
     updatePurchaseOrder,
+    updatePurchaseOrderShipping,
     deletePurchaseOrder,
     receivePurchaseOrder,
     isLoading,
@@ -34,6 +36,7 @@ const PurchaseOrderDetailPage: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [isLoadingOrder, setIsLoadingOrder] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [showShippingModal, setShowShippingModal] = useState(false);
 
   // Load purchase order on component mount
   useEffect(() => {
@@ -109,10 +112,24 @@ const PurchaseOrderDetailPage: React.FC = () => {
     }
   };
 
+  const handleShippingInfo = async (shippingInfo: any) => {
+    if (!purchaseOrder) return;
+    
+    const response = await updatePurchaseOrderShipping(purchaseOrder.id, shippingInfo);
+    
+    if (response.ok) {
+      toast.success('Shipping information updated successfully');
+      await loadPurchaseOrder();
+    } else {
+      toast.error(response.message || 'Failed to update shipping information');
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'draft': return 'text-yellow-600 bg-yellow-100';
       case 'sent': return 'text-blue-600 bg-blue-100';
+      case 'shipped': return 'text-purple-600 bg-purple-100';
       case 'received': return 'text-green-600 bg-green-100';
       case 'cancelled': return 'text-red-600 bg-red-100';
       default: return 'text-gray-600 bg-gray-100';
@@ -123,7 +140,8 @@ const PurchaseOrderDetailPage: React.FC = () => {
     switch (status) {
       case 'draft': return <FileText className="w-4 h-4" />;
       case 'sent': return <Send className="w-4 h-4" />;
-      case 'received': return <Truck className="w-4 h-4" />;
+      case 'shipped': return <Truck className="w-4 h-4" />;
+      case 'received': return <CheckSquare className="w-4 h-4" />;
       case 'cancelled': return <XSquare className="w-4 h-4" />;
       default: return <Clock className="w-4 h-4" />;
     }
@@ -142,6 +160,10 @@ const PurchaseOrderDetailPage: React.FC = () => {
       month: 'long',
       day: 'numeric'
     });
+  };
+
+  const isDeliveryOverdue = (estimatedDelivery: string) => {
+    return new Date(estimatedDelivery) < new Date();
   };
 
   if (isLoadingOrder) {
@@ -312,6 +334,90 @@ const PurchaseOrderDetailPage: React.FC = () => {
               </div>
             </GlassCard>
 
+            {/* Shipping Information */}
+            {purchaseOrder.shippingInfo && (
+              <GlassCard>
+                <div className="p-6">
+                  <h2 className="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <Truck className="w-5 h-5 text-purple-600" />
+                    Shipping Information
+                  </h2>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Carrier
+                      </label>
+                      <p className="text-gray-900 font-medium">{purchaseOrder.shippingInfo.carrier}</p>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Tracking Number
+                      </label>
+                      <p className="text-gray-900 font-mono">{purchaseOrder.shippingInfo.trackingNumber}</p>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Shipping Method
+                      </label>
+                      <p className="text-gray-900">{purchaseOrder.shippingInfo.shippingMethod}</p>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Shipped Date
+                      </label>
+                      <p className="text-gray-900">{formatDate(purchaseOrder.shippingInfo.shippedDate)}</p>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Estimated Delivery
+                      </label>
+                      <p className={`font-medium ${
+                        isDeliveryOverdue(purchaseOrder.shippingInfo.estimatedDelivery) && purchaseOrder.status === 'shipped'
+                          ? 'text-red-600' 
+                          : 'text-gray-900'
+                      }`}>
+                        {formatDate(purchaseOrder.shippingInfo.estimatedDelivery)}
+                      </p>
+                    </div>
+                    
+                    {purchaseOrder.shippingInfo.shippingCost && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Shipping Cost
+                        </label>
+                        <p className="text-gray-900 font-medium">
+                          {formatCurrency(purchaseOrder.shippingInfo.shippingCost)}
+                        </p>
+                      </div>
+                    )}
+                    
+                    {purchaseOrder.shippingInfo.shippedBy && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Shipped By
+                        </label>
+                        <p className="text-gray-900">{purchaseOrder.shippingInfo.shippedBy}</p>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {purchaseOrder.shippingInfo.notes && (
+                    <div className="mt-6">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Shipping Notes
+                      </label>
+                      <p className="text-gray-900 bg-gray-50 p-3 rounded-lg">{purchaseOrder.shippingInfo.notes}</p>
+                    </div>
+                  )}
+                </div>
+              </GlassCard>
+            )}
+
             {/* Order Items */}
             <GlassCard>
               <div className="p-6">
@@ -409,13 +515,45 @@ const PurchaseOrderDetailPage: React.FC = () => {
                       )}
                       
                       {purchaseOrder.status === 'sent' && (
-                        <GlassButton
-                          onClick={handleReceive}
-                          className="w-full flex items-center justify-center gap-2"
-                        >
-                          <CheckSquare className="w-4 h-4" />
-                          Receive Order
-                        </GlassButton>
+                        <>
+                          <GlassButton
+                            onClick={() => setShowShippingModal(true)}
+                            className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600 to-purple-700 text-white"
+                          >
+                            <Truck className="w-4 h-4" />
+                            Mark as Shipped
+                          </GlassButton>
+                          
+                          <GlassButton
+                            onClick={handleReceive}
+                            variant="outline"
+                            className="w-full flex items-center justify-center gap-2"
+                          >
+                            <CheckSquare className="w-4 h-4" />
+                            Receive Order
+                          </GlassButton>
+                        </>
+                      )}
+
+                      {purchaseOrder.status === 'shipped' && (
+                        <>
+                          <GlassButton
+                            onClick={() => setShowShippingModal(true)}
+                            variant="outline"
+                            className="w-full flex items-center justify-center gap-2"
+                          >
+                            <Truck className="w-4 h-4" />
+                            Edit Shipping Info
+                          </GlassButton>
+                          
+                          <GlassButton
+                            onClick={handleReceive}
+                            className="w-full flex items-center justify-center gap-2"
+                          >
+                            <CheckSquare className="w-4 h-4" />
+                            Receive Order
+                          </GlassButton>
+                        </>
                       )}
                     </>
                   )}
@@ -435,6 +573,17 @@ const PurchaseOrderDetailPage: React.FC = () => {
                     <Download className="w-4 h-4" />
                     Export PDF
                   </GlassButton>
+                  
+                  {(purchaseOrder.status === 'shipped' || purchaseOrder.status === 'received') && (
+                    <GlassButton
+                      onClick={() => navigate('/lats/shipping')}
+                      variant="outline"
+                      className="w-full flex items-center justify-center gap-2"
+                    >
+                      <Truck className="w-4 h-4" />
+                      View All Shipping
+                    </GlassButton>
+                  )}
                 </div>
               </div>
             </GlassCard>
@@ -476,6 +625,16 @@ const PurchaseOrderDetailPage: React.FC = () => {
           </div>
         </div>
       </div>
+      
+      {/* Shipping Information Modal */}
+      <ShippingInfoModal
+        isOpen={showShippingModal}
+        onClose={() => setShowShippingModal(false)}
+        onSave={handleShippingInfo}
+        existingShippingInfo={purchaseOrder?.shippingInfo}
+        orderNumber={purchaseOrder?.orderNumber || ''}
+        isLoading={isSaving}
+      />
     </div>
   );
 };

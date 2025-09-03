@@ -69,6 +69,7 @@ const PurchaseOrdersPage = lazy(() => import('./features/lats/pages/PurchaseOrde
 const NewPurchaseOrderPage = lazy(() => import('./features/lats/pages/NewPurchaseOrderPage'));
 const PurchaseOrderPage = lazy(() => import('./features/lats/pages/PurchaseOrderPage'));
 const PurchaseOrderDetailPage = lazy(() => import('./features/lats/pages/PurchaseOrderDetailPage'));
+const ShippingManagementPage = lazy(() => import('./features/lats/pages/ShippingManagementPage'));
 const SparePartsPage = lazy(() => import('./features/lats/pages/SparePartsPage'));
 const PaymentHistoryPage = lazy(() => import('./features/lats/pages/PaymentHistoryPage'));
 
@@ -351,6 +352,7 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
           <Route path="/lats/purchase-orders/new" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><NewPurchaseOrderPage /></Suspense></RoleProtectedRoute>} />
           <Route path="/lats/purchase-order/create" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><PurchaseOrderPage /></Suspense></RoleProtectedRoute>} />
           <Route path="/lats/purchase-orders/:id" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><PurchaseOrderDetailPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/lats/shipping" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><ShippingManagementPage /></Suspense></RoleProtectedRoute>} />
 
           <Route path="/lats/spare-parts" element={<RoleProtectedRoute allowedRoles={['admin', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><SparePartsPage /></Suspense></RoleProtectedRoute>} />
           
