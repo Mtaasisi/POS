@@ -85,7 +85,7 @@ export interface PurchaseOrder {
   id: string;
   orderNumber: string;
   supplierId: string;
-  status: 'draft' | 'sent' | 'confirmed' | 'received' | 'cancelled';
+  status: 'draft' | 'sent' | 'confirmed' | 'shipping' | 'shipped' | 'received' | 'cancelled';
   orderDate: string;
   expectedDeliveryDate?: string;
   receivedDate?: string;
@@ -95,6 +95,11 @@ export interface PurchaseOrder {
   supplier?: Supplier;
   createdAt: string;
   updatedAt: string;
+  // Shipping management fields
+  trackingNumber?: string;
+  shippingStatus?: 'pending' | 'packed' | 'shipped' | 'in_transit' | 'delivered' | 'returned';
+  estimatedDelivery?: string;
+  shippingNotes?: string;
 }
 
 export interface PurchaseOrderItem {

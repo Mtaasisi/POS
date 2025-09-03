@@ -10,11 +10,12 @@ import {
   AlertCircle, Edit, Eye, Trash2, Star, Tag, DollarSign, TrendingUp, 
   Activity, BarChart3, Settings, RefreshCw, ChevronLeft, ChevronRight,
   CheckCircle, XCircle, Users, Crown, Calendar, RotateCcw, RefreshCw as RefreshCwIcon,
-  FileText, ShoppingCart, Clock, CheckSquare, XSquare, Send, Truck
+  FileText, ShoppingCart, Clock, CheckSquare, XSquare, Send, Truck, Ship, PackageCheck
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useInventoryStore } from '../stores/useInventoryStore';
 import { PurchaseOrder } from '../types/inventory';
+import OrderManagementModal from '../components/purchase-order/OrderManagementModal';
 
 const PurchaseOrdersPage: React.FC = () => {
   const { currentUser } = useAuth();
@@ -32,12 +33,13 @@ const PurchaseOrdersPage: React.FC = () => {
 
   // Local state
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'sent' | 'received' | 'cancelled'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'sent' | 'confirmed' | 'shipping' | 'shipped' | 'received' | 'cancelled'>('all');
   const [sortBy, setSortBy] = useState<'createdAt' | 'orderNumber' | 'totalAmount' | 'expectedDelivery'>('createdAt');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
+  const [showOrderManagementModal, setShowOrderManagementModal] = useState(false);
 
   // Load purchase orders on component mount
   useEffect(() => {
@@ -121,6 +123,9 @@ const PurchaseOrdersPage: React.FC = () => {
     switch (status) {
       case 'draft': return 'text-yellow-600 bg-yellow-100';
       case 'sent': return 'text-blue-600 bg-blue-100';
+      case 'confirmed': return 'text-purple-600 bg-purple-100';
+      case 'shipping': return 'text-orange-600 bg-orange-100';
+      case 'shipped': return 'text-indigo-600 bg-indigo-100';
       case 'received': return 'text-green-600 bg-green-100';
       case 'cancelled': return 'text-red-600 bg-red-100';
       default: return 'text-gray-600 bg-gray-100';
@@ -131,7 +136,10 @@ const PurchaseOrdersPage: React.FC = () => {
     switch (status) {
       case 'draft': return <FileText className="w-4 h-4" />;
       case 'sent': return <Send className="w-4 h-4" />;
-      case 'received': return <Truck className="w-4 h-4" />;
+      case 'confirmed': return <CheckSquare className="w-4 h-4" />;
+      case 'shipping': return <Package className="w-4 h-4" />;
+      case 'shipped': return <Truck className="w-4 h-4" />;
+      case 'received': return <CheckCircle className="w-4 h-4" />;
       case 'cancelled': return <XSquare className="w-4 h-4" />;
       default: return <Clock className="w-4 h-4" />;
     }
@@ -170,13 +178,20 @@ const PurchaseOrdersPage: React.FC = () => {
             <p className="text-gray-600">Manage your purchase orders and inventory</p>
           </div>
           
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
+            <GlassButton
+              onClick={() => setShowOrderManagementModal(true)}
+              icon={<ShoppingCart size={18} />}
+              className="bg-gradient-to-r from-blue-500 to-cyan-600 text-white font-semibold"
+            >
+              Manage Orders
+            </GlassButton>
             <GlassButton
               onClick={() => navigate('/lats/purchase-order/create')}
               icon={<Plus size={18} />}
               className="bg-gradient-to-r from-orange-500 to-amber-600 text-white font-semibold"
             >
-              🛒 Interactive PO Creator
+              Interactive PO
             </GlassButton>
             <GlassButton
               onClick={() => navigate('/lats/purchase-orders/new')}
@@ -215,6 +230,9 @@ const PurchaseOrdersPage: React.FC = () => {
               <option value="all">All Status</option>
               <option value="draft">Draft</option>
               <option value="sent">Sent</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="shipping">Shipping</option>
+              <option value="shipped">Shipped</option>
               <option value="received">Received</option>
               <option value="cancelled">Cancelled</option>
             </select>
@@ -404,6 +422,12 @@ const PurchaseOrdersPage: React.FC = () => {
             </div>
           </GlassCard>
         )}
+
+        {/* Order Management Modal */}
+        <OrderManagementModal
+          isOpen={showOrderManagementModal}
+          onClose={() => setShowOrderManagementModal(false)}
+        />
       </div>
     </div>
   );

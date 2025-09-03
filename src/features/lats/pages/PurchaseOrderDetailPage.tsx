@@ -8,7 +8,8 @@ import LATSBreadcrumb from '../components/ui/LATSBreadcrumb';
 import { 
   Package, Edit, Save, X, AlertCircle, 
   FileText, ShoppingCart, Clock, CheckSquare, XSquare, Send, Truck,
-  DollarSign, Calendar, Printer, Download, ArrowLeft, ArrowRight
+  DollarSign, Calendar, Printer, Download, ArrowLeft, ArrowRight,
+  Ship, PackageCheck
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useInventoryStore } from '../stores/useInventoryStore';
@@ -113,6 +114,9 @@ const PurchaseOrderDetailPage: React.FC = () => {
     switch (status) {
       case 'draft': return 'text-yellow-600 bg-yellow-100';
       case 'sent': return 'text-blue-600 bg-blue-100';
+      case 'confirmed': return 'text-purple-600 bg-purple-100';
+      case 'shipping': return 'text-orange-600 bg-orange-100';
+      case 'shipped': return 'text-indigo-600 bg-indigo-100';
       case 'received': return 'text-green-600 bg-green-100';
       case 'cancelled': return 'text-red-600 bg-red-100';
       default: return 'text-gray-600 bg-gray-100';
@@ -123,7 +127,10 @@ const PurchaseOrderDetailPage: React.FC = () => {
     switch (status) {
       case 'draft': return <FileText className="w-4 h-4" />;
       case 'sent': return <Send className="w-4 h-4" />;
-      case 'received': return <Truck className="w-4 h-4" />;
+      case 'confirmed': return <CheckSquare className="w-4 h-4" />;
+      case 'shipping': return <Package className="w-4 h-4" />;
+      case 'shipped': return <Truck className="w-4 h-4" />;
+      case 'received': return <CheckSquare className="w-4 h-4" />;
       case 'cancelled': return <XSquare className="w-4 h-4" />;
       default: return <Clock className="w-4 h-4" />;
     }
