@@ -5,13 +5,13 @@ import GlassCard from '../../shared/components/ui/GlassCard';
 import GlassButton from '../../shared/components/ui/GlassButton';
 import { BackButton } from '../../shared/components/ui/BackButton';
 import { toast } from 'react-hot-toast';
-import { Save, ArrowLeft, MapPin, Store, X, Plus, Check, Layers, Palette, HardDrive, Zap, Cpu, Monitor, Battery, Camera, Ruler, FileText, Building } from 'lucide-react';
+import { Save, ArrowLeft, MapPin, Store, X, Plus, Check, Layers, Palette, HardDrive, Zap, Cpu, Monitor, Battery, Camera, Ruler, FileText, Hand, Unplug, RotateCcw, Lightbulb, Fingerprint, ScanFace, Droplets, Wind, BatteryCharging, FastForward, PhoneCall, Expand, Radio, Navigation, Headphones, PenTool, Shield, Lock, Vibrate, Usb, Cable, Speaker, Mic } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useAuth } from '../../../context/AuthContext';
 import { retryWithBackoff } from '../../../lib/supabaseClient';
 
 import { getActiveCategories, Category } from '../../../lib/categoryApi';
-import { getActiveSuppliers, Supplier } from '../../../lib/supplierApi';
+
 import { validateProductData } from '../lib/databaseDiagnostics';
 import { StoreLocation } from '../../settings/types/storeLocation';
 import { storeLocationApi } from '../../settings/utils/storeLocationApi';
@@ -77,7 +77,7 @@ const productFormSchema = z.object({
 
   categoryId: z.string().min(1, 'Category must be selected'),
 
-  supplierId: z.string().optional(),
+
   condition: z.enum(['new', 'used', 'refurbished'], {
     errorMap: () => ({ message: 'Please select a condition' })
   }),
@@ -98,11 +98,33 @@ const productFormSchema = z.object({
 
 type ProductImage = z.infer<typeof ProductImageSchema>;
 
-const EditProductPage: React.FC = () => {
+// Context wrapper component to ensure AuthProvider is available
+const EditProductPageWithAuth: React.FC = () => {
+  try {
+    const { currentUser } = useAuth();
+    
+    // If we can access useAuth without error, render the main component
+    return <EditProductPageContent />;
+  } catch (error) {
+    // If AuthProvider is not available, show a loading state
+    console.warn('AuthProvider not available, showing loading state:', error);
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading authentication...</p>
+        </div>
+      </div>
+    );
+  }
+};
+
+// Main component content
+const EditProductPageContent: React.FC = () => {
   const { productId } = useParams<{ productId: string }>();
   const navigate = useNavigate();
   const [categories, setCategories] = useState<Category[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+
   const [storeLocations, setStoreLocations] = useState<StoreLocation[]>([]);
   const [currentErrors, setCurrentErrors] = useState<Record<string, string>>({});
 
@@ -110,9 +132,9 @@ const EditProductPage: React.FC = () => {
   const [formData, setFormData] = useState({
     name: '',
     sku: '',
-    categoryId: '',
+    categoryId: null,
 
-    supplierId: '',
+
     condition: '',
     description: '',
     specification: '', // Ensure this is always a string
@@ -159,15 +181,14 @@ const EditProductPage: React.FC = () => {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [categoriesData, locationsData, suppliersData] = await Promise.all([
-          getActiveCategories(),
-          storeLocationApi.getAll(),
-          getActiveSuppliers()
-        ]);
+            const [categoriesData, locationsData] = await Promise.all([
+      getActiveCategories(),
+      storeLocationApi.getAll()
+    ]);
 
         setCategories(categoriesData || []);
         setStoreLocations(locationsData || []);
-        setSuppliers(suppliersData || []);
+    
       } catch (error) {
         console.error('Error loading data:', error);
         toast.error('Failed to load form data');
@@ -271,8 +292,8 @@ const EditProductPage: React.FC = () => {
             }
           })(),
           sku: product.sku || '',
-          categoryId: product.category_id || '',
-          supplierId: product.supplier_id || '',
+          categoryId: product.category_id || null,
+      
           condition: product.condition || '',
           
           price: product.selling_price || 0,
@@ -416,7 +437,6 @@ const EditProductPage: React.FC = () => {
         description: formData.description || null,
         category_id: formData.categoryId || null,
 
-        supplier_id: formData.supplierId || null,
         condition: formData.condition || 'new',
         total_quantity: totalQuantity,
         total_value: totalValue,
@@ -452,7 +472,6 @@ const EditProductPage: React.FC = () => {
         name: formData.name,
         description: formData.description || null,
         category_id: formData.categoryId || null,
-        supplier_id: formData.supplierId || null,
         images: formData.images || [],
         tags: [],
         attributes: formData.metadata || {}
@@ -604,6 +623,17 @@ const EditProductPage: React.FC = () => {
     setFormData(prev => ({ ...prev, specification: JSON.stringify(newSpecs) }));
   };
 
+  // Toggle feature specification (Yes/No)
+  const toggleFeatureSpecification = (featureKey: string) => {
+    const currentSpecs = formData.specification ? JSON.parse(formData.specification) : {};
+    const currentValue = currentSpecs[featureKey];
+    const isEnabled = currentValue === 'Yes' || currentValue === 'true' || currentValue === true;
+    
+    const newValue = isEnabled ? 'No' : 'Yes';
+    const newSpecs = { ...currentSpecs, [featureKey]: newValue };
+    setFormData(prev => ({ ...prev, specification: JSON.stringify(newSpecs) }));
+  };
+
   // Handle custom product attribute submission
   const handleProductCustomAttributeSubmit = () => {
     if (productCustomAttributeInput.trim()) {
@@ -656,36 +686,7 @@ const EditProductPage: React.FC = () => {
               onSpecificationsClick={handleProductSpecificationsClick}
             />
 
-            {/* Supplier Selection */}
-            <div className="border-b border-gray-200 pb-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                <Building size={20} className="text-purple-600" />
-                Supplier Information
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label 
-                    htmlFor="supplier-select"
-                    className="block mb-2 font-medium text-gray-700"
-                  >
-                    Supplier (optional)
-                  </label>
-                  <select
-                    id="supplier-select"
-                    value={formData.supplierId}
-                    onChange={(e) => setFormData(prev => ({ ...prev, supplierId: e.target.value }))}
-                    className="w-full py-4 px-4 bg-white/30 backdrop-blur-md border-2 rounded-lg focus:outline-none transition-colors border-gray-300 focus:border-blue-500"
-                  >
-                    <option value="">Select a supplier</option>
-                    {suppliers.map((supplier) => (
-                      <option key={supplier.id} value={supplier.id}>
-                        {supplier.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
+
 
             {/* Pricing and Stock Form */}
             <PricingAndStockForm
@@ -998,35 +999,129 @@ const EditProductPage: React.FC = () => {
                     Add Specifications
                   </h3>
                   
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                    {[
-                      { name: 'Color', icon: Palette },
-                      { name: 'Storage', icon: HardDrive },
-                      { name: 'RAM', icon: Zap },
-                      { name: 'Processor', icon: Cpu },
-                      { name: 'Screen Size', icon: Monitor },
-                      { name: 'Battery', icon: Battery },
-                      { name: 'Camera', icon: Camera },
-                      { name: 'Size', icon: Ruler }
-                    ].map((spec) => (
-                      <button 
-                        key={spec.name}
-                        type="button" 
-                        onClick={() => addAttributeToProduct(spec.name.toLowerCase().replace(/\s+/g, '_'))} 
-                        className="flex items-center gap-3 p-3 bg-white border border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors"
-                      >
-                        <spec.icon className="w-5 h-5 text-gray-600" />
-                        <span className="text-sm font-medium text-gray-700">{spec.name}</span>
-                      </button>
-                    ))}
-                    
+                  {/* Basic Specifications */}
+                  <div className="mb-6">
+                    <h4 className="text-sm font-medium text-gray-700 mb-3">Basic Specifications</h4>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                      {[
+                        { name: 'Color', icon: Palette },
+                        { name: 'Storage', icon: HardDrive },
+                        { name: 'RAM', icon: Zap },
+                        { name: 'Processor', icon: Cpu },
+                        { name: 'Screen Size', icon: Monitor },
+                        { name: 'Battery', icon: Battery },
+                        { name: 'Camera', icon: Camera },
+                        { name: 'Size', icon: Ruler }
+                      ].map((spec) => (
+                        <button 
+                          key={spec.name}
+                          type="button" 
+                          onClick={() => addAttributeToProduct(spec.name.toLowerCase().replace(/\s+/g, '_'))} 
+                          className="flex items-center gap-3 p-3 bg-white border border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors"
+                        >
+                          <spec.icon className="w-5 h-5 text-gray-600" />
+                          <span className="text-sm font-medium text-gray-700">{spec.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Feature Specifications (Yes/No) */}
+                  <div className="mb-6">
+                    <h4 className="text-sm font-medium text-gray-700 mb-3">Device Features (Click to toggle Yes/No)</h4>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                      {[
+                        // Display Features
+                        { name: 'Touch Screen', key: 'touch', icon: Hand },
+                        { name: 'OLED Display', key: 'oled_display', icon: Monitor },
+                        { name: 'HDR Support', key: 'hdr_support', icon: Monitor },
+                        { name: 'High Refresh Rate', key: 'high_refresh_rate', icon: RotateCcw },
+                        
+                        // Input Features  
+                        { name: 'Detachable Keyboard', key: 'detachable', icon: Unplug },
+                        { name: 'Convertible (2-in-1)', key: 'convertible', icon: RotateCcw },
+                        { name: 'Backlit Keyboard', key: 'backlit_keyboard', icon: Lightbulb },
+                        { name: 'Stylus Support', key: 'stylus_support', icon: PenTool },
+                        { name: 'Haptic Feedback', key: 'haptic_feedback', icon: Vibrate },
+                        
+                        // Security Features
+                        { name: 'Fingerprint Scanner', key: 'fingerprint_scanner', icon: Fingerprint },
+                        { name: 'Face Recognition', key: 'face_id', icon: ScanFace },
+                        { name: 'Security Chip', key: 'security_chip', icon: Shield },
+                        { name: 'Encryption', key: 'encryption', icon: Lock },
+                        
+                        // Durability Features
+                        { name: 'Waterproof', key: 'waterproof', icon: Droplets },
+                        { name: 'Dust Resistant', key: 'dust_resistant', icon: Wind },
+                        { name: 'Drop Resistant', key: 'drop_resistant', icon: Shield },
+                        { name: 'Scratch Resistant', key: 'scratch_resistant', icon: Shield },
+                        
+                        // Charging & Battery
+                        { name: 'Wireless Charging', key: 'wireless_charging', icon: BatteryCharging },
+                        { name: 'Fast Charging', key: 'fast_charging', icon: FastForward },
+                        { name: 'Reverse Charging', key: 'reverse_charging', icon: BatteryCharging },
+                        { name: 'Removable Battery', key: 'removable_battery', icon: Battery },
+                        
+                        // Connectivity
+                        { name: 'Dual SIM', key: 'dual_sim', icon: PhoneCall },
+                        { name: 'eSIM Support', key: 'esim_support', icon: PhoneCall },
+                        { name: 'NFC', key: 'nfc', icon: Radio },
+                        { name: 'GPS', key: 'gps', icon: Navigation },
+                        { name: '5G Support', key: '5g_support', icon: Radio },
+                        { name: 'Wi-Fi 6', key: 'wifi_6', icon: Radio },
+                        
+                        // Audio Features
+                        { name: 'Headphone Jack', key: 'headphone_jack', icon: Headphones },
+                        { name: 'Stereo Speakers', key: 'stereo_speakers', icon: Speaker },
+                        { name: 'Noise Cancellation', key: 'noise_cancellation', icon: Mic },
+                        
+                        // Storage & Expansion
+                        { name: 'Expandable Storage', key: 'expandable_storage', icon: Expand },
+                        { name: 'Cloud Storage', key: 'cloud_storage', icon: Expand },
+                        
+                        // Ports & Connectors
+                        { name: 'USB-C Port', key: 'usb_c_port', icon: Usb },
+                        { name: 'Thunderbolt', key: 'thunderbolt', icon: Cable },
+                        { name: 'HDMI Port', key: 'hdmi_port', icon: Cable },
+                        { name: 'SD Card Slot', key: 'sd_card_slot', icon: Expand }
+                      ].map((feature) => {
+                        const currentSpecs = formData.specification ? JSON.parse(formData.specification) : {};
+                        const isEnabled = currentSpecs[feature.key] === 'Yes' || currentSpecs[feature.key] === 'true' || currentSpecs[feature.key] === true;
+                        
+                        return (
+                          <button 
+                            key={feature.key}
+                            type="button" 
+                            onClick={() => toggleFeatureSpecification(feature.key)}
+                            className={`flex items-center gap-2 p-3 border rounded-lg transition-all duration-200 ${
+                              isEnabled 
+                                ? 'bg-green-50 border-green-300 text-green-800 shadow-sm' 
+                                : 'bg-white border-gray-300 text-gray-700 hover:border-blue-500 hover:bg-blue-50'
+                            }`}
+                          >
+                            <feature.icon className="w-4 h-4 flex-shrink-0" />
+                            <div className="flex-1 text-left min-w-0">
+                              <div className="text-sm font-medium truncate">{feature.name}</div>
+                              <div className={`text-xs ${isEnabled ? 'text-green-600' : 'text-gray-500'}`}>
+                                {isEnabled ? '✓ Enabled' : 'Click to enable'}
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Custom Specification */}
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-700 mb-3">Custom Specification</h4>
                     <button 
                       type="button" 
                       onClick={() => { setShowProductCustomInput(true); setProductCustomAttributeInput(''); }} 
-                      className="flex items-center gap-3 p-3 bg-white border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors"
+                      className="flex items-center gap-3 p-3 bg-white border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors w-full"
                     >
                       <Plus className="w-5 h-5 text-gray-600" />
-                      <span className="text-sm font-medium text-gray-700">Custom</span>
+                      <span className="text-sm font-medium text-gray-700">Add Custom Specification</span>
                     </button>
                   </div>
                 </div>
@@ -1167,4 +1262,4 @@ const EditProductPage: React.FC = () => {
   );
 };
 
-export default EditProductPage;
+export default EditProductPageWithAuth;

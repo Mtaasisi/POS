@@ -50,7 +50,7 @@ export class UnifiedImageService {
 
       // 3. Generate safe filename
       const timestamp = Date.now();
-      const randomId = Math.random().toString(36).substring(2, 8);
+      const randomId = crypto.randomUUID().replace(/-/g, '').substring(0, 8);
       const extension = file.name.split('.').pop()?.toLowerCase() || 'jpg';
       const fileName = `${productId}_${timestamp}_${randomId}.${extension}`;
 
@@ -83,7 +83,7 @@ export class UnifiedImageService {
         // For temporary products, create a local image object
         console.log('📝 Creating temporary image for product:', productId);
         uploadedImage = {
-          id: `temp-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+          id: `temp-${Date.now()}-${crypto.randomUUID().replace(/-/g, '').substring(0, 8)}`,
           url: imageUrl,
           thumbnailUrl: imageUrl,
           fileName: file.name,

@@ -229,13 +229,9 @@ const AddExternalProductModal: React.FC<AddExternalProductModalProps> = ({
 
 
 
-  // Mock suppliers data - in real app, this would come from database
-  const mockSuppliers = [
-    { id: '1', name: 'Tech Supplier Ltd', phone: '+255 700 123 456' },
-    { id: '2', name: 'Electronics Plus', phone: '+255 700 234 567' },
-    { id: '3', name: 'Mobile World', phone: '+255 700 345 678' },
-    { id: '4', name: 'Digital Solutions', phone: '+255 700 456 789' }
-  ];
+  // TODO: Replace with real database queries
+  // This should fetch actual suppliers from your database
+  const mockSuppliers: any[] = [];
 
   const filteredSuppliers = mockSuppliers.filter(supplier =>
     supplier.name.toLowerCase().includes(formData.supplierName.toLowerCase()) ||

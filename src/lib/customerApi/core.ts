@@ -1,5 +1,5 @@
 import { supabase } from '../supabaseClient';
-import { Customer } from '../types';
+import { Customer } from '../../types';
 
 // Configuration constants to prevent resource exhaustion
 const BATCH_SIZE = 50; // Maximum customers per batch
@@ -11,6 +11,14 @@ const REQUEST_TIMEOUT = 30000; // Default timeout for requests in milliseconds
 
 // Request deduplication cache
 const requestCache = new Map<string, Promise<any>>();
+
+// Helper function to check if supabase is initialized
+function checkSupabase() {
+  if (!supabase) {
+    throw new Error('Supabase client not initialized');
+  }
+  return supabase;
+}
 
 // Retry wrapper function for network requests
 async function retryRequest<T>(
@@ -141,38 +149,13 @@ function normalizeColorTag(colorTag: string): 'new' | 'vip' | 'complainer' | 'pu
   return colorMap[normalized] || 'new';
 }
 
-// Utility for formatting currency with abbreviated notation for large numbers
+// Utility for formatting currency with full numbers
 export function formatCurrency(amount: number) {
-  if (amount >= 1000000) {
-    // For millions
-    const millions = amount / 1000000;
-    if (millions >= 10) {
-      // For 10M+, show as whole number
-      return `Tsh ${Math.floor(millions)}M`;
-    } else {
-      // For 1M-9.9M, show with one decimal place (no trailing .0)
-      const formatted = millions.toFixed(1);
-      return `Tsh ${formatted.replace(/\.0$/, '')}M`;
-    }
-  } else if (amount >= 1000) {
-    // For thousands
-    const thousands = amount / 1000;
-    if (thousands >= 10) {
-      // For 10K+, show as whole number
-      return `Tsh ${Math.floor(thousands)}K`;
-    } else {
-      // For 1K-9.9K, show with one decimal place (no trailing .0)
-      const formatted = thousands.toFixed(1);
-      return `Tsh ${formatted.replace(/\.0$/, '')}K`;
-    }
-  } else {
-    // For numbers less than 1000, use regular formatting without trailing zeros
-    const formatted = Number(amount).toLocaleString('en-TZ', { 
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2 
-    });
-    return 'Tsh ' + formatted.replace(/\.00$/, '').replace(/\.0$/, '');
-  }
+  const formatted = Number(amount).toLocaleString('en-TZ', { 
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0 
+  });
+  return 'Tsh ' + formatted;
 }
 
 export async function fetchAllCustomers() {
@@ -206,7 +189,7 @@ async function performFetchAllCustomers() {
       // First, let's get a simple count to see how many customers exist
       const { count, error: countError } = await withTimeout(
         retryRequest(async () => {
-          const result = await supabase
+          const result = await checkSupabase()
             .from('customers')
             .select('*', { count: 'exact', head: true });
           
@@ -245,14 +228,10 @@ async function performFetchAllCustomers() {
         try {
           const { data: pageData, error: pageError } = await withTimeout(
             retryRequest(async () => {
-              const result = await supabase
+              const result = await checkSupabase()
                 .from('customers')
                 .select(`
-                  *,
-                  customer_notes(*),
-                  customer_payments(*),
-                  devices(*),
-                  promo_messages(*)
+                  id, name, email, phone, gender, city, joined_date, loyalty_level, color_tag, referred_by, total_spent, points, last_visit, is_active, birth_month, birth_day, referral_source, total_returns, profile_image, created_at, updated_at, created_by, last_purchase_date, total_purchases, birthday, whatsapp, whatsapp_opt_out, initial_notes, notes, referrals, customer_tag
                 `)
                 .range(from, to)
                 .order('created_at', { ascending: false });
@@ -272,14 +251,56 @@ async function performFetchAllCustomers() {
           
           if (pageData) {
             // Process and normalize the data
-            const processedCustomers = pageData.map(customer => ({
-              ...customer,
-              colorTag: normalizeColorTag(customer.colorTag || 'new'),
-              customerNotes: customer.customer_notes || [],
-              customerPayments: customer.customer_payments || [],
-              devices: customer.devices || [],
-              promoHistory: customer.promo_messages || []
-            }));
+            const processedCustomers = pageData.map(customer => {
+              // Map snake_case database fields to camelCase interface fields
+              const mappedCustomer = {
+                id: customer.id,
+                name: customer.name,
+                email: customer.email,
+                phone: customer.phone,
+                gender: customer.gender,
+                city: customer.city,
+                joinedDate: customer.joined_date,
+                loyaltyLevel: customer.loyalty_level,
+                colorTag: normalizeColorTag(customer.color_tag || 'new'),
+                referredBy: customer.referred_by,
+                totalSpent: customer.total_spent,
+                points: customer.points,
+                lastVisit: customer.last_visit,
+                isActive: customer.is_active,
+                referralSource: customer.referral_source,
+                birthMonth: customer.birth_month,
+                birthDay: customer.birth_day,
+                totalReturns: customer.total_returns,
+                profileImage: customer.profile_image,
+                createdAt: customer.created_at,
+                updatedAt: customer.updated_at,
+                createdBy: customer.created_by,
+                lastPurchaseDate: customer.last_purchase_date,
+                totalPurchases: customer.total_purchases,
+                birthday: customer.birthday,
+                whatsapp: customer.whatsapp,
+                whatsappOptOut: customer.whatsapp_opt_out,
+                initialNotes: customer.initial_notes,
+                notes: customer.notes ? (typeof customer.notes === 'string' ? 
+                  (() => {
+                    try { return JSON.parse(customer.notes); } 
+                    catch { return []; }
+                  })() : customer.notes) : [],
+                referrals: customer.referrals ? (typeof customer.referrals === 'string' ? 
+                  (() => {
+                    try { return JSON.parse(customer.referrals); } 
+                    catch { return []; }
+                  })() : customer.referrals) : [],
+                customerTag: customer.customer_tag,
+                // Additional fields for interface compatibility
+                customerNotes: [],
+                customerPayments: [],
+                devices: [],
+                promoHistory: []
+              };
+              return mappedCustomer;
+            });
             
             allCustomers.push(...processedCustomers);
             console.log(`✅ Page ${page} fetched: ${pageData.length} customers`);
@@ -343,14 +364,14 @@ async function performFetchAllCustomersSimple() {
       
       const { data, error } = await withTimeout(
         retryRequest(async () => {
-          const result = await supabase
+          const result = await checkSupabase()
             .from('customers')
             .select(`
               id,
               name,
               phone,
               email,
-              colorTag,
+              color_tag,
               points,
               created_at,
               updated_at
@@ -373,8 +394,14 @@ async function performFetchAllCustomersSimple() {
       if (data) {
         // Process and normalize the data
         const processedCustomers = data.map(customer => ({
-          ...customer,
-          colorTag: normalizeColorTag(customer.colorTag || 'new')
+          id: customer.id,
+          name: customer.name,
+          phone: customer.phone,
+          email: customer.email,
+          colorTag: normalizeColorTag(customer.color_tag || 'new'),
+          points: customer.points,
+          createdAt: customer.created_at,
+          updatedAt: customer.updated_at
         }));
         
         console.log(`✅ Successfully fetched ${processedCustomers.length} customers (simple)`);
@@ -399,14 +426,10 @@ export async function fetchCustomerById(customerId: string) {
   try {
     console.log(`🔍 Fetching customer by ID: ${customerId}`);
     
-    const { data, error } = await supabase
+    const { data, error } = await checkSupabase()
       .from('customers')
       .select(`
-        *,
-        customer_notes(*),
-        customer_payments(*),
-        devices(*),
-        promo_messages(*)
+        id, name, email, phone, gender, city, joined_date, loyalty_level, color_tag, referred_by, total_spent, points, last_visit, is_active, birth_month, birth_day, referral_source, total_returns, profile_image, created_at, updated_at, created_by, last_purchase_date, total_purchases, birthday, whatsapp, whatsapp_opt_out, initial_notes, notes, referrals, customer_tag
       `)
       .eq('id', customerId)
       .single();
@@ -420,11 +443,11 @@ export async function fetchCustomerById(customerId: string) {
       // Process and normalize the data
       const processedCustomer = {
         ...data,
-        colorTag: normalizeColorTag(data.colorTag || 'new'),
-        customerNotes: data.customer_notes || [],
-        customerPayments: data.customer_payments || [],
-        devices: data.devices || [],
-        promoHistory: data.promo_messages || []
+        colorTag: normalizeColorTag(data.color_tag || 'new'),
+        customerNotes: [],
+        customerPayments: [],
+        devices: [],
+        promoHistory: []
       };
       
       console.log(`✅ Successfully fetched customer: ${processedCustomer.name}`);
@@ -443,12 +466,49 @@ export async function addCustomerToDb(customer: Omit<Customer, 'promoHistory' | 
   try {
     console.log('➕ Adding customer to database:', customer.name);
     
-    const { data, error } = await supabase
+    // Map camelCase fields to snake_case database fields
+    const fieldMapping: Record<string, string> = {
+      colorTag: 'color_tag',
+      isActive: 'is_active',
+      lastVisit: 'last_visit',
+      joinedDate: 'joined_date',
+      loyaltyLevel: 'loyalty_level',
+      totalSpent: 'total_spent',
+      referredBy: 'referred_by',
+      referralSource: 'referral_source',
+      birthMonth: 'birth_month',
+      birthDay: 'birth_day',
+      totalReturns: 'total_returns',
+      initialNotes: 'initial_notes',
+      locationDescription: 'location_description',
+      nationalId: 'national_id',
+      profileImage: 'profile_image',
+      createdBy: 'created_by',
+      loyaltyTier: 'loyalty_tier',
+      loyaltyJoinDate: 'loyalty_join_date',
+      loyaltyLastVisit: 'loyalty_last_visit',
+      loyaltyRewardsRedeemed: 'loyalty_rewards_redeemed',
+      loyaltyTotalSpent: 'loyalty_total_spent',
+      isLoyaltyMember: 'is_loyalty_member'
+    };
+    
+    // Map customer fields to database fields
+    const dbCustomer: any = {};
+    Object.entries(customer).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        const dbFieldName = fieldMapping[key] || key;
+        dbCustomer[dbFieldName] = value;
+      }
+    });
+    
+    // Normalize color tag
+    if (dbCustomer.color_tag) {
+      dbCustomer.color_tag = normalizeColorTag(dbCustomer.color_tag);
+    }
+    
+    const { data, error } = await checkSupabase()
       .from('customers')
-      .insert([{
-        ...customer,
-        colorTag: normalizeColorTag(customer.colorTag || 'new')
-      }])
+      .insert([dbCustomer])
       .select()
       .single();
     
@@ -470,27 +530,102 @@ export async function updateCustomerInDb(customerId: string, updates: Partial<Cu
   try {
     console.log(`🔄 Updating customer: ${customerId}`);
     
-    // Filter out undefined values and only include valid fields
+    // Map camelCase fields to snake_case database fields
+    const fieldMapping: Record<string, string> = {
+      colorTag: 'color_tag',
+      isActive: 'is_active',
+      lastVisit: 'last_visit',
+      joinedDate: 'joined_date',
+      loyaltyLevel: 'loyalty_level',
+      totalSpent: 'total_spent',
+      referredBy: 'referred_by',
+      referralSource: 'referral_source',
+      birthMonth: 'birth_month',
+      birthDay: 'birth_day',
+      totalReturns: 'total_returns',
+      initialNotes: 'initial_notes',
+      locationDescription: 'location_description',
+      nationalId: 'national_id',
+      profileImage: 'profile_image',
+      createdBy: 'created_by',
+      loyaltyTier: 'loyalty_tier',
+      loyaltyJoinDate: 'loyalty_join_date',
+      loyaltyLastVisit: 'loyalty_last_visit',
+      loyaltyRewardsRedeemed: 'loyalty_rewards_redeemed',
+      loyaltyTotalSpent: 'loyalty_total_spent',
+      isLoyaltyMember: 'is_loyalty_member'
+    };
+    
+    // Filter out undefined values and map field names
     const cleanUpdates: any = {};
     Object.entries(updates).forEach(([key, value]) => {
       if (value !== undefined && value !== null) {
-        cleanUpdates[key] = value;
+        const dbFieldName = fieldMapping[key] || key;
+        cleanUpdates[dbFieldName] = value;
       }
     });
     
     // Add updated_at timestamp
     cleanUpdates.updated_at = new Date().toISOString();
     
-    // Handle colorTag normalization
-    if (cleanUpdates.colorTag) {
-      cleanUpdates.colorTag = normalizeColorTag(cleanUpdates.colorTag);
+    // Handle colorTag normalization (now mapped to color_tag)
+    if (cleanUpdates.color_tag) {
+      cleanUpdates.color_tag = normalizeColorTag(cleanUpdates.color_tag);
     }
     
     console.log('🔧 Clean updates:', cleanUpdates);
     
-    const { data, error } = await supabase
+    // Validate that we're not trying to update invalid fields
+    const validFields = [
+      'id', 'name', 'email', 'phone', 'gender', 'city', 'joined_date', 'loyalty_level', 
+      'color_tag', 'referred_by', 'total_spent', 'points', 'last_visit', 'last_purchase_date', 
+      'total_purchases', 'birthday', 'is_active', 'referral_source', 'birth_month', 'birth_day', 
+      'total_returns', 'profile_image', 'created_at', 'updated_at', 'created_by', 'whatsapp', 
+      'whatsapp_opt_out', 'initial_notes', 'notes', 'referrals', 'customer_tag'
+    ];
+    
+    // Filter out any invalid fields and handle data type conversions
+    const validatedUpdates: any = {};
+    Object.entries(cleanUpdates).forEach(([key, value]) => {
+      if (validFields.includes(key)) {
+        // Handle special data type conversions
+        if (key === 'notes' && Array.isArray(value)) {
+          // Convert CustomerNote[] to string for database storage
+          validatedUpdates[key] = JSON.stringify(value);
+        } else if (key === 'referrals' && Array.isArray(value)) {
+          // Convert referrals array to string for database storage
+          validatedUpdates[key] = JSON.stringify(value);
+        } else if (key === 'points' && typeof value === 'string') {
+          // Convert string points to number
+          validatedUpdates[key] = parseInt(value, 10) || 0;
+        } else if (key === 'total_spent' && typeof value === 'string') {
+          // Convert string total_spent to number
+          validatedUpdates[key] = parseFloat(value) || 0;
+        } else if (key === 'total_returns' && typeof value === 'string') {
+          // Convert string total_returns to number
+          validatedUpdates[key] = parseInt(value, 10) || 0;
+        } else if (key === 'total_purchases' && typeof value === 'string') {
+          // Convert string total_purchases to number
+          validatedUpdates[key] = parseInt(value, 10) || 0;
+        } else if (key === 'is_active' && typeof value === 'string') {
+          // Convert string boolean to actual boolean
+          validatedUpdates[key] = value === 'true' || value === '1';
+        } else if (key === 'whatsapp_opt_out' && typeof value === 'string') {
+          // Convert string boolean to actual boolean
+          validatedUpdates[key] = value === 'true' || value === '1';
+        } else {
+          validatedUpdates[key] = value;
+        }
+      } else {
+        console.warn(`⚠️ Skipping invalid field: ${key}`);
+      }
+    });
+    
+    console.log('🔧 Validated updates:', validatedUpdates);
+    
+    const { data, error } = await checkSupabase()
       .from('customers')
-      .update(cleanUpdates)
+      .update(validatedUpdates)
       .eq('id', customerId)
       .select()
       .single();
@@ -503,6 +638,7 @@ export async function updateCustomerInDb(customerId: string, updates: Partial<Cu
         hint: error.hint,
         code: error.code
       });
+      console.error('❌ Update data that caused error:', validatedUpdates);
       throw error;
     }
     

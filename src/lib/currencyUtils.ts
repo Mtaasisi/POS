@@ -21,37 +21,12 @@ export function formatCurrencyClean(amount: number, currency: string = 'TZS', lo
 }
 
 /**
- * Formats a number as currency with abbreviated notation for large numbers (no trailing zeros)
+ * Formats a number as currency with full numbers (no trailing zeros)
  * @param amount - The amount to format
- * @returns Formatted currency string with abbreviations
+ * @returns Formatted currency string with full numbers
  */
 export function formatCurrencyAbbreviated(amount: number): string {
-  if (amount >= 1000000) {
-    // For millions
-    const millions = amount / 1000000;
-    if (millions >= 10) {
-      // For 10M+, show as whole number
-      return `Tsh ${Math.floor(millions)}M`;
-    } else {
-      // For 1M-9.9M, show with one decimal place (no trailing .0)
-      const formatted = millions.toFixed(1);
-      return `Tsh ${formatted.replace(/\.0$/, '')}M`;
-    }
-  } else if (amount >= 1000) {
-    // For thousands
-    const thousands = amount / 1000;
-    if (thousands >= 10) {
-      // For 10K+, show as whole number
-      return `Tsh ${Math.floor(thousands)}K`;
-    } else {
-      // For 1K-9.9K, show with one decimal place (no trailing .0)
-      const formatted = thousands.toFixed(1);
-      return `Tsh ${formatted.replace(/\.0$/, '')}K`;
-    }
-  } else {
-    // For numbers less than 1000, use regular formatting without trailing zeros
-    return formatCurrencyClean(amount);
-  }
+  return formatCurrencyClean(amount);
 }
 
 /**

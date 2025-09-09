@@ -553,9 +553,8 @@ export const deviceServices = {
     method: 'cash' | 'card' | 'transfer';
     device_id?: string;
     payment_type: 'payment' | 'deposit' | 'refund';
-    status?: 'completed' | 'pending' | 'failed' | 'pay-on-pickup';
-    reference_number?: string;
-    notes?: string;
+    status?: 'completed' | 'pending' | 'failed';
+    created_by?: string;
   }) {
     try {
       const { data, error } = await supabase

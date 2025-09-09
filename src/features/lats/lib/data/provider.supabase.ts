@@ -4,13 +4,17 @@ import { LatsDataProvider } from './provider';
 import { 
   Category, Supplier, Product, ProductVariant, StockMovement,
   PurchaseOrder, SparePart, SparePartUsage,
-  CategoryFormData, SupplierFormData, ProductFormData,
+  CategoryFormData, SupplierFormData, ProductFormData, PurchaseOrderFormData,
   ApiResponse, PaginatedResponse
 } from '../../types/inventory';
 import { 
   Cart, Sale, CartItem, ProcessSaleData, ProductSearchResult,
   InsufficientStockError, POSSettings
 } from '../../types/pos';
+import { 
+  ShippingAgent, ShippingManager, AgentFormData, OfficeFormData, OfficeLocation
+} from './provider';
+import { validateAndCreateDefaultVariant } from '../variantUtils';
 
 /**
  * Generate a simple SVG placeholder image as a data URL
@@ -114,14 +118,25 @@ class SupabaseDataProvider implements LatsDataProvider {
   async getCategories(): Promise<ApiResponse<Category[]>> {
     try {
       // Categories have public read access, so no authentication check needed for reading
+      console.log('🔍 [SupabaseDataProvider] Fetching categories with proper syntax');
 
-      const { data, error } = await supabase
+      // Use explicit query construction to ensure proper syntax
+      const query = supabase
         .from('lats_categories')
         .select('*')
         .order('name');
 
+      const { data, error } = await query;
+
       if (error) {
         console.error('❌ Database error:', error);
+        console.error('❌ Error details:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+        
         if (error.code === 'PGRST116') {
           return { 
             ok: false, 
@@ -130,6 +145,8 @@ class SupabaseDataProvider implements LatsDataProvider {
         }
         throw error;
       }
+      
+      console.log(`✅ [SupabaseDataProvider] Categories fetched successfully, count: ${data?.length || 0}`);
       return { ok: true, data: data || [] };
     } catch (error) {
       console.error('Error fetching categories:', error);
@@ -265,7 +282,11 @@ class SupabaseDataProvider implements LatsDataProvider {
         payment_account_type: supplier.payment_account_type || '',
         mobile_money_account: supplier.mobile_money_account || '',
         bank_account_number: supplier.bank_account_number || '',
-        bank_name: supplier.bank_name || ''
+        bank_name: supplier.bank_name || '',
+        createdAt: supplier.created_at,
+        updatedAt: supplier.updated_at,
+        leadTimeDays: supplier.lead_time_days || 0,
+        isActive: supplier.is_active ?? true
       }));
 
       return { ok: true, data: suppliers };
@@ -416,7 +437,13 @@ class SupabaseDataProvider implements LatsDataProvider {
       return { 
         ok: true, 
         data: { 
-          suppliers, 
+          suppliers: suppliers.map(supplier => ({
+            ...supplier,
+            leadTimeDays: 0,
+            isActive: true,
+            createdAt: supplier.created_at,
+            updatedAt: supplier.updated_at
+          })), 
           total: count || 0,
           page,
           limit,
@@ -477,7 +504,7 @@ class SupabaseDataProvider implements LatsDataProvider {
       const limit = Math.min(filters?.limit || 50, 100); // Max 100 items per page
       const offset = (page - 1) * limit;
 
-      // Build the select query with optimized structure
+      // Build the select query with optimized structure including shelf information
       let query = supabase
         .from('lats_products')
         .select(`
@@ -496,7 +523,31 @@ class SupabaseDataProvider implements LatsDataProvider {
           store_shelf_id,
           attributes,
           created_at,
-          updated_at
+          updated_at,
+          lats_categories(id, name, description, color, created_at, updated_at),
+          lats_suppliers(id, name, contact_person, email, phone, address, website, notes, created_at, updated_at),
+          lats_store_shelves!store_shelf_id(
+            id,
+            name,
+            code,
+            storage_room_id,
+            shelf_type,
+            row_number,
+            column_number,
+            floor_level,
+            is_refrigerated,
+            requires_ladder,
+            lats_storage_rooms(
+              id,
+              name,
+              code,
+              lats_store_locations(
+                id,
+                name,
+                city
+              )
+            )
+          )
         `, { count: 'exact' })
         .order('name');
 
@@ -529,13 +580,26 @@ class SupabaseDataProvider implements LatsDataProvider {
       // Apply pagination
       query = query.range(offset, offset + limit - 1);
 
-      console.log('🔍 Executing optimized products query...');
+      console.log('🔍 [SupabaseDataProvider] Executing optimized products query with supplier joins...');
       const startTime = performance.now();
       
       const { data, error, count } = await query;
 
       const endTime = performance.now();
-      console.log(`✅ Products query completed in ${(endTime - startTime).toFixed(2)}ms`);
+      console.log(`✅ [SupabaseDataProvider] Products query completed in ${(endTime - startTime).toFixed(2)}ms`);
+      console.log(`📊 [SupabaseDataProvider] Query returned ${data?.length || 0} products`);
+      
+      // DEBUG: Check if supplier data is included in the results
+      if (data && data.length > 0) {
+        const sampleProduct = data[0];
+        console.log('🔍 [SupabaseDataProvider] Sample product from query:', {
+          id: sampleProduct.id,
+          name: sampleProduct.name,
+          supplier_id: sampleProduct.supplier_id,
+          hasLatsSuppliers: !!sampleProduct.lats_suppliers,
+          latsSuppliers: sampleProduct.lats_suppliers
+        });
+      }
 
       if (error) {
         console.error('❌ Database error:', error);
@@ -551,12 +615,41 @@ class SupabaseDataProvider implements LatsDataProvider {
           };
         }
         
-        // Try fallback query without joins if the main query fails
-        console.log('🔄 Trying fallback query without joins...');
+        // Try fallback query with variants but without category/supplier joins
+        console.log('🔄 Trying fallback query with variants...');
         try {
           const fallbackQuery = supabase
             .from('lats_products')
-            .select('id, name, category_id, supplier_id, tags, is_active, total_quantity, total_value, condition, store_shelf_id, internal_notes, created_at, updated_at', { count: 'exact' })
+            .select(`
+              id, name, description, category_id, supplier_id, tags, is_active, 
+              total_quantity, total_value, condition, store_shelf_id, internal_notes, 
+              created_at, updated_at, attributes,
+              lats_product_variants(id, sku, selling_price, cost_price, quantity, 
+                min_quantity, max_quantity, attributes, is_active, created_at, updated_at),
+              lats_suppliers!supplier_id(id, name, contact_person, email, phone, address, website, notes, created_at, updated_at),
+              lats_store_shelves!store_shelf_id(
+                id,
+                name,
+                code,
+                storage_room_id,
+                shelf_type,
+                row_number,
+                column_number,
+                floor_level,
+                is_refrigerated,
+                requires_ladder,
+                lats_storage_rooms(
+                  id,
+                  name,
+                  code,
+                  lats_store_locations(
+                    id,
+                    name,
+                    city
+                  )
+                )
+              )
+            `, { count: 'exact' })
             .order('name')
             .range(offset, offset + limit - 1);
 
@@ -567,36 +660,70 @@ class SupabaseDataProvider implements LatsDataProvider {
             throw fallbackError;
           }
           
-          console.log('✅ Fallback query successful, processing data without joins...');
+          console.log('✅ Fallback query successful, processing data with variants...');
           
-          // Process data without joins
-          const transformedProducts = (fallbackData || []).map((product: any) => ({
-            id: product.id,
-            name: product.name,
-            shortDescription: '',
-            sku: '', // SKU is not in the main products table
-
-            categoryId: product.category_id,
-
-            supplierId: product.supplier_id,
-            images: replacePlaceholderImages([]),
-            isActive: product.is_active ?? true,
-            totalQuantity: product.total_quantity || 0,
-            totalValue: product.total_value || 0,
-            // Price information (will be 0 for fallback since no variants loaded)
-            price: 0,
-            costPrice: 0,
-            priceRange: '0',
-            variants: [],
-            condition: product.condition || 'new',
-            internalNotes: '',
-            attributes: product.attributes || {},
-            category: undefined,
-    
-            supplier: undefined,
-            createdAt: product.created_at,
-            updatedAt: product.updated_at
-          }));
+          // Process data with variants but without category/supplier joins
+          const transformedProducts = (fallbackData || []).map((product: any) => {
+            const mainVariant = product.lats_product_variants?.[0];
+            const totalStock = product.lats_product_variants?.reduce((sum: number, variant: any) => sum + (variant.quantity || 0), 0) || 0;
+            
+            return {
+              id: product.id,
+              name: product.name,
+              description: product.description || '',
+              shortDescription: product.description ? product.description.substring(0, 100) : '',
+              sku: mainVariant?.sku || '',
+              categoryId: product.category_id,
+              supplierId: product.supplier_id,
+              images: replacePlaceholderImages([]),
+              isActive: product.is_active ?? true,
+              totalQuantity: totalStock,
+              totalValue: product.total_value || 0,
+              price: mainVariant?.selling_price || 0,
+              costPrice: mainVariant?.cost_price || 0,
+              priceRange: mainVariant?.selling_price ? `${mainVariant.selling_price}` : '0',
+              variants: (product.lats_product_variants || []).map((variant: any) => ({
+                id: variant.id,
+                sku: variant.sku || '',
+                sellingPrice: variant.selling_price || 0,
+                costPrice: variant.cost_price || 0,
+                quantity: variant.quantity || 0,
+                minQuantity: variant.min_quantity || 0,
+                maxQuantity: variant.max_quantity || 0,
+                attributes: variant.attributes || {},
+                isActive: variant.is_active ?? true,
+                createdAt: variant.created_at,
+                updatedAt: variant.updated_at
+              })),
+              condition: product.condition || 'new',
+              internalNotes: product.internal_notes || '',
+              attributes: product.attributes || {},
+              category: undefined, // Will be populated separately
+              supplier: product.lats_suppliers ? {
+                id: product.lats_suppliers.id,
+                name: product.lats_suppliers.name,
+                contactPerson: product.lats_suppliers.contact_person,
+                email: product.lats_suppliers.email,
+                phone: product.lats_suppliers.phone,
+                address: product.lats_suppliers.address,
+                website: product.lats_suppliers.website,
+                notes: product.lats_suppliers.notes,
+                createdAt: product.lats_suppliers.created_at,
+                updatedAt: product.lats_suppliers.updated_at
+              } : undefined,
+              // Add shelf information
+              shelfName: product.lats_store_shelves?.name || '',
+              shelfCode: product.lats_store_shelves?.code || '',
+              storageRoomName: product.lats_store_shelves?.lats_storage_rooms?.name || '',
+              storageRoomCode: product.lats_store_shelves?.lats_storage_rooms?.code || '',
+              storeLocationName: product.lats_store_shelves?.lats_storage_rooms?.lats_store_locations?.name || '',
+              storeLocationCity: product.lats_store_shelves?.lats_storage_rooms?.lats_store_locations?.city || '',
+              isRefrigerated: product.lats_store_shelves?.is_refrigerated || false,
+              requiresLadder: product.lats_store_shelves?.requires_ladder || false,
+              createdAt: product.created_at,
+              updatedAt: product.updated_at
+            };
+          });
 
           return {
             ok: true,
@@ -722,7 +849,6 @@ class SupabaseDataProvider implements LatsDataProvider {
           // Fetch categories efficiently with caching
           const categoryIds = [...new Set((data || []).map(p => p.category_id).filter(Boolean))];
           if (categoryIds.length > 0) {
-            console.log(`📂 Fetching ${categoryIds.length} categories for products...`);
             const { data: categoriesData, error: categoriesError } = await supabase
               .from('lats_categories')
               .select('id, name, description, color, created_at, updated_at')
@@ -730,15 +856,18 @@ class SupabaseDataProvider implements LatsDataProvider {
 
             if (!categoriesError) {
               categories.push(...(categoriesData || []));
-              console.log(`✅ Fetched ${categoriesData?.length || 0} categories`);
             } else {
               console.error('❌ Error fetching categories:', categoriesError);
             }
           }
 
-          // Fetch suppliers
+          // Fetch suppliers as fallback for products where join failed
           const supplierIds = [...new Set((data || []).map(p => p.supplier_id).filter(Boolean))];
-          if (supplierIds.length > 0) {
+          const productsWithMissingSuppliers = (data || []).filter(p => p.supplier_id && !p.lats_suppliers);
+          
+          if (supplierIds.length > 0 && productsWithMissingSuppliers.length > 0) {
+            console.log(`🔍 DEBUG: Fetching ${supplierIds.length} suppliers as fallback for ${productsWithMissingSuppliers.length} products with missing supplier data`);
+            
             const { data: suppliersData, error: suppliersError } = await supabase
               .from('lats_suppliers')
               .select('id, name, contact_person, email, phone, address, website, notes, created_at, updated_at')
@@ -746,6 +875,9 @@ class SupabaseDataProvider implements LatsDataProvider {
 
             if (!suppliersError) {
               suppliers.push(...(suppliersData || []));
+              console.log(`✅ Successfully fetched ${suppliersData?.length || 0} suppliers as fallback`);
+            } else {
+              console.error('❌ Error fetching suppliers as fallback:', suppliersError);
             }
           }
 
@@ -779,8 +911,6 @@ class SupabaseDataProvider implements LatsDataProvider {
               is_primary: img.is_primary
             })));
           }
-          
-          console.log(`📊 Summary: ${categories.length} categories, ${suppliers.length} suppliers, ${productImages.length} images`);
         } catch (error) {
           console.error('❌ Exception fetching related data:', error);
           // Continue processing even if related data fetching fails
@@ -809,6 +939,9 @@ class SupabaseDataProvider implements LatsDataProvider {
           productId: product.id,
           variantsFound: productVariantList.length,
           imagesFound: productImageList.length,
+          supplierId: product.supplier_id,
+          hasLatsSuppliers: !!product.lats_suppliers,
+          latsSuppliers: product.lats_suppliers,
           variants: productVariantList.map(v => ({
             sku: v.sku,
             price: v.selling_price,
@@ -817,20 +950,42 @@ class SupabaseDataProvider implements LatsDataProvider {
         });
 
         // Get related data
-        const productCategory = categories.find(c => c.id === product.category_id);
+        const productCategory = product.lats_categories || categories.find(c => c.id === product.category_id);
 
-        const productSupplier = suppliers.find(s => s.id === product.supplier_id);
+        // Enhanced supplier processing with better fallback logic
+        let productSupplier = product.lats_suppliers;
+        if (!productSupplier && product.supplier_id) {
+          productSupplier = suppliers.find(s => s.id === product.supplier_id);
+          if (!productSupplier) {
+            console.log(`⚠️ [SupabaseDataProvider] Supplier not found for product ${product.id} (supplier_id: ${product.supplier_id})`);
+          }
+        }
 
         // Get price information from variants
-        const lowestPrice = productVariantList.length > 0 
-          ? Math.min(...productVariantList.map((v: any) => v.selling_price || 0))
-          : 0;
-        const highestPrice = productVariantList.length > 0
-          ? Math.max(...productVariantList.map((v: any) => v.selling_price || 0))
-          : 0;
+        const variantPrices = productVariantList
+          .map((v: any) => v.selling_price)
+          .filter(price => price !== null && price !== undefined && price > 0);
+        
+        const lowestPrice = variantPrices.length > 0 ? Math.min(...variantPrices) : 0;
+        const highestPrice = variantPrices.length > 0 ? Math.max(...variantPrices) : 0;
         const priceRange = lowestPrice === highestPrice 
           ? lowestPrice 
           : `${lowestPrice} - ${highestPrice}`;
+
+        // DEBUG: Log price calculation details
+        if (productVariantList.length > 0 && variantPrices.length === 0) {
+          console.log('⚠️ [SupabaseDataProvider] Product has variants but no valid prices:', {
+            productId: product.id,
+            productName: product.name,
+            variantCount: productVariantList.length,
+            variantPrices: productVariantList.map(v => ({
+              id: v.id,
+              sku: v.sku,
+              sellingPrice: v.selling_price,
+              costPrice: v.cost_price
+            }))
+          });
+        }
 
         return {
           id: product.id,
@@ -847,9 +1002,12 @@ class SupabaseDataProvider implements LatsDataProvider {
           totalValue: product.total_value || 0,
           // Add price information from variants
           price: lowestPrice,
-          costPrice: productVariantList.length > 0 
-            ? Math.min(...productVariantList.map((v: any) => v.cost_price || 0))
-            : 0,
+          costPrice: (() => {
+            const variantCostPrices = productVariantList
+              .map((v: any) => v.cost_price)
+              .filter(price => price !== null && price !== undefined && price > 0);
+            return variantCostPrices.length > 0 ? Math.min(...variantCostPrices) : 0;
+          })(),
           priceRange: priceRange,
           condition: product.condition || 'new',
           internalNotes: product.internal_notes || '',
@@ -875,6 +1033,15 @@ class SupabaseDataProvider implements LatsDataProvider {
             createdAt: productSupplier.created_at,
             updatedAt: productSupplier.updated_at
           } : undefined,
+          // Add shelf information
+          shelfName: product.lats_store_shelves?.name || '',
+          shelfCode: product.lats_store_shelves?.code || '',
+          storageRoomName: product.lats_store_shelves?.lats_storage_rooms?.name || '',
+          storageRoomCode: product.lats_store_shelves?.lats_storage_rooms?.code || '',
+          storeLocationName: product.lats_store_shelves?.lats_storage_rooms?.lats_store_locations?.name || '',
+          storeLocationCity: product.lats_store_shelves?.lats_storage_rooms?.lats_store_locations?.city || '',
+          isRefrigerated: product.lats_store_shelves?.is_refrigerated || false,
+          requiresLadder: product.lats_store_shelves?.requires_ladder || false,
           // Include variants with simplified data structure
           variants: productVariantList.map((variant: any) => ({
             id: variant.id,
@@ -955,14 +1122,16 @@ class SupabaseDataProvider implements LatsDataProvider {
 
       console.log('🔍 Fetching product with full data:', id);
 
-      // Get the product with basic info - fetch ALL available fields
+      // Get the product with basic info - fetch ALL available fields including new modal fields
       const { data: product, error: productError } = await supabase
         .from('lats_products')
         .select(`
           *,
           lats_categories(id, name, description, color, created_at, updated_at),
-
-          lats_suppliers(id, name, contact_person, email, phone, address, website, notes, created_at, updated_at)
+          lats_suppliers(
+            id, name, contact_person, email, phone, address, website, notes, 
+            created_at, updated_at
+          )
         `)
         .eq('id', id)
         .single();
@@ -970,6 +1139,54 @@ class SupabaseDataProvider implements LatsDataProvider {
       if (productError) {
         console.error('❌ Error fetching product:', productError);
         return { ok: false, message: 'Product not found' };
+      }
+
+      // DEBUG: Log raw product data from database
+      console.log('🔍 [SupabaseDataProvider] DEBUG - Raw product data from database:', {
+        id: product.id,
+        name: product.name,
+        sku: product.sku,
+        category_id: product.category_id,
+        supplier_id: product.supplier_id,
+        total_quantity: product.total_quantity,
+        lats_categories: product.lats_categories,
+        lats_suppliers: product.lats_suppliers,
+        status: product.status,
+        created_at: product.created_at,
+        updated_at: product.updated_at
+      });
+
+      // DEBUG: Check supplier relationship
+      if (product.supplier_id) {
+        console.log('🔍 [SupabaseDataProvider] DEBUG - Product has supplier_id:', product.supplier_id);
+        if (product.lats_suppliers) {
+          console.log('✅ [SupabaseDataProvider] DEBUG - Supplier data found:', product.lats_suppliers);
+        } else {
+          console.warn('⚠️ [SupabaseDataProvider] DEBUG - Product has supplier_id but no supplier data:', {
+            supplier_id: product.supplier_id,
+            lats_suppliers: product.lats_suppliers
+          });
+        }
+      } else {
+        console.log('ℹ️ [SupabaseDataProvider] DEBUG - Product has no supplier_id');
+      }
+
+      // DEBUG: If product has supplier_id but no supplier data, check if supplier exists
+      if (product.supplier_id && !product.lats_suppliers) {
+        console.log('🔍 [SupabaseDataProvider] DEBUG - Checking if supplier exists in database...');
+        const { data: supplierCheck, error: supplierCheckError } = await supabase
+          .from('lats_suppliers')
+          .select('id, name, contact_person, email, phone')
+          .eq('id', product.supplier_id)
+          .single();
+        
+        if (supplierCheckError) {
+          console.error('❌ [SupabaseDataProvider] DEBUG - Supplier check failed:', supplierCheckError);
+        } else if (supplierCheck) {
+          console.log('✅ [SupabaseDataProvider] DEBUG - Supplier exists in database:', supplierCheck);
+        } else {
+          console.warn('⚠️ [SupabaseDataProvider] DEBUG - Supplier not found in database:', product.supplier_id);
+        }
       }
 
       // Get product variants
@@ -982,6 +1199,38 @@ class SupabaseDataProvider implements LatsDataProvider {
         console.error('❌ Error fetching product variants:', variantsError);
       }
 
+      // DEBUG: Log variants data
+      console.log('🔍 [SupabaseDataProvider] DEBUG - Variants data:', {
+        count: variants?.length || 0,
+        variants: variants?.map(v => ({
+          id: v.id,
+          name: v.name,
+          sku: v.sku,
+          cost_price: v.cost_price,
+          selling_price: v.selling_price,
+          quantity: v.quantity,
+          min_quantity: v.min_quantity
+        }))
+      });
+
+      // DEBUG: Check pricing information
+      if (variants && variants.length > 0) {
+        const sellingPrices = variants.map(v => v.selling_price || 0);
+        const costPrices = variants.map(v => v.cost_price || 0);
+        console.log('💰 [SupabaseDataProvider] DEBUG - Pricing analysis:', {
+          sellingPrices,
+          costPrices,
+          minSellingPrice: Math.min(...sellingPrices),
+          maxSellingPrice: Math.max(...sellingPrices),
+          minCostPrice: Math.min(...costPrices),
+          maxCostPrice: Math.max(...costPrices),
+          hasZeroSellingPrice: sellingPrices.some(p => p === 0),
+          hasZeroCostPrice: costPrices.some(p => p === 0)
+        });
+      } else {
+        console.warn('⚠️ [SupabaseDataProvider] DEBUG - No variants found for product');
+      }
+
       // Get product images
       const { data: images, error: imagesError } = await supabase
         .from('product_images')
@@ -992,6 +1241,15 @@ class SupabaseDataProvider implements LatsDataProvider {
       if (imagesError) {
         console.error('❌ Error fetching product images:', imagesError);
       }
+
+      // DEBUG: Log images data
+      console.log('🔍 [SupabaseDataProvider] DEBUG - Images data:', {
+        count: images?.length || 0,
+        images: images?.map(img => ({
+          url: img.image_url,
+          is_primary: img.is_primary
+        }))
+      });
 
       const transformedProduct: Product = {
         id: product.id,
@@ -1028,6 +1286,54 @@ class SupabaseDataProvider implements LatsDataProvider {
         debutNotes: product.debut_notes,
         debutFeatures: product.debut_features || [],
         metadata: product.metadata || {},
+        
+        // New shipping fields
+        weight: product.weight,
+        length: product.length,
+        width: product.width,
+        height: product.height,
+        cbm: product.cbm,
+        shippingClass: product.shipping_class,
+        requiresSpecialHandling: product.requires_special_handling,
+        
+        // New multi-currency fields
+        usdPrice: product.usd_price,
+        eurPrice: product.eur_price,
+        exchangeRate: product.exchange_rate,
+        baseCurrency: product.base_currency,
+        
+        // New purchase order fields
+        lastOrderDate: product.last_order_date,
+        lastOrderQuantity: product.last_order_quantity,
+        pendingQuantity: product.pending_quantity,
+        orderStatus: product.order_status,
+        
+        // New shipping status fields
+        shippingStatus: product.shipping_status,
+        trackingNumber: product.tracking_number,
+        expectedDelivery: product.expected_delivery,
+        shippingAgent: product.shipping_agent,
+        shippingCarrier: product.shipping_carrier,
+        
+        // New storage fields
+        storageRoomName: product.storage_room_name,
+        shelfName: product.shelf_name,
+        storeLocationName: product.store_location_name,
+        isRefrigerated: product.is_refrigerated,
+        requiresLadder: product.requires_ladder,
+        
+        // New shipping cost fields
+        shippingCost: product.shipping_cost,
+        freightCost: product.freight_cost,
+        deliveryCost: product.delivery_cost,
+        insuranceCost: product.insurance_cost,
+        customsCost: product.customs_cost,
+        handlingCost: product.handling_cost,
+        totalShippingCost: product.total_shipping_cost,
+        shippingCostCurrency: product.shipping_cost_currency,
+        shippingCostPerUnit: product.shipping_cost_per_unit,
+        shippingCostPerKg: product.shipping_cost_per_kg,
+        shippingCostPerCbm: product.shipping_cost_per_cbm,
         category: product.lats_categories ? {
           id: product.lats_categories.id,
           name: product.lats_categories.name,
@@ -1046,9 +1352,61 @@ class SupabaseDataProvider implements LatsDataProvider {
           address: product.lats_suppliers.address,
           website: product.lats_suppliers.website,
           notes: product.lats_suppliers.notes,
+          currency: product.lats_suppliers.currency,
+          paymentTerms: product.lats_suppliers.payment_terms,
+          leadTime: product.lats_suppliers.lead_time,
+          rating: product.lats_suppliers.rating,
+          totalOrders: product.lats_suppliers.total_orders,
+          onTimeDeliveryRate: product.lats_suppliers.on_time_delivery_rate,
+          qualityRating: product.lats_suppliers.quality_rating,
+          defaultShippingCost: product.lats_suppliers.default_shipping_cost,
+          shippingCostPerKg: product.lats_suppliers.shipping_cost_per_kg,
+          shippingCostPerCbm: product.lats_suppliers.shipping_cost_per_cbm,
+          minimumShippingCost: product.lats_suppliers.minimum_shipping_cost,
+          freeShippingThreshold: product.lats_suppliers.free_shipping_threshold,
           createdAt: product.lats_suppliers.created_at,
           updatedAt: product.lats_suppliers.updated_at
         } : undefined,
+
+        // Shipping info from lats_shipping_info table
+        shippingInfo: product.lats_shipping_info && product.lats_shipping_info.length > 0 ? product.lats_shipping_info.map((info: any) => ({
+          id: info.id,
+          trackingNumber: info.tracking_number,
+          carrierName: info.carrier_name,
+          shippingAgent: info.shipping_agent,
+          shippingManager: info.shipping_manager,
+          originAddress: info.origin_address,
+          originCity: info.origin_city,
+          originCountry: info.origin_country,
+          destinationAddress: info.destination_address,
+          destinationCity: info.destination_city,
+          destinationCountry: info.destination_country,
+          shippingStatus: info.shipping_status,
+          shippedDate: info.shipped_date,
+          expectedDeliveryDate: info.expected_delivery_date,
+          actualDeliveryDate: info.actual_delivery_date,
+          shippingCost: info.shipping_cost,
+          freightCost: info.freight_cost,
+          deliveryCost: info.delivery_cost,
+          insuranceCost: info.insurance_cost,
+          customsCost: info.customs_cost,
+          handlingCost: info.handling_cost,
+          totalShippingCost: info.total_shipping_cost,
+          shippingCostCurrency: info.shipping_cost_currency,
+          packageWeight: info.package_weight,
+          packageLength: info.package_length,
+          packageWidth: info.package_width,
+          packageHeight: info.package_height,
+          packageCbm: info.package_cbm,
+          packageCount: info.package_count,
+          requiresSpecialHandling: info.requires_special_handling,
+          isFragile: info.is_fragile,
+          isHazardous: info.is_hazardous,
+          temperatureControlled: info.temperature_controlled,
+          notes: info.notes,
+          createdAt: info.created_at,
+          updatedAt: info.updated_at
+        })) : [],
         variants: (variants || []).map((variant: any) => ({
           id: variant.id,
           productId: variant.product_id,
@@ -1085,6 +1443,20 @@ class SupabaseDataProvider implements LatsDataProvider {
         debutDate: transformedProduct.debutDate,
         debutNotes: transformedProduct.debutNotes,
         debutFeatures: transformedProduct.debutFeatures?.length || 0
+      });
+
+      // DEBUG: Log transformed product data
+      console.log('🔍 [SupabaseDataProvider] DEBUG - Transformed product data:', {
+        id: transformedProduct.id,
+        name: transformedProduct.name,
+        sku: transformedProduct.sku,
+        category: transformedProduct.category,
+        supplier: transformedProduct.supplier,
+        totalQuantity: transformedProduct.totalQuantity,
+        variants: transformedProduct.variants,
+        images: transformedProduct.images,
+        price: transformedProduct.price,
+        costPrice: transformedProduct.costPrice
       });
 
       return { ok: true, data: transformedProduct };
@@ -1230,24 +1602,32 @@ class SupabaseDataProvider implements LatsDataProvider {
         }
       }
       
-      // Prepare main product create data with only fields that exist in the database
+      // Prepare main product create data with all available fields
       const mainProductCreateData: any = {
         name: data.name,
+        description: data.description || null,
+        specification: data.specification || null,
+        sku: data.sku || null,
+        cost_price: data.costPrice || 0,
+        selling_price: data.price || 0,
+        stock_quantity: data.stockQuantity || 0,
+        min_stock_level: data.minStockLevel || 0,
+        condition: data.condition || 'new',
         is_active: Boolean(data.isActive),
+        total_quantity: data.stockQuantity || 0,
+        total_value: (data.stockQuantity || 0) * (data.costPrice || 0),
         // Add fields that already exist in database schema
         tags: data.tags || [],
         images: data.images || [],
-        // Add new fields from the migration
-        condition: data.condition || 'new',
-        // Add internal notes field - removed as it doesn't exist in schema
         // Add attributes field for product-level specifications
-        attributes: data.attributes || {}
+        attributes: data.attributes || {},
+        metadata: data.metadata || {}
       };
       
       // Only add category_id if it's a valid UUID
       if (data.categoryId && isValidUUID(data.categoryId)) {
         mainProductCreateData.category_id = data.categoryId;
-      } else if (data.categoryId) {
+      } else if (data.categoryId && data.categoryId !== null) {
         console.warn('⚠️ [DEBUG] Invalid category ID format:', data.categoryId);
         return { ok: false, message: 'Invalid category ID format. Please select a valid category.' };
       }
@@ -1260,6 +1640,15 @@ class SupabaseDataProvider implements LatsDataProvider {
       } else if (data.supplierId) {
         console.warn('⚠️ [DEBUG] Invalid supplier ID format:', data.supplierId);
         // Don't fail for invalid supplier ID, just skip it
+      }
+      
+      // Add storage room and shelf fields if they exist in the data
+      if (data.storageRoomId && isValidUUID(data.storageRoomId)) {
+        mainProductCreateData.storage_room_id = data.storageRoomId;
+      }
+      
+      if (data.shelfId && isValidUUID(data.shelfId)) {
+        mainProductCreateData.store_shelf_id = data.shelfId;
       }
       
       console.log('📦 [DEBUG] Main product create data:', mainProductCreateData);
@@ -1345,11 +1734,16 @@ class SupabaseDataProvider implements LatsDataProvider {
             selling_price: variant.price || variant.sellingPrice || variant.selling_price || 0,
             quantity: variant.stockQuantity || variant.quantity || 0,
             min_quantity: variant.minStockLevel || variant.minQuantity || variant.min_quantity || 0,
-  
-            weight: variant.weight || null,
-            dimensions: variant.dimensions || null,
             attributes: variant.attributes || {}
           };
+
+          // Only add weight and dimensions if they have valid values
+          if (variant.weight && !isNaN(Number(variant.weight))) {
+            variantData.weight = Number(variant.weight);
+          }
+          if (variant.dimensions && typeof variant.dimensions === 'object') {
+            variantData.dimensions = variant.dimensions;
+          }
           
           console.log('📦 [DEBUG] Variant data to insert:', variantData);
           return variantData;
@@ -1411,6 +1805,40 @@ class SupabaseDataProvider implements LatsDataProvider {
         }
         
         console.log('✅ [DEBUG] Variants created successfully');
+      } else {
+        // No variants provided - create a default variant automatically
+        console.log('🔄 [DEBUG] No variants provided, creating default variant automatically');
+        
+        const defaultVariantResult = await validateAndCreateDefaultVariant(
+          product.id,
+          product.name,
+          {
+            costPrice: data.costPrice,
+            sellingPrice: data.price,
+            quantity: data.stockQuantity,
+            minQuantity: data.minStockLevel,
+            sku: data.sku,
+            attributes: data.attributes
+          }
+        );
+
+        if (!defaultVariantResult.success) {
+          console.error('❌ [DEBUG] Failed to create default variant:', defaultVariantResult.error);
+          // Roll back main product if default variant creation fails
+          try {
+            console.warn('↩️ [DEBUG] Rolling back created product due to default variant error');
+            await supabase.from('lats_products').delete().eq('id', product.id);
+          } catch (rollbackError) {
+            console.error('❌ [DEBUG] Failed to roll back product:', rollbackError);
+          }
+          
+          return { 
+            ok: false, 
+            message: `Failed to create default variant: ${defaultVariantResult.error}` 
+          };
+        }
+        
+        console.log('✅ [DEBUG] Default variant created successfully');
       }
 
       latsEventBus.emit('lats:product.created', product);
@@ -1481,13 +1909,12 @@ class SupabaseDataProvider implements LatsDataProvider {
             const updateData = {
               sku: variant.sku || '',
               name: variant.name || '',
-    
-              selling_price: Number(variant.price) || 0, // Use price from form data
-              cost_price: Number(variant.costPrice) || 0,
-              quantity: Number(variant.stockQuantity) || 0,
-              min_quantity: Number(variant.minStockLevel) || 0,
-              weight: variant.weight ? Number(variant.weight) : null,
-              dimensions: variant.dimensions || null,
+              selling_price: Number(variant.sellingPrice || (variant as any).price) || 0,
+              cost_price: Number((variant as any).costPrice) || 0,
+              quantity: Number(variant.quantity || (variant as any).stockQuantity) || 0,
+              min_quantity: Number((variant as any).minStockLevel) || 0,
+              weight: (variant as any).weight ? Number((variant as any).weight) : null,
+              dimensions: (variant as any).dimensions || null,
               attributes: variant.attributes || {}
             };
             
@@ -1517,15 +1944,20 @@ class SupabaseDataProvider implements LatsDataProvider {
               product_id: id,
               sku: variant.sku || '',
               name: variant.name || '',
-    
-              selling_price: Number(variant.price) || 0, // Use price from form data
-              cost_price: Number(variant.costPrice) || 0,
-              quantity: Number(variant.stockQuantity) || 0,
-              min_quantity: Number(variant.minStockLevel) || 0,
-              weight: variant.weight ? Number(variant.weight) : null,
-              dimensions: variant.dimensions || null,
+              selling_price: Number(variant.sellingPrice || (variant as any).price) || 0,
+              cost_price: Number((variant as any).costPrice) || 0,
+              quantity: Number(variant.quantity || (variant as any).stockQuantity) || 0,
+              min_quantity: Number((variant as any).minStockLevel) || 0,
               attributes: variant.attributes || {}
             };
+
+            // Only add weight and dimensions if they have valid values
+            if ((variant as any).weight && !isNaN(Number((variant as any).weight))) {
+              insertData.weight = Number((variant as any).weight);
+            }
+            if ((variant as any).dimensions && typeof (variant as any).dimensions === 'object') {
+              insertData.dimensions = (variant as any).dimensions;
+            }
             
             console.log('📦 [DEBUG] Insert data being sent:', JSON.stringify(insertData, null, 2));
             console.log('📦 [DEBUG] Variant original data:', variant);
@@ -1594,6 +2026,29 @@ class SupabaseDataProvider implements LatsDataProvider {
     } catch (error) {
       console.error('Error deleting product:', error);
       return { ok: false, message: 'Failed to delete product' };
+    }
+  }
+
+  async updateProductVariantCostPrice(variantId: string, costPrice: number): Promise<ApiResponse<any>> {
+    try {
+      console.log('🔄 Updating variant cost price:', { variantId, costPrice });
+      
+      const { data, error } = await supabase
+        .from('lats_product_variants')
+        .update({ cost_price: costPrice })
+        .eq('id', variantId)
+        .select();
+
+      if (error) {
+        console.error('❌ Error updating variant cost price:', error);
+        return { ok: false, message: error.message };
+      }
+
+      console.log('✅ Variant cost price updated successfully:', data);
+      return { ok: true, data };
+    } catch (error) {
+      console.error('❌ Exception updating variant cost price:', error);
+      return { ok: false, message: 'Failed to update variant cost price' };
     }
   }
 
@@ -1767,42 +2222,204 @@ class SupabaseDataProvider implements LatsDataProvider {
   }
 
   // Purchase Orders
+  // Test function to verify complete purchase order workflow
+  async testPurchaseOrderWorkflow(): Promise<void> {
+    try {
+      console.log('🧪 TESTING: Complete Purchase Order Workflow');
+      
+      // 1. Test fetching all purchase orders
+      console.log('📋 Step 1: Fetching all purchase orders...');
+      const { data: allOrders, error: allOrdersError } = await supabase
+        .from('lats_purchase_orders')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (allOrdersError) {
+        console.error('❌ Error fetching all orders:', allOrdersError);
+        return;
+      }
+      
+      console.log(`✅ Found ${allOrders?.length || 0} purchase orders in database`);
+      
+      // 2. Test fetching all purchase order items
+      console.log('📦 Step 2: Fetching all purchase order items...');
+      const { data: allItems, error: allItemsError } = await supabase
+        .from('lats_purchase_order_items')
+        .select('*');
+      
+      if (allItemsError) {
+        console.error('❌ Error fetching all items:', allItemsError);
+        return;
+      }
+      
+      console.log(`✅ Found ${allItems?.length || 0} purchase order items in database`);
+      
+      // 3. Test relationships
+      console.log('🔗 Step 3: Testing relationships...');
+      if (allOrders && allItems) {
+        allOrders.forEach(order => {
+          const orderItems = allItems.filter(item => item.purchase_order_id === order.id);
+          console.log(`📋 Order ${order.order_number}: ${orderItems.length} items`);
+          
+          if (orderItems.length > 0) {
+            const calculatedTotal = orderItems.reduce((sum, item) => sum + parseFloat(item.total_price), 0);
+            console.log(`💰 Order ${order.order_number}: DB total=${order.total_amount}, Calculated total=${calculatedTotal}`);
+          }
+        });
+      }
+      
+      // 4. Test suppliers
+      console.log('🏢 Step 4: Testing supplier relationships...');
+      const { data: suppliers, error: suppliersError } = await supabase
+        .from('lats_suppliers')
+        .select('id, name');
+      
+      if (suppliersError) {
+        console.error('❌ Error fetching suppliers:', suppliersError);
+        return;
+      }
+      
+      console.log(`✅ Found ${suppliers?.length || 0} suppliers`);
+      
+      if (allOrders && suppliers) {
+        allOrders.forEach(order => {
+          const supplier = suppliers.find(s => s.id === order.supplier_id);
+          console.log(`📋 Order ${order.order_number}: Supplier=${supplier?.name || 'Unknown'}`);
+        });
+      }
+      
+      console.log('🎉 Purchase Order Workflow Test Complete!');
+      
+    } catch (error) {
+      console.error('❌ Error in purchase order workflow test:', error);
+    }
+  }
+
   async getPurchaseOrders(): Promise<ApiResponse<PurchaseOrder[]>> {
     try {
+      // Run workflow test first
+      await this.testPurchaseOrderWorkflow();
+      
       // Fetch purchase orders without joins to avoid foreign key issues
       const { data: orders, error: ordersError } = await supabase
         .from('lats_purchase_orders')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (ordersError) throw ordersError;
+      if (ordersError) {
+        console.error('❌ Error fetching purchase orders:', ordersError);
+        throw ordersError;
+      }
+
       
-      // Fetch suppliers separately
+      // Fetch suppliers separately with all necessary fields
       const { data: suppliers, error: suppliersError } = await supabase
         .from('lats_suppliers')
-        .select('id, name');
+        .select(`
+          id, 
+          name, 
+          company_name,
+          contact_person,
+          email,
+          phone,
+          address,
+          city,
+          country,
+          currency,
+          payment_terms,
+          is_active,
+          created_at,
+          updated_at
+        `);
 
       if (suppliersError) {
         console.warn('Warning: Could not fetch suppliers:', suppliersError.message);
+      } else {
+        console.log('✅ DEBUG: Suppliers fetched:', suppliers);
       }
 
-      // Fetch purchase order items separately
+      // Fetch purchase order items separately to avoid foreign key issues
       const { data: items, error: itemsError } = await supabase
         .from('lats_purchase_order_items')
         .select('*');
 
       if (itemsError) {
         console.warn('Warning: Could not fetch purchase order items:', itemsError.message);
+      } else {
+        console.log('✅ DEBUG: Purchase order items fetched:', items);
       }
 
-      // Create lookup maps
-      const suppliersMap = new Map((suppliers || []).map(s => [s.id, s]));
+      // Fetch shipping agents for agent information
+      const { data: agents, error: agentsError } = await supabase
+        .from('lats_shipping_agents')
+        .select('id, name, company, phone, email, is_active');
+
+      if (agentsError) {
+        console.warn('Warning: Could not fetch shipping agents:', agentsError.message);
+      } else {
+        console.log('✅ DEBUG: Shipping agents fetched:', agents);
+      }
+
+      // Fetch products separately
+      const { data: products, error: productsError } = await supabase
+        .from('lats_products')
+        .select('id, name, sku, category_id');
+
+      if (productsError) {
+        console.warn('Warning: Could not fetch products:', productsError.message);
+      }
+
+      // Fetch product variants separately
+      const { data: variants, error: variantsError } = await supabase
+        .from('lats_product_variants')
+        .select('id, name, sku');
+
+      if (variantsError) {
+        console.warn('Warning: Could not fetch product variants:', variantsError.message);
+      }
+
+      // Create lookup maps with transformed supplier data
+      const suppliersMap = new Map((suppliers || []).map(s => [s.id, {
+        id: s.id,
+        name: s.name,
+        companyName: s.company_name,
+        contactPerson: s.contact_person,
+        email: s.email,
+        phone: s.phone,
+        address: s.address,
+        city: s.city,
+        country: s.country,
+        currency: s.currency,
+        paymentTerms: s.payment_terms,
+        isActive: s.is_active,
+        createdAt: s.created_at,
+        updatedAt: s.updated_at
+      }]));
+      const productsMap = new Map((products || []).map(p => [p.id, p]));
+      const variantsMap = new Map((variants || []).map(v => [v.id, v]));
+      const agentsMap = new Map((agents || []).map(a => [a.id, {
+        id: a.id,
+        name: a.name,
+        company: a.company,
+        phone: a.phone,
+        email: a.email,
+        isActive: a.is_active
+      }]));
       const itemsMap = new Map();
+      
       (items || []).forEach(item => {
         if (!itemsMap.has(item.purchase_order_id)) {
           itemsMap.set(item.purchase_order_id, []);
         }
-        itemsMap.get(item.purchase_order_id).push(item);
+        
+        // Enrich item with product and variant information
+        const enrichedItem = {
+          ...item,
+          product: productsMap.get(item.product_id),
+          variant: variantsMap.get(item.variant_id)
+        };
+        
+        itemsMap.get(item.purchase_order_id).push(enrichedItem);
       });
       
       // Transform snake_case to camelCase
@@ -1811,6 +2428,7 @@ class SupabaseDataProvider implements LatsDataProvider {
         orderNumber: order.order_number,
         supplierId: order.supplier_id,
         supplierName: suppliersMap.get(order.supplier_id)?.name || 'Unknown Supplier',
+        supplier: suppliersMap.get(order.supplier_id) || null,
         status: order.status,
         totalAmount: order.total_amount || 0,
         expectedDelivery: order.expected_delivery,
@@ -1818,6 +2436,56 @@ class SupabaseDataProvider implements LatsDataProvider {
         createdBy: order.created_by,
         createdAt: order.created_at,
         updatedAt: order.updated_at,
+        currency: order.currency || 'TZS', // Add currency
+        paymentTerms: order.payment_terms, // Add payment terms
+        // Shipping fields
+        trackingNumber: order.tracking_number,
+        shippingStatus: order.shipping_status,
+        estimatedDelivery: order.estimated_delivery_date,
+        shippingNotes: order.shipping_notes,
+        // Transform shipping_info JSONB to shippingInfo object or create from individual fields
+        shippingInfo: order.shipping_info ? {
+          carrier: order.shipping_info.carrier || 'Unknown Carrier',
+          trackingNumber: order.shipping_info.trackingNumber || order.tracking_number || '',
+          method: order.shipping_info.shippingMethod || order.shipping_info.method || '',
+          cost: order.shipping_info.cost || 0,
+          notes: order.shipping_info.notes || order.shipping_notes || '',
+          agentId: order.shipping_info.agentId || '',
+          agent: agentsMap.get(order.shipping_info.agentId) || null,
+          managerId: order.shipping_info.managerId || '',
+          estimatedDelivery: order.shipping_info.estimatedDelivery || order.estimated_delivery_date || '',
+          shippedDate: order.shipping_info.shippedDate || order.shipped_date || '',
+          deliveredDate: order.shipping_info.deliveredDate || order.delivered_date || '',
+          portOfLoading: order.shipping_info.portOfLoading || '',
+          portOfDischarge: order.shipping_info.portOfDischarge || '',
+          pricePerCBM: order.shipping_info.pricePerCBM || 0,
+          enableInsurance: order.shipping_info.enableInsurance || false,
+          requireSignature: order.shipping_info.requireSignature || false,
+          cargoBoxes: order.shipping_info.cargoBoxes || []
+        } : (order.tracking_number || order.shipping_status ? {
+          carrier: order.tracking_number?.startsWith('DHL') ? 'DHL Express' : 
+                   order.tracking_number?.startsWith('FEDEX') ? 'FedEx' :
+                   order.tracking_number?.startsWith('UPS') ? 'UPS' :
+                   order.tracking_number?.startsWith('MAERSK') ? 'Maersk Line' :
+                   order.tracking_number?.startsWith('TED') ? 'Tanzania Express Delivery' :
+                   'Unknown Carrier',
+          trackingNumber: order.tracking_number || '',
+          method: 'Standard',
+          cost: 0,
+          notes: order.shipping_notes || '',
+          agentId: '',
+          agent: null,
+          managerId: '',
+          estimatedDelivery: order.estimated_delivery_date || '',
+          shippedDate: order.shipped_date || '',
+          deliveredDate: order.delivered_date || '',
+          portOfLoading: '',
+          portOfDischarge: '',
+          pricePerCBM: 0,
+          enableInsurance: false,
+          requireSignature: false,
+          cargoBoxes: []
+        } : null),
         items: (itemsMap.get(order.id) || []).map((item: any) => ({
           id: item.id,
           purchaseOrderId: item.purchase_order_id,
@@ -1827,19 +2495,48 @@ class SupabaseDataProvider implements LatsDataProvider {
           costPrice: item.cost_price,
           totalPrice: item.total_price,
           receivedQuantity: item.received_quantity || 0,
-          notes: item.notes
+          notes: item.notes,
+          // Include product and variant information
+          product: item.lats_products ? {
+            id: item.lats_products.id,
+            name: item.lats_products.name,
+            sku: item.lats_products.sku,
+            categoryId: item.lats_products.category_id
+          } : null,
+          variant: item.lats_product_variants ? {
+            id: item.lats_product_variants.id,
+            name: item.lats_product_variants.name,
+            sku: item.lats_product_variants.sku
+          } : null
         }))
       }));
       
+      
+      
       return { ok: true, data: transformedData };
     } catch (error) {
-      console.error('Error fetching purchase orders:', error);
+      console.error('❌ Error fetching purchase orders:', error);
       return { ok: false, message: 'Failed to fetch purchase orders' };
     }
   }
 
   async getPurchaseOrder(id: string): Promise<ApiResponse<PurchaseOrder>> {
     try {
+      // Validate input
+      if (!id || typeof id !== 'string') {
+        console.error('❌ Invalid purchase order ID:', id);
+        return { ok: false, message: 'Invalid purchase order ID provided' };
+      }
+
+      // Validate UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(id)) {
+        console.error('❌ Invalid UUID format for purchase order ID:', id);
+        return { ok: false, message: 'Invalid purchase order ID format' };
+      }
+
+      console.log('🔍 DEBUG: Fetching purchase order with ID:', id);
+
       // Fetch purchase order without joins to avoid foreign key issues
       const { data: order, error: orderError } = await supabase
         .from('lats_purchase_orders')
@@ -1847,7 +2544,34 @@ class SupabaseDataProvider implements LatsDataProvider {
         .eq('id', id)
         .single();
 
-      if (orderError) throw orderError;
+      if (orderError) {
+        console.error('❌ Database error fetching purchase order:', orderError);
+        if (orderError.code === 'PGRST116') {
+          return { ok: false, message: 'Purchase order not found' };
+        } else if (orderError.code === '22P02') {
+          return { ok: false, message: 'Invalid purchase order ID format' };
+        } else if (orderError.code === '23503') {
+          return { ok: false, message: 'Purchase order references invalid data' };
+        }
+        throw orderError;
+      }
+
+      if (!order) {
+        console.error('❌ No purchase order data returned for ID:', id);
+        return { ok: false, message: 'Purchase order not found' };
+      }
+      
+      console.log('🔍 DEBUG: Fetched purchase order from database:', {
+        id: order.id,
+        orderNumber: order.order_number,
+        currency: order.currency,
+        paymentTerms: order.payment_terms,
+        totalAmount: order.total_amount,
+        exchangeRate: order.exchange_rate,
+        baseCurrency: order.base_currency,
+        exchangeRateSource: order.exchange_rate_source,
+        totalAmountBaseCurrency: order.total_amount_base_currency
+      });
       
       // Fetch supplier separately
       const { data: supplier, error: supplierError } = await supabase
@@ -1860,7 +2584,7 @@ class SupabaseDataProvider implements LatsDataProvider {
         console.warn('Warning: Could not fetch supplier:', supplierError.message);
       }
 
-      // Fetch purchase order items separately
+      // Fetch purchase order items first
       const { data: items, error: itemsError } = await supabase
         .from('lats_purchase_order_items')
         .select('*')
@@ -1868,6 +2592,136 @@ class SupabaseDataProvider implements LatsDataProvider {
 
       if (itemsError) {
         console.warn('Warning: Could not fetch purchase order items:', itemsError.message);
+      } else {
+        console.log('🔍 [getPurchaseOrder] DEBUG - Items fetched from database:', {
+          itemsCount: items?.length || 0,
+          items: items?.map(item => ({
+            id: item.id,
+            productId: item.product_id,
+            variantId: item.variant_id
+          }))
+        });
+      }
+
+      // Manually fetch product and variant data for each item
+      let itemsWithProductData = [];
+      if (items && items.length > 0) {
+        console.log('🔍 [getPurchaseOrder] Fetching product and variant data for items...');
+        
+        for (const item of items) {
+          let productData = null;
+          let variantData = null;
+
+          // Fetch product data
+          if (item.product_id) {
+            const { data: product, error: productError } = await supabase
+              .from('lats_products')
+              .select('id, name, sku, category_id')
+              .eq('id', item.product_id)
+              .single();
+
+            if (!productError && product) {
+              productData = product;
+            } else {
+              console.warn(`⚠️ [getPurchaseOrder] Could not fetch product ${item.product_id}:`, productError?.message);
+            }
+          }
+
+          // Fetch variant data
+          if (item.variant_id) {
+            const { data: variant, error: variantError } = await supabase
+              .from('lats_product_variants')
+              .select('id, name, sku')
+              .eq('id', item.variant_id)
+              .single();
+
+            if (!variantError && variant) {
+              variantData = variant;
+            } else {
+              console.warn(`⚠️ [getPurchaseOrder] Could not fetch variant ${item.variant_id}:`, variantError?.message);
+            }
+          }
+
+          itemsWithProductData.push({
+            ...item,
+            product: productData,
+            variant: variantData
+          });
+        }
+
+        console.log('✅ [getPurchaseOrder] Items with product/variant data:', {
+          itemsCount: itemsWithProductData.length,
+          items: itemsWithProductData.map(item => ({
+            id: item.id,
+            productId: item.product_id,
+            variantId: item.variant_id,
+            productName: item.product?.name,
+            variantName: item.variant?.name,
+            hasProductData: !!item.product,
+            hasVariantData: !!item.variant
+          }))
+        });
+      }
+
+      // Fetch shipping information from dedicated shipping_info table
+      console.log('🚚 [getPurchaseOrder] Fetching shipping info for purchase order ID:', id);
+      const { data: shippingInfoData, error: shippingInfoError } = await supabase
+        .from('lats_shipping_info')
+        .select(`
+          *,
+          carrier:lats_shipping_carriers(id, name, tracking_url),
+          agent:lats_shipping_agents!lats_shipping_info_agent_id_fkey(id, name, company, phone, email, is_active),
+          manager:lats_shipping_managers!lats_shipping_info_manager_id_fkey(id, name, department, phone, email)
+        `)
+        .eq('purchase_order_id', id)
+        .single();
+
+      console.log('🚚 [getPurchaseOrder] Shipping info query result:');
+      console.log('  - Data:', shippingInfoData);
+      console.log('  - Error:', shippingInfoError);
+
+      if (shippingInfoError) {
+        if (shippingInfoError.code === 'PGRST116') {
+          console.log('🚚 [getPurchaseOrder] No shipping info found for this purchase order');
+        } else {
+          console.warn('⚠️ [getPurchaseOrder] Could not fetch shipping information:', shippingInfoError.message);
+          console.warn('⚠️ [getPurchaseOrder] Error details:', shippingInfoError);
+        }
+      }
+
+      // Get the shipping info record (or null if none exists)
+      const shippingInfo = shippingInfoData || null;
+      console.log('🚚 [getPurchaseOrder] Processed shipping info:', shippingInfo);
+      
+      if (shippingInfo) {
+        console.log('🚚 [getPurchaseOrder] Shipping info breakdown:');
+        console.log('  - ID:', shippingInfo.id);
+        console.log('  - Tracking number:', shippingInfo.tracking_number);
+        console.log('  - Status:', shippingInfo.status);
+        console.log('  - Cost:', shippingInfo.cost);
+        console.log('  - Carrier:', shippingInfo.carrier);
+        console.log('  - Agent:', shippingInfo.agent);
+        console.log('  - Manager:', shippingInfo.manager);
+        console.log('  - Agent ID:', shippingInfo.agent_id);
+        console.log('  - Manager ID:', shippingInfo.manager_id);
+      } else {
+        console.log('⚠️ [getPurchaseOrder] No shipping info found for this purchase order');
+      }
+
+      // Fetch shipping events for tracking history
+      let shippingEvents = [];
+      if (shippingInfo) {
+        const { data: events, error: eventsError } = await supabase
+          .from('lats_shipping_events')
+          .select('*')
+          .eq('shipping_id', shippingInfo.id)
+          .order('timestamp', { ascending: false });
+
+        if (eventsError) {
+          console.warn('Warning: Could not fetch shipping events:', eventsError.message);
+        } else {
+          shippingEvents = events || [];
+        }
       }
       
       // Transform snake_case to camelCase
@@ -1883,7 +2737,93 @@ class SupabaseDataProvider implements LatsDataProvider {
         createdBy: order.created_by,
         createdAt: order.created_at,
         updatedAt: order.updated_at,
-        items: (items || []).map((item: any) => ({
+        currency: order.currency || 'TZS', // Add currency
+        paymentTerms: order.payment_terms, // Add payment terms
+        // Exchange rate tracking fields
+        exchangeRate: order.exchange_rate || 1.0,
+        baseCurrency: order.base_currency || 'TZS',
+        exchangeRateSource: order.exchange_rate_source || 'default',
+        exchangeRateDate: order.exchange_rate_date || order.created_at,
+        totalAmountBaseCurrency: order.total_amount_base_currency || order.total_amount || 0,
+        // Shipping fields
+        trackingNumber: order.tracking_number,
+        shippingStatus: order.shipping_status,
+        estimatedDelivery: order.estimated_delivery_date,
+        shippingNotes: order.shipping_notes,
+        // Use shipping info from dedicated table or create from individual fields
+        shippingInfo: (() => {
+          console.log('🚚 [getPurchaseOrder] Transforming shipping info...');
+          console.log('🚚 [getPurchaseOrder] Has shippingInfo from DB:', !!shippingInfo);
+          console.log('🚚 [getPurchaseOrder] Has order.tracking_number:', !!order.tracking_number);
+          console.log('🚚 [getPurchaseOrder] Has order.shipping_status:', !!order.shipping_status);
+          
+          if (shippingInfo) {
+            console.log('🚚 [getPurchaseOrder] Using shipping info from dedicated table');
+            const transformedShippingInfo = {
+              id: shippingInfo.id,
+              carrier: shippingInfo.carrier?.name || 'Unknown Carrier',
+              carrierId: shippingInfo.carrier_id || '',
+              trackingNumber: shippingInfo.tracking_number || order.tracking_number || '',
+              method: 'Standard',
+              cost: shippingInfo.cost || 0,
+              notes: shippingInfo.notes || order.shipping_notes || '',
+              agentId: shippingInfo.agent_id || '',
+              agent: shippingInfo.agent || null,
+              managerId: shippingInfo.manager_id || '',
+              manager: shippingInfo.manager || null,
+              estimatedDelivery: shippingInfo.estimated_delivery || order.estimated_delivery_date || '',
+              shippedDate: order.shipped_date || '',
+              deliveredDate: shippingInfo.actual_delivery || order.delivered_date || '',
+              portOfLoading: '',
+              portOfDischarge: '',
+              pricePerCBM: 0,
+              enableInsurance: shippingInfo.enable_insurance || false,
+              requireSignature: shippingInfo.require_signature || false,
+              status: shippingInfo.status || 'pending',
+              cargoBoxes: [],
+              trackingEvents: shippingEvents || []
+            };
+            console.log('🚚 [getPurchaseOrder] Transformed shipping info:', transformedShippingInfo);
+            return transformedShippingInfo;
+          } else if (order.tracking_number || order.shipping_status) {
+            console.log('🚚 [getPurchaseOrder] Creating shipping info from order fields');
+            const fallbackShippingInfo = {
+              id: `fallback-${order.id}`, // Generate a fallback ID based on purchase order ID
+              carrier: order.tracking_number?.startsWith('DHL') ? 'DHL Express' : 
+                       order.tracking_number?.startsWith('FEDEX') ? 'FedEx' :
+                       order.tracking_number?.startsWith('UPS') ? 'UPS' :
+                       order.tracking_number?.startsWith('MAERSK') ? 'Maersk Line' :
+                       order.tracking_number?.startsWith('TED') ? 'Tanzania Express Delivery' :
+                       'Unknown Carrier',
+              carrierId: '',
+              trackingNumber: order.tracking_number || '',
+              method: 'Standard',
+              cost: 0,
+              notes: order.shipping_notes || '',
+              agentId: '',
+              agent: null,
+              managerId: '',
+              manager: null,
+              estimatedDelivery: order.estimated_delivery_date || '',
+              shippedDate: order.shipped_date || '',
+              deliveredDate: order.delivered_date || '',
+              portOfLoading: '',
+              portOfDischarge: '',
+              pricePerCBM: 0,
+              enableInsurance: false,
+              requireSignature: false,
+              status: order.shipping_status || 'pending',
+              cargoBoxes: [],
+              trackingEvents: []
+            };
+            console.log('🚚 [getPurchaseOrder] Fallback shipping info:', fallbackShippingInfo);
+            return fallbackShippingInfo;
+          } else {
+            console.log('🚚 [getPurchaseOrder] No shipping info available');
+            return null;
+          }
+        })(),
+        items: (itemsWithProductData || []).map((item: any) => ({
           id: item.id,
           purchaseOrderId: item.purchase_order_id,
           productId: item.product_id,
@@ -1892,47 +2832,277 @@ class SupabaseDataProvider implements LatsDataProvider {
           costPrice: item.cost_price,
           totalPrice: item.total_price,
           receivedQuantity: item.received_quantity || 0,
-          notes: item.notes
+          notes: item.notes,
+          // Include product and variant information
+          product: item.product ? {
+            id: item.product.id,
+            name: item.product.name,
+            sku: item.product.sku,
+            categoryId: item.product.category_id
+          } : null,
+          variant: item.variant ? {
+            id: item.variant.id,
+            name: item.variant.name,
+            sku: item.variant.sku
+          } : null
         }))
       };
       
+      console.log('✅ [getPurchaseOrder] Transformed purchase order data with currency:', {
+        id: transformedData.id,
+        orderNumber: transformedData.orderNumber,
+        currency: transformedData.currency,
+        paymentTerms: transformedData.paymentTerms,
+        totalAmount: transformedData.totalAmount,
+        itemsCount: transformedData.items.length,
+        hasShippingInfo: !!transformedData.shippingInfo
+      });
+      
+      console.log('🚚 [getPurchaseOrder] Final shipping info being returned:', transformedData.shippingInfo);
+      
       return { ok: true, data: transformedData };
     } catch (error) {
-      console.error('Error fetching purchase order:', error);
-      return { ok: false, message: 'Failed to fetch purchase order' };
+      console.error('❌ Error fetching purchase order:', error);
+      
+      // Provide more specific error messages based on error type
+      if (error instanceof Error) {
+        if (error.message.includes('network') || error.message.includes('fetch')) {
+          return { ok: false, message: 'Network error: Unable to connect to database' };
+        } else if (error.message.includes('timeout')) {
+          return { ok: false, message: 'Request timeout: Database took too long to respond' };
+        } else if (error.message.includes('permission') || error.message.includes('unauthorized')) {
+          return { ok: false, message: 'Permission denied: You do not have access to this purchase order' };
+        } else if (error.message.includes('not found') || error.message.includes('PGRST116')) {
+          return { ok: false, message: 'Purchase order not found' };
+        } else {
+          return { ok: false, message: `Database error: ${error.message}` };
+        }
+      }
+      
+      return { ok: false, message: 'Failed to fetch purchase order: Unknown error occurred' };
     }
   }
 
   async createPurchaseOrder(data: PurchaseOrderFormData): Promise<ApiResponse<PurchaseOrder>> {
     try {
+      // Helper function to convert empty strings to null for DATE fields
+      const toDateOrNull = (value: string | undefined): string | null => {
+        return value && value.trim() !== '' ? value : null;
+      };
+
+      // Prepare shipping data for database - only if shipping info is provided
+      const shippingData = data.shippingInfo ? {
+        tracking_number: data.shippingInfo.trackingNumber || null,
+        shipping_status: 'pending',
+        estimated_delivery_date: toDateOrNull(data.shippingInfo.expectedDelivery || data.expectedDelivery),
+        shipping_notes: data.shippingInfo.notes || null,
+        // Store complete shipping info as JSONB for flexibility
+        shipping_info: data.shippingInfo
+      } : {
+        // Default values when no shipping info is provided
+        tracking_number: null,
+        shipping_status: 'not_shipped',
+        estimated_delivery_date: toDateOrNull(data.expectedDelivery),
+        shipping_notes: null,
+        shipping_info: {}
+      };
+
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      const createdBy = user?.id || 'system';
+      
+      console.log('🔍 DEBUG: Creating purchase order with:', {
+        supplier_id: data.supplierId,
+        expected_delivery: data.expectedDelivery,
+        notes: data.notes,
+        status: 'draft',
+        created_by: createdBy,
+        shippingData
+      });
+
+      // Calculate exchange rate info if provided
+      const currency = (data as any).currency || 'TZS';
+      const baseCurrency = 'TZS';
+      const exchangeRate = data.exchangeRate || 1.0;
+      const exchangeRateSource = data.exchangeRateSource || 'default';
+      const exchangeRateDate = data.exchangeRateDate || new Date().toISOString();
+
+      // Debug: Log the exact data being sent to Supabase
+      const insertData = {
+        supplier_id: data.supplierId,
+        expected_delivery: toDateOrNull(data.expectedDelivery),
+        notes: data.notes,
+        status: 'draft',
+        created_by: createdBy,
+        currency: currency,
+        payment_terms: (data as any).paymentTerms || null,
+        // Exchange rate tracking fields
+        exchange_rate: exchangeRate,
+        base_currency: baseCurrency,
+        exchange_rate_source: exchangeRateSource,
+        exchange_rate_date: exchangeRateDate,
+        ...shippingData
+      };
+      
+      console.log('🔍 DEBUG: Exact data being inserted into database:', insertData);
+
       const { data: order, error } = await supabase
         .from('lats_purchase_orders')
-        .insert([{
-          supplier_id: data.supplierId,
-          expected_delivery: data.expectedDelivery,
-          notes: data.notes,
-          status: 'draft',
-          created_by: (await supabase.auth.getUser()).data.user?.id || 'system'
-        }])
+        .insert([insertData])
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Supabase error creating purchase order:', error);
+        console.error('❌ Error details:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+        throw error;
+      }
+
+      console.log('✅ DEBUG: Purchase order created successfully in database:', order);
       
+      // Save purchase order items to the database
+      let savedItems: any[] = [];
+      if (data.items && data.items.length > 0) {
+        console.log('🔍 DEBUG: Saving purchase order items:', data.items);
+        
+        const itemsToInsert = data.items.map(item => ({
+          purchase_order_id: order.id,
+          product_id: item.productId,
+          variant_id: item.variantId,
+          quantity: item.quantity,
+          cost_price: item.costPrice,
+          total_price: item.quantity * item.costPrice,
+          notes: item.notes || ''
+        }));
+
+        console.log('💰 DEBUG: Items being inserted into database:', itemsToInsert.map(item => ({
+          productId: item.product_id,
+          variantId: item.variant_id,
+          quantity: item.quantity,
+          costPrice: item.cost_price,
+          totalPrice: item.total_price,
+          notes: item.notes
+        })));
+
+        console.log('🔍 DEBUG: Items data to insert:', itemsToInsert);
+
+        const { data: insertedItems, error: itemsError } = await supabase
+          .from('lats_purchase_order_items')
+          .insert(itemsToInsert)
+          .select();
+
+        if (itemsError) {
+          console.error('❌ Error saving purchase order items:', itemsError);
+          throw itemsError;
+        }
+
+        savedItems = insertedItems || [];
+        console.log('✅ DEBUG: Purchase order items saved successfully:', savedItems);
+        
+        // Debug: Verify saved pricing and quantity data
+        console.log('💰 DEBUG: Saved Items Pricing & Quantity Verification:');
+        savedItems.forEach((item, index) => {
+          console.log(`💾 Saved Item ${index + 1}:`, {
+            id: item.id,
+            purchaseOrderId: item.purchase_order_id,
+            productId: item.product_id,
+            variantId: item.variant_id,
+            quantity: item.quantity,
+            costPrice: item.cost_price,
+            totalPrice: item.total_price,
+            receivedQuantity: item.received_quantity,
+            notes: item.notes,
+            createdAt: item.created_at
+          });
+        });
+
+        // Calculate total amount and update the purchase order
+        const totalAmount = savedItems.reduce((sum, item) => sum + parseFloat(item.total_price), 0);
+        const totalAmountBaseCurrency = currency === baseCurrency ? totalAmount : totalAmount * exchangeRate;
+        
+        const { error: updateError } = await supabase
+          .from('lats_purchase_orders')
+          .update({ 
+            total_amount: totalAmount,
+            total_amount_base_currency: totalAmountBaseCurrency
+          })
+          .eq('id', order.id);
+
+        if (updateError) {
+          console.error('❌ Error updating purchase order total:', updateError);
+        } else {
+          console.log('✅ DEBUG: Purchase order total updated:', totalAmount);
+        }
+
+        // Verify the complete order was saved correctly
+        console.log('🔍 DEBUG: Verifying complete order in database...');
+        const { data: verifyOrder, error: verifyError } = await supabase
+          .from('lats_purchase_orders')
+          .select(`
+            *,
+            lats_purchase_order_items(*)
+          `)
+          .eq('id', order.id)
+          .single();
+
+        if (verifyError) {
+          console.error('❌ Error verifying order:', verifyError);
+        } else {
+          console.log('✅ DEBUG: Order verification successful:', {
+            orderId: verifyOrder.id,
+            orderNumber: verifyOrder.order_number,
+            totalAmount: verifyOrder.total_amount,
+            itemsCount: verifyOrder.lats_purchase_order_items?.length || 0,
+            items: verifyOrder.lats_purchase_order_items
+          });
+        }
+      }
+
       // Transform snake_case to camelCase
       const transformedData = {
         id: order.id,
         orderNumber: order.order_number,
         supplierId: order.supplier_id,
         status: order.status,
-        totalAmount: order.total_amount || 0,
+        orderDate: order.created_at, // Use created_at as orderDate
+        totalAmount: savedItems.reduce((sum, item) => sum + parseFloat(item.total_price), 0),
         expectedDelivery: order.expected_delivery,
         notes: order.notes,
         createdBy: order.created_by,
         createdAt: order.created_at,
         updatedAt: order.updated_at,
-        items: []
+        currency: order.currency || 'TZS',
+        // Exchange rate tracking fields
+        exchangeRate: order.exchange_rate || 1.0,
+        baseCurrency: order.base_currency || 'TZS',
+        exchangeRateSource: order.exchange_rate_source || 'default',
+        exchangeRateDate: order.exchange_rate_date || order.created_at,
+        totalAmountBaseCurrency: order.total_amount_base_currency || savedItems.reduce((sum, item) => sum + parseFloat(item.total_price), 0),
+        paymentTerms: order.payment_terms, // Add payment terms
+        items: savedItems.map(item => ({
+          id: item.id,
+          productId: item.product_id,
+          variantId: item.variant_id,
+          quantity: item.quantity,
+          costPrice: item.cost_price,
+          totalPrice: item.total_price,
+          receivedQuantity: item.received_quantity || 0,
+          notes: item.notes
+        })),
+        // Include shipping fields in response
+        trackingNumber: order.tracking_number,
+        shippingStatus: order.shipping_status,
+        estimatedDelivery: order.estimated_delivery_date,
+        shippingNotes: order.shipping_notes,
+        shippingInfo: order.shipping_info
       };
+
+      console.log('🔄 DEBUG: Transformed data being returned to frontend:', transformedData);
       
       latsEventBus.emit('lats:purchase-order.created', transformedData);
       return { ok: true, data: transformedData };
@@ -1949,6 +3119,15 @@ class SupabaseDataProvider implements LatsDataProvider {
       if (data.supplierId !== undefined) dbData.supplier_id = data.supplierId;
       if (data.expectedDelivery !== undefined) dbData.expected_delivery = data.expectedDelivery;
       if (data.notes !== undefined) dbData.notes = data.notes;
+      
+      // Support for shipping fields
+      if ((data as any).status !== undefined) dbData.status = (data as any).status;
+      if ((data as any).trackingNumber !== undefined) dbData.tracking_number = (data as any).trackingNumber;
+      if ((data as any).shippingStatus !== undefined) dbData.shipping_status = (data as any).shippingStatus;
+      if ((data as any).estimatedDelivery !== undefined) dbData.estimated_delivery = (data as any).estimatedDelivery;
+      if ((data as any).shippingNotes !== undefined) dbData.shipping_notes = (data as any).shippingNotes;
+      if ((data as any).shippingInfo !== undefined) dbData.shipping_info = (data as any).shippingInfo;
+      if ((data as any).shippingDate !== undefined) dbData.shipping_date = (data as any).shippingDate;
       
       const { data: order, error } = await supabase
         .from('lats_purchase_orders')
@@ -1971,7 +3150,14 @@ class SupabaseDataProvider implements LatsDataProvider {
         createdBy: order.created_by,
         createdAt: order.created_at,
         updatedAt: order.updated_at,
-        items: []
+        items: [],
+        // Shipping fields
+        trackingNumber: order.tracking_number,
+        shippingStatus: order.shipping_status,
+        estimatedDelivery: order.estimated_delivery_date,
+        shippingNotes: order.shipping_notes,
+        shippingInfo: order.shipping_info,
+        shippingDate: order.shipping_date
       };
       
       latsEventBus.emit('lats:purchase-order.updated', transformedData);
@@ -2005,6 +3191,11 @@ class SupabaseDataProvider implements LatsDataProvider {
         createdBy: order.created_by,
         createdAt: order.created_at,
         updatedAt: order.updated_at,
+        // Shipping fields
+        trackingNumber: order.tracking_number,
+        shippingStatus: order.shipping_status,
+        estimatedDelivery: order.estimated_delivery_date,
+        shippingNotes: order.shipping_notes,
         items: []
       };
       
@@ -2503,6 +3694,411 @@ class SupabaseDataProvider implements LatsDataProvider {
     } catch (error) {
       console.error('Error fetching low stock items:', error);
       return { ok: false, message: 'Failed to fetch low stock items' };
+    }
+  }
+
+  // =====================================================
+  // SHIPPING AGENTS METHODS
+  // =====================================================
+
+  async getShippingAgents(): Promise<ApiResponse<ShippingAgent[]>> {
+    try {
+      console.log('🚢 getShippingAgents called - starting fetch...');
+      
+      // First try the view, if it doesn't exist, fall back to the base table
+      let { data, error } = await supabase
+        .from('lats_shipping_agents_with_offices')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      console.log('📊 View query result:', { data: data?.length || 0, error: error?.message || 'none' });
+
+      // Check for various error conditions that indicate missing table/view
+      if (error && (error.code === '42P01' || error.message?.includes('404') || error.message?.includes('relation') || error.message?.includes('does not exist'))) {
+        // View doesn't exist, try the base table
+        console.log('📦 Shipping agents view does not exist, trying base table');
+        const baseResult = await supabase
+          .from('lats_shipping_agents')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        console.log('📊 Base table query result:', { data: baseResult.data?.length || 0, error: baseResult.error?.message || 'none' });
+
+        if (baseResult.error) {
+          // If base table also doesn't exist, return empty array instead of error
+          if (baseResult.error.code === '42P01' || baseResult.error.message?.includes('404') || baseResult.error.message?.includes('relation') || baseResult.error.message?.includes('does not exist')) {
+            console.log('📦 Shipping agents table does not exist, returning empty array');
+            return { ok: true, data: [] };
+          }
+          console.error('Error fetching shipping agents from base table:', baseResult.error);
+          return { ok: false, message: baseResult.error.message };
+        }
+
+        data = baseResult.data;
+      } else if (error) {
+        console.error('Error fetching shipping agents:', error);
+        return { ok: false, message: error.message };
+      }
+
+      // Transform the data to match our interface
+      const agents: ShippingAgent[] = (data || []).map((agent: any) => ({
+        id: agent.id,
+        name: agent.name,
+        company: agent.company,
+        isActive: agent.is_active,
+        createdAt: agent.created_at,
+        phone: agent.phone,
+        whatsapp: agent.whatsapp,
+        supportedShippingTypes: agent.supported_shipping_types || [],
+        address: agent.address,
+        city: agent.city,
+        country: agent.country,
+        offices: agent.offices || [],
+        serviceAreas: agent.service_areas || [],
+        specializations: agent.specializations || [],
+        pricePerCBM: agent.price_per_cbm,
+        pricePerKg: agent.price_per_kg,
+        averageDeliveryTime: agent.average_delivery_time,
+        notes: agent.notes,
+        rating: agent.rating,
+        totalShipments: agent.total_shipments
+      }));
+
+      console.log('✅ getShippingAgents success:', { agentsCount: agents.length, agents: agents });
+      return { ok: true, data: agents };
+    } catch (error) {
+      console.error('❌ Exception fetching shipping agents:', error);
+      return { ok: true, data: [] }; // Return empty array instead of error
+    }
+  }
+
+  async getShippingAgent(id: string): Promise<ApiResponse<ShippingAgent>> {
+    try {
+      let { data, error } = await supabase
+        .from('lats_shipping_agents_with_offices')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      // Check for various error conditions that indicate missing table/view
+      if (error && (error.code === '42P01' || error.message?.includes('404') || error.message?.includes('relation') || error.message?.includes('does not exist'))) {
+        // View doesn't exist, try the base table
+        console.log('📦 Shipping agents view does not exist, trying base table');
+        const baseResult = await supabase
+          .from('lats_shipping_agents')
+          .select('*')
+          .eq('id', id)
+          .single();
+
+        if (baseResult.error) {
+          // If base table also doesn't exist, return error
+          if (baseResult.error.code === '42P01' || baseResult.error.message?.includes('404') || baseResult.error.message?.includes('relation') || baseResult.error.message?.includes('does not exist')) {
+            console.log('📦 Shipping agents table does not exist');
+            return { ok: false, message: 'Shipping agents table does not exist' };
+          }
+          console.error('Error fetching shipping agent from base table:', baseResult.error);
+          return { ok: false, message: baseResult.error.message };
+        }
+
+        data = baseResult.data;
+      } else if (error) {
+        console.error('Error fetching shipping agent:', error);
+        return { ok: false, message: error.message };
+      }
+
+      const agent: ShippingAgent = {
+        id: data.id,
+        name: data.name,
+        phone: data.phone,
+        company: data.company,
+        isActive: data.is_active,
+        managerId: data.manager_id,
+        createdAt: data.created_at,
+        supportedShippingTypes: data.supported_shipping_types || [],
+        address: data.address,
+        city: data.city,
+        country: data.country,
+        website: data.website,
+        offices: data.offices || [],
+        serviceAreas: data.service_areas || [],
+        specializations: data.specializations || [],
+        pricePerCBM: data.price_per_cbm,
+        pricePerKg: data.price_per_kg,
+        averageDeliveryTime: data.average_delivery_time,
+        notes: data.notes,
+        rating: data.rating,
+        totalShipments: data.total_shipments
+      };
+
+      return { ok: true, data: agent };
+    } catch (error) {
+      console.error('Exception fetching shipping agent:', error);
+      return { ok: false, message: 'Failed to fetch shipping agent' };
+    }
+  }
+
+  async createShippingAgent(data: AgentFormData): Promise<ApiResponse<ShippingAgent>> {
+    try {
+      // Debug: Log the incoming data
+      console.log('Creating shipping agent with data:', data);
+      
+      // Start a transaction-like operation
+      const agentData = {
+        name: data.name,
+        company: data.company || null,
+        is_active: data.isActive,
+        phone: data.phone || null,
+        whatsapp: data.whatsapp || null,
+        supported_shipping_types: data.supportedShippingTypes || [],
+        address: data.address || null,
+        city: data.city || null,
+        country: data.country || 'Tanzania',
+        service_areas: data.serviceAreas || [],
+        specializations: data.specializations || [],
+        price_per_cbm: data.pricePerCBM ? parseFloat(data.pricePerCBM) : null,
+        price_per_kg: data.pricePerKg ? parseFloat(data.pricePerKg) : null,
+        average_delivery_time: data.averageDeliveryTime || null,
+        notes: data.notes || null,
+        rating: 0,
+        total_shipments: 0
+      };
+
+      // Debug: Log the data being sent to database
+      console.log('Sending to database:', agentData);
+      
+      // Insert the agent
+      const { data: agent, error: agentError } = await supabase
+        .from('lats_shipping_agents')
+        .insert(agentData)
+        .select()
+        .single();
+
+      if (agentError) {
+        console.error('Error creating shipping agent:', agentError);
+        console.error('Full error details:', JSON.stringify(agentError, null, 2));
+        return { ok: false, message: agentError.message };
+      }
+
+      // Insert office locations if any
+      if (data.offices && data.offices.length > 0) {
+        const officeData = data.offices.map(office => ({
+          agent_id: agent.id,
+          name: office.name,
+          address: office.address,
+          city: office.city,
+          country: office.country,
+          phone: office.phone || null,
+          office_type: office.officeType,
+          is_primary: office.isMainOffice
+        }));
+
+        const { error: officeError } = await supabase
+          .from('lats_shipping_agent_offices')
+          .insert(officeData);
+
+        if (officeError) {
+          console.error('Error creating office locations:', officeError);
+          // Don't fail the entire operation, just log the error
+        }
+      }
+
+      // Insert contacts if any
+      if (data.contacts && data.contacts.length > 0) {
+        const contactData = data.contacts.map(contact => ({
+          agent_id: agent.id,
+          name: contact.name,
+          phone: contact.phone,
+          whatsapp: contact.whatsapp || null,
+          email: contact.email || null,
+          role: contact.role,
+          is_primary: contact.isPrimary
+        }));
+
+        const { error: contactError } = await supabase
+          .from('lats_shipping_agent_contacts')
+          .insert(contactData);
+
+        if (contactError) {
+          console.error('Error creating contacts:', contactError);
+          // Don't fail the entire operation, just log the error
+        }
+      }
+
+      // Fetch the complete agent with offices and contacts
+      const result = await this.getShippingAgent(agent.id);
+      return result;
+    } catch (error) {
+      console.error('Exception creating shipping agent:', error);
+      return { ok: false, message: 'Failed to create shipping agent' };
+    }
+  }
+
+  async updateShippingAgent(id: string, data: AgentFormData): Promise<ApiResponse<ShippingAgent>> {
+    try {
+      const agentData = {
+        name: data.name,
+        company: data.company || null,
+        is_active: data.isActive,
+        phone: data.phone || null,
+        whatsapp: data.whatsapp || null,
+        supported_shipping_types: data.supportedShippingTypes,
+        address: data.address || null,
+        city: data.city || null,
+        country: data.country || 'Tanzania',
+        service_areas: data.serviceAreas,
+        specializations: data.specializations,
+        price_per_cbm: data.pricePerCBM ? parseFloat(data.pricePerCBM) : null,
+        price_per_kg: data.pricePerKg ? parseFloat(data.pricePerKg) : null,
+        average_delivery_time: data.averageDeliveryTime || null,
+        notes: data.notes || null
+      };
+
+      // Update the agent
+      const { error: agentError } = await supabase
+        .from('lats_shipping_agents')
+        .update(agentData)
+        .eq('id', id);
+
+      if (agentError) {
+        console.error('Error updating shipping agent:', agentError);
+        return { ok: false, message: agentError.message };
+      }
+
+      // Update office locations
+      if (data.offices && data.offices.length > 0) {
+        // Delete existing offices
+        await supabase
+          .from('lats_shipping_agent_offices')
+          .delete()
+          .eq('agent_id', id);
+
+        // Insert new offices
+        const officeData = data.offices.map(office => ({
+          agent_id: id,
+          name: office.name,
+          address: office.address,
+          city: office.city,
+          country: office.country,
+          phone: office.phone || null,
+          office_type: office.officeType,
+          is_primary: office.isMainOffice
+        }));
+
+        const { error: officeError } = await supabase
+          .from('lats_shipping_agent_offices')
+          .insert(officeData);
+
+        if (officeError) {
+          console.error('Error updating office locations:', officeError);
+          // Don't fail the entire operation, just log the error
+        }
+      }
+
+      // Fetch the updated agent
+      const result = await this.getShippingAgent(id);
+      return result;
+    } catch (error) {
+      console.error('Exception updating shipping agent:', error);
+      return { ok: false, message: 'Failed to update shipping agent' };
+    }
+  }
+
+  async deleteShippingAgent(id: string): Promise<ApiResponse<void>> {
+    try {
+      // Delete office locations first (due to foreign key constraint)
+      const { error: officeError } = await supabase
+        .from('lats_shipping_agent_offices')
+        .delete()
+        .eq('agent_id', id);
+
+      if (officeError) {
+        console.error('Error deleting office locations:', officeError);
+        return { ok: false, message: officeError.message };
+      }
+
+      // Delete the agent
+      const { error: agentError } = await supabase
+        .from('lats_shipping_agents')
+        .delete()
+        .eq('id', id);
+
+      if (agentError) {
+        console.error('Error deleting shipping agent:', agentError);
+        return { ok: false, message: agentError.message };
+      }
+
+      return { ok: true, data: undefined };
+    } catch (error) {
+      console.error('Exception deleting shipping agent:', error);
+      return { ok: false, message: 'Failed to delete shipping agent' };
+    }
+  }
+
+  async toggleShippingAgentStatus(id: string): Promise<ApiResponse<ShippingAgent>> {
+    try {
+      // First get the current status
+      const { data: currentAgent, error: fetchError } = await supabase
+        .from('lats_shipping_agents')
+        .select('is_active')
+        .eq('id', id)
+        .single();
+
+      if (fetchError) {
+        console.error('Error fetching agent status:', fetchError);
+        return { ok: false, message: fetchError.message };
+      }
+
+      // Toggle the status
+      const { error: updateError } = await supabase
+        .from('lats_shipping_agents')
+        .update({ is_active: !currentAgent.is_active })
+        .eq('id', id);
+
+      if (updateError) {
+        console.error('Error toggling agent status:', updateError);
+        return { ok: false, message: updateError.message };
+      }
+
+      // Fetch the updated agent
+      const result = await this.getShippingAgent(id);
+      return result;
+    } catch (error) {
+      console.error('Exception toggling shipping agent status:', error);
+      return { ok: false, message: 'Failed to toggle shipping agent status' };
+    }
+  }
+
+  async getShippingManagers(): Promise<ApiResponse<ShippingManager[]>> {
+    try {
+      const { data, error } = await supabase
+        .from('lats_shipping_managers')
+        .select('*')
+        .eq('is_active', true)
+        .order('name', { ascending: true });
+
+      if (error) {
+        if (error.code === '42P01') {
+          // Table doesn't exist, return empty array
+          console.log('📦 Shipping managers table does not exist, returning empty array');
+          return { ok: true, data: [] };
+        }
+        console.error('Error fetching shipping managers:', error);
+        return { ok: false, message: error.message };
+      }
+
+      const managers: ShippingManager[] = (data || []).map((manager: any) => ({
+        id: manager.id,
+        name: manager.name,
+        email: manager.email,
+        phone: manager.phone,
+        department: manager.department,
+        isActive: manager.is_active
+      }));
+
+      return { ok: true, data: managers };
+    } catch (error) {
+      console.error('Exception fetching shipping managers:', error);
+      return { ok: true, data: [] }; // Return empty array instead of error
     }
   }
 }

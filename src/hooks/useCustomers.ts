@@ -93,23 +93,11 @@ export function useCustomers(options: UseCustomersOptions = {}): UseCustomersRet
 
     const cacheKeyWithType = `${cacheKey}_${simple ? 'simple' : 'full'}`;
     
-    // Log network status before attempting fetch
-    const currentNetworkStatus = checkNetworkStatus();
-    const connectionQuality = getConnectionQuality();
-    console.log('🌐 Network status:', {
-      online: currentNetworkStatus.online,
-      quality: connectionQuality.quality,
-      message: connectionQuality.message,
-      effectiveType: currentNetworkStatus.effectiveType,
-      downlink: currentNetworkStatus.downlink,
-      rtt: currentNetworkStatus.rtt
-    });
     
     // Check cache first (unless force refresh)
     if (!forceRefresh) {
       const cached = customerDataCache.get(cacheKeyWithType);
       if (cached && Date.now() - cached.timestamp < CACHE_TIMEOUT) {
-        console.log('📦 Using cached customer data');
         setCustomers(cached.data);
         setLoading(false);
         setError(null);
@@ -158,7 +146,6 @@ export function useCustomers(options: UseCustomersOptions = {}): UseCustomersRet
           }
         }, 60000); // 60 second timeout for entire operation
         
-        console.log(`🔍 Fetching customers (${simple ? 'simple' : 'full'})... Attempt ${retryCount + 1}/${maxRetries + 1}`);
         
         const fetchPromise = simple ? fetchAllCustomersSimple() : fetchAllCustomers();
         
@@ -186,7 +173,6 @@ export function useCustomers(options: UseCustomersOptions = {}): UseCustomersRet
           setCustomers(data);
           setLoading(false);
           setError(null);
-          console.log(`✅ Successfully loaded ${data.length} customers`);
         }
         
         return data;

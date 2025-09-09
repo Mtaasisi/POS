@@ -6,19 +6,15 @@ export interface RepairPayment {
   customer_id: string;
   device_id?: string;
   amount: number;
-  payment_method: string;
-  payment_account_id: string;
-  reference?: string;
-  notes?: string;
-  payment_status: 'pending' | 'completed' | 'failed' | 'refunded';
+  method: string;
+  payment_type: 'payment' | 'deposit' | 'refund';
+  status: 'pending' | 'completed' | 'failed';
   payment_date: string;
   created_by: string;
   created_at: string;
   updated_at: string;
-  source: 'repair_payment';
   customer_name?: string;
   device_name?: string;
-  payment_account_name?: string;
 }
 
 export interface CreateRepairPaymentData {
@@ -50,15 +46,11 @@ class RepairPaymentService {
           customer_id: data.customerId,
           device_id: data.deviceId,
           amount: data.amount,
-          payment_method: data.paymentMethod,
-          payment_account_id: data.paymentAccountId,
-          reference: data.reference?.trim() || null,
-          notes: data.notes?.trim() || null,
+          method: data.paymentMethod,
           payment_type: 'payment',
-          payment_status: 'completed',
+          status: 'completed',
           payment_date: new Date().toISOString(),
-          created_by: userId,
-          source: 'repair_payment'
+          created_by: userId
         })
         .select()
         .single();
@@ -123,7 +115,7 @@ class RepairPaymentService {
           finance_accounts(name)
         `)
         .eq('customer_id', customerId)
-        .eq('source', 'repair_payment')
+        .eq('payment_type', 'payment')
         .order('payment_date', { ascending: false });
 
       if (error) {
@@ -160,7 +152,7 @@ class RepairPaymentService {
           finance_accounts(name)
         `)
         .eq('device_id', deviceId)
-        .eq('source', 'repair_payment')
+        .eq('payment_type', 'payment')
         .order('payment_date', { ascending: false });
 
       if (error) {
@@ -196,7 +188,7 @@ class RepairPaymentService {
           devices(brand, model),
           finance_accounts(name)
         `)
-        .eq('source', 'repair_payment')
+        .eq('payment_type', 'payment')
         .order('payment_date', { ascending: false })
         .limit(limit);
 
@@ -233,8 +225,8 @@ class RepairPaymentService {
       
       const { data, error } = await supabase
         .from('customer_payments')
-        .select('amount, payment_status, payment_method')
-        .eq('source', 'repair_payment');
+        .select('amount, status, method')
+        .eq('payment_type', 'payment');
 
       if (error) {
         console.error('❌ Error fetching repair payment stats:', error);

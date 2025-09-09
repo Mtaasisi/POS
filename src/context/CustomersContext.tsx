@@ -54,7 +54,7 @@ export const CustomersProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // Use the new hook for better request management
   const { customers, loading, error, refetch, clearCache } = useCustomersHook({
-    simple: false,
+    simple: true,
     autoFetch: !!currentUser,
     cacheKey: 'customers-context'
   });

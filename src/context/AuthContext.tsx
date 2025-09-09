@@ -18,6 +18,7 @@ interface AuthContextType {
   clearError: () => void;
   loading: boolean;
   refreshSession: () => Promise<boolean>;
+  handleAuthError: (error: any) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -159,8 +160,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       while (retryCount < maxRetries) {
         try {
           // Import dynamically to avoid circular dependencies
-          const { fetchAllCustomers } = await import('../lib/customerApi');
-          const customers = await fetchAllCustomers();
+          const { fetchAllCustomersSimple } = await import('../lib/customerApi');
+          const customers = await fetchAllCustomersSimple();
           console.log(`✅ Loaded ${customers.length} customers successfully`);
           
           return customers;
@@ -341,6 +342,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Add automatic session refresh on 401 errors
+  const handleAuthError = async (error: any) => {
+    if (error?.status === 401 || error?.message?.includes('401') || error?.message?.includes('Unauthorized')) {
+      console.log('🔐 Detected 401 error, attempting session refresh...');
+      const refreshed = await refreshSession();
+      if (!refreshed) {
+        console.log('🚪 Session refresh failed, redirecting to login...');
+        // Clear current user and redirect to login
+        setCurrentUser(null);
+        setError('Session expired. Please log in again.');
+        // You might want to navigate to login page here
+        // navigate('/login');
+      }
+      return refreshed;
+    }
+    return false;
+  };
+
   // On mount, check for Supabase session and fetch profile
   useEffect(() => {
     // Prevent multiple initializations
@@ -402,7 +421,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logInfo('AuthProvider', 'User signed out');
         
         // Clear POS settings user cache
-        POSSettingsAPI.clearUserCache();
+        // POSSettingsAPI.clearUserCache(); // Removed to avoid circular dependency
         
         setCurrentUser(null);
         setLoading(false);
@@ -503,7 +522,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       error,
       clearError,
       loading,
-      refreshSession
+      refreshSession,
+      handleAuthError
     }}>
       {children}
     </AuthContext.Provider>

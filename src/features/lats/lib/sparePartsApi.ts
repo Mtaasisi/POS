@@ -17,6 +17,36 @@ import {
   SparePartStats
 } from '../types/spareParts';
 
+// Utility function to convert camelCase form data to snake_case database fields
+const convertFormDataToDatabaseFormat = (formData: any): SparePartCreateData => {
+  console.log('🔍 [DEBUG] ===== CONVERT FORM DATA START =====');
+  console.log('🔍 [DEBUG] Input formData:', formData);
+  console.log('🔍 [DEBUG] Input formData type:', typeof formData);
+  console.log('🔍 [DEBUG] Input formData keys:', Object.keys(formData || {}));
+  
+  const convertedData = {
+    name: formData.name,
+    part_number: formData.partNumber,
+    category_id: formData.categoryId,
+    brand: formData.brand,
+    supplier_id: formData.supplierId,
+    condition: formData.condition,
+    description: formData.description,
+    cost_price: formData.costPrice,
+    selling_price: formData.sellingPrice,
+    quantity: formData.quantity,
+    min_quantity: formData.minQuantity,
+    location: formData.location,
+    compatible_devices: formData.compatibleDevices
+  };
+  
+  console.log('🔍 [DEBUG] Converted data:', convertedData);
+  console.log('🔍 [DEBUG] Converted data keys:', Object.keys(convertedData));
+  console.log('🔍 [DEBUG] ===== CONVERT FORM DATA END =====');
+  
+  return convertedData;
+};
+
 // Get all spare parts with filters and pagination
 export const getSpareParts = async (
   filters: SparePartFilters = {},
@@ -131,31 +161,64 @@ export const getSparePart = async (id: string): Promise<SparePartResponse> => {
 };
 
 // Create a new spare part
-export const createSparePart = async (sparePartData: SparePartCreateData): Promise<SparePartResponse> => {
+export const createSparePart = async (sparePartData: any): Promise<SparePartResponse> => {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    console.log('🔍 [DEBUG] ===== CREATE SPARE PART API START =====');
+    console.log('🔍 [DEBUG] Input sparePartData:', sparePartData);
+    console.log('🔍 [DEBUG] Input sparePartData type:', typeof sparePartData);
+    console.log('🔍 [DEBUG] Input sparePartData keys:', Object.keys(sparePartData || {}));
     
+    const { data: { user } } = await supabase.auth.getUser();
+    console.log('🔍 [DEBUG] Current user:', user?.id);
+    
+    // Convert form data from camelCase to snake_case
+    const databaseData = convertFormDataToDatabaseFormat(sparePartData);
+    console.log('🔍 [DEBUG] Converted databaseData:', databaseData);
+    console.log('🔍 [DEBUG] DatabaseData keys:', Object.keys(databaseData || {}));
+    
+    const insertData = {
+      ...databaseData,
+      created_by: user?.id,
+      updated_by: user?.id
+    };
+    console.log('🔍 [DEBUG] Final insert data:', insertData);
+    console.log('🔍 [DEBUG] Insert data keys:', Object.keys(insertData));
+    
+    console.log('🔍 [DEBUG] Executing Supabase insert...');
     const { data, error } = await supabase
       .from('lats_spare_parts')
-      .insert({
-        ...sparePartData,
-        created_by: user?.id,
-        updated_by: user?.id
-      })
+      .insert(insertData)
       .select()
       .single();
 
+    console.log('🔍 [DEBUG] Supabase response data:', data);
+    console.log('🔍 [DEBUG] Supabase response error:', error);
+
     if (error) {
+      console.error('❌ [DEBUG] Supabase error:', error);
       throw error;
     }
 
+    console.log('✅ [DEBUG] Spare part created successfully:', data);
+    console.log('🔍 [DEBUG] ===== CREATE SPARE PART API END =====');
+    
     return {
       data,
       message: 'Spare part created successfully',
       ok: true
     };
-  } catch (error) {
-    console.error('Error creating spare part:', error);
+  } catch (error: any) {
+    console.error('❌ [DEBUG] ===== CREATE SPARE PART API ERROR =====');
+    console.error('❌ [DEBUG] Error creating spare part:', error);
+    console.error('❌ [DEBUG] Error message:', error?.message);
+    console.error('❌ [DEBUG] Error details:', error?.details);
+    console.error('❌ [DEBUG] Error hint:', error?.hint);
+    console.error('❌ [DEBUG] Error code:', error?.code);
+    
+    if (error?.response) {
+      console.error('❌ [DEBUG] Error response:', error.response);
+    }
+    
     return {
       data: null as any,
       message: error instanceof Error ? error.message : 'Failed to create spare part',
@@ -165,31 +228,65 @@ export const createSparePart = async (sparePartData: SparePartCreateData): Promi
 };
 
 // Update an existing spare part
-export const updateSparePart = async (id: string, sparePartData: SparePartUpdateData): Promise<SparePartResponse> => {
+export const updateSparePart = async (id: string, sparePartData: any): Promise<SparePartResponse> => {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    console.log('🔍 [DEBUG] ===== UPDATE SPARE PART API START =====');
+    console.log('🔍 [DEBUG] Update ID:', id);
+    console.log('🔍 [DEBUG] Input sparePartData:', sparePartData);
+    console.log('🔍 [DEBUG] Input sparePartData type:', typeof sparePartData);
+    console.log('🔍 [DEBUG] Input sparePartData keys:', Object.keys(sparePartData || {}));
     
+    const { data: { user } } = await supabase.auth.getUser();
+    console.log('🔍 [DEBUG] Current user:', user?.id);
+    
+    // Convert form data from camelCase to snake_case
+    const databaseData = convertFormDataToDatabaseFormat(sparePartData);
+    console.log('🔍 [DEBUG] Converted databaseData:', databaseData);
+    console.log('🔍 [DEBUG] DatabaseData keys:', Object.keys(databaseData || {}));
+    
+    const updateData = {
+      ...databaseData,
+      updated_by: user?.id
+    };
+    console.log('🔍 [DEBUG] Final update data:', updateData);
+    console.log('🔍 [DEBUG] Update data keys:', Object.keys(updateData));
+    
+    console.log('🔍 [DEBUG] Executing Supabase update...');
     const { data, error } = await supabase
       .from('lats_spare_parts')
-      .update({
-        ...sparePartData,
-        updated_by: user?.id
-      })
+      .update(updateData)
       .eq('id', id)
       .select()
       .single();
 
+    console.log('🔍 [DEBUG] Supabase response data:', data);
+    console.log('🔍 [DEBUG] Supabase response error:', error);
+
     if (error) {
+      console.error('❌ [DEBUG] Supabase error:', error);
       throw error;
     }
 
+    console.log('✅ [DEBUG] Spare part updated successfully:', data);
+    console.log('🔍 [DEBUG] ===== UPDATE SPARE PART API END =====');
+    
     return {
       data,
       message: 'Spare part updated successfully',
       ok: true
     };
-  } catch (error) {
-    console.error('Error updating spare part:', error);
+  } catch (error: any) {
+    console.error('❌ [DEBUG] ===== UPDATE SPARE PART API ERROR =====');
+    console.error('❌ [DEBUG] Error updating spare part:', error);
+    console.error('❌ [DEBUG] Error message:', error?.message);
+    console.error('❌ [DEBUG] Error details:', error?.details);
+    console.error('❌ [DEBUG] Error hint:', error?.hint);
+    console.error('❌ [DEBUG] Error code:', error?.code);
+    
+    if (error?.response) {
+      console.error('❌ [DEBUG] Error response:', error.response);
+    }
+    
     return {
       data: null as any,
       message: error instanceof Error ? error.message : 'Failed to update spare part',

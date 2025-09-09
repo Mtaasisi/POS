@@ -6,7 +6,7 @@ export interface SparePart {
   name: string;
   part_number: string;
   category_id: string;
-
+  brand?: string;
   supplier_id?: string;
   condition?: 'new' | 'used' | 'refurbished';
   description?: string;
@@ -65,7 +65,7 @@ export interface SparePartCreateData {
   name: string;
   part_number: string;
   category_id: string;
-
+  brand?: string;
   supplier_id?: string;
   condition?: 'new' | 'used' | 'refurbished';
   description?: string;

@@ -20,11 +20,7 @@ export async function searchCustomers(query: string, page: number = 1, pageSize:
     const { data, error, count } = await supabase
       .from('customers')
       .select(`
-        *,
-        customer_notes(*),
-        customer_payments(*),
-        devices(*),
-        promo_messages(*)
+        id, name, email, phone, gender, city, joined_date, loyalty_level, color_tag, referred_by, total_spent, points, last_visit, is_active, birth_month, birth_day, referral_source, total_returns, profile_image, created_at, updated_at, created_by, last_purchase_date, total_purchases, birthday, whatsapp, whatsapp_opt_out, initial_notes, notes, referrals, customer_tag
       `, { count: 'exact' })
       .or(searchConditions.map(condition => Object.entries(condition).map(([key, value]) => `${key}.${Object.keys(value)[0]}.${Object.values(value)[0]}`).join(',')).join(','))
       .range(offset, offset + pageSize - 1)
@@ -39,11 +35,11 @@ export async function searchCustomers(query: string, page: number = 1, pageSize:
       // Process and normalize the data
       const processedCustomers = data.map(customer => ({
         ...customer,
-        colorTag: normalizeColorTag(customer.colorTag || 'new'),
-        customerNotes: customer.customer_notes || [],
-        customerPayments: customer.customer_payments || [],
-        devices: customer.devices || [],
-        promoHistory: customer.promo_messages || []
+        colorTag: normalizeColorTag(customer.color_tag || 'new'),
+        customerNotes: [],
+        customerPayments: [],
+        devices: [],
+        promoHistory: []
       }));
       
       console.log(`✅ Search completed: ${processedCustomers.length} results`);
@@ -92,7 +88,7 @@ export async function searchCustomersFast(query: string, page: number = 1, pageS
         name,
         phone,
         email,
-        colorTag,
+        color_tag,
         points,
         created_at,
         updated_at
@@ -110,7 +106,7 @@ export async function searchCustomersFast(query: string, page: number = 1, pageS
       // Process and normalize the data
       const processedCustomers = data.map(customer => ({
         ...customer,
-        colorTag: normalizeColorTag(customer.colorTag || 'new')
+        colorTag: normalizeColorTag(customer.color_tag || 'new')
       }));
       
       const result = {

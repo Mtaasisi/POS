@@ -4,7 +4,7 @@ import GlassCard from '../../shared/components/ui/GlassCard';
 import GlassButton from '../../shared/components/ui/GlassButton';
 import { Customer } from '../../../types';
 import { toast } from 'react-hot-toast';
-import { updateCustomerInDb, fetchAllCustomers } from '../../../lib/customerApi';
+import { updateCustomerInDb, fetchAllCustomersSimple } from '../../../lib/customerApi';
 import { useAuth } from '../../../context/AuthContext';
 import { formatTanzaniaPhoneNumber, formatTanzaniaWhatsAppNumber } from '../../../lib/phoneUtils';
 import { supabase } from '../../../lib/supabaseClient';
@@ -253,7 +253,7 @@ const CustomerUpdateImportModal: React.FC<CustomerUpdateImportModalProps> = Reac
   const checkExistingCustomers = async (customers: ImportedCustomerUpdate[]): Promise<Map<string, Customer>> => {
     try {
       console.log('🔍 Loading existing customers for matching...');
-      const existingCustomersList = await fetchAllCustomers();
+      const existingCustomersList = await fetchAllCustomersSimple();
       
       const customerMap = new Map<string, Customer>();
       const matchedMap = new Map<string, Customer>();

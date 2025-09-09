@@ -66,47 +66,34 @@ const CustomerAnalyticsModal: React.FC<CustomerAnalyticsModalProps> = ({
     try {
       setLoading(true);
       
-      // Simulate API call - in real implementation, this would fetch from your analytics service
-      const mockAnalytics: CustomerAnalytics = {
-        purchaseHistory: [
-          { date: '2024-01-15', amount: 150000, items: 2, orderId: 'ORD001' },
-          { date: '2024-01-20', amount: 89000, items: 1, orderId: 'ORD002' },
-          { date: '2024-02-05', amount: 250000, items: 3, orderId: 'ORD003' },
-          { date: '2024-02-18', amount: 120000, items: 1, orderId: 'ORD004' },
-          { date: '2024-03-01', amount: 180000, items: 2, orderId: 'ORD005' }
-        ],
-        pointsHistory: [
-          { date: '2024-01-15', points: 150, type: 'earned', reason: 'Purchase' },
-          { date: '2024-01-20', points: 89, type: 'earned', reason: 'Purchase' },
-          { date: '2024-02-05', points: 250, type: 'earned', reason: 'Purchase' },
-          { date: '2024-02-18', points: -100, type: 'redeemed', reason: 'Reward redemption' },
-          { date: '2024-03-01', points: 180, type: 'earned', reason: 'Purchase' }
-        ],
+      // TODO: Replace with real database queries
+      // This should fetch actual customer analytics from your database
+      // including purchase history, points history, visit patterns, etc.
+      
+      // For now, show empty analytics until database integration is complete
+      const analytics: CustomerAnalytics = {
+        purchaseHistory: [],
+        pointsHistory: [],
         visitPattern: [
-          { day: 'Monday', visits: 2, averageSpend: 120000 },
-          { day: 'Tuesday', visits: 1, averageSpend: 89000 },
-          { day: 'Wednesday', visits: 3, averageSpend: 180000 },
+          { day: 'Monday', visits: 0, averageSpend: 0 },
+          { day: 'Tuesday', visits: 0, averageSpend: 0 },
+          { day: 'Wednesday', visits: 0, averageSpend: 0 },
           { day: 'Thursday', visits: 0, averageSpend: 0 },
-          { day: 'Friday', visits: 2, averageSpend: 150000 },
-          { day: 'Saturday', visits: 4, averageSpend: 200000 },
-          { day: 'Sunday', visits: 1, averageSpend: 95000 }
+          { day: 'Friday', visits: 0, averageSpend: 0 },
+          { day: 'Saturday', visits: 0, averageSpend: 0 },
+          { day: 'Sunday', visits: 0, averageSpend: 0 }
         ],
-        productPreferences: [
-          { category: 'Smartphones', count: 3, totalSpent: 450000 },
-          { category: 'Accessories', count: 2, totalSpent: 120000 },
-          { category: 'Laptops', count: 1, totalSpent: 180000 },
-          { category: 'Tablets', count: 1, totalSpent: 89000 }
-        ],
-        lifetimeValue: 839000,
-        averageOrderValue: 167800,
-        totalOrders: 5,
-        daysSinceLastPurchase: 15,
-        pointsEarned: 669,
-        pointsRedeemed: 100,
-        tierUpgrades: 1
+        productPreferences: [],
+        lifetimeValue: 0,
+        averageOrderValue: 0,
+        totalOrders: 0,
+        daysSinceLastPurchase: 0,
+        pointsEarned: 0,
+        pointsRedeemed: 0,
+        tierUpgrades: 0
       };
 
-      setAnalytics(mockAnalytics);
+      setAnalytics(analytics);
     } catch (error) {
       console.error('Error loading customer analytics:', error);
       toast.error('Failed to load customer analytics');

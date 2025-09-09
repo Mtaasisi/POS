@@ -8,6 +8,7 @@ import { PaymentsProvider } from './context/PaymentsContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { LoadingProvider, useLoading } from './context/LoadingContext';
 import { GeneralSettingsProvider } from './context/GeneralSettingsContext';
+import { PaymentMethodsProvider } from './context/PaymentMethodsContext';
 import { Toaster } from 'react-hot-toast';
 
 // import BackgroundSelector from './features/settings/components/BackgroundSelector';
@@ -23,6 +24,7 @@ const CustomerDetailPage = lazy(() => import('./features/customers/pages/Custome
 import CustomerDataUpdatePage from './features/customers/pages/CustomerDataUpdatePage';
 import AppLayout from './layout/AppLayout';
 import { ErrorBoundary } from './features/shared/components/ErrorBoundary';
+import DynamicImportErrorBoundary from './features/shared/components/DynamicImportErrorBoundary';
 const SettingsPage = lazy(() => import('./features/settings/pages/UnifiedSettingsPage'));
 const AdminSettingsPage = lazy(() => import('./features/admin/pages/AdminSettingsPage'));
 import AdminManagementPage from './features/admin/pages/AdminManagementPage';
@@ -32,7 +34,9 @@ const UnifiedSupplierManagementPage = lazy(() => import('./features/settings/pag
 import { SuppliersProvider } from './context/SuppliersContext';
 import { WhatsAppProvider } from './context/WhatsAppContext';
 const SMSControlCenterPage = lazy(() => import('./features/reports/pages/SMSControlCenterPage'));
-const UnifiedPaymentManagementPage = lazy(() => import('./features/finance/pages/UnifiedPaymentManagementPage'));
+const EnhancedPaymentManagementPage = lazy(() => import('./features/payments/pages/EnhancedPaymentManagementPage'));
+const PaymentReconciliationPage = lazy(() => import('./features/payments/pages/PaymentReconciliationPage'));
+const PaymentProviderManagementPage = lazy(() => import('./features/payments/pages/PaymentProviderManagementPage'));
 
 import AuditLogsPage from './features/admin/pages/AuditLogsPage';
 const FinanceManagementPage = lazy(() => import('./features/finance/pages/FinanceManagementPage'));
@@ -48,7 +52,7 @@ import EmployeeAttendancePage from './features/employees/pages/EmployeeAttendanc
 import ServiceManagementPage from './features/services/pages/ServiceManagementPage';
 
 const UnifiedAppointmentPage = lazy(() => import('./features/appointments/pages/UnifiedAppointmentPage'));
-import BusinessManagementPage from './features/business/pages/BusinessManagementPage';
+const BusinessManagementPage = lazy(() => import('./features/business/pages/BusinessManagementPage'));
 import MobileOptimizationPage from './features/mobile/pages/MobileOptimizationPage';
 const UnifiedAnalyticsPage = lazy(() => import('./features/analytics/pages/UnifiedAnalyticsPage'));
 import GlobalSearchPage from './features/shared/pages/GlobalSearchPage';
@@ -66,15 +70,21 @@ const UnifiedDiagnosticManagementPage = lazy(() => import('./features/diagnostic
 
 const LATSDashboardPage = lazy(() => import('./features/lats/pages/LATSDashboardPage'));
 const PurchaseOrdersPage = lazy(() => import('./features/lats/pages/PurchaseOrdersPage'));
-const NewPurchaseOrderPage = lazy(() => import('./features/lats/pages/NewPurchaseOrderPage'));
 const PurchaseOrderPage = lazy(() => import('./features/lats/pages/PurchaseOrderPage'));
 const PurchaseOrderDetailPage = lazy(() => import('./features/lats/pages/PurchaseOrderDetailPage'));
+const ShippingManagementPage = lazy(() => import('./features/lats/pages/ShippingManagementPage'));
+const ShippingSettingsPage = lazy(() => import('./features/lats/pages/ShippingSettingsPage'));
+const ShippingAgentsPage = lazy(() => import('./features/lats/pages/ShippingAgentsPage'));
 const SparePartsPage = lazy(() => import('./features/lats/pages/SparePartsPage'));
 const PaymentHistoryPage = lazy(() => import('./features/lats/pages/PaymentHistoryPage'));
 
 const SalesReportsPage = lazy(() => import('./features/lats/pages/SalesReportsPage'));
 const CustomerLoyaltyPage = lazy(() => import('./features/lats/pages/CustomerLoyaltyPage'));
 const PaymentTrackingPage = lazy(() => import('./features/lats/pages/PaymentTrackingPage'));
+
+// Purchase Orders Module Pages
+const ShippedItemsPage = lazy(() => import('./features/purchase-orders/pages/ShippedItemsPage'));
+const SuppliersManagementPage = lazy(() => import('./features/purchase-orders/pages/SuppliersManagementPage'));
 
 
 
@@ -83,15 +93,12 @@ const AddProductPage = lazy(() => import('./features/lats/pages/AddProductPage')
 const EditProductPage = lazy(() => import('./features/lats/pages/EditProductPage'));
 
 import ProductDetailPage from './features/lats/pages/ProductDetailPage';
-const POSPage = lazy(() => import('./features/lats/pages/POSPage').then(module => ({
-  default: module.default
-})));
+const POSPage = lazy(() => import('./features/lats/pages/POSPageOptimized'));
 
 import { CustomerQueryTest } from './components/CustomerQueryTest';
 import InventoryManagementPage from './features/lats/pages/InventoryManagementPage';
 const StorageRoomManagementPage = lazy(() => import('./features/lats/pages/StorageRoomManagementPage'));
 import StorageRoomDetailPage from './features/lats/pages/StorageRoomDetailPage';
-import BeemTestPage from './features/lats/pages/BeemTestPage';
 
 const WhatsAppConnectionManager = lazy(() => import('./features/lats/pages/WhatsAppConnectionManager'));
 const WhatsAppSettingsPage = lazy(() => import('./features/lats/pages/WhatsAppSettingsPage'));
@@ -134,259 +141,8 @@ const LoadingProgressWrapper: React.FC = () => {
   );
 };
 
-// AppContent component that handles the sync logic and routes
-const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnline, isSyncing }) => {
-  const { addCustomer } = useCustomers();
-  const { assignToTechnician, updateDeviceStatus } = useDevices();
-  const [showHeaderDiagnostic, setShowHeaderDiagnostic] = useState(false);
-  
-  // Enable keyboard shortcuts (moved here to have access to router context)
-  useKeyboardShortcuts();
-
-  // Initialize database check on app startup
-  useEffect(() => {
-    initializeDatabaseCheck().catch(console.error);
-  }, []);
-
-  // Add keyboard shortcut for header diagnostic (Ctrl+Shift+H)
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.ctrlKey && event.shiftKey && event.key === 'H') {
-        event.preventDefault();
-        setShowHeaderDiagnostic(true);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
-
-  // Handle offline sync
-  useEffect(() => {
-    async function syncPending() {
-      const actions = await getPendingActions();
-      for (const action of actions) {
-        if (action.type === 'submitData') {
-          await fetch('/api/endpoint', { method: 'POST', body: JSON.stringify(action.payload) });
-        } else if (action.type === 'createCustomerFromSearch') {
-          await addCustomer(action.payload);
-        } else if (action.type === 'adjustPoints') {
-          const { operation, pointsToAdjust, reason, customerId } = action.payload;
-          const adjustment = operation === 'add' ? Math.abs(pointsToAdjust) : -Math.abs(pointsToAdjust);
-          // Fetch current points
-          const { data, error } = await supabase!
-            .from('customers')
-            .select('points')
-            .eq('id', customerId)
-            .single();
-          if (!error && data) {
-            const newPoints = (data.points || 0) + adjustment;
-            await supabase!
-              .from('customers')
-              .update({ points: newPoints })
-              .eq('id', customerId);
-            // Optionally add a note
-            await supabase!
-              .from('customer_notes')
-              .insert({
-                id: `note-${Date.now()}`,
-                content: `${operation === 'add' ? 'Added' : 'Subtracted'} ${Math.abs(pointsToAdjust)} points - ${reason}`,
-                created_by: 'system',
-                created_at: new Date().toISOString(),
-                customer_id: customerId
-              });
-          }
-        } else if (action.type === 'assignTechnician') {
-          const { deviceId, selectedTechId } = action.payload;
-          await assignToTechnician(deviceId, selectedTechId, '');
-        } else if (action.type === 'markDeviceFailed') {
-          const { deviceId, remark } = action.payload;
-          await updateDeviceStatus(deviceId, 'failed', remark || '');
-        }
-      }
-      if (actions.length > 0) {
-        await clearPendingActions();
-      }
-    }
-
-    if (isOnline) {
-      syncPending();
-    }
-  }, [isOnline, addCustomer, assignToTechnician, updateDeviceStatus]);
-
-  return (
-    <>
-      {!isOnline && (
-        <div style={{ background: '#f87171', color: 'white', padding: '8px', textAlign: 'center' }}>
-          You are offline. Changes will be saved and synced when you are back online.
-        </div>
-      )}
-      {isOnline && isSyncing && (
-        <div style={{ background: '#fbbf24', color: 'black', padding: '8px', textAlign: 'center' }}>
-          Syncing your offline changes...
-        </div>
-      )}
-      
-      {/* Header Size Diagnostic Modal */}
-      {showHeaderDiagnostic && (
-        <HeaderSizeDiagnostic onClose={() => setShowHeaderDiagnostic(false)} />
-      )}
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        
-        <Route 
-          path="/" 
-          element={
-            <ProtectedRoute>
-              <AppLayout />
-            </ProtectedRoute>
-          }
-        >
-          <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="/dashboard" element={<DashboardPage />} />
-
-          <Route path="/devices" element={<DevicesPage />} />
-          <Route path="/devices/new" element={<Suspense fallback={<PageLoadingSpinner />}><NewDevicePage /></Suspense>} />
-          <Route path="/devices/:id" element={<DeviceDetailPage />} />
-
-
-        <Route path="/category-management" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><CategoryManagementPage /></Suspense></RoleProtectedRoute>} />
-                  <Route path="/supplier-management" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedSupplierManagementPage /></Suspense></RoleProtectedRoute>} />
-        <Route path="/store-locations" element={<RoleProtectedRoute allowedRoles={['admin']}><StoreLocationManagementPage /></RoleProtectedRoute>} />
-        <Route path="/database-setup" element={<RoleProtectedRoute allowedRoles={['admin']}><DatabaseSetupPage /></RoleProtectedRoute>} />
-        <Route path="/backup-management" element={<RoleProtectedRoute allowedRoles={['admin']}><BackupManagementPage /></RoleProtectedRoute>} />
-        <Route path="/customers/import" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><ExcelImportPage /></RoleProtectedRoute>} />
-        <Route path="/excel-import" element={<RoleProtectedRoute allowedRoles={['admin']}><ExcelImportPage /></RoleProtectedRoute>} />
-        <Route path="/excel-templates" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><ExcelTemplateDownloadPage /></RoleProtectedRoute>} />
-        <Route path="/product-export" element={<RoleProtectedRoute allowedRoles={['admin']}><ProductExportPage /></RoleProtectedRoute>} />
-
-          <Route path="/customers" element={<Suspense fallback={<PageLoadingSpinner />}><CustomersPage /></Suspense>} />
-
-          <Route path="/customers/:id" element={<Suspense fallback={<PageLoadingSpinner />}><CustomerDetailPage /></Suspense>} />
-          <Route path="/customers/update" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><CustomerDataUpdatePage /></RoleProtectedRoute>} />
-
-          <Route path="/settings" element={<Suspense fallback={<PageLoadingSpinner />}><SettingsPage /></Suspense>} />
-          <Route path="/sms" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><SMSControlCenterPage /></Suspense></RoleProtectedRoute>} />
-          <Route path="/points-management" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedPaymentManagementPage /></Suspense></RoleProtectedRoute>} />
-          <Route path="/payments-report" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedPaymentManagementPage /></Suspense></RoleProtectedRoute>} />
-          <Route path="/admin-settings" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><AdminSettingsPage /></Suspense></RoleProtectedRoute>} />
-          <Route path="/admin-management" element={<RoleProtectedRoute allowedRoles={['admin']}><AdminManagementPage /></RoleProtectedRoute>} />
-          <Route path="/integration-testing" element={<RoleProtectedRoute allowedRoles={['admin']}><IntegrationTestingPage /></RoleProtectedRoute>} />
-          <Route path="/users" element={<RoleProtectedRoute allowedRoles={['admin']}><UserManagementPage /></RoleProtectedRoute>} />
-          <Route path="/audit-logs" element={<RoleProtectedRoute allowedRoles={['admin']}><AuditLogsPage /></RoleProtectedRoute>} />
-          <Route path="/finance" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><FinanceManagementPage /></Suspense></RoleProtectedRoute>} />
-          <Route path="/payments-accounts" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedPaymentManagementPage /></Suspense></RoleProtectedRoute>} />
-          
-          {/* Appointment Management Routes */}
-          <Route path="/appointments" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedAppointmentPage /></Suspense></RoleProtectedRoute>} />
-          
-          {/* Service Management Routes */}
-          <Route path="/services" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><ServiceManagementPage /></RoleProtectedRoute>} />
-          
-          {/* Employee Management Routes */}
-          <Route path="/employees" element={<RoleProtectedRoute allowedRoles={['admin', 'manager']}><Suspense fallback={<PageLoadingSpinner />}><EmployeeManagementPage /></Suspense></RoleProtectedRoute>} />
-          <Route path="/attendance" element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'technician', 'customer-care']}><EmployeeAttendancePage /></RoleProtectedRoute>} />
-
-          {/* Advanced Analytics Routes */}
-          <Route path="/analytics" element={<RoleProtectedRoute allowedRoles={['admin', 'manager']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedAnalyticsPage /></Suspense></RoleProtectedRoute>} />
-          
-          {/* Calendar View Routes */}
-
-          
-          {/* Mobile Optimization Routes */}
-          <Route path="/mobile" element={<RoleProtectedRoute allowedRoles={['admin', 'manager']}><MobileOptimizationPage /></RoleProtectedRoute>} />
-          
-          {/* Consolidated Management Routes */}
-          <Route path="/business" element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'customer-care']}><BusinessManagementPage /></RoleProtectedRoute>} />
-
-          {/* Diagnostics Routes - Unified Interface */}
-          <Route path="/diagnostics" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedDiagnosticManagementPage /></Suspense></RoleProtectedRoute>} />
-          <Route path="/diagnostics/new" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedDiagnosticManagementPage /></Suspense></RoleProtectedRoute>} />
-          <Route path="/diagnostics/new-request" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedDiagnosticManagementPage /></Suspense></RoleProtectedRoute>} />
-          <Route path="/diagnostics/my-requests" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedDiagnosticManagementPage /></Suspense></RoleProtectedRoute>} />
-          <Route path="/diagnostics/assigned" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedDiagnosticManagementPage /></Suspense></RoleProtectedRoute>} />
-          <Route path="/diagnostics/reports" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedDiagnosticManagementPage /></Suspense></RoleProtectedRoute>} />
-          <Route path="/diagnostics/templates" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedDiagnosticManagementPage /></Suspense></RoleProtectedRoute>} />
-          <Route path="/diagnostics/device/:requestId/:deviceId" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedDiagnosticManagementPage /></Suspense></RoleProtectedRoute>} />
-          <Route path="/diagnostics/grouped/:requestId/:deviceName/:model" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedDiagnosticManagementPage /></Suspense></RoleProtectedRoute>} />
-          
-          {/* LATS Module Routes */}
-          <Route path="/lats" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><LATSDashboardPage /></Suspense></RoleProtectedRoute>} />
-          
-          {/* POS Route */}
-          <Route path="/pos" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><POSPage /></Suspense></RoleProtectedRoute>} />
-
-          <Route path="/customer-query-test" element={<CustomerQueryTest />} />
-          
-          {/* Primary Unified Inventory Route */}
-          <Route path="/lats/unified-inventory" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedInventoryPage /></Suspense></RoleProtectedRoute>} />
-          
-          {/* Inventory Management Route */}
-          <Route path="/lats/inventory-management" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><InventoryManagementPage /></RoleProtectedRoute>} />
-          
-          {/* Storage Room Management Route */}
-          <Route path="/lats/storage-rooms" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><StorageRoomManagementPage /></Suspense></RoleProtectedRoute>} />
-          
-          {/* Storage Room Detail Route */}
-          <Route path="/lats/storage-rooms/:id" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><StorageRoomDetailPage /></RoleProtectedRoute>} />
-          
-          {/* Redirect old inventory routes to unified inventory */}
-          <Route path="/lats/inventory" element={<Navigate to="/lats/unified-inventory" replace />} />
-          <Route path="/lats/products" element={<Navigate to="/lats/unified-inventory" replace />} />
-          
-          {/* Keep product detail route for individual product views */}
-          <Route path="/lats/products/:id" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><ProductDetailPage /></RoleProtectedRoute>} />
-          
-          {/* Add Product Route */}
-          <Route path="/lats/add-product" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><AddProductPage /></Suspense></RoleProtectedRoute>} />
-          
-          {/* Edit Product Route */}
-          <Route path="/lats/products/:productId/edit" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><EditProductPage /></Suspense></RoleProtectedRoute>} />
-
-          <Route path="/lats/sales-reports" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><SalesReportsPage /></Suspense></RoleProtectedRoute>} />
-          <Route path="/lats/loyalty" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><CustomerLoyaltyPage /></Suspense></RoleProtectedRoute>} />
-          <Route path="/lats/payments" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><PaymentTrackingPage /></Suspense></RoleProtectedRoute>} />
-
-          <Route path="/lats/purchase-orders" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><PurchaseOrdersPage /></Suspense></RoleProtectedRoute>} />
-          <Route path="/lats/purchase-orders/new" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><NewPurchaseOrderPage /></Suspense></RoleProtectedRoute>} />
-          <Route path="/lats/purchase-order/create" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><PurchaseOrderPage /></Suspense></RoleProtectedRoute>} />
-          <Route path="/lats/purchase-orders/:id" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><PurchaseOrderDetailPage /></Suspense></RoleProtectedRoute>} />
-
-          <Route path="/lats/spare-parts" element={<RoleProtectedRoute allowedRoles={['admin', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><SparePartsPage /></Suspense></RoleProtectedRoute>} />
-          
-          {/* Payment routes */}
-          <Route path="/lats/payment-history" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><PaymentHistoryPage /></Suspense></RoleProtectedRoute>} />
-
-          <Route path="/lats/beem-test" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><BeemTestPage /></RoleProtectedRoute>} />
-          
-
-        <Route path="/lats/whatsapp-hub" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><WhatsAppHubPage /></Suspense></RoleProtectedRoute>} />
-        <Route path="/lats/whatsapp-connection-manager" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><WhatsAppConnectionManager /></Suspense></RoleProtectedRoute>} />
-        <Route path="/lats/whatsapp-chat" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><WhatsAppChatPage /></Suspense></RoleProtectedRoute>} />
-        <Route path="/lats/whatsapp-settings/:instanceId" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><WhatsAppSettingsPage /></Suspense></RoleProtectedRoute>} />
-
-        {/* Bluetooth Printer Management Route */}
-        <Route path="/bluetooth-printer" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><BluetoothPrinterPage /></Suspense></RoleProtectedRoute>} />
-
-          {/* AI Training Manager Route */}
-          <Route path="/ai-training" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><AITrainingManagerPage /></RoleProtectedRoute>} />
-          
-          {/* Global Search Route */}
-          <Route path="/search" element={<GlobalSearchPage />} />
-        </Route>
-
-        {/* Full-page routes (outside AppLayout) */}
-        
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
-      </Routes>
-    </>
-  );
-};
-
 // Protected route component
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
-  
   // Add error boundary for React refresh issues
   const [hasError, setHasError] = useState(false);
   
@@ -394,6 +150,27 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
   useEffect(() => {
     setHasError(false);
   }, []);
+  
+  // Try to get auth context with error handling
+  let isAuthenticated = false;
+  let loading = true;
+  
+  try {
+    const auth = useAuth();
+    isAuthenticated = auth.isAuthenticated;
+    loading = auth.loading;
+  } catch (error) {
+    console.warn('Auth context not available during hot reload:', error);
+    // During hot reload, show loading state instead of error
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading application...</p>
+        </div>
+      </div>
+    );
+  }
   
   // Handle any errors during render
   if (hasError) {
@@ -495,7 +272,7 @@ const RoleProtectedRoute: React.FC<{
     );
   }
   
-  // Handle authentication and role checks
+  // Handle role-based access control
   try {
     if (!isAuthenticated) {
       localStorage.setItem('postLoginRedirect', window.location.pathname);
@@ -503,7 +280,25 @@ const RoleProtectedRoute: React.FC<{
     }
     
     if (!currentUser || !allowedRoles.includes(currentUser.role)) {
-      return <Navigate to="/dashboard" replace />;
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-50 to-orange-50">
+          <div className="text-center">
+            <div className="text-red-600 mb-4">
+              <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Access Denied</h3>
+            <p className="text-gray-600 mb-4">You don't have permission to access this page.</p>
+            <button
+              onClick={() => window.history.back()}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            >
+              Go Back
+            </button>
+          </div>
+        </div>
+      );
     }
     
     return <>{children}</>;
@@ -512,6 +307,273 @@ const RoleProtectedRoute: React.FC<{
     setHasError(true);
     return null;
   }
+};
+
+// AppContent component that handles the sync logic and routes
+const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnline, isSyncing }) => {
+  const [showHeaderDiagnostic, setShowHeaderDiagnostic] = useState(false);
+  
+  // Access context hooks with error handling
+  let customersContext: any;
+  let devicesContext: any;
+  
+  try {
+    customersContext = useCustomers();
+  } catch (error) {
+    console.warn('Customers context not ready:', error);
+  }
+  
+  try {
+    devicesContext = useDevices();
+  } catch (error) {
+    console.warn('Devices context not ready:', error);
+  }
+  
+  // Enable keyboard shortcuts (moved here to have access to router context)
+  useKeyboardShortcuts();
+
+  // Initialize database check on app startup
+  useEffect(() => {
+    initializeDatabaseCheck().catch(console.error);
+  }, []);
+
+  // Add keyboard shortcut for header diagnostic (Ctrl+Shift+H)
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.ctrlKey && event.shiftKey && event.key === 'H') {
+        event.preventDefault();
+        setShowHeaderDiagnostic(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Handle offline sync
+  useEffect(() => {
+    async function syncPending() {
+      // Only proceed if context functions are available
+      if (!customersContext?.addCustomer || !devicesContext?.assignToTechnician || !devicesContext?.updateDeviceStatus) {
+        console.warn('Context functions not ready, skipping sync');
+        return;
+      }
+      
+      const actions = await getPendingActions();
+      for (const action of actions) {
+        if (action.type === 'submitData') {
+          await fetch('/api/endpoint', { method: 'POST', body: JSON.stringify(action.payload) });
+        } else if (action.type === 'createCustomerFromSearch') {
+          await customersContext.addCustomer(action.payload);
+        } else if (action.type === 'adjustPoints') {
+          const { operation, pointsToAdjust, reason, customerId } = action.payload;
+          const adjustment = operation === 'add' ? Math.abs(pointsToAdjust) : -Math.abs(pointsToAdjust);
+          
+          // Use the proper customer update function instead of direct Supabase calls
+          if (customersContext?.updateCustomer) {
+            // Fetch current customer to get current points
+            const currentCustomer = customersContext.customers.find(c => c.id === customerId);
+            if (currentCustomer) {
+              const newPoints = (currentCustomer.points || 0) + adjustment;
+              await customersContext.updateCustomer(customerId, { points: newPoints });
+              
+              // Add a note about the points adjustment
+              if (customersContext.addNote) {
+                await customersContext.addNote(customerId, `${operation === 'add' ? 'Added' : 'Subtracted'} ${Math.abs(pointsToAdjust)} points - ${reason}`);
+              }
+            }
+          }
+        } else if (action.type === 'assignTechnician') {
+          const { deviceId, selectedTechId } = action.payload;
+          await devicesContext.assignToTechnician(deviceId, selectedTechId, '');
+        } else if (action.type === 'markDeviceFailed') {
+          const { deviceId, remark } = action.payload;
+          await devicesContext.updateDeviceStatus(deviceId, 'failed', remark || '');
+        }
+      }
+      if (actions.length > 0) {
+        await clearPendingActions();
+      }
+    }
+
+    if (isOnline) {
+      syncPending();
+    }
+  }, [isOnline, customersContext, devicesContext]);
+
+  return (
+    <>
+      {!isOnline && (
+        <div style={{ background: '#f87171', color: 'white', padding: '8px', textAlign: 'center' }}>
+          You are offline. Changes will be saved and synced when you are back online.
+        </div>
+      )}
+      {isOnline && isSyncing && (
+        <div style={{ background: '#fbbf24', color: 'black', padding: '8px', textAlign: 'center' }}>
+          Syncing your offline changes...
+        </div>
+      )}
+      
+      {/* Header Size Diagnostic Modal */}
+      {showHeaderDiagnostic && (
+        <HeaderSizeDiagnostic onClose={() => setShowHeaderDiagnostic(false)} />
+      )}
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        
+        <Route 
+          path="/" 
+          element={
+            <ProtectedRoute>
+              <AppLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
+
+          <Route path="/devices" element={<DevicesPage />} />
+          <Route path="/devices/new" element={<Suspense fallback={<PageLoadingSpinner />}><NewDevicePage /></Suspense>} />
+          <Route path="/devices/:id" element={<DeviceDetailPage />} />
+
+
+        <Route path="/category-management" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><CategoryManagementPage /></Suspense></RoleProtectedRoute>} />
+                  <Route path="/supplier-management" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedSupplierManagementPage /></Suspense></RoleProtectedRoute>} />
+        <Route path="/store-locations" element={<RoleProtectedRoute allowedRoles={['admin']}><StoreLocationManagementPage /></RoleProtectedRoute>} />
+        <Route path="/database-setup" element={<RoleProtectedRoute allowedRoles={['admin']}><DatabaseSetupPage /></RoleProtectedRoute>} />
+        <Route path="/backup-management" element={<RoleProtectedRoute allowedRoles={['admin']}><BackupManagementPage /></RoleProtectedRoute>} />
+        <Route path="/customers/import" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><ExcelImportPage /></RoleProtectedRoute>} />
+        <Route path="/excel-import" element={<RoleProtectedRoute allowedRoles={['admin']}><ExcelImportPage /></RoleProtectedRoute>} />
+        <Route path="/excel-templates" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><ExcelTemplateDownloadPage /></RoleProtectedRoute>} />
+        <Route path="/product-export" element={<RoleProtectedRoute allowedRoles={['admin']}><ProductExportPage /></RoleProtectedRoute>} />
+
+          <Route path="/customers" element={<Suspense fallback={<PageLoadingSpinner />}><CustomersPage /></Suspense>} />
+
+          <Route path="/customers/:id" element={<Suspense fallback={<PageLoadingSpinner />}><CustomerDetailPage /></Suspense>} />
+          <Route path="/customers/update" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><CustomerDataUpdatePage /></RoleProtectedRoute>} />
+
+          <Route path="/settings" element={<Suspense fallback={<PageLoadingSpinner />}><SettingsPage /></Suspense>} />
+          <Route path="/sms" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><SMSControlCenterPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/admin-settings" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><AdminSettingsPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/admin-management" element={<RoleProtectedRoute allowedRoles={['admin']}><AdminManagementPage /></RoleProtectedRoute>} />
+          <Route path="/integration-testing" element={<RoleProtectedRoute allowedRoles={['admin']}><IntegrationTestingPage /></RoleProtectedRoute>} />
+          <Route path="/users" element={<RoleProtectedRoute allowedRoles={['admin']}><UserManagementPage /></RoleProtectedRoute>} />
+          <Route path="/audit-logs" element={<RoleProtectedRoute allowedRoles={['admin']}><AuditLogsPage /></RoleProtectedRoute>} />
+          <Route path="/finance" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><FinanceManagementPage /></Suspense></RoleProtectedRoute>} />
+          
+          {/* Enhanced Payment Management Routes */}
+          <Route path="/finance/payments" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><EnhancedPaymentManagementPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/finance/payments/reconciliation" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><PaymentReconciliationPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/finance/payments/providers" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><PaymentProviderManagementPage /></Suspense></RoleProtectedRoute>} />
+          
+          {/* Appointment Management Routes */}
+          <Route path="/appointments" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedAppointmentPage /></Suspense></RoleProtectedRoute>} />
+          
+          {/* Service Management Routes */}
+          <Route path="/services" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><ServiceManagementPage /></RoleProtectedRoute>} />
+          
+          {/* Employee Management Routes */}
+          <Route path="/employees" element={<RoleProtectedRoute allowedRoles={['admin', 'manager']}><Suspense fallback={<PageLoadingSpinner />}><EmployeeManagementPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/attendance" element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'technician', 'customer-care']}><EmployeeAttendancePage /></RoleProtectedRoute>} />
+
+          {/* Advanced Analytics Routes */}
+          <Route path="/analytics" element={<RoleProtectedRoute allowedRoles={['admin', 'manager']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedAnalyticsPage /></Suspense></RoleProtectedRoute>} />
+          
+          {/* Calendar View Routes */}
+
+          
+          {/* Mobile Optimization Routes */}
+          <Route path="/mobile" element={<RoleProtectedRoute allowedRoles={['admin', 'manager']}><MobileOptimizationPage /></RoleProtectedRoute>} />
+          
+          {/* Consolidated Management Routes */}
+          <Route path="/business" element={<RoleProtectedRoute allowedRoles={['admin', 'manager', 'customer-care']}><BusinessManagementPage /></RoleProtectedRoute>} />
+
+          {/* Diagnostics Routes - Unified Interface */}
+          <Route path="/diagnostics" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedDiagnosticManagementPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/diagnostics/new" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedDiagnosticManagementPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/diagnostics/new-request" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedDiagnosticManagementPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/diagnostics/my-requests" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedDiagnosticManagementPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/diagnostics/assigned" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedDiagnosticManagementPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/diagnostics/reports" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedDiagnosticManagementPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/diagnostics/templates" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedDiagnosticManagementPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/diagnostics/device/:requestId/:deviceId" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedDiagnosticManagementPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/diagnostics/grouped/:requestId/:deviceName/:model" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedDiagnosticManagementPage /></Suspense></RoleProtectedRoute>} />
+          
+          {/* LATS Module Routes */}
+          <Route path="/lats" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><LATSDashboardPage /></Suspense></RoleProtectedRoute>} />
+          
+          {/* POS Route */}
+          <Route path="/pos" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><POSPage /></Suspense></RoleProtectedRoute>} />
+
+          <Route path="/customer-query-test" element={<CustomerQueryTest />} />
+          
+          {/* Primary Unified Inventory Route */}
+          <Route path="/lats/unified-inventory" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><DynamicImportErrorBoundary><Suspense fallback={<PageLoadingSpinner />}><UnifiedInventoryPage /></Suspense></DynamicImportErrorBoundary></RoleProtectedRoute>} />
+          
+          {/* Inventory Management Route */}
+          <Route path="/lats/inventory-management" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><InventoryManagementPage /></RoleProtectedRoute>} />
+          
+          {/* Storage Room Management Route */}
+          <Route path="/lats/storage-rooms" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><StorageRoomManagementPage /></Suspense></RoleProtectedRoute>} />
+          
+          {/* Storage Room Detail Route */}
+          <Route path="/lats/storage-rooms/:id" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><StorageRoomDetailPage /></RoleProtectedRoute>} />
+          
+          {/* Redirect old inventory routes to unified inventory */}
+          <Route path="/lats/inventory" element={<Navigate to="/lats/unified-inventory" replace />} />
+          <Route path="/lats/products" element={<Navigate to="/lats/unified-inventory" replace />} />
+          
+          {/* Keep product detail route for individual product views */}
+          <Route path="/lats/products/:id" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><ProductDetailPage /></RoleProtectedRoute>} />
+          
+          {/* Add Product Route */}
+          <Route path="/lats/add-product" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><AddProductPage /></Suspense></RoleProtectedRoute>} />
+          
+          {/* Edit Product Route */}
+          <Route path="/lats/products/:productId/edit" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><EditProductPage /></Suspense></RoleProtectedRoute>} />
+
+          <Route path="/lats/sales-reports" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><SalesReportsPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/lats/loyalty" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><CustomerLoyaltyPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/lats/payments" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><PaymentTrackingPage /></Suspense></RoleProtectedRoute>} />
+
+          <Route path="/lats/purchase-orders" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><PurchaseOrdersPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/lats/purchase-order/create" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><PurchaseOrderPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/lats/purchase-orders/:id" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><PurchaseOrderDetailPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/lats/purchase-orders/shipped-items" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><ShippedItemsPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/lats/purchase-orders/suppliers" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><SuppliersManagementPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/lats/purchase-orders/reports" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><SalesReportsPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/lats/shipping" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><ShippingManagementPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/lats/shipping/settings" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><ShippingSettingsPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/lats/shipping/agents" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><ShippingAgentsPage /></Suspense></RoleProtectedRoute>} />
+
+          <Route path="/lats/spare-parts" element={<RoleProtectedRoute allowedRoles={['admin', 'technician']}><Suspense fallback={<PageLoadingSpinner />}><SparePartsPage /></Suspense></RoleProtectedRoute>} />
+          
+          {/* Payment routes */}
+          <Route path="/lats/payment-history" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><PaymentHistoryPage /></Suspense></RoleProtectedRoute>} />
+
+          
+
+        <Route path="/lats/whatsapp-hub" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><WhatsAppHubPage /></Suspense></RoleProtectedRoute>} />
+        <Route path="/lats/whatsapp-connection-manager" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><WhatsAppConnectionManager /></Suspense></RoleProtectedRoute>} />
+        <Route path="/lats/whatsapp-chat" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><WhatsAppChatPage /></Suspense></RoleProtectedRoute>} />
+        <Route path="/lats/whatsapp-settings/:instanceId" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><WhatsAppSettingsPage /></Suspense></RoleProtectedRoute>} />
+
+        {/* Bluetooth Printer Management Route */}
+        <Route path="/bluetooth-printer" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><BluetoothPrinterPage /></Suspense></RoleProtectedRoute>} />
+
+          {/* AI Training Manager Route */}
+          <Route path="/ai-training" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><AITrainingManagerPage /></RoleProtectedRoute>} />
+          
+          {/* Global Search Route */}
+          <Route path="/search" element={<GlobalSearchPage />} />
+        </Route>
+
+        {/* Full-page routes (outside AppLayout) */}
+        
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      </Routes>
+    </>
+  );
 };
 
 function _clearAllIndexedDB() {
@@ -590,7 +652,8 @@ function App() {
               <CustomersProvider>
                 <UserGoalsProvider>
                   <PaymentsProvider>
-                    <LoadingProvider>
+                    <PaymentMethodsProvider>
+                      <LoadingProvider>
                       <GeneralSettingsProvider>
                           <SuppliersProvider>
                             <WhatsAppProvider>
@@ -605,7 +668,8 @@ function App() {
                             </WhatsAppProvider>
                           </SuppliersProvider>
                       </GeneralSettingsProvider>
-                    </LoadingProvider>
+                      </LoadingProvider>
+                    </PaymentMethodsProvider>
                   </PaymentsProvider>
                 </UserGoalsProvider>
               </CustomersProvider>

@@ -20,6 +20,7 @@ interface POTopBarProps {
   onViewPurchaseOrders?: () => void;
   isCreatingPO: boolean;
   hasSelectedSupplier: boolean;
+  onTestPOFetch?: () => void;
 }
 
 const POTopBar: React.FC<POTopBarProps> = ({
@@ -34,7 +35,8 @@ const POTopBar: React.FC<POTopBarProps> = ({
   onAddProduct,
   onViewPurchaseOrders,
   isCreatingPO,
-  hasSelectedSupplier
+  hasSelectedSupplier,
+  onTestPOFetch
 }) => {
 
   return (
@@ -44,46 +46,6 @@ const POTopBar: React.FC<POTopBarProps> = ({
 
         {/* Stats and Actions Row */}
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
-          {/* Quick Stats */}
-          <div className="flex flex-wrap items-center gap-4">
-            {/* Cart Stats */}
-            <div className="flex items-center gap-2 bg-white/20 rounded-xl px-4 py-2 backdrop-blur-sm">
-              <ShoppingBag className="w-5 h-5 text-white" />
-              <span className="text-white font-semibold">
-                {cartItemsCount} items
-              </span>
-              {cartItemsCount > 0 && (
-                <span className="text-orange-100 text-sm">
-                  • {formatMoney(totalAmount, currency)}
-                </span>
-              )}
-            </div>
-
-            {/* Products Count */}
-            <div className="flex items-center gap-2 bg-white/20 rounded-xl px-4 py-2 backdrop-blur-sm">
-              <Package className="w-5 h-5 text-white" />
-              <span className="text-white font-semibold">
-                {productsCount} products
-              </span>
-            </div>
-
-            {/* Suppliers Count */}
-            <div className="flex items-center gap-2 bg-white/20 rounded-xl px-4 py-2 backdrop-blur-sm">
-              <Truck className="w-5 h-5 text-white" />
-              <span className="text-white font-semibold">
-                {suppliersCount} suppliers
-              </span>
-            </div>
-
-            {/* Currency Display */}
-            <div className="flex items-center gap-2 bg-white/20 rounded-xl px-4 py-2 backdrop-blur-sm">
-              <Coins className="w-5 h-5 text-white" />
-              <span className="text-white font-semibold">
-                {currency.flag} {currency.code}
-              </span>
-            </div>
-          </div>
-
           {/* Main Action Buttons */}
           <div className="flex flex-wrap items-center gap-3">
             {/* View Purchase Orders */}
@@ -122,6 +84,18 @@ const POTopBar: React.FC<POTopBarProps> = ({
               </GlassButton>
             )}
 
+            {/* Test Purchase Order Fetch */}
+            {onTestPOFetch && (
+              <GlassButton
+                onClick={onTestPOFetch}
+                variant="outline"
+                className="bg-blue-500/20 hover:bg-blue-500/30 text-white border-blue-300/50 hover:border-blue-300/70"
+                icon={<RefreshCw size={18} />}
+              >
+                <span className="hidden sm:inline">🧪 Test PO</span>
+              </GlassButton>
+            )}
+
             {/* Clear Cart */}
             {cartItemsCount > 0 && (
               <GlassButton
@@ -148,23 +122,6 @@ const POTopBar: React.FC<POTopBarProps> = ({
 
 
 
-        {/* Status Indicators */}
-        {hasSelectedSupplier && cartItemsCount > 0 && (
-          <div className="mt-4 flex items-center gap-4 text-sm">
-            <div className="flex items-center gap-2 text-orange-100">
-              <CheckCircle className="w-4 h-4 text-green-300" />
-              <span>Supplier selected</span>
-            </div>
-            <div className="flex items-center gap-2 text-orange-100">
-              <CheckCircle className="w-4 h-4 text-green-300" />
-              <span>{cartItemsCount} product(s) added</span>
-            </div>
-            <div className="flex items-center gap-2 text-orange-100">
-              <DollarSign className="w-4 h-4 text-green-300" />
-              <span>Total: {formatMoney(totalAmount, currency)}</span>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

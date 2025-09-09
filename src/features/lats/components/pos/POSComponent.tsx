@@ -275,7 +275,7 @@ const POSComponent: React.FC = () => {
                     <div key={item.id} className="border border-gray-200 rounded-lg p-3 bg-white">
                       <div className="flex items-center justify-between">
                         <div className="flex-1">
-                          <h4 className="font-medium text-sm">{item.name}</h4>
+                          <h4 className="font-medium text-sm">{item.productName}</h4>
                           <p className="text-xs text-gray-500">SKU: {item.sku}</p>
                           <p className="text-sm font-bold text-blue-600">
                             {formatMoney(item.unitPrice)} each

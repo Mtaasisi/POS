@@ -83,7 +83,8 @@ import LoadingSkeleton, { TextSkeleton } from '../../../features/shared/componen
 import { SimpleImageDisplay } from '../../../components/SimpleImageDisplay';
 
 const ProductDetailPage: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
+  const { id, productId } = useParams<{ id?: string; productId?: string }>();
+  const actualId = id || productId;
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   
@@ -145,24 +146,58 @@ const ProductDetailPage: React.FC = () => {
 
   // Load product data
   const loadProductData = async () => {
-    if (!id) return;
+    if (!actualId) return;
     
     try {
       setIsLoading(true);
       setError(null);
       
-      console.log('🔍 Loading product data for ID:', id);
+      console.log('🔍 Loading product data for ID:', actualId);
       
       const provider = getLatsProvider();
-      const { ok, data, message } = await provider.getProduct(id);
+      const { ok, data, message } = await provider.getProduct(actualId);
       
       if (ok && data) {
         const productData = data as Product;
         setProduct(productData);
         
+        // DEBUG: Log detailed product information
+        console.log('🔍 [ProductDetailPage] DEBUG - Product data loaded:', {
+          id: productData.id,
+          name: productData.name,
+          sku: productData.sku,
+          category: productData.category,
+          supplier: productData.supplier,
+          totalQuantity: productData.totalQuantity,
+          variants: productData.variants,
+          images: productData.images,
+          attributes: productData.attributes,
+          metadata: productData.metadata
+        });
+        
+        // DEBUG: Check for missing information
+        const missingInfo = [];
+        if (!productData.supplier) missingInfo.push('supplier');
+        if (!productData.category) missingInfo.push('category');
+        if (!productData.variants || productData.variants.length === 0) missingInfo.push('variants');
+        if (!productData.images || productData.images.length === 0) missingInfo.push('images');
+        if (productData.totalQuantity === 0) missingInfo.push('stock quantity');
+        
+        if (missingInfo.length > 0) {
+          console.warn('⚠️ [ProductDetailPage] DEBUG - Missing information:', missingInfo);
+        } else {
+          console.log('✅ [ProductDetailPage] DEBUG - All information present');
+        }
+        
         // Load images
-        const productImages = await RobustImageService.getProductImages(id);
+        const productImages = await RobustImageService.getProductImages(actualId);
         setImages(productImages);
+        
+        // DEBUG: Log image loading results
+        console.log('🖼️ [ProductDetailPage] DEBUG - Images loaded:', {
+          count: productImages.length,
+          images: productImages.map(img => ({ url: img.image_url, is_primary: img.is_primary }))
+        });
         
         // Calculate analytics
         const totalStock = calculateTotalStock(productData.variants);
@@ -173,6 +208,16 @@ const ProductDetailPage: React.FC = () => {
         const stockStatus = getStockStatus(productData.variants);
         
         setAnalytics({
+          totalStock,
+          totalCostValue,
+          totalRetailValue,
+          potentialProfit,
+          profitMargin,
+          stockStatus
+        });
+        
+        // DEBUG: Log analytics
+        console.log('📊 [ProductDetailPage] DEBUG - Analytics calculated:', {
           totalStock,
           totalCostValue,
           totalRetailValue,
@@ -208,7 +253,24 @@ const ProductDetailPage: React.FC = () => {
   useEffect(() => {
     loadProductData();
     loadFormData();
-  }, [id]);
+  }, [actualId]);
+
+  // Listen for product data updates from other parts of the app
+  useEffect(() => {
+    const handleProductDataUpdate = (event: CustomEvent) => {
+      const { updatedProducts } = event.detail;
+      if (actualId && updatedProducts.includes(actualId)) {
+        console.log('🔄 Product data updated, refreshing product details...');
+        refreshProductData();
+      }
+    };
+
+    window.addEventListener('productDataUpdated', handleProductDataUpdate as EventListener);
+    
+    return () => {
+      window.removeEventListener('productDataUpdated', handleProductDataUpdate as EventListener);
+    };
+  }, [actualId]);
 
   // Load form data for editing
   const loadFormData = async () => {
@@ -455,6 +517,15 @@ const ProductDetailPage: React.FC = () => {
                   >
                     Active
                   </GlassBadge>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">Shelf Location</label>
+                  <div className="flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-blue-600" />
+                    <span className="text-gray-900 font-medium text-base">
+                      {product.shelfName || product.shelfCode || product.storeLocationName || product.storageRoomName || 'Not assigned'}
+                    </span>
+                  </div>
                 </div>
                 {product.internalNotes && (
                   <div className="md:col-span-2">
@@ -741,6 +812,12 @@ const ProductDetailPage: React.FC = () => {
                 <div className="flex justify-between">
                   <span className="text-gray-500">Price:</span>
                   <span className="text-gray-900 text-base">{format.money(product.price)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Shelf:</span>
+                  <span className="text-gray-900 text-base">
+                    {product.shelfName || product.shelfCode || product.storeLocationName || product.storageRoomName || 'N/A'}
+                  </span>
                 </div>
               </div>
             </GlassCard>

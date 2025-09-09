@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { BarChart3, Zap, Settings, Users, Package, TrendingUp, FileText, Crown, Maximize2, Minimize2 } from 'lucide-react';
+import { BarChart3, Zap, Settings, Users, Package, TrendingUp, FileText, Crown, Maximize2, Minimize2, CreditCard } from 'lucide-react';
 import GlassButton from '../../../shared/components/ui/GlassButton';
 
 interface POSBottomBarProps {
   onViewAnalytics: () => void;
   onQuickActions: () => void;
   onPaymentTracking: () => void;
+  onPaymentMethods: () => void;
   onSettings: () => void;
   onCustomers: () => void;
   onInventory: () => void;
@@ -18,6 +19,7 @@ const POSBottomBar: React.FC<POSBottomBarProps> = ({
   onViewAnalytics,
   onQuickActions,
   onPaymentTracking,
+  onPaymentMethods,
   onSettings,
   onCustomers,
   onInventory,
@@ -71,6 +73,14 @@ const POSBottomBar: React.FC<POSBottomBarProps> = ({
               className="bg-gradient-to-r from-indigo-500 to-indigo-600 text-white hover:from-indigo-600 hover:to-indigo-700 px-4 py-2 rounded-lg font-medium"
             >
               Payment Tracking
+            </GlassButton>
+
+            <GlassButton
+              onClick={onPaymentMethods}
+              icon={<CreditCard size={20} />}
+              className="bg-gradient-to-r from-green-500 to-green-600 text-white hover:from-green-600 hover:to-green-700 px-4 py-2 rounded-lg font-medium"
+            >
+              Payment Methods
             </GlassButton>
           </div>
 

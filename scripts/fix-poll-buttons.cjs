@@ -213,7 +213,7 @@ function fixPollImplementation() {
               response = await sendPollAsText(instance, recipientNumber, pollMessage, validation.validOptions);
               if (response.ok) {
                 console.log('✅ Poll sent as text message');
-                toast.info('Poll sent as text message with numbered options');
+                toast('Poll sent as text message with numbered options');
               }
             } catch (textError) {
               console.error('❌ Text-based poll fallback failed:', textError);

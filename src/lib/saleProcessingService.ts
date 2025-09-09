@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient';
 import { toast } from 'react-hot-toast';
+import { emitSaleCompleted, emitStockUpdate } from '../features/lats/lib/data/eventBus';
 
 export interface SaleItem {
   id: string;
@@ -51,6 +52,7 @@ class SaleProcessingService {
   async processSale(saleData: Omit<SaleData, 'id' | 'saleNumber' | 'createdAt'>): Promise<ProcessSaleResult> {
     try {
       console.log('🔄 Processing sale...', { itemCount: saleData.items.length, total: saleData.total });
+      console.log('🔍 Sale data received:', JSON.stringify(saleData, null, 2));
 
       // 1. Combined stock validation and cost calculation (ultra-optimized)
       const { stockValidation, itemsWithCosts } = await this.validateStockAndCalculateCosts(saleData.items);
@@ -96,6 +98,9 @@ class SaleProcessingService {
 
       console.log('✅ Sale processed successfully:', saleResult.saleId);
       toast.success('Sale completed successfully!');
+
+      // Emit sale completion event for real-time updates
+      emitSaleCompleted(saleResult.sale);
 
       return {
         success: true,
@@ -286,7 +291,7 @@ class SaleProcessingService {
       const { data: { user } } = await supabase.auth.getUser();
       const soldBy = user?.email || 'system';
 
-      // Create sale record
+      // Create sale record - matching exact database structure
       const { data: sale, error: saleError } = await supabase
         .from('lats_sales')
         .insert([{
@@ -295,8 +300,8 @@ class SaleProcessingService {
           total_amount: saleData.total,
           payment_method: saleData.paymentMethod.type,
           status: saleData.paymentStatus,
-          created_by: user?.id || null,
-          notes: saleData.notes || null
+          notes: saleData.notes || null,
+          created_by: user?.id || null
         }])
         .select()
         .single();
@@ -306,17 +311,42 @@ class SaleProcessingService {
         return { success: false, error: `Failed to create sale: ${saleError.message}` };
       }
 
-      // Create sale items
-      const saleItems = saleData.items.map(item => ({
-        sale_id: sale.id,
-        product_id: item.productId,
-        variant_id: item.variantId,
-        quantity: item.quantity,
-        price: item.unitPrice,
-        total_price: item.totalPrice,
-        cost_price: item.costPrice,
-        profit: item.profit
-      }));
+      // Create sale items - matching exact database structure
+      const saleItems = saleData.items.map(item => {
+        // Validate UUIDs
+        const isValidUUID = (uuid: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uuid);
+        
+        if (!isValidUUID(item.productId)) {
+          console.error('❌ Invalid product_id UUID:', item.productId);
+        }
+        if (!isValidUUID(item.variantId)) {
+          console.error('❌ Invalid variant_id UUID:', item.variantId);
+        }
+        
+        // Debug pricing values
+        console.log('🔍 Item pricing debug:', {
+          productId: item.productId,
+          variantId: item.variantId,
+          unitPrice: item.unitPrice,
+          totalPrice: item.totalPrice,
+          costPrice: item.costPrice,
+          profit: item.profit
+        });
+        
+        return {
+          sale_id: sale.id,
+          product_id: item.productId,
+          variant_id: item.variantId,
+          quantity: item.quantity,
+          unit_price: item.unitPrice || 0, // Required field, default to 0 if null
+          total_price: item.totalPrice || 0, // Required field, default to 0 if null
+          cost_price: item.costPrice || 0, // Optional field, default to 0
+          profit: item.profit || 0, // Optional field, default to 0
+          external_product_id: null // Optional field
+        };
+      });
+
+      console.log('🔍 Inserting sale items:', saleItems);
 
       const { error: itemsError } = await supabase
         .from('lats_sale_items')
@@ -324,6 +354,8 @@ class SaleProcessingService {
 
       if (itemsError) {
         console.error('❌ Error creating sale items:', itemsError);
+        console.error('❌ Sale items data:', saleItems);
+        console.error('❌ Sale ID:', sale.id);
         return { success: false, error: `Sale created but items failed: ${itemsError.message}` };
       }
 
@@ -352,27 +384,53 @@ class SaleProcessingService {
       const { data: { user } } = await supabase.auth.getUser();
       const userId = user?.id || 'system';
       
+      // First, get current quantities for all variants
+      const variantIds = items.map(item => item.variantId);
+      const { data: currentVariants, error: fetchError } = await supabase
+        .from('lats_product_variants')
+        .select('id, quantity')
+        .in('id', variantIds);
+      
+      if (fetchError) {
+        throw new Error(`Failed to fetch current stock: ${fetchError.message}`);
+      }
+
+      // Create a map for quick lookup
+      const currentStockMap = new Map(currentVariants.map(v => [v.id, v.quantity]));
+
       // Batch inventory updates and stock movements in parallel
-      const updatePromises = items.map(item => 
-        supabase
+      const updatePromises = items.map(item => {
+        const currentQuantity = currentStockMap.get(item.variantId) || 0;
+        const newQuantity = Math.max(0, currentQuantity - item.quantity);
+        
+        // Update with calculated quantity
+        return supabase
           .from('lats_product_variants')
           .update({ 
-            quantity: supabase.sql`quantity - ${item.quantity}`,
+            quantity: newQuantity,
             updated_at: new Date().toISOString()
           })
-          .eq('id', item.variantId)
-      );
+          .eq('id', item.variantId);
+      });
 
       // Prepare all stock movement records for batch insert
-      const stockMovements = items.map(item => ({
-        product_id: item.productId,
-        variant_id: item.variantId,
-        movement_type: 'sale',
-        quantity: -item.quantity,
-        reference: `Sale ${item.sku}`,
-        notes: `Sold ${item.quantity} units of ${item.productName} (${item.variantName})`,
-        created_by: userId
-      }));
+      const stockMovements = items.map(item => {
+        const currentQuantity = currentStockMap.get(item.variantId) || 0;
+        const newQuantity = Math.max(0, currentQuantity - item.quantity);
+        
+        return {
+          product_id: item.productId,
+          variant_id: item.variantId,
+          type: 'out',
+          quantity: item.quantity,
+          previous_quantity: currentQuantity,
+          new_quantity: newQuantity,
+          reason: 'Sale',
+          reference: `Sale ${item.sku}`,
+          notes: `Sold ${item.quantity} units of ${item.productName} (${item.variantName})`,
+          created_by: userId
+        };
+      });
 
       // Execute inventory updates in parallel
       const updateResults = await Promise.allSettled(updatePromises);
@@ -401,6 +459,12 @@ class SaleProcessingService {
       }
 
       console.log('✅ Inventory updated successfully');
+      
+      // Emit stock updated events for real-time updates
+      items.forEach(item => {
+        emitStockUpdate(item.productId, item.variantId, item.quantity);
+      });
+      
       return { success: true };
 
     } catch (error) {

@@ -8,10 +8,13 @@ import GlassButton from '../../../features/shared/components/ui/GlassButton';
 import POTopBar from '../components/purchase-order/POTopBar';
 import {
   Search, Barcode, Plus, CheckCircle, XCircle, RefreshCw, 
-  User, Phone, Command, Truck, Coins, ShoppingBag
+  User, Phone, Command, Truck, Coins, ShoppingBag, AlertTriangle
 } from 'lucide-react';
 
 import { useInventoryStore } from '../stores/useInventoryStore';
+import { getLatsProvider } from '../lib/data/provider';
+import { getShippingDefaults } from '../config/shippingDefaults';
+import { getExchangeRateInfo } from '../lib/exchangeRateUtils';
 
 // Import purchase order specific components
 import VariantProductCard from '../components/pos/VariantProductCard';
@@ -19,17 +22,21 @@ import SupplierSelectionModal from '../components/purchase-order/SupplierSelecti
 import PurchaseOrderDraftModal from '../components/purchase-order/PurchaseOrderDraftModal';
 import CurrencySelector from '../components/purchase-order/CurrencySelector';
 import AddSupplierModal from '../components/purchase-order/AddSupplierModal';
+import AddProductModal from '../components/purchase-order/AddProductModal';
 import PurchaseCartItem from '../components/purchase-order/PurchaseCartItem';
 import ProductDetailModal from '../components/purchase-order/ProductDetailModal';
+import PurchaseOrderSuccessModal from '../components/purchase-order/PurchaseOrderSuccessModal';
+import OrderManagementModal from '../components/purchase-order/OrderManagementModal';
+import ShippingConfigurationModal from '../components/shipping/ShippingConfigurationModal';
 
 import { toast } from 'react-hot-toast';
 import { 
   SUPPORTED_CURRENCIES, 
-  PAYMENT_TERMS, 
   PurchaseOrderStatus,
   formatMoney,
   generatePONumber,
-  validatePurchaseOrder
+  validatePurchaseOrder,
+  Currency
 } from '../lib/purchaseOrderUtils';
 
 // Performance optimization constants
@@ -60,7 +67,7 @@ interface Supplier {
   address?: string;
   city?: string;
   country?: string;
-  paymentTerms?: string;
+  exchangeRates?: string;
   leadTimeDays?: number;
   currency?: string;
   isActive: boolean;
@@ -110,26 +117,74 @@ const PurchaseOrderPage: React.FC = () => {
   const [priceRange, setPriceRange] = useState({ min: '', max: '' });
   const [stockFilter, setStockFilter] = useState<'all' | 'in-stock' | 'low-stock' | 'out-of-stock'>('all');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
-  const [sortBy, setSortBy] = useState<'name' | 'price' | 'stock' | 'recent' | 'supplier'>('name');
+  const [sortBy, setSortBy] = useState<'name' | 'price' | 'stock' | 'recent' | 'supplier'>('recent');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
 
   // Use database products and transform them
   const products = useMemo(() => {
-    return dbProducts.map(product => ({
-      ...product,
-      categoryName: categories?.find(c => c.id === product.categoryId)?.name || 'Unknown Category',
-      images: product.images || [],
-      tags: [],
-      variants: product.variants?.map(variant => ({
-        ...variant,
-        id: variant.id || `variant-${Date.now()}`,
-        sellingPrice: variant.price || product.price || 0,
-        quantity: variant.stockQuantity || 0
-      })) || []
-    }));
+    // Return empty array if no products or categories are loaded yet
+    if (dbProducts.length === 0 || categories.length === 0) {
+      return [];
+    }
+    
+    
+    const transformedProducts = dbProducts.map(product => {
+      // Try multiple possible category field names - handle both camelCase and snake_case
+      const categoryId = product.categoryId || (product as any).category_id || (product as any).category?.id;
+      
+      // Find category by ID, with fallback to name matching if ID doesn't work
+      let categoryName = 'Unknown Category';
+      let foundCategory = null;
+      
+      if (categoryId && categories.length > 0) {
+        foundCategory = categories.find(c => c.id === categoryId);
+        if (foundCategory) {
+          categoryName = foundCategory.name;
+        }
+      }
+      
+      // If no category found by ID, try to find by name (for backward compatibility)
+      if (!foundCategory && product.name && categories.length > 0) {
+        // Try to match category by product name patterns
+        const productNameLower = product.name.toLowerCase();
+        foundCategory = categories.find(c => {
+          const categoryNameLower = c.name.toLowerCase();
+          return productNameLower.includes(categoryNameLower) || 
+                 categoryNameLower.includes(productNameLower);
+        });
+        if (foundCategory) {
+          categoryName = foundCategory.name;
+        }
+      }
+      
+      
+              // Convert ProductImage[] to string[] for ProductSearchResult compatibility
+        const imageUrls = Array.isArray(product.images) 
+          ? product.images.map(img => typeof img === 'string' ? img : (img as any).url || (img as any).image_url || '')
+          : [];
+        
+        return {
+          ...product,
+          categoryName,
+          categoryId: foundCategory?.id || categoryId, // Ensure consistent categoryId
+          images: imageUrls.filter(Boolean), // Convert to string[] and filter out empty strings
+          tags: [],
+          variants: product.variants?.map(variant => ({
+            ...variant,
+            id: variant.id || `variant-${Date.now()}`,
+            sellingPrice: variant.price || product.price || 0,
+            quantity: variant.stockQuantity || 0
+          })) || []
+        };
+    });
+    
+    return transformedProducts;
   }, [dbProducts, categories]);
+
+  // Add loading and error state display
+  const { isLoading, error } = useInventoryStore();
 
   // Optimized filtered products
   const filteredProducts = useMemo(() => {
@@ -226,13 +281,11 @@ const PurchaseOrderPage: React.FC = () => {
   useEffect(() => {
     const loadData = async () => {
       try {
-        console.log('🛒 Purchase Order: Loading data from database...');
         await Promise.all([
           loadProducts({ page: 1, limit: 100 }),
           loadCategories(),
           loadSuppliers()
         ]);
-        console.log('📊 Purchase Order: Data loaded successfully');
       } catch (error) {
         console.error('Error loading data for Purchase Order:', error);
       }
@@ -244,29 +297,116 @@ const PurchaseOrderPage: React.FC = () => {
   // Local state for purchase order
   const [purchaseCartItems, setPurchaseCartItems] = useState<PurchaseCartItem[]>([]);
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
-  const [selectedCurrency, setSelectedCurrency] = useState(SUPPORTED_CURRENCIES[0]);
+  const [selectedCurrency, setSelectedCurrency] = useState(() => {
+    // Default to TZS (Tanzanian Shilling) as the base currency
+    return SUPPORTED_CURRENCIES.find(c => c.code === 'TZS') || SUPPORTED_CURRENCIES[0];
+  });
+
+  // Update currency when supplier is selected
+  useEffect(() => {
+    if (selectedSupplier?.currency) {
+      const supplierCurrency = SUPPORTED_CURRENCIES.find(c => c.code === selectedSupplier.currency);
+      if (supplierCurrency) {
+        console.log('💰 DEBUG: Updating currency to supplier currency:', selectedSupplier.currency);
+        setSelectedCurrency(supplierCurrency);
+      }
+    }
+  }, [selectedSupplier]);
   const [expectedDelivery, setExpectedDelivery] = useState('');
-  const [paymentTerms, setPaymentTerms] = useState(PAYMENT_TERMS[1].id);
+  const [exchangeRates, setExchangeRates] = useState('');
   const [purchaseOrderNotes, setPurchaseOrderNotes] = useState('');
   const [purchaseOrderStatus, setPurchaseOrderStatus] = useState<PurchaseOrderStatus>('draft');
+
+  // Calculate exchange rate info for use in components
+  const exchangeRateInfo = getExchangeRateInfo(exchangeRates, selectedCurrency.code, 'TZS');
+  const [paymentTerms, setPaymentTerms] = useState('Net 30'); // Default payment terms
+
+  // Shipping info state
+  const [shippingInfo, setShippingInfo] = useState({
+    shippingMethod: 'standard' as 'air' | 'sea' | 'standard',
+    expectedDelivery: '',
+    shippingAddress: getShippingDefaults().defaultAddress,
+    shippingCity: getShippingDefaults().defaultCity,
+    shippingCountry: getShippingDefaults().defaultCountry,
+    shippingPhone: '',
+    shippingContact: '',
+    shippingNotes: '',
+    trackingNumber: '',
+    estimatedCost: 0,
+    carrier: 'DHL',
+    requireSignature: false,
+    enableInsurance: false,
+    insuranceValue: 0
+  });
 
   // Modal states
   const [showSupplierSearch, setShowSupplierSearch] = useState(false);
   const [showAddSupplierModal, setShowAddSupplierModal] = useState(false);
+  const [showAddProductModal, setShowAddProductModal] = useState(false);
   const [showDraftModal, setShowDraftModal] = useState(false);
   const [showProductDetailModal, setShowProductDetailModal] = useState(false);
   const [selectedProductForModal, setSelectedProductForModal] = useState<any>(null);
   const [isCreatingPO, setIsCreatingPO] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showShippingModal, setShowShippingModal] = useState(false);
+  const [createdPurchaseOrder, setCreatedPurchaseOrder] = useState<any>(null);
+  const [showOrderManagementModal, setShowOrderManagementModal] = useState(false);
   
   // Cart item expansion state (similar to POS page)
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
+  // Exchange rate calculation functions
+  const parseExchangeRate = (exchangeRateText: string): number | null => {
+    if (!exchangeRateText.trim()) return null;
+    
+    // Try to parse common exchange rate formats
+    const patterns = [
+      /1\s*([A-Z]{3})\s*=\s*([\d,]+\.?\d*)\s*([A-Z]{3})/i,  // "1 USD = 150 TZS"
+      /([\d,]+\.?\d*)\s*([A-Z]{3})\s*=\s*1\s*([A-Z]{3})/i,  // "150 TZS = 1 USD"
+      /([\d,]+\.?\d*)/i  // Just the number
+    ];
+    
+    for (const pattern of patterns) {
+      const match = exchangeRateText.match(pattern);
+      if (match) {
+        if (match.length === 4) {
+          // Format: "1 USD = 150 TZS" or "150 TZS = 1 USD"
+          const fromCurrency = match[1] || match[3];
+          const toCurrency = match[3] || match[1];
+          const rate = parseFloat(match[2].replace(/,/g, ''));
+          
+          if (fromCurrency === selectedCurrency.code && toCurrency === 'TZS') {
+            return rate; // Direct rate to TZS
+          } else if (fromCurrency === 'TZS' && toCurrency === selectedCurrency.code) {
+            return 1 / rate; // Inverse rate from TZS
+          }
+        } else if (match.length === 2) {
+          // Just the number - assume it's the rate to TZS
+          return parseFloat(match[1].replace(/,/g, ''));
+        }
+      }
+    }
+    
+    return null;
+  };
+
+  const convertToTZS = (amount: number, fromCurrency: string): number => {
+    if (fromCurrency === 'TZS') return amount;
+    
+    const exchangeRate = parseExchangeRate(exchangeRates);
+    if (exchangeRate) {
+      return amount * exchangeRate;
+    }
+    
+    return amount; // Return original amount if no exchange rate
+  };
+
   // Computed values for purchase order
   const subtotal = purchaseCartItems.reduce((sum, item) => sum + item.totalPrice, 0);
-  const taxRate = 0.18;
-  const tax = subtotal * taxRate;
+  const subtotalTZS = convertToTZS(subtotal, selectedCurrency.code);
   const discount = 0;
-  const totalAmount = subtotal + tax - discount;
+  const totalAmount = subtotal - discount;
+  const totalAmountTZS = convertToTZS(totalAmount, selectedCurrency.code);
 
   // Handle adding product to purchase cart
   const handleAddToPurchaseCart = useCallback((product: any, variant?: any, quantity: number = 1) => {
@@ -296,6 +436,13 @@ const PurchaseOrderPage: React.FC = () => {
             : item
         );
       } else {
+        console.log('🔍 DEBUG: Creating new cart item with product:', {
+          productId: product.id,
+          productName: product.name,
+          productCategoryName: product.categoryName,
+          productKeys: Object.keys(product)
+        });
+        
         const newItem: PurchaseCartItem = {
           id: `${product.id}-${selectedVariant.id}-${Date.now()}`,
           productId: product.id,
@@ -311,6 +458,8 @@ const PurchaseOrderPage: React.FC = () => {
   
           images: product.images || []
         };
+        
+        console.log('🔍 DEBUG: Created cart item:', newItem);
         return [...prevItems, newItem];
       }
     });
@@ -345,6 +494,27 @@ const PurchaseOrderPage: React.FC = () => {
     setPurchaseCartItems(prev => prev.filter(item => item.id !== itemId));
   }, []);
 
+  // Shipping info handler
+  const handleSaveShippingInfo = useCallback((newShippingInfo: any) => {
+    setShippingInfo(newShippingInfo);
+    setExpectedDelivery(newShippingInfo.expectedDelivery);
+    
+    // Update shipping method display
+    if (newShippingInfo.shippingMethod) {
+      const methodDisplay: Record<string, string> = {
+        'air': 'By Air',
+        'sea': 'By Sea',
+        'standard': 'Standard'
+      };
+      
+      // Update the shipping method in the display
+      setShippingInfo(prev => ({
+        ...prev,
+        shippingMethod: newShippingInfo.shippingMethod
+      }));
+    }
+  }, []);
+
   // Handle updating item cost price
   const handleUpdateCostPrice = useCallback((itemId: string, newCostPrice: number) => {
     setPurchaseCartItems(prev =>
@@ -368,18 +538,45 @@ const PurchaseOrderPage: React.FC = () => {
     }
   }, [purchaseCartItems.length]);
 
+  // Test function to debug purchase order fetching
+  const testPurchaseOrderFetch = useCallback(async () => {
+    console.log('🧪 DEBUG: Testing purchase order fetch...');
+    try {
+      const provider = getLatsProvider();
+      const response = await provider.getPurchaseOrders();
+      console.log('🧪 DEBUG: Purchase orders response:', response);
+      
+      if (response.ok && response.data) {
+      }
+    } catch (error) {
+      console.error('🧪 DEBUG: Error testing purchase order fetch:', error);
+    }
+  }, []);
+
   // Handle supplier selection
   const handleSupplierSelect = useCallback((supplier: Supplier) => {
     setSelectedSupplier(supplier);
+    
+    // Auto-select currency from supplier
     if (supplier.currency) {
       const supplierCurrency = SUPPORTED_CURRENCIES.find(c => c.code === supplier.currency);
       if (supplierCurrency) {
         setSelectedCurrency(supplierCurrency);
+        toast.success(`Currency automatically set to ${supplier.currency} (${supplierCurrency.name})`);
       }
+    } else {
+      // Fallback to default currency if supplier doesn't specify one
+      const defaultCurrency = SUPPORTED_CURRENCIES.find(c => c.code === 'TZS') || SUPPORTED_CURRENCIES[0];
+      setSelectedCurrency(defaultCurrency);
+      toast(`No supplier currency specified, using default: ${defaultCurrency.code}`);
     }
-    if (supplier.paymentTerms) {
-      setPaymentTerms(supplier.paymentTerms);
+    
+    // Set exchange rates if available
+    if (supplier.exchangeRates) {
+      setExchangeRates(supplier.exchangeRates);
+      toast.success('Exchange rates loaded from supplier');
     }
+    
     setShowSupplierSearch(false);
   }, []);
 
@@ -387,18 +584,39 @@ const PurchaseOrderPage: React.FC = () => {
   const handleSupplierCreated = useCallback((newSupplier: any) => {
     // Auto-select the newly created supplier
     setSelectedSupplier(newSupplier);
+    
+    // Auto-select currency from supplier
     if (newSupplier.currency) {
       const supplierCurrency = SUPPORTED_CURRENCIES.find(c => c.code === newSupplier.currency);
       if (supplierCurrency) {
         setSelectedCurrency(supplierCurrency);
+        toast.success(`Currency automatically set to ${newSupplier.currency} (${supplierCurrency.name})`);
       }
+    } else {
+      // Fallback to default currency if supplier doesn't specify one
+      const defaultCurrency = SUPPORTED_CURRENCIES.find(c => c.code === 'TZS') || SUPPORTED_CURRENCIES[0];
+      setSelectedCurrency(defaultCurrency);
+      toast(`No supplier currency specified, using default: ${defaultCurrency.code}`);
     }
-    if (newSupplier.paymentTerms) {
-      setPaymentTerms(newSupplier.paymentTerms);
+    
+    // Set exchange rates if available
+    if (newSupplier.exchangeRates) {
+      setExchangeRates(newSupplier.exchangeRates);
+      toast.success('Exchange rates loaded from supplier');
     }
+    
     // Reload suppliers list to include the new one
     loadSuppliers();
   }, [loadSuppliers]);
+
+  // Handle product creation
+  const handleProductCreated = useCallback((newProduct: any) => {
+    console.log('✅ Product created:', newProduct);
+    // Refresh products list
+    loadProducts();
+    setShowAddProductModal(false);
+    toast.success('Product added successfully!');
+  }, [loadProducts]);
 
   // Handle product detail view
   const handleViewProductDetails = useCallback((product: any) => {
@@ -457,7 +675,7 @@ const PurchaseOrderPage: React.FC = () => {
 
   // Handle creating purchase order
   const handleCreatePurchaseOrder = useCallback(async () => {
-    const validation = validatePurchaseOrder(selectedSupplier, purchaseCartItems, expectedDelivery, paymentTerms);
+      const validation = validatePurchaseOrder(selectedSupplier, purchaseCartItems, '', paymentTerms);
     
     if (!validation.isValid) {
       alert(validation.errors.join('\n'));
@@ -470,47 +688,206 @@ const PurchaseOrderPage: React.FC = () => {
       const orderNumber = generatePONumber();
       
       const purchaseOrderData = {
-        orderNumber,
         supplierId: selectedSupplier!.id,
-        currency: selectedCurrency.code,
-        expectedDelivery,
-        paymentTerms,
+        expectedDelivery: shippingInfo.expectedDelivery || '', // Use shipping info or empty string
         notes: purchaseOrderNotes,
         status: purchaseOrderStatus,
+        currency: selectedCurrency.code, // Add currency
+        paymentTerms: paymentTerms, // Add payment terms
+        // Exchange rate tracking
+        exchangeRate: exchangeRateInfo?.rate || 1.0,
+        baseCurrency: 'TZS',
+        exchangeRateSource: exchangeRateInfo?.source || 'manual',
+        exchangeRateDate: exchangeRateInfo?.date || new Date().toISOString(),
         items: purchaseCartItems.map(item => ({
           productId: item.productId,
           variantId: item.variantId,
           quantity: item.quantity,
           costPrice: item.costPrice,
-          notes: ''
-        }))
+          minimumOrderQty: item.minimumOrderQty, // Add minimum order quantity
+          notes: item.notes || '' // Add notes
+        })),
+        shippingInfo: shippingInfo.expectedDelivery ? {
+          expectedDelivery: shippingInfo.expectedDelivery,
+          shippingMethod: shippingInfo.shippingMethod,
+          shippingAddress: shippingInfo.shippingAddress,
+          shippingCity: shippingInfo.shippingCity,
+          shippingCountry: shippingInfo.shippingCountry,
+          shippingPhone: shippingInfo.shippingPhone,
+          shippingContact: shippingInfo.shippingContact,
+          shippingNotes: shippingInfo.shippingNotes,
+          trackingNumber: shippingInfo.trackingNumber,
+          estimatedCost: shippingInfo.estimatedCost,
+          carrier: shippingInfo.carrier,
+          requireSignature: shippingInfo.requireSignature,
+          enableInsurance: shippingInfo.enableInsurance,
+          insuranceValue: shippingInfo.insuranceValue
+        } : undefined
       };
 
+      console.log('🔍 DEBUG: Sending purchase order data:', purchaseOrderData);
+      
+      // Debug: Log exchange rate information
+      console.log('💱 DEBUG: Exchange Rate Information:', {
+        exchangeRateInfo,
+        fromCurrency: selectedCurrency.code,
+        toCurrency: 'TZS',
+        exchangeRate: exchangeRateInfo?.rate || 1.0,
+        source: exchangeRateInfo?.source || 'manual',
+        date: exchangeRateInfo?.date || new Date().toISOString()
+      });
+      
+      // Calculate order totals for debug
+      const orderTotals = purchaseCartItems.reduce((totals, item) => {
+        const itemTotal = item.quantity * item.costPrice;
+        totals.subtotal += itemTotal;
+        totals.itemsCount += item.quantity;
+        return totals;
+      }, { subtotal: 0, itemsCount: 0 });
+
+      // Debug: Log detailed pricing and quantity information
+      console.log('💰 DEBUG: Detailed Pricing & Quantity Analysis:');
+      purchaseCartItems.forEach((item, index) => {
+        console.log(`📦 Item ${index + 1}:`, {
+          productId: item.productId,
+          productName: item.name,
+          variantId: item.variantId,
+          variantName: item.variantName,
+          sku: item.sku,
+          quantity: item.quantity,
+          costPrice: item.costPrice,
+          totalPrice: item.quantity * item.costPrice,
+          minimumOrderQty: item.minimumOrderQty,
+          currency: selectedCurrency.code,
+          category: item.category
+        });
+      });
+      
+      console.log('📊 DEBUG: Order Totals:', {
+        itemsCount: orderTotals.itemsCount,
+        subtotal: orderTotals.subtotal,
+        currency: selectedCurrency.code,
+        supplierCurrency: selectedSupplier?.currency,
+        paymentTerms: paymentTerms
+      });
+
+      console.log('🔍 DEBUG: Purchase order data breakdown:', {
+        supplierId: purchaseOrderData.supplierId,
+        expectedDelivery: purchaseOrderData.expectedDelivery,
+        notes: purchaseOrderData.notes,
+        status: purchaseOrderData.status,
+        itemsCount: purchaseOrderData.items.length,
+        items: purchaseOrderData.items,
+        hasShippingInfo: !!purchaseOrderData.shippingInfo,
+        shippingInfo: purchaseOrderData.shippingInfo
+      });
+
+      console.log('📋 DEBUG: Order Details Summary:', {
+        orderNumber: orderNumber,
+        supplier: selectedSupplier ? {
+          id: selectedSupplier.id,
+          name: selectedSupplier.name,
+          email: selectedSupplier.email,
+          phone: selectedSupplier.phone
+        } : null,
+        items: purchaseCartItems.map(item => ({
+          id: item.id,
+          name: item.name,
+          variantName: item.variantName,
+          sku: item.sku,
+          quantity: item.quantity,
+          costPrice: item.costPrice,
+          totalPrice: item.quantity * item.costPrice,
+          category: item.category
+        })),
+        totals: {
+          itemsCount: orderTotals.itemsCount,
+          subtotal: orderTotals.subtotal,
+          currency: selectedCurrency.code
+        },
+        delivery: {
+          expectedDelivery: shippingInfo.expectedDelivery,
+          hasShippingInfo: !!purchaseOrderData.shippingInfo
+        },
+        payment: {
+          terms: paymentTerms,
+          status: purchaseOrderStatus
+        }
+      });
+      
       const result = await createPurchaseOrder(purchaseOrderData);
       
+      console.log('🔍 DEBUG: Create purchase order result:', result);
+      
       if (result.ok) {
+        console.log('✅ DEBUG: Purchase order created successfully!');
+        console.log('✅ DEBUG: Created purchase order data:', result.data);
+        
+        // Log complete order details
+        console.log('📄 DEBUG: Complete Order Details:', {
+          orderInfo: {
+            id: result.data.id,
+            orderNumber: result.data.orderNumber,
+            status: result.data.status,
+            createdAt: result.data.createdAt,
+            createdBy: result.data.createdBy
+          },
+          supplier: {
+            id: result.data.supplierId,
+            name: selectedSupplier?.name,
+            email: selectedSupplier?.email,
+            phone: selectedSupplier?.phone
+          },
+          items: result.data.items || [],
+          totals: {
+            totalAmount: result.data.totalAmount,
+            currency: selectedCurrency.code
+          },
+          delivery: {
+            expectedDelivery: result.data.expectedDelivery,
+            estimatedDelivery: result.data.estimatedDelivery
+          },
+          shipping: {
+            trackingNumber: result.data.trackingNumber,
+            shippingStatus: result.data.shippingStatus,
+            shippingNotes: result.data.shippingNotes,
+            shippingInfo: result.data.shippingInfo
+          },
+          notes: result.data.notes
+        });
+        
         toast.success(`Purchase Order ${orderNumber} created successfully!`);
         
+        // Store the created purchase order and show success modal
+        setCreatedPurchaseOrder(result.data);
+        setShowSuccessModal(true);
+        
+        // Clear form data
         setPurchaseCartItems([]);
         setSelectedSupplier(null);
-        setExpectedDelivery('');
+        setShippingInfo(prev => ({ ...prev, expectedDelivery: '' }));
         setPurchaseOrderNotes('');
         setPurchaseOrderStatus('draft');
-        
-        navigate(`/lats/purchase-orders/${result.data?.id || ''}`);
       } else {
+        console.error('❌ DEBUG: Purchase order creation failed:', result);
+        console.error('❌ DEBUG: Error message:', result.message);
         toast.error(result.message || 'Failed to create purchase order');
       }
     } catch (error) {
-      console.error('Error creating purchase order:', error);
+      console.error('❌ DEBUG: Exception during purchase order creation:', error);
+      console.error('❌ DEBUG: Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
       toast.error('Error creating purchase order. Please try again.');
     } finally {
       setIsCreatingPO(false);
     }
-  }, [selectedSupplier, purchaseCartItems, expectedDelivery, paymentTerms, purchaseOrderNotes, purchaseOrderStatus, selectedCurrency, createPurchaseOrder, navigate]);
+  }, [selectedSupplier, purchaseCartItems, shippingInfo.expectedDelivery, exchangeRates, purchaseOrderNotes, purchaseOrderStatus, selectedCurrency, createPurchaseOrder, navigate]);
 
   // Format money helper
-  const formatMoneyDisplay = (amount: number) => formatMoney(amount, selectedCurrency);
+  const formatMoneyDisplay = (amount: number, currency?: Currency) => formatMoney(amount, currency || selectedCurrency);
 
   if (!currentUser) {
     return null;
@@ -528,10 +905,11 @@ const PurchaseOrderPage: React.FC = () => {
         onCreatePurchaseOrder={handleCreatePurchaseOrder}
         onClearCart={handleClearCart}
         onAddSupplier={() => setShowAddSupplierModal(true)}
-        onAddProduct={() => navigate('/lats/add-product')}
-        onViewPurchaseOrders={() => navigate('/lats/purchase-orders')}
+        onAddProduct={() => setShowAddProductModal(true)}
+        onViewPurchaseOrders={() => setShowOrderManagementModal(true)}
         isCreatingPO={isCreatingPO}
         hasSelectedSupplier={!!selectedSupplier}
+        onTestPOFetch={testPurchaseOrderFetch}
       />
 
       <div className="p-4 sm:p-6 pb-20 max-w-full mx-auto space-y-6">
@@ -574,6 +952,37 @@ const PurchaseOrderPage: React.FC = () => {
                     </button>
                   </div>
                 </div>
+
+                {/* Loading and Error States */}
+                {isLoading && (
+                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                      <span className="text-blue-800 font-medium">Loading products...</span>
+                    </div>
+                  </div>
+                )}
+                
+                {error && (
+                  <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <AlertTriangle className="w-5 h-5 text-red-600" />
+                      <span className="text-red-800 font-medium">Error: {error}</span>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Products Status */}
+                {!isLoading && !error && (
+                  <div className="p-4 bg-green-50 border border-green-200 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <CheckCircle className="w-5 h-5 text-green-600" />
+                      <span className="text-green-800 font-medium">
+                        {products.length > 0 ? `${products.length} products loaded` : 'No products found'}
+                      </span>
+                    </div>
+                  </div>
+                )}
 
                 {/* Advanced Filters */}
                 {showAdvancedFilters && (
@@ -676,6 +1085,7 @@ const PurchaseOrderPage: React.FC = () => {
                             primaryColor="orange"
                             actionText="View Details"
                             allowOutOfStockSelection={true}
+                            showCategory={true}
                           />
                         ))}
                       </div>
@@ -698,7 +1108,7 @@ const PurchaseOrderPage: React.FC = () => {
                     </div>
                     {products.length > 0 ? (
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {products.slice(0, 12).map((product) => (
+                        {products.map((product) => (
                           <VariantProductCard
                             key={product.id}
                             product={product}
@@ -707,6 +1117,7 @@ const PurchaseOrderPage: React.FC = () => {
                             primaryColor="orange"
                             actionText="View Details"
                             allowOutOfStockSelection={true}
+                            showCategory={true}
                           />
                         ))}
                       </div>
@@ -763,9 +1174,15 @@ const PurchaseOrderPage: React.FC = () => {
                             <span className="px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-orange-100 to-amber-100 text-orange-700 border border-orange-200">
                               {selectedSupplier.country || 'Unknown Location'}
                             </span>
-                            <span className="flex items-center gap-1 text-xs text-gray-600 bg-white px-2 py-1 rounded-full border border-gray-200">
+                            <span 
+                              className="flex items-center gap-1 text-xs text-gray-600 bg-white px-2 py-1 rounded-full border border-gray-200"
+                              title={`Currency set by supplier: ${selectedSupplier.currency || selectedCurrency.code}`}
+                            >
                               <Coins className="w-3 h-3" />
                               {selectedSupplier.currency || selectedCurrency.code}
+                              {selectedSupplier.currency && (
+                                <span className="text-green-600" title="Auto-set by supplier">✓</span>
+                              )}
                             </span>
                           </div>
                         </div>
@@ -803,35 +1220,7 @@ const PurchaseOrderPage: React.FC = () => {
                 )}
               </div>
 
-              {/* Currency & Settings Section */}
-              {selectedSupplier && (
-                <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Currency</label>
-                      <CurrencySelector
-                        selectedCurrency={selectedCurrency}
-                        onCurrencyChange={setSelectedCurrency}
-                        currencies={SUPPORTED_CURRENCIES}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Payment Terms</label>
-                      <select
-                        value={paymentTerms}
-                        onChange={(e) => setPaymentTerms(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm"
-                      >
-                        {PAYMENT_TERMS.map(term => (
-                          <option key={term.id} value={term.id}>
-                            {term.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              )}
+
 
               {/* Cart Items */}
               <div className="flex-1 overflow-y-auto">
@@ -849,6 +1238,7 @@ const PurchaseOrderPage: React.FC = () => {
                         item={item}
                         index={index}
                         currency={selectedCurrency}
+                        exchangeRates={exchangeRates}
                         isLatest={index === 0}
                         onUpdateQuantity={handleUpdateQuantity}
                         onUpdateCostPrice={handleUpdateCostPrice}
@@ -862,37 +1252,109 @@ const PurchaseOrderPage: React.FC = () => {
               {/* Purchase Order Summary */}
               {purchaseCartItems.length > 0 && (
                 <>
-                  {/* Expected Delivery Date */}
+                  {/* Shipping Information Toggle - Optional */}
                   <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Expected Delivery Date</label>
-                    <input
-                      type="date"
-                      value={expectedDelivery}
-                      onChange={(e) => setExpectedDelivery(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                      min={new Date().toISOString().split('T')[0]}
-                    />
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Shipping Information <span className="text-gray-400 text-xs">(Optional)</span>
+                    </label>
+                    <button
+                      onClick={() => setShowShippingModal(true)}
+                      className="w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-orange-400 hover:bg-orange-50 transition-colors text-left"
+                    >
+                      {shippingInfo.expectedDelivery ? (
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            <Truck className="w-5 h-5 text-orange-500" />
+                            <div>
+                              <div className="font-medium text-gray-900">
+                                Delivery: {new Date(shippingInfo.expectedDelivery).toLocaleDateString()}
+                              </div>
+                              <div className="text-sm text-gray-600">
+                                {shippingInfo.carrier} • {
+                                  shippingInfo.shippingMethod === 'air' ? 'By Air' :
+                                  shippingInfo.shippingMethod === 'sea' ? 'By Sea' :
+                                  'Standard'
+                                }
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-orange-500 text-sm font-medium">Edit</div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center space-x-3 text-gray-500">
+                          <Truck className="w-5 h-5" />
+                          <span className="font-medium">Click to configure shipping (optional)</span>
+                        </div>
+                      )}
+                    </button>
                   </div>
 
+                  {/* Currency & Exchange Rate */}
+                  {selectedSupplier && (
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Currency & Exchange Rate</label>
+                      
+                      {/* Inline Design */}
+                      <div className="flex items-center gap-2 p-2 bg-white border-2 border-gray-200 rounded-lg hover:border-orange-300 focus-within:border-orange-500 transition-all duration-200">
+                        {/* Currency Icon & Code - Display Only */}
+                        <div className="flex-shrink-0 flex items-center gap-2 p-2 bg-gray-100 rounded-md">
+                          <span className="text-lg">{selectedCurrency.flag}</span>
+                          <span className="text-sm font-semibold text-gray-800">{selectedCurrency.code}</span>
+                        </div>
+                        
+                        {/* Divider */}
+                        <div className="w-px h-6 bg-gray-300"></div>
+                        
+                        {/* Exchange Rate Input */}
+                        <div className="flex-1">
+                          <input
+                            type="text"
+                            value={exchangeRates}
+                            onChange={(e) => setExchangeRates(e.target.value)}
+                            placeholder="Rate (e.g., 1 USD = 150 TZS)"
+                            className="w-full border-0 focus:outline-none focus:ring-0 text-base font-bold text-gray-800 placeholder-gray-400 bg-transparent"
+                          />
+                        </div>
+                        
+                        {/* TZS Badge */}
+                        {exchangeRates && selectedCurrency.code !== 'TZS' && (
+                          <div className="flex-shrink-0">
+                            <div className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-md font-medium">
+                              ≈ {parseExchangeRate(exchangeRates)?.toFixed(2) || 'N/A'} TZS
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Purchase Order Summary */}
-                  <div className="mt-6 bg-gradient-to-br from-gray-50 to-orange-50 rounded-xl p-4 border border-gray-200 shadow-sm flex-shrink-0">
+                  <div className="bg-gradient-to-br from-gray-50 to-orange-50 rounded-xl p-4 border border-gray-200 shadow-sm flex-shrink-0">
                     <div className="space-y-3">
                       <div className="flex justify-between items-center">
                         <span className="text-gray-600 font-medium">Subtotal</span>
-                        <span className="font-semibold text-gray-900">{formatMoneyDisplay(subtotal)}</span>
+                        <div className="text-right">
+                          <div className="font-semibold text-gray-900">{formatMoneyDisplay(subtotal)}</div>
+                        </div>
                       </div>
                       
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-600 font-medium">Tax (18%)</span>
-                        <span className="font-semibold text-gray-900">{formatMoneyDisplay(tax)}</span>
-                      </div>
+                      {selectedCurrency.code !== 'TZS' && exchangeRates && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-600 font-medium">Total in TZS</span>
+                          <div className="text-right">
+                            <div className="font-semibold text-green-600">{formatMoneyDisplay(subtotalTZS, { code: 'TZS', name: 'Tanzanian Shilling', symbol: 'TZS', flag: '🇹🇿' })}</div>
+                          </div>
+                        </div>
+                      )}
                       
                       <div className="border-t-2 border-gray-300 pt-3">
                         <div className="flex justify-between items-center">
                           <span className="text-lg font-bold text-gray-900">Total Amount</span>
-                          <span className="text-xl font-bold text-orange-600">
-                            {formatMoneyDisplay(totalAmount)}
-                          </span>
+                          <div className="text-right">
+                            <div className="text-xl font-bold text-orange-600">
+                              {formatMoneyDisplay(totalAmount)}
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -905,7 +1367,7 @@ const PurchaseOrderPage: React.FC = () => {
                       onClick={handleCreatePurchaseOrder}
                       icon={isCreatingPO ? <RefreshCw size={20} className="animate-spin" /> : <CheckCircle size={20} />}
                       className="w-full h-16 bg-gradient-to-r from-orange-500 to-amber-600 text-white text-lg font-bold"
-                      disabled={!selectedSupplier || purchaseCartItems.length === 0 || !expectedDelivery || isCreatingPO}
+                      disabled={!selectedSupplier || purchaseCartItems.length === 0 || isCreatingPO}
                     >
                       {isCreatingPO ? 'Creating...' : 'Create PO'}
                     </GlassButton>
@@ -927,6 +1389,19 @@ const PurchaseOrderPage: React.FC = () => {
         />
       )}
 
+      {/* Shipping Configuration Modal */}
+      {showShippingModal && (
+        <ShippingConfigurationModal
+          isOpen={showShippingModal}
+          onClose={() => setShowShippingModal(false)}
+          onSave={handleSaveShippingInfo}
+          initialData={shippingInfo}
+          exchangeRate={exchangeRateInfo?.rate || 1.0}
+          baseCurrency="TZS"
+          purchaseOrderCurrency={selectedCurrency.code}
+        />
+      )}
+
       {/* Draft Management Modal */}
       {showDraftModal && (
         <PurchaseOrderDraftModal
@@ -936,7 +1411,7 @@ const PurchaseOrderPage: React.FC = () => {
           supplier={selectedSupplier}
           currency={selectedCurrency}
           expectedDelivery={expectedDelivery}
-          paymentTerms={paymentTerms}
+          exchangeRates={exchangeRates}
           notes={purchaseOrderNotes}
         />
       )}
@@ -950,6 +1425,16 @@ const PurchaseOrderPage: React.FC = () => {
         />
       )}
 
+      {/* Add Product Modal */}
+      {showAddProductModal && (
+        <AddProductModal
+          isOpen={showAddProductModal}
+          onClose={() => setShowAddProductModal(false)}
+          onProductAdded={handleProductCreated}
+          currency={selectedCurrency}
+        />
+      )}
+
       {/* Product Detail Modal */}
       {showProductDetailModal && selectedProductForModal && (
         <ProductDetailModal
@@ -960,16 +1445,60 @@ const PurchaseOrderPage: React.FC = () => {
           }}
           product={selectedProductForModal}
           currency={selectedCurrency}
-          suppliers={suppliers}
-          selectedSupplier={selectedSupplier}
           onAddToCart={handleAddToPurchaseCart}
-          onSupplierChange={(supplier) => {
-            if (supplier) {
-              setSelectedSupplier(supplier);
-            }
+        />
+      )}
+
+      {/* Purchase Order Success Modal */}
+      {showSuccessModal && createdPurchaseOrder && (
+        <PurchaseOrderSuccessModal
+          isOpen={showSuccessModal}
+          onClose={() => setShowSuccessModal(false)}
+          purchaseOrder={createdPurchaseOrder}
+          onViewOrder={() => {
+            setShowSuccessModal(false);
+            navigate(`/lats/purchase-orders/${createdPurchaseOrder.id}`);
+          }}
+          onEditOrder={() => {
+            setShowSuccessModal(false);
+            navigate(`/lats/purchase-orders/${createdPurchaseOrder.id}/edit`);
+          }}
+          onPrintOrder={() => {
+            // TODO: Implement print functionality
+            console.log('Print purchase order:', createdPurchaseOrder.id);
+          }}
+          onSendToSupplier={() => {
+            // TODO: Implement send to supplier functionality
+            console.log('Send to supplier:', createdPurchaseOrder.id);
+          }}
+          onDownloadPDF={() => {
+            // TODO: Implement PDF download functionality
+            console.log('Download PDF:', createdPurchaseOrder.id);
+          }}
+          onCopyOrderNumber={() => {
+            navigator.clipboard.writeText(createdPurchaseOrder.orderNumber);
+            toast.success('Order number copied to clipboard!');
+          }}
+          onShareOrder={() => {
+            // TODO: Implement share functionality
+            console.log('Share order:', createdPurchaseOrder.id);
+          }}
+          onGoToOrders={() => {
+            setShowSuccessModal(false);
+            navigate('/lats/purchase-orders');
+          }}
+          onCreateAnother={() => {
+            setShowSuccessModal(false);
+            // Form is already cleared, user can create another PO
           }}
         />
       )}
+
+      {/* Order Management Modal */}
+      <OrderManagementModal
+        isOpen={showOrderManagementModal}
+        onClose={() => setShowOrderManagementModal(false)}
+      />
     </div>
   );
 };

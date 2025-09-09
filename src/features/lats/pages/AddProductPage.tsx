@@ -5,17 +5,19 @@ import GlassCard from '../../shared/components/ui/GlassCard';
 import GlassButton from '../../shared/components/ui/GlassButton';
 import { BackButton } from '../../shared/components/ui/BackButton';
 import { toast } from 'react-hot-toast';
-import { Save, ArrowLeft, MapPin, Store, X, Plus, Check, Layers, Palette, HardDrive, Zap, Cpu, Monitor, Battery, Camera, Ruler, FileText, Clock } from 'lucide-react';
+import { Save, ArrowLeft, MapPin, Store, X, Plus, Check, Layers, Palette, HardDrive, Zap, Cpu, Monitor, Battery, Camera, Ruler, FileText, Clock, Hand, Unplug, RotateCcw, Lightbulb, Fingerprint, ScanFace, Droplets, Wind, BatteryCharging, FastForward, PhoneCall, Expand, Radio, Navigation, Headphones, PenTool, Shield, Lock, Vibrate, Usb, Cable, Speaker, Mic } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useAuth } from '../../../context/AuthContext';
 import { retryWithBackoff } from '../../../lib/supabaseClient';
 
-import { getActiveCategories, Category } from '../../../lib/categoryApi';
-import { getActiveSuppliers, Supplier } from '../../../lib/supplierApi';
+import { Category } from '../../../lib/categoryApi';
+import { useInventoryStore } from '../stores/useInventoryStore';
+
 import { StoreLocation } from '../../settings/types/storeLocation';
 import { storeLocationApi } from '../../settings/utils/storeLocationApi';
 import { generateSKU } from '../lib/skuUtils';
 import { duplicateProduct, generateProductReport, exportProductData } from '../lib/productUtils';
+import { validateAndCreateDefaultVariant } from '../lib/variantUtils';
 
 // Extracted components
 import ProductInformationForm from '../components/product/ProductInformationForm';
@@ -63,11 +65,21 @@ const ProductImageSchema = z.object({
 const productFormSchema = z.object({
   name: z.string().min(1, 'Product name must be provided').max(100, 'Product name must be less than 100 characters'),
   description: z.string().max(200, 'Description must be less than 200 characters').optional(),
-  specification: z.string().max(1000, 'Specification must be less than 1000 characters').optional(),
+  specification: z.string().max(1000, 'Specification must be less than 1000 characters').optional().refine((val) => {
+    if (!val) return true; // Allow empty strings
+    try {
+      JSON.parse(val);
+      return true;
+    } catch {
+      return false;
+    }
+  }, {
+    message: "Specification must be valid JSON"
+  }),
   sku: z.string().max(50, 'SKU must be less than 50 characters').optional(),
   categoryId: z.string().min(1, 'Category must be selected'),
 
-  supplierId: z.string().optional(),
+
   condition: z.enum(['new', 'used', 'refurbished'], {
     errorMap: () => ({ message: 'Please select a condition' })
   }),
@@ -90,8 +102,8 @@ type ProductImage = z.infer<typeof ProductImageSchema>;
 
 const AddProductPageOptimized: React.FC = () => {
   const navigate = useNavigate();
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const { categories, loadCategories } = useInventoryStore();
+
   const [storeLocations, setStoreLocations] = useState<StoreLocation[]>([]);
   const [currentErrors, setCurrentErrors] = useState<Record<string, string>>({});
 
@@ -107,8 +119,8 @@ const AddProductPageOptimized: React.FC = () => {
   const [formData, setFormData] = useState({
     name: '',
     sku: generateAutoSKU(),
-    categoryId: '',
-    supplierId: '',
+    categoryId: null,
+
     condition: '',
     description: '',
     specification: '',
@@ -192,8 +204,8 @@ const AddProductPageOptimized: React.FC = () => {
     setFormData({
       name: '',
       sku: generateAutoSKU(),
-      categoryId: '',
-      supplierId: '',
+      categoryId: null,
+  
       condition: '',
       description: '',
       specification: '',
@@ -295,7 +307,7 @@ const AddProductPageOptimized: React.FC = () => {
         setVariants(parsed.variants || []);
         setUseVariants(parsed.useVariants || false);
         setLastDraftSave(new Date(parsed.savedAt));
-        toast.success('Draft restored successfully!');
+        // toast.success('Draft restored successfully!'); // Disabled popup notification
         return true;
       }
     } catch (error) {
@@ -319,15 +331,15 @@ const AddProductPageOptimized: React.FC = () => {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [categoriesData, locationsData, suppliersData] = await Promise.all([
-          getActiveCategories(),
-          storeLocationApi.getAll(),
-          getActiveSuppliers()
+        const [locationsData] = await Promise.all([
+          storeLocationApi.getAll()
         ]);
 
-        setCategories(categoriesData || []);
+        // Load ALL categories using inventory store
+        await loadCategories();
+
+        
         setStoreLocations(locationsData || []);
-        setSuppliers(suppliersData || []);
 
         // Try to load draft after data is loaded
         loadDraft();
@@ -338,7 +350,7 @@ const AddProductPageOptimized: React.FC = () => {
     };
 
     loadData();
-  }, [loadDraft]);
+  }, [loadDraft, loadCategories]);
 
   // Auto-save draft when form data changes
   useEffect(() => {
@@ -376,32 +388,33 @@ const AddProductPageOptimized: React.FC = () => {
           
           // Only restore if draft is less than 24 hours old
           if (hoursSinceDraft < 24) {
-            // Show toast asking if user wants to restore draft
-            toast((t) => (
-              <div className="flex flex-col gap-2">
-                <span>Found a saved draft from {new Date(parsed.savedAt).toLocaleDateString()}</span>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      loadDraft();
-                      toast.dismiss(t.id);
-                    }}
-                    className="px-3 py-1 bg-blue-600 text-white rounded text-sm"
-                  >
-                    Restore Draft
-                  </button>
-                  <button
-                    onClick={() => {
-                      clearDraft();
-                      toast.dismiss(t.id);
-                    }}
-                    className="px-3 py-1 bg-gray-400 text-white rounded text-sm"
-                  >
-                    Discard
-                  </button>
-                </div>
-              </div>
-            ), { duration: 10000 });
+            // Auto-restore draft silently without showing popup
+            loadDraft();
+            // toast((t) => (
+            //   <div className="flex flex-col gap-2">
+            //     <span>Found a saved draft from {new Date(parsed.savedAt).toLocaleDateString()}</span>
+            //     <div className="flex gap-2">
+            //       <button
+            //         onClick={() => {
+            //           loadDraft();
+            //           toast.dismiss(t.id);
+            //         }}
+            //         className="px-3 py-1 bg-blue-600 text-white rounded text-sm"
+            //       >
+            //         Restore Draft
+            //       </button>
+            //       <button
+            //         onClick={() => {
+            //           clearDraft();
+            //           toast.dismiss(t.id);
+            //         }}
+            //         className="px-3 py-1 bg-gray-400 text-white rounded text-sm"
+            //       >
+            //         Discard
+            //       </button>
+            //     </div>
+            //   </div>
+            // ), { duration: 10000 });
           } else {
             // Clear old draft
             clearDraft();
@@ -520,7 +533,7 @@ const AddProductPageOptimized: React.FC = () => {
         sku: finalSku,
         category_id: formData.categoryId || null,
 
-        supplier_id: formData.supplierId || null,
+
         condition: formData.condition || 'new',
         // Only set these fields if NOT using variants
         cost_price: useVariants ? 0 : (formData.costPrice || 0),
@@ -632,31 +645,52 @@ const AddProductPageOptimized: React.FC = () => {
             }
           }));
         } else {
-          // Create a default variant with the main product data
+          // No variants provided - create a default variant automatically using utility
           console.log('🔍 DEBUG: Creating default variant for product:', createdProduct.id);
           
-          variantsToCreate = [{
-            product_id: createdProduct.id,
-            sku: formData.sku || `SKU-${Date.now()}`,
-            name: 'Default Variant',
-            cost_price: formData.costPrice || 0,
-            selling_price: formData.price || 0,
-            quantity: formData.stockQuantity || 0,
-            min_quantity: formData.minStockLevel || 0,
-            attributes: {
-              specification: formData.specification || null
+          const defaultVariantResult = await validateAndCreateDefaultVariant(
+            createdProduct.id,
+            createdProduct.name,
+            {
+              costPrice: formData.costPrice,
+              sellingPrice: formData.price,
+              quantity: formData.stockQuantity,
+              minQuantity: formData.minStockLevel,
+              // Don't pass sku to avoid duplicate SKU constraint violation
+              // The variant will generate its own unique SKU
+              attributes: {
+                specification: formData.specification || null
+              }
             }
-          }];
+          );
+
+          if (!defaultVariantResult.success) {
+            console.error('❌ Failed to create default variant:', defaultVariantResult.error);
+            toast.error(`Failed to create default variant: ${defaultVariantResult.error}`);
+            return;
+          }
+          
+          console.log('✅ Default variant created successfully');
+          // Skip the manual variant creation since it's already done
+          variantsToCreate = [];
         }
 
         console.log('🔍 DEBUG: Variant data to insert:', variantsToCreate);
 
-        const { data: createdVariants, error: variantError } = await retryWithBackoff(async () => {
-          return await supabase!
-            .from('lats_product_variants')
-            .insert(variantsToCreate)
-            .select();
-        });
+        // Only insert variants if there are any to insert (skip if default variant was already created)
+        let createdVariants = null;
+        let variantError = null;
+        
+        if (variantsToCreate.length > 0) {
+          const result = await retryWithBackoff(async () => {
+            return await supabase!
+              .from('lats_product_variants')
+              .insert(variantsToCreate)
+              .select();
+          });
+          createdVariants = result.data;
+          variantError = result.error;
+        }
 
         if (variantError) {
           console.error('Error creating variants:', variantError);
@@ -742,6 +776,17 @@ const AddProductPageOptimized: React.FC = () => {
     setFormData(prev => ({ ...prev, specification: JSON.stringify(newSpecs) }));
   };
 
+  // Toggle feature specification (Yes/No)
+  const toggleFeatureSpecification = (featureKey: string) => {
+    const currentSpecs = formData.specification ? JSON.parse(formData.specification) : {};
+    const currentValue = currentSpecs[featureKey];
+    const isEnabled = currentValue === 'Yes' || currentValue === 'true' || currentValue === true;
+    
+    const newValue = isEnabled ? 'No' : 'Yes';
+    const newSpecs = { ...currentSpecs, [featureKey]: newValue };
+    setFormData(prev => ({ ...prev, specification: JSON.stringify(newSpecs) }));
+  };
+
   // Handle custom attribute submission for product
   const handleProductCustomAttributeSubmit = () => {
     if (productCustomAttributeInput.trim()) {
@@ -814,7 +859,7 @@ const AddProductPageOptimized: React.FC = () => {
               formData={formData}
               setFormData={setFormData}
               categories={categories}
-              suppliers={suppliers}
+
               currentErrors={currentErrors}
               isCheckingName={isCheckingName}
               nameExists={nameExists}
@@ -1136,35 +1181,129 @@ const AddProductPageOptimized: React.FC = () => {
                     Add Specifications
                   </h3>
                   
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                    {[
-                      { name: 'Color', icon: Palette },
-                      { name: 'Storage', icon: HardDrive },
-                      { name: 'RAM', icon: Zap },
-                      { name: 'Processor', icon: Cpu },
-                      { name: 'Screen Size', icon: Monitor },
-                      { name: 'Battery', icon: Battery },
-                      { name: 'Camera', icon: Camera },
-                      { name: 'Weight', icon: Ruler }
-                    ].map((spec) => (
-                      <button 
-                        key={spec.name}
-                        type="button" 
-                        onClick={() => addAttributeToProduct(spec.name.toLowerCase().replace(/\s+/g, '_'))} 
-                        className="flex items-center gap-3 p-3 bg-white border border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors"
-                      >
-                        <spec.icon className="w-5 h-5 text-gray-600" />
-                        <span className="text-sm font-medium text-gray-700">{spec.name}</span>
-                      </button>
-                    ))}
-                    
+                  {/* Basic Specifications */}
+                  <div className="mb-6">
+                    <h4 className="text-sm font-medium text-gray-700 mb-3">Basic Specifications</h4>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                      {[
+                        { name: 'Color', icon: Palette },
+                        { name: 'Storage', icon: HardDrive },
+                        { name: 'RAM', icon: Zap },
+                        { name: 'Processor', icon: Cpu },
+                        { name: 'Screen Size', icon: Monitor },
+                        { name: 'Battery', icon: Battery },
+                        { name: 'Camera', icon: Camera },
+                        { name: 'Weight', icon: Ruler }
+                      ].map((spec) => (
+                        <button 
+                          key={spec.name}
+                          type="button" 
+                          onClick={() => addAttributeToProduct(spec.name.toLowerCase().replace(/\s+/g, '_'))} 
+                          className="flex items-center gap-3 p-3 bg-white border border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors"
+                        >
+                          <spec.icon className="w-5 h-5 text-gray-600" />
+                          <span className="text-sm font-medium text-gray-700">{spec.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Feature Specifications (Yes/No) */}
+                  <div className="mb-6">
+                    <h4 className="text-sm font-medium text-gray-700 mb-3">Device Features (Click to toggle Yes/No)</h4>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                      {[
+                        // Display Features
+                        { name: 'Touch Screen', key: 'touch', icon: Hand },
+                        { name: 'OLED Display', key: 'oled_display', icon: Monitor },
+                        { name: 'HDR Support', key: 'hdr_support', icon: Monitor },
+                        { name: 'High Refresh Rate', key: 'high_refresh_rate', icon: RotateCcw },
+                        
+                        // Input Features  
+                        { name: 'Detachable Keyboard', key: 'detachable', icon: Unplug },
+                        { name: 'Convertible (2-in-1)', key: 'convertible', icon: RotateCcw },
+                        { name: 'Backlit Keyboard', key: 'backlit_keyboard', icon: Lightbulb },
+                        { name: 'Stylus Support', key: 'stylus_support', icon: PenTool },
+                        { name: 'Haptic Feedback', key: 'haptic_feedback', icon: Vibrate },
+                        
+                        // Security Features
+                        { name: 'Fingerprint Scanner', key: 'fingerprint_scanner', icon: Fingerprint },
+                        { name: 'Face Recognition', key: 'face_id', icon: ScanFace },
+                        { name: 'Security Chip', key: 'security_chip', icon: Shield },
+                        { name: 'Encryption', key: 'encryption', icon: Lock },
+                        
+                        // Durability Features
+                        { name: 'Waterproof', key: 'waterproof', icon: Droplets },
+                        { name: 'Dust Resistant', key: 'dust_resistant', icon: Wind },
+                        { name: 'Drop Resistant', key: 'drop_resistant', icon: Shield },
+                        { name: 'Scratch Resistant', key: 'scratch_resistant', icon: Shield },
+                        
+                        // Charging & Battery
+                        { name: 'Wireless Charging', key: 'wireless_charging', icon: BatteryCharging },
+                        { name: 'Fast Charging', key: 'fast_charging', icon: FastForward },
+                        { name: 'Reverse Charging', key: 'reverse_charging', icon: BatteryCharging },
+                        { name: 'Removable Battery', key: 'removable_battery', icon: Battery },
+                        
+                        // Connectivity
+                        { name: 'Dual SIM', key: 'dual_sim', icon: PhoneCall },
+                        { name: 'eSIM Support', key: 'esim_support', icon: PhoneCall },
+                        { name: 'NFC', key: 'nfc', icon: Radio },
+                        { name: 'GPS', key: 'gps', icon: Navigation },
+                        { name: '5G Support', key: '5g_support', icon: Radio },
+                        { name: 'Wi-Fi 6', key: 'wifi_6', icon: Radio },
+                        
+                        // Audio Features
+                        { name: 'Headphone Jack', key: 'headphone_jack', icon: Headphones },
+                        { name: 'Stereo Speakers', key: 'stereo_speakers', icon: Speaker },
+                        { name: 'Noise Cancellation', key: 'noise_cancellation', icon: Mic },
+                        
+                        // Storage & Expansion
+                        { name: 'Expandable Storage', key: 'expandable_storage', icon: Expand },
+                        { name: 'Cloud Storage', key: 'cloud_storage', icon: Expand },
+                        
+                        // Ports & Connectors
+                        { name: 'USB-C Port', key: 'usb_c_port', icon: Usb },
+                        { name: 'Thunderbolt', key: 'thunderbolt', icon: Cable },
+                        { name: 'HDMI Port', key: 'hdmi_port', icon: Cable },
+                        { name: 'SD Card Slot', key: 'sd_card_slot', icon: Expand }
+                      ].map((feature) => {
+                        const currentSpecs = formData.specification ? JSON.parse(formData.specification) : {};
+                        const isEnabled = currentSpecs[feature.key] === 'Yes' || currentSpecs[feature.key] === 'true' || currentSpecs[feature.key] === true;
+                        
+                        return (
+                          <button 
+                            key={feature.key}
+                            type="button" 
+                            onClick={() => toggleFeatureSpecification(feature.key)}
+                            className={`flex items-center gap-2 p-3 border rounded-lg transition-all duration-200 ${
+                              isEnabled 
+                                ? 'bg-green-50 border-green-300 text-green-800 shadow-sm' 
+                                : 'bg-white border-gray-300 text-gray-700 hover:border-blue-500 hover:bg-blue-50'
+                            }`}
+                          >
+                            <feature.icon className="w-4 h-4 flex-shrink-0" />
+                            <div className="flex-1 text-left min-w-0">
+                              <div className="text-sm font-medium truncate">{feature.name}</div>
+                              <div className={`text-xs ${isEnabled ? 'text-green-600' : 'text-gray-500'}`}>
+                                {isEnabled ? '✓ Enabled' : 'Click to enable'}
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Custom Specification */}
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-700 mb-3">Custom Specification</h4>
                     <button 
                       type="button" 
                       onClick={() => { setShowProductCustomInput(true); setProductCustomAttributeInput(''); }} 
-                      className="flex items-center gap-3 p-3 bg-white border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors"
+                      className="flex items-center gap-3 p-3 bg-white border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors w-full"
                     >
                       <Plus className="w-5 h-5 text-gray-600" />
-                      <span className="text-sm font-medium text-gray-700">Custom</span>
+                      <span className="text-sm font-medium text-gray-700">Add Custom Specification</span>
                     </button>
                   </div>
                 </div>

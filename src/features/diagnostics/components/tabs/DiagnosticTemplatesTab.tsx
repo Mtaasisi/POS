@@ -72,7 +72,7 @@ const DiagnosticTemplatesTab: React.FC = () => {
           <p className="text-gray-600">Manage reusable diagnostic templates</p>
         </div>
         <GlassButton
-          onClick={() => toast.info('Create template functionality coming soon...')}
+          onClick={() => toast('Create template functionality coming soon...')}
           className="bg-blue-500 hover:bg-blue-600 text-white"
         >
           <Plus className="w-4 h-4 mr-2" />
@@ -99,13 +99,13 @@ const DiagnosticTemplatesTab: React.FC = () => {
                 </div>
                 <div className="flex space-x-2">
                   <button
-                    onClick={() => toast.info('Edit template functionality coming soon...')}
+                    onClick={() => toast('Edit template functionality coming soon...')}
                     className="text-blue-500 hover:text-blue-700"
                   >
                     <Edit className="w-4 h-4" />
                   </button>
                   <button
-                    onClick={() => toast.info('Delete template functionality coming soon...')}
+                    onClick={() => toast('Delete template functionality coming soon...')}
                     className="text-red-500 hover:text-red-700"
                   >
                     <Trash2 className="w-4 h-4" />

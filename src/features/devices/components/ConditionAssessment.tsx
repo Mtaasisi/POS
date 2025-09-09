@@ -118,7 +118,7 @@ const ConditionAssessment: React.FC<ConditionAssessmentProps> = ({
 
   const filteredIssues = COMMON_ISSUES.filter(issue => 
     issue.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    issue.category.toLowerCase().includes(searchQuery.toLowerCase())
+    (issue.category && issue.category.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   const getSelectedCount = () => {

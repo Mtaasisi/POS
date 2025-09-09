@@ -37,27 +37,35 @@ const CategoryInput: React.FC<CategoryInputProps> = ({
     const categoryMap = new Map<string, Category>();
     const rootCategories: Category[] = [];
 
-    // First pass: create map of all categories
-    cats.forEach(cat => {
-      categoryMap.set(cat.id, { ...cat, children: [] });
-    });
+    try {
+      // First pass: create map of all categories
+      cats.forEach(cat => {
+        categoryMap.set(cat.id, { ...cat, children: [] });
+      });
 
-    // Second pass: build tree structure
-    cats.forEach(cat => {
-      const categoryWithChildren = categoryMap.get(cat.id)!;
-      if (cat.parent_id && categoryMap.has(cat.parent_id)) {
-        const parent = categoryMap.get(cat.parent_id)!;
-        parent.children = parent.children || [];
-        parent.children.push(categoryWithChildren);
-      } else {
-        rootCategories.push(categoryWithChildren);
-      }
-    });
+      // Second pass: build tree structure
+      cats.forEach(cat => {
+        const categoryWithChildren = categoryMap.get(cat.id)!;
+        if (cat.parentId && categoryMap.has(cat.parentId)) {
+          const parent = categoryMap.get(cat.parentId)!;
+          parent.children = parent.children || [];
+          parent.children.push(categoryWithChildren);
+        } else {
+          rootCategories.push(categoryWithChildren);
+        }
+      });
+
+      console.log('🌳 CategoryInput: Built tree with', rootCategories.length, 'root categories');
+    } catch (error) {
+      console.error('❌ CategoryInput: Error building category tree:', error);
+      console.error('❌ CategoryInput: Categories data:', cats);
+    }
 
     return rootCategories;
   };
 
   const categoryTree = buildCategoryTree(categories);
+  console.log('🌳 CategoryInput: Built tree with', categoryTree.length, 'root categories');
 
   // Handle input change and search
   const handleInputChange = (inputValue: string) => {

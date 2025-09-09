@@ -390,21 +390,16 @@ class LatsAnalyticsService {
           customers: { current: currentCustomers, previous: previousCustomers, growth: customerGrowth },
           orders: { current: currentOrders, previous: previousOrders, growth: orderGrowth },
           avgOrderValue: { current: avgOrderValue, previous: previousAvgOrderValue, growth: avgOrderGrowth },
-          conversionRate: { current: 78.5, previous: 75.2, growth: 4.39 } // Placeholder
+          conversionRate: { current: 0, previous: 0, growth: 0 } // TODO: Calculate from real data
         },
         trends: {
           revenue: revenueTrend,
-          customers: revenueTrend.map(item => ({ month: item.month, new: Math.floor(Math.random() * 50) + 20, returning: Math.floor(Math.random() * 100) + 50 }))
+          customers: revenueTrend.map(item => ({ month: item.month, new: 0, returning: 0 })) // TODO: Calculate from real customer data
         },
         segments: {
           customerSegments,
           productCategories: categoryPerformance,
-          geographicData: [
-            { region: 'Nairobi', revenue: currentRevenue * 0.53, customers: currentCustomers * 0.6, percentage: 53 },
-            { region: 'Mombasa', revenue: currentRevenue * 0.21, customers: currentCustomers * 0.24, percentage: 21 },
-            { region: 'Kisumu', revenue: currentRevenue * 0.14, customers: currentCustomers * 0.12, percentage: 14 },
-            { region: 'Other', revenue: currentRevenue * 0.12, customers: currentCustomers * 0.04, percentage: 12 }
-          ]
+          geographicData: [] // TODO: Calculate from real customer location data
         },
         performance: {
           topProducts,

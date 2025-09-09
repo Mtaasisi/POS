@@ -74,7 +74,7 @@ const DraftManagementModal: React.FC<DraftManagementModalProps> = ({
 
   const getTotalValue = (cartItems: any[]) => {
     return cartItems.reduce((total, item) => {
-      const price = item.price || item.variants?.[0]?.price || 0;
+      const price = item.unitPrice || item.variants?.[0]?.price || 0;
       const quantity = item.quantity || 1;
       return total + (price * quantity);
     }, 0);

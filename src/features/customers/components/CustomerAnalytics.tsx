@@ -53,6 +53,7 @@ const CustomerAnalytics: React.FC<CustomerAnalyticsProps> = ({ customer, devices
     
     // Calculate device diversity
     const uniqueBrands = new Set(devices.map(d => d.brand)).size;
+    const deviceDiversity = `${uniqueBrands} brands`;
 
     
     // Calculate repair frequency
@@ -116,7 +117,7 @@ const CustomerAnalytics: React.FC<CustomerAnalyticsProps> = ({ customer, devices
         value: deviceDiversity,
         icon: <Users size={20} />,
         color: 'text-indigo-600',
-  
+        trend: uniqueBrands > 1 ? 'up' as const : 'neutral' as const
       },
       {
         label: 'Repair Frequency',

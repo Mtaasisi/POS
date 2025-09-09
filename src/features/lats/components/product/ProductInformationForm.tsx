@@ -1,6 +1,12 @@
 import React, { useState } from 'react';
 import { Package, Hash, FileText, Check, DollarSign } from 'lucide-react';
 import CategoryInput from '@/features/shared/components/ui/CategoryInput';
+import AIDescriptionGenerator from './AIDescriptionGenerator';
+import { 
+  formatSpecificationValue, 
+  parseSpecification, 
+  getSpecificationCount 
+} from '../../lib/specificationUtils';
 
 interface ProductInformationFormProps {
   formData: {
@@ -30,128 +36,6 @@ const ProductInformationForm: React.FC<ProductInformationFormProps> = ({
   onSpecificationsClick
 }) => {
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
-  
-  const formatSpecificationValue = (key: string, value: string) => {
-    const lowerKey = key.toLowerCase();
-    const lowerValue = value.toLowerCase();
-    
-    // Storage related
-    if (lowerKey.includes('storage') || lowerKey.includes('capacity') || lowerKey.includes('disk')) {
-      if (lowerValue.includes('gb') || lowerValue.includes('gigabyte')) {
-        return value;
-      }
-      if (lowerValue.includes('tb') || lowerValue.includes('terabyte')) {
-        return value;
-      }
-      if (lowerValue.includes('mb') || lowerValue.includes('megabyte')) {
-        return value;
-      }
-      // If it's just a number, assume GB
-      if (/^\d+$/.test(value)) {
-        return `${value} GB`;
-      }
-    }
-    
-    // RAM/Memory related
-    if (lowerKey.includes('ram') || lowerKey.includes('memory') || lowerKey.includes('ddr')) {
-      if (lowerValue.includes('gb') || lowerValue.includes('gigabyte')) {
-        return value;
-      }
-      if (lowerValue.includes('mb') || lowerValue.includes('megabyte')) {
-        return value;
-      }
-      // If it's just a number, assume GB
-      if (/^\d+$/.test(value)) {
-        return `${value} GB`;
-      }
-    }
-    
-    // Screen/Display related
-    if (lowerKey.includes('screen') || lowerKey.includes('display') || lowerKey.includes('monitor') || lowerKey.includes('size')) {
-      if (lowerValue.includes('inch') || lowerValue.includes('"') || lowerValue.includes('in')) {
-        return value;
-      }
-      // If it's just a number, assume inches
-      if (/^\d+(\.\d+)?$/.test(value)) {
-        return `${value}"`;
-      }
-    }
-    
-    // Weight related
-    if (lowerKey.includes('weight') || lowerKey.includes('mass')) {
-      if (lowerValue.includes('kg') || lowerValue.includes('kilogram')) {
-        return value;
-      }
-      if (lowerValue.includes('g') || lowerValue.includes('gram')) {
-        return value;
-      }
-      if (lowerValue.includes('lb') || lowerValue.includes('pound')) {
-        return value;
-      }
-      // If it's just a number, assume kg
-      if (/^\d+(\.\d+)?$/.test(value)) {
-        return `${value} kg`;
-      }
-    }
-    
-    // Battery related
-    if (lowerKey.includes('battery') || lowerKey.includes('mah')) {
-      if (lowerValue.includes('mah') || lowerValue.includes('milliampere')) {
-        return value;
-      }
-      if (lowerValue.includes('wh') || lowerValue.includes('watt')) {
-        return value;
-      }
-      // If it's just a number, assume mAh
-      if (/^\d+$/.test(value)) {
-        return `${value} mAh`;
-      }
-    }
-    
-    // Processor/CPU related
-    if (lowerKey.includes('processor') || lowerKey.includes('cpu') || lowerKey.includes('ghz')) {
-      if (lowerValue.includes('ghz') || lowerValue.includes('gigahertz')) {
-        return value;
-      }
-      if (lowerValue.includes('mhz') || lowerValue.includes('megahertz')) {
-        return value;
-      }
-      // If it's just a number, assume GHz
-      if (/^\d+(\.\d+)?$/.test(value)) {
-        return `${value} GHz`;
-      }
-    }
-    
-    // Resolution related
-    if (lowerKey.includes('resolution') || lowerKey.includes('pixel') || lowerKey.includes('hd')) {
-      if (lowerValue.includes('p') || lowerValue.includes('pixel')) {
-        return value;
-      }
-      if (lowerValue.includes('x') && /^\d+x\d+$/.test(value)) {
-        return value;
-      }
-    }
-    
-    // Dimensions related
-    if (lowerKey.includes('dimension') || lowerKey.includes('length') || lowerKey.includes('width') || lowerKey.includes('height')) {
-      if (lowerValue.includes('cm') || lowerValue.includes('centimeter')) {
-        return value;
-      }
-      if (lowerValue.includes('mm') || lowerValue.includes('millimeter')) {
-        return value;
-      }
-      if (lowerValue.includes('inch') || lowerValue.includes('"') || lowerValue.includes('in')) {
-        return value;
-      }
-      // If it's just a number, assume cm
-      if (/^\d+(\.\d+)?$/.test(value)) {
-        return `${value} cm`;
-      }
-    }
-    
-    // Return original value if no formatting applies
-    return value;
-  };
   
   return (
     <div className="border-b border-gray-200 pb-6">
@@ -358,6 +242,17 @@ const ProductInformationForm: React.FC<ProductInformationFormProps> = ({
               {formData.description.length}/500 characters
             </p>
           )}
+          
+          {/* AI Description Generator */}
+          <div className="mt-4">
+            <AIDescriptionGenerator
+              productName={formData.name}
+              categoryName={categories.find(c => c.id === formData.categoryId)?.name}
+              currentDescription={formData.description}
+              onDescriptionGenerated={(description) => setFormData(prev => ({ ...prev, description }))}
+              disabled={!formData.name.trim()}
+            />
+          </div>
         </div>
 
         {/* Specification */}
@@ -393,37 +288,22 @@ const ProductInformationForm: React.FC<ProductInformationFormProps> = ({
                     <div className="mt-2">
                       <div className="grid grid-cols-2 gap-2 max-h-16 overflow-y-auto">
                         {(() => {
-                          try {
-                            const specs = JSON.parse(formData.specification);
-                            return Object.entries(specs).slice(0, 4).map(([key, value]) => (
-                              <div key={key} className="bg-blue-50 border border-blue-200 rounded-lg px-2 py-1">
-                                <div className="text-xs font-medium text-blue-800 truncate">{key}</div>
-                                <div className="text-xs text-blue-600 truncate">{formatSpecificationValue(key, String(value))}</div>
-                              </div>
-                            ));
-                          } catch {
-                            return (
-                              <div className="text-sm text-gray-600">
-                                {formData.specification.length > 50 
-                                  ? `${formData.specification.substring(0, 50)}...`
-                                  : formData.specification
-                                }
-                              </div>
-                            );
-                          }
+                          const specs = parseSpecification(formData.specification);
+                          return Object.entries(specs).slice(0, 4).map(([key, value]) => (
+                            <div key={key} className="bg-blue-50 border border-blue-200 rounded-lg px-2 py-1">
+                              <div className="text-xs font-medium text-blue-800 truncate">{key.replace(/_/g, ' ')}</div>
+                              <div className="text-xs text-blue-600 truncate">{formatSpecificationValue(key, value)}</div>
+                            </div>
+                          ));
                         })()}
                       </div>
                       {(() => {
-                        try {
-                          const specs = JSON.parse(formData.specification);
-                          return Object.keys(specs).length > 4 && (
-                            <div className="text-xs text-blue-600 mt-1">
-                              +{Object.keys(specs).length - 4} more specifications
-                            </div>
-                          );
-                        } catch {
-                          return null;
-                        }
+                        const specs = parseSpecification(formData.specification);
+                        return Object.keys(specs).length > 4 && (
+                          <div className="text-xs text-blue-600 mt-1">
+                            +{Object.keys(specs).length - 4} more specifications
+                          </div>
+                        );
                       })()}
                     </div>
                   ) : (
@@ -437,7 +317,7 @@ const ProductInformationForm: React.FC<ProductInformationFormProps> = ({
               <div className="flex items-center gap-3">
                 {formData.specification && formData.specification.length > 0 && (
                   <div className="px-3 py-1 bg-gradient-to-r from-green-500 to-green-600 text-white text-sm font-bold rounded-full shadow-md">
-                    {Math.ceil(formData.specification.length / 100)}%
+                    {getSpecificationCount(formData.specification)}
                   </div>
                 )}
                 

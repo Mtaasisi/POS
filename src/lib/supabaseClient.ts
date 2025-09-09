@@ -1,20 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
 import { Database } from './database.types';
-import { logInfo, logDebug } from './debugUtils';
-
-// Type definition for window config
-declare global {
-  interface Window {
-    CLEAN_APP_CONFIG?: {
-      VITE_SUPABASE_URL: string;
-      VITE_SUPABASE_ANON_KEY: string;
-    };
-    ENV?: {
-      VITE_SUPABASE_URL?: string;
-      VITE_SUPABASE_ANON_KEY?: string;
-    };
-  }
-}
 
 // Get configuration from environment variables or config file
 const getConfig = () => {
@@ -23,204 +8,81 @@ const getConfig = () => {
   const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
   
   if (envUrl && envKey) {
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[SupabaseClient] Using environment variables for Supabase configuration');
-    }
+    console.log('🌐 Using remote Supabase configuration from environment variables');
     return {
       url: envUrl,
       key: envKey
     };
   }
   
-  // Fallback to hardcoded configuration (for backward compatibility)
-      if (process.env.NODE_ENV === 'development') {
-      console.log('[SupabaseClient] Using fallback Supabase configuration');
-    }
+  // Fallback to local development configuration
+  console.log('🏠 Using local Supabase configuration (fallback)');
   return {
-    url: 'https://jxhzveborezjhsmzsgbc.supabase.co',
-    key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHp2ZWJvcmV6amhzbXpzZ2JjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3MTE1MjQsImV4cCI6MjA2ODI4NzUyNH0.pIug4PlJ3Q14GxcYilW-u0blByYoyeOfN3q9RNIjgfw'
+    url: 'http://127.0.0.1:54321',
+    key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0'
   };
 };
 
-// Create a singleton instance to prevent multiple clients
-let supabaseInstance: ReturnType<typeof createClient<Database>> | null = null;
+// Create a true singleton instance to prevent multiple clients
+const config = getConfig();
 
-export const supabase = (() => {
-  if (!supabaseInstance) {
-    // Use console.log directly to avoid any potential SQL execution issues
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[SupabaseClient] Creating Supabase client instance...');
-    }
-    
-    // Only clear cached auth data if there's a specific issue
-    // Don't clear on every initialization
-    if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-      // Only log in development, don't clear auth data
-      console.log('[SupabaseClient] Supabase client initialization in development mode');
-    }
-    
-    const config = getConfig();
-    
-    // Validate configuration
-    if (!config.url || !config.key) {
-      throw new Error('❌ Invalid Supabase configuration: Missing URL or API key');
-    }
-    
-    // Check if we're in a browser environment
-    const isBrowser = typeof window !== 'undefined';
-    
-    supabaseInstance = createClient<Database>(config.url, config.key, {
-      auth: {
-        // Enable automatic session refresh
-        autoRefreshToken: true,
-        // Persist session in localStorage
-        persistSession: true,
-        // Detect session in URL (for magic links, etc.)
-        detectSessionInUrl: true,
-        // Storage key for session
-        storageKey: 'repair-app-auth-token',
-        // Storage interface (only use localStorage in browser)
-        storage: isBrowser ? window.localStorage : undefined,
-      },
-      // Enable real-time subscriptions with improved configuration
-      realtime: {
-        params: {
-          eventsPerSecond: 5, // Reduced to prevent overload
-        },
-        // Improved real-time configuration for better stability
-        heartbeatIntervalMs: 30000, // Less frequent heartbeats
-        reconnectAfterMs: (tries) => Math.min(tries * 2000, 30000), // Slower reconnection
-        timeoutMs: 30000, // Connection timeout
-        retryAttempts: 2, // Reduced retry attempts
-      },
-      // Global headers - don't set Content-Type globally to avoid conflicts with file uploads
-      global: {
-        headers: {
-          'X-Client-Info': 'repair-app',
-        },
-      },
-      // Add better error handling for network issues
-      db: {
-        schema: 'public',
-      },
-      // Enhanced connection settings for better stability
-      fetch: (url, options = {}) => {
-        // Add connection timeout and retry logic
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
-        
-        return fetch(url, {
-          ...options,
-          signal: controller.signal,
-          // Add keep-alive for better connection persistence
-          keepalive: true,
-          // Add cache control for better performance
-          cache: 'no-cache',
-        }).finally(() => {
-          clearTimeout(timeoutId);
-        });
-      },
-    });
-    
-    // Add global error handler for network issues
-    if (typeof window !== 'undefined') {
-      // Listen for online/offline events
-      window.addEventListener('online', () => {
-        // Reduced logging to prevent console spam
-      });
-      
-      window.addEventListener('offline', () => {
-        // Reduced logging to prevent console spam
-      });
-      
-      // Override fetch to handle network errors gracefully
-      const originalFetch = window.fetch;
-      window.fetch = async (input, init) => {
-        try {
-          // Add CORS headers for Supabase requests
-          if (typeof input === 'string' && input.includes('supabase.co')) {
-            const modifiedInit = {
-              ...init,
-              headers: {
-                ...init?.headers,
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type, Authorization, apikey',
-              },
-            };
-            return await originalFetch(input, modifiedInit);
-          }
-          return await originalFetch(input, init);
-        } catch (error) {
-          // Handle QUIC protocol errors specifically
-          if (error instanceof TypeError && error.message.includes('ERR_QUIC_PROTOCOL_ERROR')) {
-            console.warn('🌐 QUIC protocol error detected, retrying with fallback...');
-            // Return a mock response to prevent infinite retries
-            if (typeof input === 'string' && input.includes('/rest/v1/')) {
-              return new Response(JSON.stringify({ 
-                error: 'Network protocol error',
-                message: 'Please check your internet connection'
-              }), {
-                status: 503,
-                headers: { 'Content-Type': 'application/json' }
-              });
-            }
-          }
-          
-          // Handle connection closed errors specifically
-          if (error instanceof TypeError && error.message.includes('ERR_CONNECTION_CLOSED')) {
-            console.warn('🌐 Connection closed error detected, retrying...');
-            // Return a mock response to prevent infinite retries
-            if (typeof input === 'string' && (input.includes('/rest/v1/') || input.includes('/auth/'))) {
-              return new Response(JSON.stringify({ 
-                error: 'Connection closed',
-                message: 'Network connection was closed unexpectedly'
-              }), {
-                status: 503,
-                headers: { 'Content-Type': 'application/json' }
-              });
-            }
-          }
-          
-          if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-            console.warn('🌐 Network fetch error detected, retrying...');
-            // Return a mock response for auth endpoints to prevent infinite retries
-            if (typeof input === 'string' && input.includes('/auth/')) {
-              return new Response(JSON.stringify({ 
-                error: 'Network unavailable',
-                message: 'Please check your internet connection'
-              }), {
-                status: 503,
-                headers: { 'Content-Type': 'application/json' }
-              });
-            }
-          }
-          throw error;
-        }
-      };
-    }
-    
-    // Reduced logging to prevent console spam
-  }
-  
-  return supabaseInstance;
-})();
+// Log the configuration being used
+console.log('🔧 Supabase Configuration:', {
+  url: config.url,
+  key: config.key ? `${config.key.substring(0, 20)}...` : 'MISSING'
+});
+
+// Validate configuration
+if (!config.url || !config.key) {
+  throw new Error('❌ Invalid Supabase configuration: Missing URL or API key');
+}
+
+// Check if we're in a browser environment
+const isBrowser = typeof window !== 'undefined';
+
+// Create single instance immediately
+export const supabase = createClient<Database>(config.url, config.key, {
+  auth: {
+    // Enable automatic session refresh
+    autoRefreshToken: true,
+    // Persist session in localStorage
+    persistSession: true,
+    // Detect session in URL (for magic links, etc.)
+    detectSessionInUrl: true,
+    // Storage key for session - CHANGED to clear cache
+    storageKey: 'lats-app-auth-token',
+    // Storage interface (only use localStorage in browser)
+    storage: isBrowser ? window.localStorage : undefined,
+  },
+  // Enable real-time subscriptions with basic configuration
+  realtime: {
+    params: {
+      eventsPerSecond: 10,
+    },
+  },
+  // Minimal global headers
+  global: {
+    headers: {
+      'X-Client-Info': 'lats-app',
+    },
+  },
+  // Basic DB config
+  db: {
+    schema: 'public',
+  },
+});
 
 // Add a connection test function
 export const testSupabaseConnection = async () => {
   try {
-    console.log('🔍 Testing Supabase connection...');
-    const { data, error } = await supabase.from('devices').select('count').limit(1);
+    const { data, error } = await supabase.from('lats_storage_rooms').select('id').limit(1);
     
     if (error) {
-      console.error('❌ Supabase connection test failed:', error);
       return { success: false, error };
     }
     
-    console.log('✅ Supabase connection test successful');
     return { success: true, data };
   } catch (error) {
-    console.error('❌ Supabase connection test failed with exception:', error);
     return { success: false, error };
   }
 };
@@ -239,26 +101,12 @@ export const retryWithBackoff = async <T>(
     } catch (error: any) {
       lastError = error;
       
-      // Check if it's a network error
-      const isNetworkError = error.message?.includes('Failed to fetch') || 
-                           error.message?.includes('NetworkError') ||
-                           error.message?.includes('ERR_CONNECTION_CLOSED') ||
-                           error.message?.includes('ERR_CONNECTION_REFUSED');
-      
-      // For connection refused errors (like proxy not running), don't retry
-      if (error.message?.includes('ERR_CONNECTION_REFUSED')) {
-        console.log('🔍 Connection refused - service not available, skipping retries');
-        throw error;
-      }
-      
-      if (isNetworkError && attempt < maxRetries) {
+      if (attempt < maxRetries) {
         const delay = baseDelay * Math.pow(2, attempt);
-        console.log(`🌐 Network error, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries + 1})`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
       
-      // If it's not a network error or we've exhausted retries, throw the error
       throw error;
     }
   }
@@ -271,8 +119,8 @@ export const checkConnectionHealth = async () => {
   try {
     const startTime = Date.now();
     const { data, error } = await supabase
-      .from('devices')
-      .select('count')
+      .from('lats_storage_rooms')
+      .select('id')
       .limit(1);
     
     const responseTime = Date.now() - startTime;

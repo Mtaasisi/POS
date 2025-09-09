@@ -113,7 +113,7 @@ export class ImageUploadService {
         console.log('📝 DEBUG: Uploading to storage only for temporary product:', productId);
         
         const uploadedImage: UploadedImage = {
-          id: `temp-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`,
+          id: `temp-${Date.now()}-${crypto.randomUUID().replace(/-/g, '').substring(0, 8)}`,
           url: result.url || '',
           fileName: result.fileName || file.name, // Use the generated filename if available
           fileSize: file.size,

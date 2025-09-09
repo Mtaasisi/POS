@@ -27,7 +27,7 @@
 - `src/features/lats/pages/InventoryPage.tsx`
 - `src/features/lats/pages/POSPage.tsx`
 - `src/features/lats/pages/ProductCatalogPage.tsx`
-- `src/features/lats/pages/NewPurchaseOrderPage.tsx`
+- `src/features/lats/pages/PurchaseOrderPage.tsx`
 - `src/features/lats/components/pos/EnhancedPOSComponent.tsx`
 - `src/features/lats/components/pos/POSComponent.tsx`
 

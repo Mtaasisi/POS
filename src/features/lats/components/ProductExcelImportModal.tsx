@@ -149,45 +149,12 @@ const ProductExcelImportModal: React.FC<ProductExcelImportModalProps> = ({
     setValidationErrors([]);
     
     try {
-      // This is a simplified version - in a real implementation, you'd use a library like xlsx
-      // For now, we'll just simulate processing
-      const mockData: ImportedProduct[] = [
-        {
-          name: 'iPhone 14 Pro',
-          sku: 'IPH14PRO-128GB',
-          barcode: '1234567890123',
-          categoryId: 'smartphones',
-          supplierId: 'supplier1',
-          condition: 'new',
-          internalNotes: 'Latest model',
-          price: 1200000,
-          costPrice: 1000000,
-          stockQuantity: 10,
-          minStockLevel: 2,
-          shortDescription: 'Latest iPhone with advanced features',
-          isActive: true
-        },
-        {
-          name: 'Samsung Galaxy S23',
-          sku: 'SAMS23-256GB',
-          barcode: '1234567890124',
-          categoryId: 'smartphones',
-          supplierId: 'supplier2',
-          condition: 'new',
-          internalNotes: 'Android flagship',
-          price: 900000,
-          costPrice: 750000,
-          stockQuantity: 15,
-          minStockLevel: 3,
-          shortDescription: 'Premium Android smartphone',
-          isActive: true
-        }
-      ];
+      // TODO: Implement real Excel file processing
+      // This should use a library like xlsx to parse the actual Excel file
+      // and extract product data from the uploaded file
       
-      setImportedData(mockData);
-      setPreviewData(mockData);
-      setEditableData(mockData);
-      setCurrentStep('preview');
+      toast.error('Excel import functionality needs to be implemented with real file processing');
+      setValidationErrors(['Excel import functionality is not yet implemented. Please add products manually.']);
       
     } catch (error) {
       console.error('Error processing file:', error);

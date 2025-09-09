@@ -295,7 +295,7 @@ export const usePOSStore = create<POSState>()(
 
       updateCartTotals: () => {
         const { cartItems, settings } = get();
-        const subtotal = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+        const subtotal = cartItems.reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0);
         const tax = settings.enableTax ? subtotal * settings.taxRate : 0;
         const discount = 0; // TODO: Implement discount logic
         const total = subtotal + tax - discount;
@@ -560,9 +560,9 @@ export const usePOSStore = create<POSState>()(
           saleId: sale.id,
           date: sale.createdAt,
           items: sale.items.map(item => ({
-            name: item.name,
+            name: item.productName,
             quantity: item.quantity,
-            price: item.price,
+            price: item.unitPrice,
             total: item.total
           })),
           subtotal: sale.subtotal,
@@ -728,6 +728,13 @@ latsEventBus.subscribeToAll((event) => {
       
     case 'lats:sale.completed':
       store.loadRecentSales();
+      break;
+      
+    case 'lats:stock.updated':
+      // Refresh search results if needed when stock is updated
+      if (store.searchTerm) {
+        store.searchProducts(store.searchTerm);
+      }
       break;
       
     case 'lats:pos.inventory.updated':

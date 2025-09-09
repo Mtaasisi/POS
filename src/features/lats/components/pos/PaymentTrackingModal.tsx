@@ -31,13 +31,11 @@ const TransactionDetailsModal: React.FC<TransactionDetailsModalProps> = ({ isOpe
   if (!isOpen || !transaction) return null;
 
   const formatMoney = (amount: number) => {
-    if (amount >= 1000000) {
-      const millions = (amount / 1000000).toFixed(1);
-      return `Tsh ${millions}M`;
-    }
     return new Intl.NumberFormat('en-TZ', {
       style: 'currency',
-      currency: 'TZS'
+      currency: 'TZS',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
     }).format(amount);
   };
 
@@ -299,7 +297,7 @@ const TransactionDetailsModal: React.FC<TransactionDetailsModalProps> = ({ isOpe
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex-1">
                           <div className="font-medium text-gray-900 flex items-center gap-2">
-                            {item.name}
+                            {item.productName}
                             <span className={`px-2 py-1 text-xs font-medium rounded-full ${
                               item.type === 'product' ? 'bg-blue-100 text-blue-700' :
                               item.type === 'service' ? 'bg-green-100 text-green-700' :
@@ -484,8 +482,10 @@ const PaymentTrackingModal: React.FC<PaymentTrackingModalProps> = ({ isOpen, onC
     // Debounce function to prevent excessive API calls
     const debouncedFetch = debounce(() => {
       console.log('🔔 PaymentTrackingModal: Debounced fetch triggered');
+      // Clear cache before fetching to ensure fresh data
+      paymentTrackingService.clearPaymentCache();
       fetchPaymentData();
-    }, 2000); // 2 second debounce
+    }, 3000); // 3 second debounce to reduce frequency
     
     // Subscribe to POS sales updates
     posSalesSubscription = supabase!
@@ -582,15 +582,13 @@ const PaymentTrackingModal: React.FC<PaymentTrackingModalProps> = ({ isOpen, onC
     });
   }, [payments, searchQuery]);
 
-  // Format currency with M suffix for millions
+  // Format currency with full numbers
   const formatMoney = (amount: number) => {
-    if (amount >= 1000000) {
-      const millions = (amount / 1000000).toFixed(1);
-      return `Tsh ${millions}M`;
-    }
     return new Intl.NumberFormat('en-TZ', {
       style: 'currency',
-      currency: 'TZS'
+      currency: 'TZS',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
     }).format(amount);
   };
 

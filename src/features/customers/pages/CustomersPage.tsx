@@ -1439,7 +1439,7 @@ const CustomersPage = () => {
             <GlassButton
               variant="secondary"
               icon={<Award size={16} />}
-              onClick={() => navigate('/points-management')}
+              onClick={() => navigate('/finance/payments')}
               className="text-sm"
             >
               Points

@@ -12,7 +12,7 @@ import { supabase } from '../../../lib/supabaseClient';
 import { useAuth } from '../../../context/AuthContext';
 import { retryWithBackoff } from '../../../lib/supabaseClient';
 
-import { getActiveCategories, Category } from '../../../lib/categoryApi';
+import { Category } from '../../../lib/categoryApi';
 import { getActiveSuppliers, Supplier } from '../../../lib/supplierApi';
 
 // Extracted components
@@ -76,7 +76,7 @@ type ProductImage = z.infer<typeof ProductImageSchema>;
 
 const AddProductPageOptimized: React.FC = () => {
   const navigate = useNavigate();
-  const [categories, setCategories] = useState<Category[]>([]);
+  const { categories, loadCategories } = useInventoryStore();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
 
   const [loading, setLoading] = useState(false);
@@ -88,8 +88,8 @@ const AddProductPageOptimized: React.FC = () => {
     name: '',
     sku: '',
 
-    categoryId: '',
-    supplierId: '',
+    categoryId: null,
+    supplierId: null,
     condition: '',
     description: '',
     price: 0,
@@ -129,12 +129,13 @@ const AddProductPageOptimized: React.FC = () => {
   useEffect(() => {
       const loadData = async () => {
     try {
-      const [categoriesData, suppliersData] = await Promise.all([
-        getActiveCategories(),
+      const [suppliersData] = await Promise.all([
         getActiveSuppliers()
       ]);
 
-      setCategories(categoriesData || []);
+      // Load ALL categories using inventory store
+      await loadCategories();
+
       setSuppliers(suppliersData || []);
     } catch (error) {
       console.error('Error loading data:', error);
@@ -143,7 +144,7 @@ const AddProductPageOptimized: React.FC = () => {
   };
 
     loadData();
-  }, []);
+  }, [loadCategories]);
 
   // Check if product name exists
   const checkProductName = async (name: string) => {

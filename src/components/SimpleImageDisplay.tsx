@@ -9,6 +9,7 @@ interface SimpleImageDisplayProps {
   className?: string;
   showFallback?: boolean;
   onClick?: () => void;
+  showPrimaryBadge?: boolean;
 }
 
 export const SimpleImageDisplay: React.FC<SimpleImageDisplayProps> = ({
@@ -17,13 +18,17 @@ export const SimpleImageDisplay: React.FC<SimpleImageDisplayProps> = ({
   size = 'md',
   className = '',
   showFallback = true,
-  onClick
+  onClick,
+  showPrimaryBadge = true
 }) => {
   const [imageError, setImageError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Ensure images is always an array
+  const safeImages = Array.isArray(images) ? images : [];
+
   // Get primary image or first image
-  const primaryImage = images.find(img => img.isPrimary) || images[0];
+  const primaryImage = safeImages.length > 0 ? (safeImages.find(img => img.isPrimary) || safeImages[0]) : null;
 
   // Size classes
   const sizeClasses = {
@@ -87,7 +92,7 @@ export const SimpleImageDisplay: React.FC<SimpleImageDisplayProps> = ({
       />
 
       {/* Primary Badge (for larger sizes) */}
-      {primaryImage.isPrimary && size !== 'sm' && (
+      {showPrimaryBadge && primaryImage.isPrimary && size !== 'sm' && (
         <div className="absolute top-1 right-1 bg-blue-500 text-white rounded-full w-3 h-3 flex items-center justify-center">
         </div>
       )}
@@ -111,7 +116,10 @@ export const SimpleImageGallery: React.FC<SimpleImageGalleryProps> = ({
   className = '',
   onImageClick
 }) => {
-  if (!images.length) {
+  // Ensure images is always an array
+  const safeImages = Array.isArray(images) ? images : [];
+  
+  if (!safeImages.length) {
     return (
       <div className={`grid grid-cols-2 gap-2 ${className}`}>
         <SimpleImageDisplay images={[]} productName={productName} size="md" />
@@ -120,8 +128,8 @@ export const SimpleImageGallery: React.FC<SimpleImageGalleryProps> = ({
     );
   }
 
-  const displayImages = images.slice(0, maxDisplay);
-  const remainingCount = images.length - maxDisplay;
+  const displayImages = safeImages.slice(0, maxDisplay);
+  const remainingCount = safeImages.length - maxDisplay;
 
   return (
     <div className={`grid grid-cols-2 gap-2 ${className}`}>

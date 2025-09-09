@@ -63,8 +63,44 @@ export function processProductData(products: Product[]): Product[] {
     return [];
   }
 
-  return products.map(product => {
+  console.log('🔍 DEBUG: processProductData called with', products.length, 'products');
+  
+  return products.map((product, index) => {
     const processedProduct = { ...product };
+    
+    console.log(`🔍 DEBUG: Processing product ${index}:`, {
+      name: processedProduct.name,
+      hasCategoryId: 'categoryId' in processedProduct,
+      hasCategory_id: 'category_id' in processedProduct,
+      categoryIdValue: (processedProduct as any).categoryId,
+      category_idValue: (processedProduct as any).category_id
+    });
+
+    // Transform database field names to interface field names
+    if (processedProduct.category_id !== undefined) {
+      processedProduct.categoryId = processedProduct.category_id;
+      delete processedProduct.category_id;
+    }
+
+    if (processedProduct.supplier_id !== undefined) {
+      processedProduct.supplierId = processedProduct.supplier_id;
+      delete processedProduct.supplier_id;
+    }
+
+    if (processedProduct.brand_id !== undefined) {
+      processedProduct.brandId = processedProduct.brand_id;
+      delete processedProduct.brand_id;
+    }
+
+    if (processedProduct.created_at !== undefined) {
+      processedProduct.createdAt = processedProduct.created_at;
+      delete processedProduct.created_at;
+    }
+
+    if (processedProduct.updated_at !== undefined) {
+      processedProduct.updatedAt = processedProduct.updated_at;
+      delete processedProduct.updated_at;
+    }
 
     // Clean up image data and replace placeholder images
     if (processedProduct.images && Array.isArray(processedProduct.images)) {
@@ -97,8 +133,35 @@ export function processCategoryData(categories: Category[]): Category[] {
     return [];
   }
 
-  return categories.map(category => {
+
+  return categories.map((category, index) => {
     const processedCategory = { ...category };
+
+    // Transform database field names to interface field names
+    if (processedCategory.parent_id !== undefined) {
+      processedCategory.parentId = processedCategory.parent_id;
+      delete processedCategory.parent_id;
+    }
+
+    if (processedCategory.is_active !== undefined) {
+      processedCategory.isActive = processedCategory.is_active;
+      delete processedCategory.is_active;
+    }
+
+    if (processedCategory.sort_order !== undefined) {
+      processedCategory.sortOrder = processedCategory.sort_order;
+      delete processedCategory.sort_order;
+    }
+
+    if (processedCategory.created_at !== undefined) {
+      processedCategory.createdAt = processedCategory.created_at;
+      delete processedCategory.created_at;
+    }
+
+    if (processedCategory.updated_at !== undefined) {
+      processedCategory.updatedAt = processedCategory.updated_at;
+      delete processedCategory.updated_at;
+    }
 
     // Clean up image data if present
     if (processedCategory.image_url) {
@@ -150,6 +213,25 @@ export function processSupplierData(suppliers: Supplier[]): Supplier[] {
 }
 
 /**
+ * Process individual data types separately for when only partial data is available
+ */
+export function processCategoriesOnly(categories: Category[]): Category[] {
+  return processCategoryData(categories || []);
+}
+
+export function processProductsOnly(products: Product[]): Product[] {
+  return processProductData(products || []);
+}
+
+export function processSuppliersOnly(suppliers: Supplier[]): Supplier[] {
+  return processSupplierData(suppliers || []);
+}
+
+export function processBrandsOnly(brands: Brand[]): Brand[] {
+  return processBrandData(brands || []);
+}
+
+/**
  * Comprehensive data cleanup for all LATS data
  */
 export function processLatsData(data: {
@@ -164,12 +246,28 @@ export function processLatsData(data: {
   brands: Brand[];
   suppliers: Supplier[];
 } {
-  return {
+  console.log('🔍 DEBUG: processLatsData called with:', {
+    productsCount: data.products?.length || 0,
+    categoriesCount: data.categories?.length || 0,
+    brandsCount: data.brands?.length || 0,
+    suppliersCount: data.suppliers?.length || 0
+  });
+
+  const result = {
     products: processProductData(data.products || []),
     categories: processCategoryData(data.categories || []),
     brands: processBrandData(data.brands || []),
     suppliers: processSupplierData(data.suppliers || [])
   };
+
+  console.log('🔍 DEBUG: processLatsData result:', {
+    productsCount: result.products.length,
+    categoriesCount: result.categories.length,
+    brandsCount: result.brands.length,
+    suppliersCount: result.suppliers.length
+  });
+
+  return result;
 }
 
 /**

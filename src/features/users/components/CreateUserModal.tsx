@@ -119,8 +119,14 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <GlassCard className="max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <GlassCard 
+        className="max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
         <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
           {/* Header */}
           <div className="flex items-center justify-between">
@@ -359,26 +365,16 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({
           </div>
 
           {/* Form Actions */}
-          <div className="flex flex-col sm:flex-row gap-3 pt-6 border-t border-gray-200">
+          <div className="pt-6 border-t border-gray-200">
             <GlassButton
               type="submit"
               variant="primary"
               loading={loading}
               disabled={!isDirty}
-              className="flex-1 sm:flex-none"
-              icon={<Save size={18} />}
+              className="w-full py-4 text-lg font-semibold"
+              icon={<Save size={20} />}
             >
               {loading ? 'Creating User...' : 'Create User'}
-            </GlassButton>
-            
-            <GlassButton
-              type="button"
-              variant="secondary"
-              onClick={handleCancel}
-              disabled={loading}
-              className="flex-1 sm:flex-none"
-            >
-              Cancel
             </GlassButton>
           </div>
         </form>

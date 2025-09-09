@@ -74,7 +74,7 @@ const ProductImagesSection: React.FC<ProductImagesSectionProps> = ({
         existingImages={images?.map((img) => {
           if (typeof img === 'string') {
             return {
-              id: `string-${Math.random()}`,
+              id: `string-${crypto.randomUUID()}`,
               url: img,
               image_url: img,
               fileName: 'Image',
@@ -84,7 +84,7 @@ const ProductImagesSection: React.FC<ProductImagesSectionProps> = ({
             };
           }
           return {
-            id: img.id || `img-${Math.random()}`,
+            id: img.id || `img-${crypto.randomUUID()}`,
             url: img.url || img.image_url || '',
             image_url: img.image_url || img.url || '',
             thumbnail_url: img.thumbnail_url,

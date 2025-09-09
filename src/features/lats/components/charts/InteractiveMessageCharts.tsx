@@ -274,7 +274,7 @@ const InteractiveMessageCharts: React.FC<InteractiveMessageChartsProps> = ({
       } else {
         // For multiple customers, just navigate to chat page
         handleNavigateToChat();
-        toast.info(`${data.messages} messages sent on ${new Date(data.date).toLocaleDateString()}`);
+        toast(`${data.messages} messages sent on ${new Date(data.date).toLocaleDateString()}`);
       }
     } else {
       handleNavigateToChat();

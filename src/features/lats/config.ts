@@ -38,12 +38,13 @@ export const LATS_ROUTES = {
   payments: '/lats/payments',
   analytics: '/lats/analytics',
   purchaseOrders: '/lats/purchase-orders',
-  purchaseOrderNew: '/lats/purchase-orders/new',
   purchaseOrderCreate: '/lats/purchase-order/create',
   purchaseOrderDetail: (id: string) => `/lats/purchase-orders/${id}`,
   spareParts: '/lats/spare-parts',
   // quickCash: '/lats/quick-cash', // Removed - not using this functionality
-  variantSelection: '/lats/variant-selection'
+  variantSelection: '/lats/variant-selection',
+  storageRooms: '/lats/storage-rooms',
+  storageRoomDetail: (id: string) => `/lats/storage-rooms/${id}`
 } as const;
 
 // Check if module is enabled

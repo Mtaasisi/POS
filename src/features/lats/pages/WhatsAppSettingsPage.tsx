@@ -189,7 +189,7 @@ const WhatsAppSettingsPage: React.FC = () => {
       if (!instanceData) {
         console.error('❌ Instance not found:', instanceId);
         toast.error('Instance not found');
-        navigate('/whatsapp-hub');
+        navigate('/lats/whatsapp-connection-manager');
         return;
       }
       setInstance(instanceData);
@@ -381,7 +381,7 @@ Current instance details:
       setConfirmAction(null);
       
       // Navigate back to hub
-      navigate('/whatsapp-hub');
+      navigate('/lats/whatsapp-connection-manager');
     } catch (error: any) {
       console.error('Error logging out instance:', error);
       toast.error(`Failed to logout instance: ${error.message}`);
@@ -488,7 +488,7 @@ Current instance details:
           <AlertTriangle className="mx-auto h-12 w-12 text-red-500 mb-4" />
           <h2 className="text-xl font-semibold text-gray-900 mb-2">Instance Not Found</h2>
           <p className="text-gray-600 mb-4">The WhatsApp instance you're looking for doesn't exist.</p>
-          <GlassButton onClick={() => navigate('/whatsapp-hub')}>
+          <GlassButton onClick={() => navigate('/lats/whatsapp-connection-manager')}>
             Back to WhatsApp Hub
           </GlassButton>
         </div>
@@ -501,7 +501,7 @@ Current instance details:
       {/* Header */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         <div className="flex items-center gap-4">
-          <BackButton to="/whatsapp-hub" />
+          <BackButton to="/lats/whatsapp-connection-manager" />
           <div>
             <h1 className="text-3xl font-bold text-gray-900">WhatsApp Settings</h1>
             <p className="text-gray-600 mt-1">

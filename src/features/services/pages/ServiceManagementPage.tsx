@@ -8,7 +8,7 @@ import GlassSelect from '../../../features/shared/components/ui/GlassSelect';
 import { BackButton } from '../../../features/shared/components/ui/BackButton';
 import { 
   Wrench, DollarSign, Clock, Users, Plus, Edit, Trash2, 
-  CheckCircle, AlertTriangle, Package, Star, TrendingUp
+  CheckCircle, AlertTriangle, Package, Star, TrendingUp, X
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
@@ -390,7 +390,7 @@ const ServiceManagementPage: React.FC = () => {
                     const matchesSearch = !searchQuery || 
                       service.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                       service.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                      service.category.toLowerCase().includes(searchQuery.toLowerCase());
+                      (service.category && service.category.toLowerCase().includes(searchQuery.toLowerCase()));
                     const matchesCategory = categoryFilter === 'all' || service.category === categoryFilter;
                     const matchesStatus = statusFilter === 'all' || service.status === statusFilter;
                     return matchesSearch && matchesCategory && matchesStatus;
@@ -488,7 +488,7 @@ const ServiceManagementPage: React.FC = () => {
             const matchesSearch = !searchQuery || 
               service.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
               service.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-              service.category.toLowerCase().includes(searchQuery.toLowerCase());
+              (service.category && service.category.toLowerCase().includes(searchQuery.toLowerCase()));
             const matchesCategory = categoryFilter === 'all' || service.category === categoryFilter;
             const matchesStatus = statusFilter === 'all' || service.status === statusFilter;
             return matchesSearch && matchesCategory && matchesStatus;
@@ -647,6 +647,270 @@ const ServiceManagementPage: React.FC = () => {
             </div>
           )}
         </GlassCard>
+      )}
+
+      {/* Create Service Modal */}
+      {showCreateService && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-gray-900">Add New Service</h2>
+                <button
+                  onClick={() => setShowCreateService(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-6">
+              <form className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Service Name
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="e.g., iPhone Screen Replacement"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Category
+                    </label>
+                    <select className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <option value="">Select Category</option>
+                      <option value="Device Repair">Device Repair</option>
+                      <option value="Diagnostics">Diagnostics</option>
+                      <option value="Software">Software</option>
+                      <option value="Data Recovery">Data Recovery</option>
+                      <option value="Security">Security</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Description
+                  </label>
+                  <textarea
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Describe the service in detail..."
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Duration (minutes)
+                    </label>
+                    <input
+                      type="number"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="60"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Price (TZS)
+                    </label>
+                    <input
+                      type="number"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="80000"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Cost (TZS)
+                    </label>
+                    <input
+                      type="number"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="45000"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Warranty (days)
+                    </label>
+                    <input
+                      type="number"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="90"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Status
+                    </label>
+                    <select className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <option value="active">Active</option>
+                      <option value="inactive">Inactive</option>
+                      <option value="draft">Draft</option>
+                    </select>
+                  </div>
+                </div>
+              </form>
+            </div>
+            
+            <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+              <GlassButton
+                onClick={() => setShowCreateService(false)}
+                variant="ghost"
+              >
+                Cancel
+              </GlassButton>
+              <GlassButton
+                onClick={() => {
+                  toast.success('Service created successfully!');
+                  setShowCreateService(false);
+                }}
+                className="bg-gradient-to-r from-green-500 to-green-600 text-white"
+              >
+                Create Service
+              </GlassButton>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Service Request Modal */}
+      {showCreateRequest && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-gray-900">Create Service Request</h2>
+                <button
+                  onClick={() => setShowCreateRequest(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-6">
+              <form className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Customer Name
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="John Doe"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Customer Phone
+                    </label>
+                    <input
+                      type="tel"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="+255 123 456 789"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Customer Email
+                  </label>
+                  <input
+                    type="email"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="john@example.com"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Service
+                    </label>
+                    <select className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <option value="">Select Service</option>
+                      {services.map(service => (
+                        <option key={service.id} value={service.id}>
+                          {service.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Priority
+                    </label>
+                    <select className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                      <option value="urgent">Urgent</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Estimated Cost (TZS)
+                  </label>
+                  <input
+                    type="number"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="80000"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Notes
+                  </label>
+                  <textarea
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Additional notes about the service request..."
+                  />
+                </div>
+              </form>
+            </div>
+            
+            <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+              <GlassButton
+                onClick={() => setShowCreateRequest(false)}
+                variant="ghost"
+              >
+                Cancel
+              </GlassButton>
+              <GlassButton
+                onClick={() => {
+                  toast.success('Service request created successfully!');
+                  setShowCreateRequest(false);
+                }}
+                className="bg-gradient-to-r from-blue-500 to-blue-600 text-white"
+              >
+                Create Request
+              </GlassButton>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

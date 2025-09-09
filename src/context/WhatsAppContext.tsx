@@ -1,9 +1,10 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { useAuth } from './AuthContext';
 
-interface WhatsAppInstance {
+export interface WhatsAppInstance {
   id: string;
-  user_id: string;
+  user_id?: string;
   instance_id: string;
   api_token: string;
   instance_name?: string;
@@ -33,15 +34,15 @@ interface WhatsAppContextType {
   updateInstance: (instanceId: string, updates: Partial<WhatsAppInstance>, skipRefresh?: boolean) => Promise<void>;
   addInstance: (instance: Omit<WhatsAppInstance, 'id' | 'created_at' | 'updated_at'>) => Promise<void>;
   deleteInstance: (instanceId: string) => Promise<void>;
-  refreshInstances: () => Promise<void>;
-  updateStatusesDebounced: () => void;
+  clearError: () => void;
+  isAuthenticated: boolean;
 }
 
 const WhatsAppContext = createContext<WhatsAppContextType | undefined>(undefined);
 
 export const useWhatsApp = () => {
   const context = useContext(WhatsAppContext);
-  if (context === undefined) {
+  if (!context) {
     throw new Error('useWhatsApp must be used within a WhatsAppProvider');
   }
   return context;
@@ -55,33 +56,58 @@ export const WhatsAppProvider: React.FC<WhatsAppProviderProps> = ({ children }) 
   const [instances, setInstances] = useState<WhatsAppInstance[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Get authentication state from AuthContext with safety check
+  let authContext;
+  try {
+    authContext = useAuth();
+  } catch (error) {
+    // If AuthContext is not available, provide fallback values
+    console.warn('AuthContext not available, using fallback values');
+    authContext = {
+      isAuthenticated: false,
+      currentUser: null,
+      loading: true
+    };
+  }
+  
+  const { isAuthenticated, currentUser, loading: authLoading } = authContext;
+
+  // Fetch instances when auth loading completes and user is authenticated
+  useEffect(() => {
+    if (!authLoading && isAuthenticated && currentUser) {
+      fetchInstances();
+    }
+  }, [authLoading, isAuthenticated, currentUser]);
 
   const fetchInstances = async () => {
     try {
       setLoading(true);
       setError(null);
       
+      // Check if auth is still loading
+      if (authLoading) {
+        console.log('🔄 Auth still loading, skipping instance fetch');
+        return;
+      }
+      
+      // Check if user is authenticated
+      if (!isAuthenticated || !currentUser) {
+        setError('Please log in to access WhatsApp features');
+        setInstances([]);
+        return;
+      }
+      
       // Check database connection first
       if (!supabase) {
         throw new Error('Database connection not available. Please check your internet connection and try again.');
       }
 
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError) {
-        console.error('Authentication error:', userError);
-        throw new Error(`Authentication error: ${userError.message}. Please log in again.`);
-      }
-      
-      if (!user) {
-        throw new Error('User not authenticated. Please log in again.');
-      }
-
-      console.log(`🔍 Fetching WhatsApp instances for user: ${user.id}`);
 
       const { data, error } = await supabase
         .from('whatsapp_instances_comprehensive')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', currentUser.id)
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -89,7 +115,6 @@ export const WhatsAppProvider: React.FC<WhatsAppProviderProps> = ({ children }) 
         throw new Error(`Database error: ${error.message}. Please try again or contact support.`);
       }
 
-      console.log(`✅ Successfully fetched ${data?.length || 0} WhatsApp instances`);
       setInstances(data || []);
       
     } catch (err: any) {
@@ -105,9 +130,8 @@ export const WhatsAppProvider: React.FC<WhatsAppProviderProps> = ({ children }) 
     try {
       setError(null);
       
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) {
-        throw new Error('Authentication error. Please log in again.');
+      if (!isAuthenticated || !currentUser) {
+        throw new Error('Please log in to update WhatsApp instances');
       }
 
       const { error } = await supabase
@@ -117,7 +141,7 @@ export const WhatsAppProvider: React.FC<WhatsAppProviderProps> = ({ children }) 
           updated_at: new Date().toISOString()
         })
         .eq('instance_id', instanceId)
-        .eq('user_id', user.id);
+        .eq('user_id', currentUser.id);
 
       if (error) {
         throw new Error(`Failed to update instance: ${error.message}`);
@@ -147,29 +171,27 @@ export const WhatsAppProvider: React.FC<WhatsAppProviderProps> = ({ children }) 
     try {
       setError(null);
       
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) {
-        throw new Error('Authentication error. Please log in again.');
+      if (!isAuthenticated || !currentUser) {
+        throw new Error('Please log in to create WhatsApp instances');
       }
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('whatsapp_instances_comprehensive')
         .insert({
           ...instance,
-          user_id: user.id,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        });
+          user_id: currentUser.id
+        })
+        .select()
+        .single();
 
       if (error) {
-        throw new Error(`Failed to add instance: ${error.message}`);
+        throw new Error(`Failed to create instance: ${error.message}`);
       }
 
-      // Refresh instances to get new data
-      await fetchInstances();
+      setInstances(prevInstances => [data, ...prevInstances]);
     } catch (err: any) {
       setError(err.message);
-      console.error('Error adding WhatsApp instance:', err);
+      console.error('Error creating WhatsApp instance:', err);
       throw err;
     }
   };
@@ -178,23 +200,23 @@ export const WhatsAppProvider: React.FC<WhatsAppProviderProps> = ({ children }) 
     try {
       setError(null);
       
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) {
-        throw new Error('Authentication error. Please log in again.');
+      if (!isAuthenticated || !currentUser) {
+        throw new Error('Please log in to delete WhatsApp instances');
       }
 
       const { error } = await supabase
         .from('whatsapp_instances_comprehensive')
         .delete()
         .eq('instance_id', instanceId)
-        .eq('user_id', user.id);
+        .eq('user_id', currentUser.id);
 
       if (error) {
         throw new Error(`Failed to delete instance: ${error.message}`);
       }
 
-      // Refresh instances to get updated data
-      await fetchInstances();
+      setInstances(prevInstances => 
+        prevInstances.filter(inst => inst.instance_id !== instanceId)
+      );
     } catch (err: any) {
       setError(err.message);
       console.error('Error deleting WhatsApp instance:', err);
@@ -202,69 +224,20 @@ export const WhatsAppProvider: React.FC<WhatsAppProviderProps> = ({ children }) 
     }
   };
 
-  const refreshInstances = async () => {
-    await fetchInstances();
+  const clearError = () => {
+    setError(null);
   };
 
-  // Update instance statuses by checking their actual connection status
-  const updateInstanceStatuses = async (instances: WhatsAppInstance[]) => {
-    try {
-      console.log('🔄 Updating instance statuses in background...');
-      
-      for (const instance of instances) {
-        try {
-          // Simple status check - we'll implement this when we have the API service ready
-          console.log(`⏱️ Checking status for instance: ${instance.instance_id}`);
-          
-          // For now, we'll just update the last_activity_at timestamp
-          // Use skipRefresh=true to prevent infinite loop
-          await updateInstance(instance.instance_id, {
-            last_activity_at: new Date().toISOString()
-          }, true);
-          
-        } catch (instanceError) {
-          console.warn(`⚠️ Failed to update status for instance ${instance.instance_id}:`, instanceError);
-          // Continue with other instances even if one fails
-        }
-      }
-      
-      console.log('✅ Instance status update completed');
-    } catch (error) {
-      console.error('❌ Error updating instance statuses:', error);
-    }
-  };
-
-  // Debounced status update to prevent excessive calls
-  const statusUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
-  const updateStatusesDebounced = useCallback(() => {
-    // Clear any existing timeout
-    if (statusUpdateTimeoutRef.current) {
-      clearTimeout(statusUpdateTimeoutRef.current);
-    }
-    
-    // Set a new timeout for 2 seconds
-    statusUpdateTimeoutRef.current = setTimeout(() => {
-      if (instances.length > 0) {
-        console.log('🚀 Running debounced status update...');
-        updateInstanceStatuses(instances);
-      }
-    }, 2000);
-  }, [instances]);
-
-  // Cleanup timeout on unmount
+  // Fetch instances when authentication state changes
   useEffect(() => {
-    return () => {
-      if (statusUpdateTimeoutRef.current) {
-        clearTimeout(statusUpdateTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  // Load instances on mount
-  useEffect(() => {
-    fetchInstances();
-  }, []);
+    if (isAuthenticated && currentUser) {
+      fetchInstances();
+    } else {
+      // Clear instances when not authenticated
+      setInstances([]);
+      setError(null);
+    }
+  }, [isAuthenticated, currentUser?.id]);
 
   const value: WhatsAppContextType = {
     instances,
@@ -274,8 +247,8 @@ export const WhatsAppProvider: React.FC<WhatsAppProviderProps> = ({ children }) 
     updateInstance,
     addInstance,
     deleteInstance,
-    refreshInstances,
-    updateStatusesDebounced
+    clearError,
+    isAuthenticated
   };
 
   return (

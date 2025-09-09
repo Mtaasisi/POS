@@ -54,84 +54,13 @@ export class DynamicPricingService {
 
   // Initialize default pricing rules
   private initializeDefaultRules(): void {
-    this.pricingRules = [
-      // VIP Customer Discount
-      {
-        id: 'vip-discount',
-        name: 'VIP Customer Discount',
-        type: 'loyalty',
-        conditions: [
-          { field: 'loyaltyLevel', operator: 'in', value: ['platinum', 'gold'] }
-        ],
-        discount: { type: 'percentage', value: 10, maxDiscount: 50000 },
-        priority: 1,
-        isActive: true
-      },
-      
-      // Silver Customer Discount
-      {
-        id: 'silver-discount',
-        name: 'Silver Customer Discount',
-        type: 'loyalty',
-        conditions: [
-          { field: 'loyaltyLevel', operator: 'equals', value: 'silver' }
-        ],
-        discount: { type: 'percentage', value: 5, maxDiscount: 25000 },
-        priority: 2,
-        isActive: true
-      },
-
-      // Bulk Purchase Discount
-      {
-        id: 'bulk-discount-5',
-        name: 'Bulk Purchase (5+ items)',
-        type: 'bulk',
-        conditions: [
-          { field: 'quantity', operator: 'greater_than', value: 4 }
-        ],
-        discount: { type: 'percentage', value: 5, minPurchase: 10000 },
-        priority: 3,
-        isActive: true
-      },
-
-      {
-        id: 'bulk-discount-10',
-        name: 'Bulk Purchase (10+ items)',
-        type: 'bulk',
-        conditions: [
-          { field: 'quantity', operator: 'greater_than', value: 9 }
-        ],
-        discount: { type: 'percentage', value: 10, minPurchase: 20000 },
-        priority: 4,
-        isActive: true
-      },
-
-      // Weekend Discount
-      {
-        id: 'weekend-discount',
-        name: 'Weekend Special',
-        type: 'time',
-        conditions: [
-          { field: 'dayOfWeek', operator: 'in', value: [0, 6] } // Sunday, Saturday
-        ],
-        discount: { type: 'percentage', value: 3, maxDiscount: 15000 },
-        priority: 5,
-        isActive: true
-      },
-
-      // Morning Discount
-      {
-        id: 'morning-discount',
-        name: 'Early Bird Special',
-        type: 'time',
-        conditions: [
-          { field: 'timeOfDay', operator: 'less_than', value: 12 } // Before noon
-        ],
-        discount: { type: 'percentage', value: 2, maxDiscount: 10000 },
-        priority: 6,
-        isActive: true
-      }
-    ];
+    // TODO: Load pricing rules from database configuration
+    // These should be configurable through admin settings
+    this.pricingRules = [];
+    
+    // Note: Hardcoded pricing rules removed
+    // Implement database-driven pricing rules configuration
+    console.log('Dynamic pricing rules should be loaded from database configuration');
   }
 
   // Load holiday dates (you can extend this with API calls)

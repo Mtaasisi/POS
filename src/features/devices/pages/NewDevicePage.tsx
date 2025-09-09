@@ -344,7 +344,7 @@ const DeviceIntakeUnifiedPage: React.FC = () => {
       if (!isOnline) {
         // Use offline AI analysis
         console.log('🔴 Offline mode - using local AI analysis');
-        toast.info('Working offline - using local AI analysis');
+        toast('Working offline - using local AI analysis');
         
         const offlineResult = await offlineAIService.analyzeDevice(
           formData.model,

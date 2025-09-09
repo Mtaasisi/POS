@@ -1,5 +1,5 @@
 // PaymentSection component for LATS module
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { LATS_CLASSES } from '../../tokens';
 import GlassCard from '../ui/GlassCard';
 import GlassButton from '../ui/GlassButton';
@@ -8,6 +8,7 @@ import GlassInput from '../ui/GlassInput';
 import GlassSelect from '../ui/GlassSelect';
 import { t } from '../../lib/i18n/t';
 import { format } from '../../lib/format';
+import { usePaymentMethodsContext } from '../../../../context/PaymentMethodsContext';
 
 interface PaymentMethod {
   id: string;
@@ -45,6 +46,7 @@ const PaymentSection: React.FC<PaymentSectionProps> = ({
   loading = false,
   className = ''
 }) => {
+  const { paymentMethods: paymentMethodsWithAccounts, loading: methodsLoading } = usePaymentMethodsContext();
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod | null>(null);
   const [amount, setAmount] = useState(total);
   const [reference, setReference] = useState('');
@@ -104,7 +106,21 @@ const PaymentSection: React.FC<PaymentSectionProps> = ({
     }
   ];
 
-  const availableMethods = paymentMethods.length > 0 ? paymentMethods : defaultPaymentMethods;
+  // Convert managed payment methods to the component's format
+  const managedMethods: PaymentMethod[] = (paymentMethodsWithAccounts || []).map(method => ({
+    id: method.id,
+    name: method.name,
+    type: method.type as any,
+    icon: method.payment_icon || '💳',
+    isActive: method.is_active,
+    requiresReference: method.requires_reference,
+    requiresAccount: method.requires_account_number
+  }));
+
+  // Always prioritize database methods over hardcoded defaults
+  // Show database methods if available, otherwise show defaults
+  const availableMethods = managedMethods.length > 0 ? managedMethods : 
+                          (paymentMethods.length > 0 ? paymentMethods : defaultPaymentMethods);
   const activeMethods = availableMethods.filter(method => method.isActive);
 
   // Calculate change
@@ -219,8 +235,19 @@ const PaymentSection: React.FC<PaymentSectionProps> = ({
       {/* Payment Methods */}
       <div className="mb-6">
         <h3 className="text-lg font-medium text-lats-text mb-3">Select Payment Method</h3>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          {activeMethods.map((method) => (
+        {methodsLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-lats-primary"></div>
+            <span className="ml-3 text-lats-text/70">Loading payment methods...</span>
+          </div>
+        ) : activeMethods.length === 0 ? (
+          <div className="text-center py-8">
+            <div className="text-lats-text/50 mb-2">No payment methods available</div>
+            <div className="text-sm text-lats-text/40">Please set up payment methods in the admin panel</div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            {activeMethods.map((method) => (
             <button
               key={method.id}
               onClick={() => handleMethodSelect(method)}
@@ -239,7 +266,8 @@ const PaymentSection: React.FC<PaymentSectionProps> = ({
               )}
             </button>
           ))}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Payment Details */}
@@ -255,7 +283,7 @@ const PaymentSection: React.FC<PaymentSectionProps> = ({
             <GlassInput
               type="number"
               value={amount}
-              onChange={(e) => handleAmountChange(parseFloat(e.target.value) || 0)}
+              onChange={(value) => handleAmountChange(parseFloat(value) || 0)}
               min={total}
               step={0.01}
               placeholder="Enter amount"
@@ -288,7 +316,7 @@ const PaymentSection: React.FC<PaymentSectionProps> = ({
               </label>
               <GlassInput
                 value={reference}
-                onChange={(e) => setReference(e.target.value)}
+                onChange={(value) => setReference(value)}
                 placeholder={`Enter ${selectedMethod.name} reference`}
                 maxLength={50}
               />
@@ -303,7 +331,7 @@ const PaymentSection: React.FC<PaymentSectionProps> = ({
               </label>
               <GlassInput
                 value={accountNumber}
-                onChange={(e) => setAccountNumber(e.target.value)}
+                onChange={(value) => setAccountNumber(value)}
                 placeholder="Enter account number"
                 maxLength={20}
               />
@@ -317,7 +345,7 @@ const PaymentSection: React.FC<PaymentSectionProps> = ({
             </label>
             <GlassInput
               value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              onChange={(value) => setNotes(value)}
               placeholder="Additional notes about this payment"
               multiline
               rows={3}

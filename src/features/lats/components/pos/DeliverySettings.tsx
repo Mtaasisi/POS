@@ -83,6 +83,8 @@ const DeliverySettings: React.FC = () => {
     setValue
   } = useForm<DeliverySettings>({
     defaultValues: {
+      // TODO: Load these default values from database configuration
+      // These should be configurable through admin settings
       enabled: false,
       deliveryFee: 2000,
       freeDeliveryThreshold: 50000,

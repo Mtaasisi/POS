@@ -168,15 +168,10 @@ export interface SendInteractiveButtonsParams {
   instanceId: string;
   chatId: string;
   message: string;
-  header?: string;
   footer?: string;
   buttons: Array<{
-    type: 'copy' | 'call' | 'url' | 'reply';
     buttonId: string;
     buttonText: string;
-    copyCode?: string;
-    phoneNumber?: string;
-    url?: string;
   }>;
 }
 
@@ -214,10 +209,7 @@ class GreenApiService {
     : 'https://inauzwa.store/.netlify/functions/green-api-proxy';
   
   // Configuration to disable proxy in development
-  private useDirectApiOnly = true; // Always use direct API calls
-  
-  // Track if we've already logged proxy unavailability to reduce console noise
-  private proxyUnavailableLogged = false;
+  private useDirectApiOnly = typeof window !== 'undefined' && window.location.hostname === 'localhost';
 
   // Format phone number for WhatsApp chatId
   private formatChatId(phoneOrChatId: string): string {
@@ -286,7 +278,7 @@ class GreenApiService {
     if (this.proxyUrl.includes('localhost')) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 1000); // Reduced timeout to 1 second
+        const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
         
         // Try a simple HEAD request to check if the server is responding
         const response = await fetch(this.proxyUrl, {
@@ -295,19 +287,9 @@ class GreenApiService {
         });
         
         clearTimeout(timeoutId);
-        const isAvailable = response.status !== 404; // Any response other than 404 means server is up
-        
-        if (!isAvailable) {
-          console.log('🔍 Local proxy server not responding (status: 404)');
-        }
-        
-        return isAvailable;
+        return response.status !== 404; // Any response other than 404 means server is up
       } catch (error) {
-        // Only log once per session to reduce noise
-        if (!this.proxyUnavailableLogged) {
-          console.log('🔍 Local proxy server not available (connection refused) - using direct API calls');
-          this.proxyUnavailableLogged = true;
-        }
+        console.log('🔍 Local proxy not available:', error instanceof Error ? error.message : 'Unknown error');
         return false;
       }
     }
@@ -386,68 +368,6 @@ class GreenApiService {
       };
       
       console.log('📊 Sending poll via direct API...');
-    } else if (message.message_type === 'interactive_buttons') {
-      // Use sendInteractiveButtons endpoint for interactive buttons
-      endpoint = `/waInstance${instance.instance_id}/sendInteractiveButtons/${apiToken}`;
-      
-      // Extract interactive data from metadata
-      const interactiveData = message.metadata?.interactiveData || {};
-      
-      // Create buttons array with proper structure
-      const buttons = (interactiveData.buttons || []).map((button: any, index: number) => ({
-        type: button.type || 'reply',
-        buttonId: button.buttonId || `button_${index + 1}`,
-        buttonText: button.buttonText || '',
-        ...(button.type === 'copy' && button.copyCode ? { copyCode: button.copyCode } : {}),
-        ...(button.type === 'call' && button.phoneNumber ? { phoneNumber: button.phoneNumber } : {}),
-        ...(button.type === 'url' && button.url ? { url: button.url } : {})
-      }));
-      
-      payload = {
-        chatId: this.formatChatId(message.chat_id),
-        body: message.content,
-        buttons: buttons
-      };
-      
-      // Add optional header and footer if present
-      if (interactiveData.header) {
-        payload.header = interactiveData.header;
-      }
-      if (interactiveData.footer) {
-        payload.footer = interactiveData.footer;
-      }
-      
-      console.log('🔘 Sending interactive buttons via direct API...');
-      console.log('🔘 Interactive data:', interactiveData);
-      console.log('🔘 Buttons array:', buttons);
-      console.log('🔘 Final payload:', payload);
-    } else if (message.message_type === 'location') {
-      // Use sendLocation endpoint for location messages
-      endpoint = `/waInstance${instance.instance_id}/sendLocation/${apiToken}`;
-      
-      // Extract location data from metadata
-      const locationData = message.metadata?.locationData || {};
-      payload = {
-        chatId: this.formatChatId(message.chat_id),
-        latitude: locationData.latitude,
-        longitude: locationData.longitude,
-        nameLocation: locationData.nameLocation,
-        address: locationData.address
-      };
-      
-      console.log('📍 Sending location via direct API...');
-    } else if (message.message_type === 'contact') {
-      // Use sendContact endpoint for contact messages
-      endpoint = `/waInstance${instance.instance_id}/sendContact/${apiToken}`;
-      
-      // Extract contact data from metadata
-      const contactData = message.metadata?.contactData || {};
-      payload = {
-        chatId: this.formatChatId(message.chat_id),
-        contact: contactData.contact
-      };
-      
-      console.log('👤 Sending contact via direct API...');
     } else {
       // Use sendMessage endpoint for other message types
       endpoint = `/waInstance${instance.instance_id}/sendMessage/${apiToken}`;
@@ -1125,12 +1045,6 @@ class GreenApiService {
         console.log(`📱 Instance ID: ${message.instance_id}`);
         console.log(`💬 Chat ID: ${message.chat_id}`);
         
-        // Check if proxy is available before attempting to use it
-        const isProxyAvailable = await this.checkProxyAvailability();
-        if (!isProxyAvailable) {
-          throw new Error('Proxy server not available - will fall back to direct API');
-        }
-        
         // Determine endpoint and payload based on message type
         let endpointFormats: Array<{name: string, path: string, headers: any, body: any}>;
         
@@ -1165,105 +1079,6 @@ class GreenApiService {
           ];
           
           console.log('📊 Sending poll via proxy...');
-        } else if (message.message_type === 'interactive_buttons') {
-          // Use sendInteractiveButtons endpoint for interactive buttons
-          const interactiveData = message.metadata?.interactiveData || {};
-          const buttonsBody = {
-            chatId: this.formatChatId(message.chat_id),
-            body: message.content,
-            buttons: interactiveData.buttons || []
-          };
-          
-          // Add optional header and footer if present
-          if (interactiveData.header) {
-            buttonsBody.header = interactiveData.header;
-          }
-          if (interactiveData.footer) {
-            buttonsBody.footer = interactiveData.footer;
-          }
-          
-          endpointFormats = [
-            {
-              name: 'Standard Green API Interactive Buttons Format',
-              path: `/waInstance${message.instance_id}/sendInteractiveButtons/${instance.api_token}`,
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: buttonsBody
-            },
-            {
-              name: 'Alternative Interactive Buttons Format with Auth Header',
-              path: `/waInstance${message.instance_id}/sendInteractiveButtons`,
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${instance.api_token}`
-              },
-              body: buttonsBody
-            }
-          ];
-          
-          console.log('🔘 Sending interactive buttons via proxy...');
-        } else if (message.message_type === 'location') {
-          // Use sendLocation endpoint for location messages
-          const locationData = message.metadata?.locationData || {};
-          const locationBody = {
-            chatId: this.formatChatId(message.chat_id),
-            latitude: locationData.latitude,
-            longitude: locationData.longitude,
-            nameLocation: locationData.nameLocation,
-            address: locationData.address
-          };
-          
-          endpointFormats = [
-            {
-              name: 'Standard Green API Location Format',
-              path: `/waInstance${message.instance_id}/sendLocation/${instance.api_token}`,
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: locationBody
-            },
-            {
-              name: 'Alternative Location Format with Auth Header',
-              path: `/waInstance${message.instance_id}/sendLocation`,
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${instance.api_token}`
-              },
-              body: locationBody
-            }
-          ];
-          
-          console.log('📍 Sending location via proxy...');
-        } else if (message.message_type === 'contact') {
-          // Use sendContact endpoint for contact messages
-          const contactData = message.metadata?.contactData || {};
-          const contactBody = {
-            chatId: this.formatChatId(message.chat_id),
-            contact: contactData.contact
-          };
-          
-          endpointFormats = [
-            {
-              name: 'Standard Green API Contact Format',
-              path: `/waInstance${message.instance_id}/sendContact/${instance.api_token}`,
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: contactBody
-            },
-            {
-              name: 'Alternative Contact Format with Auth Header',
-              path: `/waInstance${message.instance_id}/sendContact`,
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${instance.api_token}`
-              },
-              body: contactBody
-            }
-          ];
-          
-          console.log('👤 Sending contact via proxy...');
         } else {
           // Use sendMessage endpoint for other message types
           const messageBody = {
@@ -2179,56 +1994,7 @@ class GreenApiService {
         throw new Error('Instance is not connected');
       }
 
-      // Temporary bypass of queue due to database issues (same as regular messages)
-      const BYPASS_QUEUE = true; // Set to false once database is fixed
-      
-      if (BYPASS_QUEUE) {
-        console.log('🚫 Bypassing poll queue due to database issues, sending directly...');
-        
-        const directPollMessage = {
-          id: globalThis.crypto?.randomUUID?.() || `poll_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          instance_id: params.instanceId,
-          chat_id: params.chatId,
-          message_type: 'poll' as const,
-          content: params.message,
-          metadata: { 
-            pollData: {
-              message: params.message,
-              options: params.options,
-              multipleAnswers: params.multipleAnswers || false
-            }
-          },
-          priority: 0,
-          status: 'pending' as const,
-          retry_count: 0,
-          max_retries: 3,
-          scheduled_at: new Date().toISOString(),
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        } as GreenApiMessage;
-        
-        // Send directly without touching the database
-        try {
-          await this.processDirectMessage(directPollMessage);
-          console.log('✅ Direct poll processing successful');
-        } catch (directError: any) {
-          console.error('❌ Direct poll processing failed:', directError);
-          
-          // Re-throw the error to prevent success response
-          if (directError.message?.includes('466') || directError.message?.includes('Quota exceeded')) {
-            throw new Error(`Poll failed - Quota exceeded. You can only message approved numbers. Please upgrade your Green API plan at https://console.green-api.com`);
-          }
-          throw directError;
-        }
-        
-        // Return success response only if no errors occurred
-        return {
-          ...directPollMessage,
-          status: 'sent'
-        };
-      }
-
-      // Add poll message to queue (for when BYPASS_QUEUE is false)
+      // Add poll message to queue
       const supabase = ensureSupabase();
       const pollData = {
         message: params.message,
@@ -2282,57 +2048,7 @@ class GreenApiService {
         throw new Error('Instance is not connected');
       }
 
-      // Temporary bypass of queue due to database issues (same as regular messages)
-      const BYPASS_QUEUE = true; // Set to false once database is fixed
-      
-      if (BYPASS_QUEUE) {
-        console.log('🚫 Bypassing location queue due to database issues, sending directly...');
-        
-        const directLocationMessage = {
-          id: globalThis.crypto?.randomUUID?.() || `location_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          instance_id: params.instanceId,
-          chat_id: params.chatId,
-          message_type: 'location' as const,
-          content: params.nameLocation || `Location: ${params.latitude}, ${params.longitude}`,
-          metadata: { 
-            locationData: {
-              latitude: params.latitude,
-              longitude: params.longitude,
-              nameLocation: params.nameLocation,
-              address: params.address
-            }
-          },
-          priority: 0,
-          status: 'pending' as const,
-          retry_count: 0,
-          max_retries: 3,
-          scheduled_at: new Date().toISOString(),
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        } as GreenApiMessage;
-        
-        // Send directly without touching the database
-        try {
-          await this.processDirectMessage(directLocationMessage);
-          console.log('✅ Direct location processing successful');
-        } catch (directError: any) {
-          console.error('❌ Direct location processing failed:', directError);
-          
-          // Re-throw the error to prevent success response
-          if (directError.message?.includes('466') || directError.message?.includes('Quota exceeded')) {
-            throw new Error(`Location failed - Quota exceeded. You can only message approved numbers. Please upgrade your Green API plan at https://console.green-api.com`);
-          }
-          throw directError;
-        }
-        
-        // Return success response only if no errors occurred
-        return {
-          ...directLocationMessage,
-          status: 'sent'
-        };
-      }
-
-      // Add location message to queue (for when BYPASS_QUEUE is false)
+      // Add location message to queue
       const supabase = ensureSupabase();
       const locationData = {
         latitude: params.latitude,
@@ -2350,7 +2066,8 @@ class GreenApiService {
           content: params.nameLocation || `Location: ${params.latitude}, ${params.longitude}`,
           metadata: { locationData },
           priority: 0,
-          scheduled_at: new Date().toISOString()
+          scheduled_at: new Date().toISOString(),
+          location_data: locationData
         })
         .select()
         .single();
@@ -2363,14 +2080,6 @@ class GreenApiService {
       return queueData;
     } catch (error: any) {
       console.error('Error sending location:', error);
-      
-      // Handle specific error types
-      if (error.message?.includes('466') || error.message?.includes('Quota exceeded')) {
-        const quotaMatch = error.message.match(/Allowed numbers: ([^.]+)/);
-        const allowedNumbers = quotaMatch ? quotaMatch[1] : '254700000000@c.us, 254712345678@c.us, 255746605561@c.us';
-        throw new Error(`Location failed - Quota exceeded. You can only send to: ${allowedNumbers}. Upgrade at https://console.green-api.com`);
-      }
-      
       throw new Error(`Failed to send location: ${error.message}`);
     }
   }
@@ -2387,65 +2096,10 @@ class GreenApiService {
         throw new Error('Instance is not connected');
       }
 
-      // Temporary bypass of queue due to database issues (same as regular messages)
-      const BYPASS_QUEUE = true; // Set to false once database is fixed
-      
-      if (BYPASS_QUEUE) {
-        console.log('🚫 Bypassing contact queue due to database issues, sending directly...');
-        
-        const directContactMessage = {
-          id: globalThis.crypto?.randomUUID?.() || `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          instance_id: params.instanceId,
-          chat_id: params.chatId,
-          message_type: 'contact' as const,
-          content: `${params.name} - ${params.phoneNumber}`,
-          metadata: { 
-            contactData: {
-              name: params.name,
-              phoneNumber: params.phoneNumber,
-              organization: params.organization,
-              email: params.email,
-              address: params.address
-            }
-          },
-          priority: 0,
-          status: 'pending' as const,
-          retry_count: 0,
-          max_retries: 3,
-          scheduled_at: new Date().toISOString(),
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        } as GreenApiMessage;
-        
-        // Send directly without touching the database
-        try {
-          await this.processDirectMessage(directContactMessage);
-          console.log('✅ Direct contact processing successful');
-        } catch (directError: any) {
-          console.error('❌ Direct contact processing failed:', directError);
-          
-          // Re-throw the error to prevent success response
-          if (directError.message?.includes('466') || directError.message?.includes('Quota exceeded')) {
-            throw new Error(`Contact failed - Quota exceeded. You can only message approved numbers. Please upgrade your Green API plan at https://console.green-api.com`);
-          }
-          throw directError;
-        }
-        
-        // Return success response only if no errors occurred
-        return {
-          ...directContactMessage,
-          status: 'sent'
-        };
-      }
-
-      // Add contact message to queue (for when BYPASS_QUEUE is false)
+      // Add contact message to queue
       const supabase = ensureSupabase();
       const contactData = {
-        name: params.name,
-        phoneNumber: params.phoneNumber,
-        organization: params.organization,
-        email: params.email,
-        address: params.address
+        contact: params.contact
       };
 
       const { data: queueData, error: queueError } = await supabase
@@ -2454,10 +2108,11 @@ class GreenApiService {
           instance_id: params.instanceId,
           chat_id: params.chatId,
           message_type: 'contact',
-          content: `${params.name} - ${params.phoneNumber}`,
+          content: `Contact: ${params.contact.firstName || ''} ${params.contact.lastName || ''} - ${params.contact.phoneContact}`,
           metadata: { contactData },
           priority: 0,
-          scheduled_at: new Date().toISOString()
+          scheduled_at: new Date().toISOString(),
+          contact_data: contactData
         })
         .select()
         .single();
@@ -2470,14 +2125,6 @@ class GreenApiService {
       return queueData;
     } catch (error: any) {
       console.error('Error sending contact:', error);
-      
-      // Handle specific error types
-      if (error.message?.includes('466') || error.message?.includes('Quota exceeded')) {
-        const quotaMatch = error.message.match(/Allowed numbers: ([^.]+)/);
-        const allowedNumbers = quotaMatch ? quotaMatch[1] : '254700000000@c.us, 254712345678@c.us, 255746605561@c.us';
-        throw new Error(`Contact failed - Quota exceeded. You can only send to: ${allowedNumbers}. Upgrade at https://console.green-api.com`);
-      }
-      
       throw new Error(`Failed to send contact: ${error.message}`);
     }
   }
@@ -2494,60 +2141,10 @@ class GreenApiService {
         throw new Error('Instance is not connected');
       }
 
-      // Temporary bypass of queue due to database issues (same as regular messages)
-      const BYPASS_QUEUE = true; // Set to false once database is fixed
-      
-      if (BYPASS_QUEUE) {
-        console.log('🚫 Bypassing interactive buttons queue due to database issues, sending directly...');
-        
-        const directInteractiveMessage = {
-          id: globalThis.crypto?.randomUUID?.() || `interactive_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          instance_id: params.instanceId,
-          chat_id: params.chatId,
-          message_type: 'interactive_buttons' as const,
-          content: params.message,
-          metadata: { 
-            interactiveData: {
-              message: params.message,
-              footer: params.footer,
-              buttons: params.buttons
-            }
-          },
-          priority: 0,
-          status: 'pending' as const,
-          retry_count: 0,
-          max_retries: 3,
-          scheduled_at: new Date().toISOString(),
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        } as GreenApiMessage;
-        
-        // Send directly without touching the database
-        try {
-          await this.processDirectMessage(directInteractiveMessage);
-          console.log('✅ Direct interactive buttons processing successful');
-        } catch (directError: any) {
-          console.error('❌ Direct interactive buttons processing failed:', directError);
-          
-          // Re-throw the error to prevent success response
-          if (directError.message?.includes('466') || directError.message?.includes('Quota exceeded')) {
-            throw new Error(`Interactive buttons failed - Quota exceeded. You can only message approved numbers. Please upgrade your Green API plan at https://console.green-api.com`);
-          }
-          throw directError;
-        }
-        
-        // Return success response only if no errors occurred
-        return {
-          ...directInteractiveMessage,
-          status: 'sent'
-        };
-      }
-
-      // Add interactive buttons message to queue (for when BYPASS_QUEUE is false)
+      // Add interactive buttons message to queue
       const supabase = ensureSupabase();
       const interactiveData = {
         message: params.message,
-        header: params.header,
         footer: params.footer,
         buttons: params.buttons
       };
@@ -2826,82 +2423,6 @@ class GreenApiService {
     } catch (error: any) {
       console.error('Error sending enhanced message:', error);
       throw new Error(`Failed to send enhanced message: ${error.message}`);
-    }
-  }
-
-  // Diagnostic function for interactive buttons
-  async diagnoseInteractiveButtonsIssues(instanceId: string, chatId: string): Promise<{
-    canSendButtons: boolean;
-    issues: string[];
-    recommendations: string[];
-  }> {
-    const issues: string[] = [];
-    const recommendations: string[] = [];
-    let canSendButtons = true;
-
-    try {
-      // Check instance status
-      const instance = await this.getInstance(instanceId);
-      if (!instance || instance.status !== 'connected') {
-        issues.push('WhatsApp instance is not connected');
-        recommendations.push('Ensure WhatsApp instance is connected and authorized');
-        canSendButtons = false;
-      }
-
-      // Check for recent customer activity (24-hour window)
-      try {
-        const supabase = ensureSupabase();
-        const { data: recentMessages } = await supabase
-          .from('whatsapp_messages')
-          .select('created_at, direction')
-          .eq('instance_id', instanceId)
-          .eq('chat_id', chatId)
-          .eq('direction', 'incoming')
-          .order('created_at', { ascending: false })
-          .limit(1);
-
-        if (!recentMessages || recentMessages.length === 0) {
-          issues.push('No recent incoming messages from this customer');
-          recommendations.push('Customer must send a message first to enable interactive buttons');
-          canSendButtons = false;
-        } else {
-          const lastMessage = recentMessages[0];
-          const hoursSinceLastMessage = (Date.now() - new Date(lastMessage.created_at).getTime()) / (1000 * 60 * 60);
-          
-          if (hoursSinceLastMessage > 24) {
-            issues.push(`Last customer message was ${Math.round(hoursSinceLastMessage)} hours ago (>24h limit)`);
-            recommendations.push('Ask customer to send a new message to reset the 24-hour window');
-            canSendButtons = false;
-          }
-        }
-      } catch (error) {
-        issues.push('Could not check message history');
-        recommendations.push('Check database connection and message history');
-      }
-
-      // Check Green API button support status (simulated via getStateInstance for 403)
-      try {
-        const response = await fetch(`https://7105.api.greenapi.com/waInstance${instanceId}/getStateInstance/${instance?.api_token}`, {
-          method: 'GET'
-        });
-        
-        if (response.status === 403) {
-          issues.push('Green API interactive buttons are currently disabled (403 error)');
-          recommendations.push('Interactive buttons are temporarily unavailable on Green API - use text fallback');
-          canSendButtons = false;
-        }
-      } catch (error) {
-        issues.push('Could not verify Green API button support status');
-        recommendations.push('Check Green API service status and connectivity');
-      }
-
-      return { canSendButtons, issues, recommendations };
-    } catch (error: any) {
-      return {
-        canSendButtons: false,
-        issues: [`Diagnostic error: ${error.message}`],
-        recommendations: ['Check system connectivity and try again']
-      };
     }
   }
 }

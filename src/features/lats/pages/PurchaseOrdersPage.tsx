@@ -10,11 +10,14 @@ import {
   AlertCircle, Edit, Eye, Trash2, Star, Tag, DollarSign, TrendingUp, 
   Activity, BarChart3, Settings, RefreshCw, ChevronLeft, ChevronRight,
   CheckCircle, XCircle, Users, Crown, Calendar, RotateCcw, RefreshCw as RefreshCwIcon,
-  FileText, ShoppingCart, Clock, CheckSquare, XSquare, Send, Truck
+  FileText, ShoppingCart, Clock, CheckSquare, XSquare, Send, Truck, Ship, PackageCheck
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useInventoryStore } from '../stores/useInventoryStore';
 import { PurchaseOrder } from '../types/inventory';
+import OrderManagementModal from '../components/purchase-order/OrderManagementModal';
+import ShippingAssignmentModal from '../components/shipping/ShippingAssignmentModal';
+import ShippingTracker from '../components/shipping/ShippingTracker';
 
 const PurchaseOrdersPage: React.FC = () => {
   const { currentUser } = useAuth();
@@ -27,25 +30,51 @@ const PurchaseOrdersPage: React.FC = () => {
     error,
     loadPurchaseOrders,
     deletePurchaseOrder,
-    receivePurchaseOrder
+    receivePurchaseOrder,
+    updatePurchaseOrderShipping,
+    shippingAgents,
+    loadShippingAgents
   } = useInventoryStore();
 
   // Local state
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'sent' | 'received' | 'cancelled'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'sent' | 'confirmed' | 'shipping' | 'shipped' | 'received' | 'cancelled'>('all');
   const [sortBy, setSortBy] = useState<'createdAt' | 'orderNumber' | 'totalAmount' | 'expectedDelivery'>('createdAt');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
+  const [showOrderManagementModal, setShowOrderManagementModal] = useState(false);
+  const [showShippingModal, setShowShippingModal] = useState(false);
+  const [selectedOrderForShipping, setSelectedOrderForShipping] = useState<PurchaseOrder | null>(null);
 
-  // Load purchase orders on component mount
+  // Load purchase orders and shipping data on component mount
   useEffect(() => {
-    // Temporarily disabled to prevent 400 errors while fixing foreign key relationships
-    // TODO: Re-enable when purchase orders are properly set up
-    console.log('📝 Purchase orders loading temporarily disabled');
-    // loadPurchaseOrders();
-  }, [loadPurchaseOrders]);
+    loadPurchaseOrders();
+    loadShippingAgents();
+  }, []);
+
+  // Test function to verify complete workflow
+  const testPurchaseOrderWorkflow = async () => {
+    try {
+      console.log('🧪 TESTING: Complete Purchase Order Workflow from UI');
+      
+      // Test 1: Check current data in store
+      console.log('📊 Current purchase orders in store:', purchaseOrders);
+      console.log('📊 Current loading state:', isLoading);
+      console.log('📊 Current error state:', error);
+      
+      // Test 2: Reload data
+      console.log('🔄 Reloading purchase orders...');
+      await loadPurchaseOrders();
+      
+      // Test 3: Check updated data
+      console.log('📊 Updated purchase orders in store:', purchaseOrders);
+      
+    } catch (error) {
+      console.error('❌ Error in workflow test:', error);
+    }
+  };
 
   // Filter and sort purchase orders
   const filteredOrders = useMemo(() => {
@@ -117,10 +146,39 @@ const PurchaseOrdersPage: React.FC = () => {
     }
   };
 
+  const handleAssignShipping = (order: PurchaseOrder) => {
+    setSelectedOrderForShipping(order);
+    setShowShippingModal(true);
+  };
+
+  const handleShippingAssigned = async (shippingData: any) => {
+    if (!selectedOrderForShipping) return;
+    
+    try {
+      // Update the purchase order with shipping information
+      const response = await updatePurchaseOrderShipping(selectedOrderForShipping.id, shippingData);
+      if (response.success) {
+        toast.success('Shipping assigned successfully');
+        setShowShippingModal(false);
+        setSelectedOrderForShipping(null);
+        // Reload purchase orders to reflect the changes
+        loadPurchaseOrders();
+      } else {
+        toast.error(response.message || 'Failed to assign shipping');
+      }
+    } catch (error) {
+      console.error('Error assigning shipping:', error);
+      toast.error('Failed to assign shipping');
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'draft': return 'text-yellow-600 bg-yellow-100';
       case 'sent': return 'text-blue-600 bg-blue-100';
+      case 'confirmed': return 'text-purple-600 bg-purple-100';
+      case 'shipping': return 'text-orange-600 bg-orange-100';
+      case 'shipped': return 'text-indigo-600 bg-indigo-100';
       case 'received': return 'text-green-600 bg-green-100';
       case 'cancelled': return 'text-red-600 bg-red-100';
       default: return 'text-gray-600 bg-gray-100';
@@ -131,16 +189,19 @@ const PurchaseOrdersPage: React.FC = () => {
     switch (status) {
       case 'draft': return <FileText className="w-4 h-4" />;
       case 'sent': return <Send className="w-4 h-4" />;
-      case 'received': return <Truck className="w-4 h-4" />;
+      case 'confirmed': return <CheckSquare className="w-4 h-4" />;
+      case 'shipping': return <Package className="w-4 h-4" />;
+      case 'shipped': return <Truck className="w-4 h-4" />;
+      case 'received': return <CheckCircle className="w-4 h-4" />;
       case 'cancelled': return <XSquare className="w-4 h-4" />;
       default: return <Clock className="w-4 h-4" />;
     }
   };
 
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amount: number, currencyCode: string = 'TZS') => {
     return new Intl.NumberFormat('en-TZ', {
       style: 'currency',
-      currency: 'TZS'
+      currency: currencyCode
     }).format(amount);
   };
 
@@ -170,16 +231,31 @@ const PurchaseOrdersPage: React.FC = () => {
             <p className="text-gray-600">Manage your purchase orders and inventory</p>
           </div>
           
-          <div className="flex gap-2">
+          {/* Test Button */}
+          <button
+            onClick={testPurchaseOrderWorkflow}
+            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm"
+          >
+            🧪 Test Workflow
+          </button>
+          
+          <div className="flex gap-2 flex-wrap">
+            <GlassButton
+              onClick={() => setShowOrderManagementModal(true)}
+              icon={<ShoppingCart size={18} />}
+              className="bg-gradient-to-r from-blue-500 to-cyan-600 text-white font-semibold"
+            >
+              Manage Orders
+            </GlassButton>
             <GlassButton
               onClick={() => navigate('/lats/purchase-order/create')}
               icon={<Plus size={18} />}
               className="bg-gradient-to-r from-orange-500 to-amber-600 text-white font-semibold"
             >
-              🛒 Interactive PO Creator
+              Interactive PO
             </GlassButton>
             <GlassButton
-              onClick={() => navigate('/lats/purchase-orders/new')}
+              onClick={() => navigate('/lats/purchase-order/create')}
               icon={<FileText size={18} />}
               variant="outline"
               className="border-purple-300 text-purple-600 hover:bg-purple-50"
@@ -215,6 +291,9 @@ const PurchaseOrdersPage: React.FC = () => {
               <option value="all">All Status</option>
               <option value="draft">Draft</option>
               <option value="sent">Sent</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="shipping">Shipping</option>
+              <option value="shipped">Shipped</option>
               <option value="received">Received</option>
               <option value="cancelled">Cancelled</option>
             </select>
@@ -322,8 +401,18 @@ const PurchaseOrdersPage: React.FC = () => {
                   <div className="space-y-2 mb-4">
                     <div className="flex justify-between">
                       <span className="text-gray-600">Total Amount:</span>
-                      <span className="font-semibold">{formatCurrency(order.totalAmount)}</span>
+                      <span className="font-semibold">{formatCurrency(order.totalAmount, order.currency)}</span>
                     </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Currency:</span>
+                      <span className="font-medium">{order.currency || 'TZS'}</span>
+                    </div>
+                    {order.paymentTerms && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Payment Terms:</span>
+                        <span>{order.paymentTerms}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between">
                       <span className="text-gray-600">Items:</span>
                       <span>{order.items.length} items</span>
@@ -372,6 +461,30 @@ const PurchaseOrdersPage: React.FC = () => {
                       </GlassButton>
                     )}
                     
+                    {(order.status === 'draft' || order.status === 'sent' || order.status === 'confirmed') && (
+                      <GlassButton
+                        onClick={() => handleAssignShipping(order)}
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200"
+                      >
+                        <Truck className="w-4 h-4 mr-1" />
+                        Ship
+                      </GlassButton>
+                    )}
+                    
+                    {(order.status === 'shipping' || order.status === 'shipped' || order.status === 'received') && (
+                      <GlassButton
+                        onClick={() => navigate(`/lats/purchase-orders/${order.id}`)}
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
+                      >
+                        <Ship className="w-4 h-4 mr-1" />
+                        Track
+                      </GlassButton>
+                    )}
+                    
                     {order.status === 'draft' && (
                       <GlassButton
                         onClick={() => handleDeleteOrder(order.id)}
@@ -403,6 +516,34 @@ const PurchaseOrdersPage: React.FC = () => {
               </div>
             </div>
           </GlassCard>
+        )}
+
+        {/* Order Management Modal */}
+        <OrderManagementModal
+          isOpen={showOrderManagementModal}
+          onClose={() => setShowOrderManagementModal(false)}
+        />
+
+        {/* Shipping Assignment Modal */}
+        {selectedOrderForShipping && (
+          <ShippingAssignmentModal
+            isOpen={showShippingModal}
+            onClose={() => {
+              setShowShippingModal(false);
+              setSelectedOrderForShipping(null);
+            }}
+            purchaseOrder={selectedOrderForShipping}
+            agents={shippingAgents || []}
+            settings={{
+              defaultAgentId: '',
+              defaultShippingCost: 0,
+              maxShippingCost: 100000,
+              requireSignature: false,
+              enableInsurance: false,
+              autoAssignAgents: false
+            }}
+            onAssignShipping={handleShippingAssigned}
+          />
         )}
       </div>
     </div>

@@ -1,6 +1,6 @@
 import React from 'react';
 import { ShoppingCart, User, XCircle, Phone, Crown, Search, Plus } from 'lucide-react';
-import GlassCard from '../../../../shared/components/ui/GlassCard';
+import GlassCard from '../../../../features/shared/components/ui/GlassCard';
 import VariantCartItem from './VariantCartItem';
 
 interface Customer {
@@ -162,7 +162,7 @@ const POSCartSection: React.FC<POSCartSectionProps> = ({
                   <VariantCartItem
                     key={item.id}
                     item={item}
-                    onUpdateQuantity={(quantity) => onUpdateCartItemQuantity(item.id, quantity)}
+                    onQuantityChange={(quantity) => onUpdateCartItemQuantity(item.id, quantity)}
                     onRemove={() => onRemoveCartItem(item.id)}
                   />
                 ))}

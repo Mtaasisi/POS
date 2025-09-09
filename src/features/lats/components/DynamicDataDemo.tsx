@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import GlassCard from './ui/GlassCard';
 import GlassButton from './ui/GlassButton';
-import { useDynamicDataStore, simulateSale, initializeTestData } from '../lib/data/dynamicDataStore';
+import { useDynamicDataStore, simulateSale } from '../lib/data/dynamicDataStore';
 
 const DynamicDataDemo: React.FC = () => {
   const [isUpdating, setIsUpdating] = useState(false);
@@ -19,60 +19,23 @@ const DynamicDataDemo: React.FC = () => {
   } = useDynamicDataStore();
 
   const handleSimulateSale = () => {
-    setIsUpdating(true);
-    // Simulate a sale for the first customer with the first product
-    if (customers.length > 0 && products.length > 0) {
-      simulateSale(customers[0].id, [{ productId: products[0].id, quantity: 1 }]);
-      setTimeout(() => {
-        setIsUpdating(false);
-        alert('Sale simulated! Check all LATS pages to see the updates.');
-      }, 500);
-    }
+    // Note: Sale simulation removed - use real POS transactions instead
+    alert('Sale simulation is no longer available. Use the POS system to create real transactions.');
   };
 
   const handleSimulateMultipleSales = () => {
-    // Simulate multiple sales to test the system
-    if (customers.length > 0 && products.length > 0) {
-      // Sale 1: iPhone to Mike
-      simulateSale(customers[0].id, [{ productId: products[0].id, quantity: 1 }]);
-      
-      // Sale 2: MacBook to David
-      if (customers.length > 1 && products.length > 2) {
-        setTimeout(() => {
-          simulateSale(customers[1].id, [{ productId: products[2].id, quantity: 1 }]);
-        }, 1000);
-      }
-      
-      // Sale 3: AirPods to John
-      if (customers.length > 2 && products.length > 3) {
-        setTimeout(() => {
-          simulateSale(customers[2].id, [{ productId: products[3].id, quantity: 2 }]);
-        }, 2000);
-      }
-      
-      alert('Multiple sales simulated! Check all LATS pages to see the updates.');
-    }
+    // Note: Sale simulation removed - use real POS transactions instead
+    alert('Sale simulation is no longer available. Use the POS system to create real transactions.');
   };
 
   const handleSimulateLowStock = () => {
-    // Simulate sales to create low stock situations
-    if (customers.length > 0 && products.length > 0) {
-      // Buy all remaining iPhone stock
-      const iphone = products.find(p => p.name.includes('iPhone'));
-      if (iphone && iphone.currentStock > 0) {
-        simulateSale(customers[0].id, [{ productId: iphone.id, quantity: iphone.currentStock }]);
-        alert('Low stock situation created! Check Inventory page for alerts.');
-      }
-    }
+    // Note: Low stock simulation removed - use real inventory management instead
+    alert('Low stock simulation is no longer available. Use real inventory management to track stock levels.');
   };
 
   const handleInitializeTestData = () => {
-    setIsUpdating(true);
-    initializeTestData();
-    setTimeout(() => {
-      setIsUpdating(false);
-      alert('Test data initialized! Check all LATS pages for comprehensive data.');
-    }, 1000);
+    // Note: Test data initialization removed - use real database data instead
+    alert('Test data initialization is no longer available. Use real database data instead.');
   };
 
   const formatMoney = (amount: number) => {

@@ -1,5 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
 import { supabase } from './supabaseClient';
+import { validateAndCreateDefaultVariant } from '../features/lats/lib/variantUtils';
 import { ImageUploadService } from './imageUpload';
 
 // Use the main supabase client instead of creating a separate one
@@ -101,28 +101,50 @@ export async function createProduct(
     }
 
     // Create variants (be resilient to both price/sellingPrice & stock field names)
-    const variants = productWithoutImages.variants.map(variant => ({
-      product_id: product.id,
-      sku: variant.sku,
-      name: variant.name,
-      attributes: variant.attributes || {},
-      cost_price: variant.costPrice ?? 0,
-      selling_price: (variant.sellingPrice ?? variant.price) ?? 0,
-      quantity: (variant.quantity ?? variant.stockQuantity) ?? 0,
-      min_quantity: (variant.minQuantity ?? variant.minStockLevel) ?? 0,
+    if (productWithoutImages.variants && productWithoutImages.variants.length > 0) {
+      const variants = productWithoutImages.variants.map(variant => ({
+        product_id: product.id,
+        sku: variant.sku,
+        name: variant.name,
+        attributes: variant.attributes || {},
+        cost_price: variant.costPrice ?? 0,
+        selling_price: (variant.sellingPrice ?? variant.price) ?? 0,
+        quantity: (variant.quantity ?? variant.stockQuantity) ?? 0,
+        min_quantity: (variant.minQuantity ?? variant.minStockLevel) ?? 0
+      }));
 
-      weight: variant.weight,
-      dimensions: variant.dimensions
-    }));
+      const { error: variantsError } = await supabase
+        .from('lats_product_variants')
+        .insert(variants);
 
-    const { error: variantsError } = await supabase
-      .from('lats_product_variants')
-      .insert(variants);
+      if (variantsError) {
+        console.error('Variants creation error:', variantsError);
+        console.error('Variants data being inserted:', variants);
+        throw variantsError;
+      }
+    } else {
+      // No variants provided - create a default variant automatically
+      console.log('🔄 No variants provided, creating default variant automatically');
+      
+      const defaultVariantResult = await validateAndCreateDefaultVariant(
+        product.id,
+        product.name,
+        {
+          costPrice: productWithoutImages.costPrice,
+          sellingPrice: productWithoutImages.sellingPrice,
+          quantity: productWithoutImages.quantity,
+          minQuantity: productWithoutImages.minQuantity,
+          sku: productWithoutImages.sku,
+          attributes: productWithoutImages.attributes
+        }
+      );
 
-    if (variantsError) {
-      console.error('Variants creation error:', variantsError);
-      console.error('Variants data being inserted:', variants);
-      throw variantsError;
+      if (!defaultVariantResult.success) {
+        console.error('❌ Failed to create default variant:', defaultVariantResult.error);
+        throw new Error(`Failed to create default variant: ${defaultVariantResult.error}`);
+      }
+      
+      console.log('✅ Default variant created successfully');
     }
 
     // Handle images if provided
@@ -412,10 +434,7 @@ export async function updateProduct(
           cost_price: variant.costPrice,
           selling_price: variant.sellingPrice,
           quantity: variant.stockQuantity,
-          min_quantity: variant.minStockLevel,
-    
-          weight: variant.weight,
-          dimensions: variant.dimensions
+          min_quantity: variant.minStockLevel
         };
 
         // Check if this variant already exists (by SKU)

@@ -71,7 +71,7 @@ const DiagnosticReportsTab: React.FC = () => {
   };
 
   const exportReport = () => {
-    toast.info('Export functionality coming soon...');
+    toast('Export functionality coming soon...');
   };
 
   if (!currentUser || !['admin', 'technician'].includes(currentUser.role)) {

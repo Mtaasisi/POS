@@ -127,41 +127,61 @@ const StorageLocationForm: React.FC<StorageLocationFormProps> = ({
   };
 
   const getShelfColor = (letter: string) => {
-    // Unique colors for each letter A-Z - no repetition
-    const uniqueColors: { [key: string]: any } = {
-      'A': { bg: 'bg-blue-500', hover: 'hover:bg-blue-600', border: 'border-blue-500', text: 'text-blue-600', bgLight: 'bg-blue-50' },
-      'B': { bg: 'bg-green-500', hover: 'hover:bg-green-600', border: 'border-green-500', text: 'text-green-600', bgLight: 'bg-green-50' },
-      'C': { bg: 'bg-purple-500', hover: 'hover:bg-purple-600', border: 'border-purple-500', text: 'text-purple-600', bgLight: 'bg-purple-50' },
-      'D': { bg: 'bg-orange-500', hover: 'hover:bg-orange-600', border: 'border-orange-500', text: 'text-orange-600', bgLight: 'bg-orange-50' },
-      'E': { bg: 'bg-red-500', hover: 'hover:bg-red-600', border: 'border-red-500', text: 'text-red-600', bgLight: 'bg-red-50' },
-      'F': { bg: 'bg-teal-500', hover: 'hover:bg-teal-600', border: 'border-teal-500', text: 'text-teal-600', bgLight: 'bg-teal-50' },
-      'G': { bg: 'bg-pink-500', hover: 'hover:bg-pink-600', border: 'border-pink-500', text: 'text-pink-600', bgLight: 'bg-pink-50' },
-      'H': { bg: 'bg-indigo-500', hover: 'hover:bg-indigo-600', border: 'border-indigo-500', text: 'text-indigo-600', bgLight: 'bg-indigo-50' },
-      'I': { bg: 'bg-emerald-500', hover: 'hover:bg-emerald-600', border: 'border-emerald-500', text: 'text-emerald-600', bgLight: 'bg-emerald-50' },
-      'J': { bg: 'bg-cyan-500', hover: 'hover:bg-cyan-600', border: 'border-cyan-500', text: 'text-cyan-600', bgLight: 'bg-cyan-50' },
-      'K': { bg: 'bg-lime-500', hover: 'hover:bg-lime-600', border: 'border-lime-500', text: 'text-lime-600', bgLight: 'bg-lime-50' },
-      'L': { bg: 'bg-amber-500', hover: 'hover:bg-amber-600', border: 'border-amber-500', text: 'text-amber-600', bgLight: 'bg-amber-50' },
-      'M': { bg: 'bg-rose-500', hover: 'hover:bg-rose-600', border: 'border-rose-500', text: 'text-rose-600', bgLight: 'bg-rose-50' },
-      'N': { bg: 'bg-violet-500', hover: 'hover:bg-violet-600', border: 'border-violet-500', text: 'text-violet-600', bgLight: 'bg-violet-50' },
-      'O': { bg: 'bg-sky-500', hover: 'hover:bg-sky-600', border: 'border-sky-500', text: 'text-sky-600', bgLight: 'bg-sky-50' },
-      'P': { bg: 'bg-slate-500', hover: 'hover:bg-slate-600', border: 'border-slate-500', text: 'text-slate-600', bgLight: 'bg-slate-50' },
-      'Q': { bg: 'bg-zinc-500', hover: 'hover:bg-zinc-600', border: 'border-zinc-500', text: 'text-zinc-600', bgLight: 'bg-zinc-50' },
-      'R': { bg: 'bg-stone-500', hover: 'hover:bg-stone-600', border: 'border-stone-500', text: 'text-stone-600', bgLight: 'bg-stone-50' },
-      'S': { bg: 'bg-neutral-500', hover: 'hover:bg-neutral-600', border: 'border-neutral-500', text: 'text-neutral-600', bgLight: 'bg-neutral-50' },
-      'T': { bg: 'bg-fuchsia-500', hover: 'hover:bg-fuchsia-600', border: 'border-fuchsia-500', text: 'text-fuchsia-600', bgLight: 'bg-fuchsia-50' },
-      'U': { bg: 'bg-blue-400', hover: 'hover:bg-blue-500', border: 'border-blue-400', text: 'text-blue-500', bgLight: 'bg-blue-25' },
-      'V': { bg: 'bg-green-400', hover: 'hover:bg-green-500', border: 'border-green-400', text: 'text-green-500', bgLight: 'bg-green-25' },
-      'W': { bg: 'bg-purple-400', hover: 'hover:bg-purple-500', border: 'border-purple-400', text: 'text-purple-500', bgLight: 'bg-purple-25' },
-      'X': { bg: 'bg-orange-400', hover: 'hover:bg-orange-500', border: 'border-orange-400', text: 'text-orange-500', bgLight: 'bg-orange-25' },
-      'Y': { bg: 'bg-red-400', hover: 'hover:bg-red-500', border: 'border-red-400', text: 'text-red-500', bgLight: 'bg-red-25' },
-      'Z': { bg: 'bg-teal-400', hover: 'hover:bg-teal-500', border: 'border-teal-400', text: 'text-teal-500', bgLight: 'bg-teal-25' }
+    // Letter-based background colors - Strong vibrant colors
+    const getLetterBackgroundColor = (letter: string) => {
+      const letterColors: { [key: string]: string } = {
+        // Each letter gets a completely unique strong color - no repeats anywhere
+        'A': 'bg-gradient-to-br from-blue-400 to-blue-500',
+        'B': 'bg-gradient-to-br from-green-400 to-green-500',
+        'C': 'bg-gradient-to-br from-purple-400 to-purple-500',
+        'D': 'bg-gradient-to-br from-orange-400 to-orange-500',
+        'E': 'bg-gradient-to-br from-red-400 to-red-500',
+        'F': 'bg-gradient-to-br from-teal-400 to-teal-500',
+        'G': 'bg-gradient-to-br from-pink-400 to-pink-500',
+        'H': 'bg-gradient-to-br from-indigo-400 to-indigo-500',
+        'I': 'bg-gradient-to-br from-emerald-400 to-emerald-500',
+        'J': 'bg-gradient-to-br from-cyan-400 to-cyan-500',
+        'K': 'bg-gradient-to-br from-lime-400 to-lime-500',
+        'L': 'bg-gradient-to-br from-amber-400 to-amber-500',
+        'M': 'bg-gradient-to-br from-rose-400 to-rose-500',
+        'N': 'bg-gradient-to-br from-violet-400 to-violet-500',
+        'O': 'bg-gradient-to-br from-sky-400 to-sky-500',
+        'P': 'bg-gradient-to-br from-fuchsia-400 to-fuchsia-500',
+        'Q': 'bg-gradient-to-br from-slate-400 to-slate-500',
+        'R': 'bg-gradient-to-br from-zinc-400 to-zinc-500',
+        'S': 'bg-gradient-to-br from-stone-400 to-stone-500',
+        'T': 'bg-gradient-to-br from-neutral-400 to-neutral-500',
+        'U': 'bg-gradient-to-br from-yellow-400 to-yellow-500',
+        'V': 'bg-gradient-to-br from-orange-500 to-orange-600',
+        'W': 'bg-gradient-to-br from-red-500 to-red-600',
+        'X': 'bg-gradient-to-br from-pink-500 to-pink-600',
+        'Y': 'bg-gradient-to-br from-purple-500 to-purple-600',
+        'Z': 'bg-gradient-to-br from-indigo-500 to-indigo-600',
+        // Numbers - Each gets a unique strong color from different families
+        '0': 'bg-gradient-to-br from-gray-300 to-gray-400',
+        '1': 'bg-gradient-to-br from-blue-600 to-blue-700',
+        '2': 'bg-gradient-to-br from-green-600 to-green-700',
+        '3': 'bg-gradient-to-br from-teal-600 to-teal-700',
+        '4': 'bg-gradient-to-br from-cyan-600 to-cyan-700',
+        '5': 'bg-gradient-to-br from-lime-600 to-lime-700',
+        '6': 'bg-gradient-to-br from-amber-600 to-amber-700',
+        '7': 'bg-gradient-to-br from-emerald-600 to-emerald-700',
+        '8': 'bg-gradient-to-br from-rose-600 to-rose-700',
+        '9': 'bg-gradient-to-br from-violet-600 to-violet-700'
+      };
+      return letterColors[letter] || 'bg-gradient-to-br from-gray-200 to-gray-300';
     };
     
-    if (!letter) {
-      return { bg: 'bg-gray-500', hover: 'hover:bg-gray-600', border: 'border-gray-500', text: 'text-gray-600', bgLight: 'bg-gray-50' };
-    }
+    const columnColor = letter ? getLetterBackgroundColor(letter) : 'bg-gradient-to-br from-gray-200 to-gray-300';
     
-    return uniqueColors[letter] || { bg: 'bg-gray-500', hover: 'hover:bg-gray-600', border: 'border-gray-500', text: 'text-gray-600', bgLight: 'bg-gray-50' };
+    // Return color object for compatibility
+    return { 
+      bg: columnColor, 
+      hover: columnColor, 
+      border: 'border-gray-200', 
+      text: 'text-white', 
+      bgLight: columnColor 
+    };
   };
 
   const getFilteredShelves = () => {
@@ -256,9 +276,9 @@ const StorageLocationForm: React.FC<StorageLocationFormProps> = ({
       </div>
 
       {/* Storage Location Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full max-h-[95vh] overflow-hidden">
+              {showModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-7xl w-full max-h-[95vh] overflow-hidden">
             {/* Modal Header */}
             <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
               <div className="flex items-center gap-4">
@@ -349,91 +369,154 @@ const StorageLocationForm: React.FC<StorageLocationFormProps> = ({
 
             {/* Shelves Grid */}
             <div className="p-6 overflow-y-auto max-h-[60vh]">
-              {getFilteredShelves().length === 0 ? (
-                <div className="text-center py-16">
-                  <div className="w-24 h-24 mx-auto mb-6 bg-gray-100 rounded-full flex items-center justify-center">
-                    <Grid3X3 size={48} className="text-gray-400" />
-                  </div>
-                  <h3 className="text-2xl font-bold text-gray-600 mb-3">
-                    {searchTerm || selectedLetter ? 'No matching shelves found' : 'No Shelves Available'}
-                  </h3>
-                  <p className="text-gray-500 max-w-md mx-auto leading-relaxed">
-                    {searchTerm || selectedLetter 
-                      ? 'Try adjusting your search terms or clearing the letter filter to see all available shelves.'
-                      : 'This storage room doesn\'t have any shelves yet. Please create shelves in the storage management section.'
-                    }
-                  </p>
-                  {(searchTerm || selectedLetter) && (
-                    <button
-                      onClick={() => {
-                        setSearchTerm('');
-                        setSelectedLetter('');
-                      }}
-                      className="mt-4 px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-                    >
-                      Clear Filters
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                  {getFilteredShelves().map((shelf) => {
+              {getFilteredShelves().length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4">
+                  {getFilteredShelves().map((shelf, index) => {
                     const isSelected = formData.storageRoomId === selectedRoomId && formData.shelfId === shelf.id;
+                    const shelfColor = getShelfColor(shelf.name.charAt(0).toUpperCase());
+                    const foundLetter = shelf.name.toUpperCase().match(/[A-Z]/)?.[0];
                     
-                    // Find the first letter A-Z in the shelf name
-                    const upperName = shelf.name.toUpperCase();
-                    let foundLetter = null;
-                    for (let i = 0; i < upperName.length; i++) {
-                      const char = upperName[i];
-                      if (char >= 'A' && char <= 'Z') {
-                        foundLetter = char;
-                        break;
-                      }
-                    }
+                    // Letter-based background colors - Strong vibrant colors
+                    const getLetterBackgroundColor = (letter: string) => {
+                      const letterColors: { [key: string]: string } = {
+                        // Each letter gets a completely unique strong color - no repeats anywhere
+                        'A': 'bg-gradient-to-br from-blue-400 to-blue-500',
+                        'B': 'bg-gradient-to-br from-green-400 to-green-500',
+                        'C': 'bg-gradient-to-br from-purple-400 to-purple-500',
+                        'D': 'bg-gradient-to-br from-orange-400 to-orange-500',
+                        'E': 'bg-gradient-to-br from-red-400 to-red-500',
+                        'F': 'bg-gradient-to-br from-teal-400 to-teal-500',
+                        'G': 'bg-gradient-to-br from-pink-400 to-pink-500',
+                        'H': 'bg-gradient-to-br from-indigo-400 to-indigo-500',
+                        'I': 'bg-gradient-to-br from-emerald-400 to-emerald-500',
+                        'J': 'bg-gradient-to-br from-cyan-400 to-cyan-500',
+                        'K': 'bg-gradient-to-br from-lime-400 to-lime-500',
+                        'L': 'bg-gradient-to-br from-amber-400 to-amber-500',
+                        'M': 'bg-gradient-to-br from-rose-400 to-rose-500',
+                        'N': 'bg-gradient-to-br from-violet-400 to-violet-500',
+                        'O': 'bg-gradient-to-br from-sky-400 to-sky-500',
+                        'P': 'bg-gradient-to-br from-fuchsia-400 to-fuchsia-500',
+                        'Q': 'bg-gradient-to-br from-slate-400 to-slate-500',
+                        'R': 'bg-gradient-to-br from-zinc-400 to-zinc-500',
+                        'S': 'bg-gradient-to-br from-stone-400 to-stone-500',
+                        'T': 'bg-gradient-to-br from-neutral-400 to-neutral-500',
+                        'U': 'bg-gradient-to-br from-yellow-400 to-yellow-500',
+                        'V': 'bg-gradient-to-br from-orange-500 to-orange-600',
+                        'W': 'bg-gradient-to-br from-red-500 to-red-600',
+                        'X': 'bg-gradient-to-br from-pink-500 to-pink-600',
+                        'Y': 'bg-gradient-to-br from-purple-500 to-purple-600',
+                        'Z': 'bg-gradient-to-br from-indigo-500 to-indigo-600',
+                        // Numbers - Each gets a unique strong color from different families
+                        '0': 'bg-gradient-to-br from-gray-300 to-gray-400',
+                        '1': 'bg-gradient-to-br from-blue-600 to-blue-700',
+                        '2': 'bg-gradient-to-br from-green-600 to-green-700',
+                        '3': 'bg-gradient-to-br from-teal-600 to-teal-700',
+                        '4': 'bg-gradient-to-br from-cyan-600 to-cyan-700',
+                        '5': 'bg-gradient-to-br from-lime-600 to-lime-700',
+                        '6': 'bg-gradient-to-br from-amber-600 to-amber-700',
+                        '7': 'bg-gradient-to-br from-emerald-600 to-emerald-700',
+                        '8': 'bg-gradient-to-br from-rose-600 to-rose-700',
+                        '9': 'bg-gradient-to-br from-violet-600 to-violet-700'
+                      };
+                      return letterColors[letter] || 'bg-gradient-to-br from-gray-200 to-gray-300';
+                    };
                     
-                    const shelfColor = getShelfColor(foundLetter || '');
+                    const columnColor = foundLetter ? getLetterBackgroundColor(foundLetter) : 'bg-gradient-to-br from-gray-200 to-gray-300';
                     
                     return (
                       <button
                         key={shelf.id}
                         onClick={() => handleShelfSelect(selectedRoomId, shelf.id)}
-                        className={`group relative p-4 rounded-xl border-2 transition-all duration-300 text-left hover:shadow-lg hover:scale-105 ${
+                        className={`group relative overflow-hidden transition-all duration-500 text-left ${
                           isSelected
-                            ? `${shelfColor.border} ${shelfColor.bgLight} shadow-lg scale-105`
-                            : 'border-gray-200 bg-white hover:border-gray-300'
+                            ? 'transform scale-105 shadow-2xl'
+                            : 'hover:transform hover:scale-102 hover:shadow-xl'
                         }`}
                       >
-                        {/* Color indicator bar */}
-                        <div className={`absolute top-0 left-0 right-0 h-1 rounded-t-xl ${shelfColor.bg}`}></div>
-                        
-                        {/* Selection indicator */}
-                        {isSelected && (
-                          <div className={`absolute -top-2 -right-2 w-6 h-6 ${shelfColor.bg} rounded-full flex items-center justify-center shadow-lg`}>
-                            <Check size={14} className="text-white" />
+                        {/* Main card container */}
+                        <div className={`relative h-20 rounded-lg border-2 transition-all duration-500 ${
+                          isSelected
+                            ? `${shelfColor.border} ${shelfColor.bgLight}`
+                            : `border-gray-200 ${columnColor} hover:border-gray-300`
+                        }`}>
+                          
+                          {/* Animated background pattern */}
+                          <div className={`absolute inset-0 opacity-10 transition-opacity duration-500 ${
+                            isSelected ? 'opacity-20' : 'group-hover:opacity-15'
+                          }`}>
+                            <div className={`absolute inset-0 bg-gradient-to-br ${shelfColor.bg} rounded-3xl`} />
+                            <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.3),transparent_50%)]" />
                           </div>
-                        )}
-                        
-                        <div className="flex items-center gap-3 mb-3">
-                          <div className={`p-2 rounded-lg ${isSelected ? shelfColor.bg : 'bg-gray-100 group-hover:bg-gray-200'}`}>
-                            <Grid3X3 size={16} className={isSelected ? 'text-white' : 'text-gray-500'} />
-                          </div>
-                          <div className="flex-1">
-                            <div className="font-semibold text-gray-900">{shelf.name}</div>
-                            <div className="text-xs text-gray-500">
-                              {shelf.is_refrigerated ? '❄ Refrigerated' : 'Standard'}
+                          
+                          {/* Content overlay */}
+                          <div className="relative h-full flex items-center justify-between p-4">
+                            
+                            {/* Left side - Shelf name only */}
+                            <div className="flex items-center">
+                              {/* Shelf name */}
+                              <div className="flex flex-col">
+                                <div className={`text-lg font-black tracking-tight transition-all duration-500 ${
+                                  isSelected ? shelfColor.text : 'text-white'
+                                }`}>
+                                  {shelf.name}
+                                </div>
+                                <div className={`text-xs font-medium transition-all duration-500 ${
+                                  isSelected ? `${shelfColor.text} opacity-80` : 'text-white opacity-80'
+                                }`}>
+                                  Storage Shelf
+                                </div>
+                              </div>
                             </div>
+                            
+                            {/* Right side - Letter badge */}
+                            {foundLetter && (
+                              <div className="relative">
+                                <div className={`w-8 h-8 rounded-md flex items-center justify-center text-sm font-black transition-all duration-500 border-2 ${
+                                  isSelected 
+                                    ? `${columnColor} text-white shadow-xl border-white/90` 
+                                    : `${columnColor} text-white shadow-md border-white/80`
+                                }`}>
+                                  {foundLetter}
+                                </div>
+                              </div>
+                            )}
                           </div>
+                          
+                          {/* Selection indicator */}
+                          {isSelected && (
+                            <div className={`absolute -top-2 -right-2 w-8 h-8 rounded-full ${shelfColor.bg} flex items-center justify-center shadow-lg animate-pulse`}>
+                              <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            </div>
+                          )}
+                          
+                          {/* Hover border effect */}
+                          <div className={`absolute inset-0 rounded-lg border-2 border-transparent transition-all duration-500 ${
+                            isSelected 
+                              ? `${shelfColor.border} opacity-100` 
+                              : 'group-hover:border-gray-300 opacity-0 group-hover:opacity-100'
+                          }`} />
                         </div>
-                        
-                        {/* Letter badge */}
-                        {foundLetter && (
-                          <div className={`inline-flex items-center px-3 py-2 rounded-full text-lg font-bold ${shelfColor.bg} text-white shadow-md`}>
-                            {foundLetter}
-                          </div>
-                        )}
                       </button>
                     );
                   })}
+                </div>
+              ) : (
+                <div className="text-center py-16">
+                  <div className="relative w-24 h-24 mx-auto mb-8">
+                    <div className="absolute inset-0 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full animate-pulse" />
+                    <div className="absolute inset-2 bg-white rounded-full flex items-center justify-center">
+                      <Grid3X3 size={36} className="text-gray-400" />
+                    </div>
+                  </div>
+                  <h3 className="text-2xl font-bold text-gray-900 mb-4">No Shelves Found</h3>
+                  <p className="text-gray-600 max-w-lg mx-auto leading-relaxed">
+                    {searchTerm || selectedLetter 
+                      ? 'Try adjusting your search or filter criteria to discover available shelves.'
+                      : 'No shelves are currently available in this storage room.'
+                    }
+                  </p>
                 </div>
               )}
             </div>

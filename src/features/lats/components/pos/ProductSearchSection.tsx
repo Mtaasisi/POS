@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Search, RefreshCw, Package, Command, Barcode, Filter, X } from 'lucide-react';
-import GlassCard from '../../../../shared/components/ui/GlassCard';
+import GlassCard from '../../../../features/shared/components/ui/GlassCard';
 import VariantProductCard from './VariantProductCard';
 import { toast } from 'react-hot-toast';
 
@@ -10,8 +10,21 @@ interface Product {
   sku: string;
   price: number;
   stockQuantity: number;
-  category: string;
-
+  categoryId: string;
+  category?: {
+    id: string;
+    name: string;
+    description?: string;
+    color?: string;
+    icon?: string;
+    parent_id?: string;
+    isActive: boolean;
+    sortOrder: number;
+    metadata?: Record<string, any>;
+    createdAt: string;
+    updatedAt: string;
+    children?: any[];
+  };
   image: string;
   barcode: string;
   variants?: any[];
@@ -26,7 +39,8 @@ interface ProductSearchSectionProps {
   setShowAdvancedFilters: (show: boolean) => void;
   selectedCategory: string;
   setSelectedCategory: (category: string) => void;
-
+  selectedBrand: string;
+  setSelectedBrand: (brand: string) => void;
   priceRange: { min: string; max: string };
   setPriceRange: (range: { min: string; max: string }) => void;
   stockFilter: 'all' | 'in-stock' | 'low-stock' | 'out-of-stock';
@@ -36,7 +50,7 @@ interface ProductSearchSectionProps {
   sortOrder: 'asc' | 'desc';
   setSortOrder: (order: 'asc' | 'desc') => void;
   categories: string[];
-
+  brands: string[];
   onAddToCart: (product: Product, variant?: any) => void;
   onAddExternalProduct: () => void;
   onSearch: (query: string) => void;
@@ -56,7 +70,8 @@ const ProductSearchSection: React.FC<ProductSearchSectionProps> = ({
   setShowAdvancedFilters,
   selectedCategory,
   setSelectedCategory,
-
+  selectedBrand,
+  setSelectedBrand,
   priceRange,
   setPriceRange,
   stockFilter,
@@ -66,7 +81,7 @@ const ProductSearchSection: React.FC<ProductSearchSectionProps> = ({
   sortOrder,
   setSortOrder,
   categories,
-
+  brands,
   onAddToCart,
   onAddExternalProduct,
   onSearch,
@@ -89,8 +104,7 @@ const ProductSearchSection: React.FC<ProductSearchSectionProps> = ({
       const suggestions = products.filter(product => 
         product.name.toLowerCase().includes(query.toLowerCase()) ||
         product.sku.toLowerCase().includes(query.toLowerCase()) ||
-
-        product.category.toLowerCase().includes(query.toLowerCase())
+        (product.category?.name && product.category.name.toLowerCase().includes(query.toLowerCase()))
       ).slice(0, 5);
       
       setSearchSuggestions(suggestions);
@@ -119,7 +133,7 @@ const ProductSearchSection: React.FC<ProductSearchSectionProps> = ({
       if (onScanBarcode) {
         onScanBarcode();
       } else {
-        toast.info('Barcode scanning not available');
+        toast('Barcode scanning not available');
       }
     } else {
       // Regular search
@@ -131,9 +145,10 @@ const ProductSearchSection: React.FC<ProductSearchSectionProps> = ({
   // Filter products based on current filters
   const filteredProducts = products.filter(product => {
     // Category filter
-    if (selectedCategory && product.category !== selectedCategory) return false;
+    if (selectedCategory && product.category?.name !== selectedCategory) return false;
     
-    
+    // Brand filter
+    if (selectedBrand && product.brand !== selectedBrand) return false;
     
     // Price range filter
     if (priceRange.min && product.price < parseFloat(priceRange.min)) return false;
@@ -260,7 +275,7 @@ const ProductSearchSection: React.FC<ProductSearchSectionProps> = ({
                       <div className="flex-1">
                         <div className="font-medium text-gray-900">{product.name}</div>
                                         <div className="text-sm text-gray-500">
-                  {product.sku} • {product.category}
+                  {product.sku} • {product.category?.name || 'No Category'}
                 </div>
                       </div>
                       <div className="text-right">
@@ -310,7 +325,20 @@ const ProductSearchSection: React.FC<ProductSearchSectionProps> = ({
                   </select>
                 </div>
 
-
+                {/* Brand Filter */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Brand</label>
+                  <select
+                    value={selectedBrand}
+                    onChange={(e) => setSelectedBrand(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">All Brands</option>
+                    {brands.map((brand) => (
+                      <option key={brand} value={brand}>{brand}</option>
+                    ))}
+                  </select>
+                </div>
 
                 {/* Price Range */}
                 <div>

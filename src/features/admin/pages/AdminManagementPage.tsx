@@ -140,7 +140,7 @@ const AdminManagementPage: React.FC = () => {
       title: 'Green API Management',
       description: 'Manage WhatsApp integration and messaging',
       icon: <MessageCircle size={24} />,
-      path: '/lats/whatsapp-hub',
+      path: '/lats/whatsapp-connection-manager',
       color: 'from-green-500 to-green-600',
       category: 'communication'
     },
@@ -149,7 +149,7 @@ const AdminManagementPage: React.FC = () => {
       title: 'WhatsApp Hub',
       description: 'Centralized WhatsApp messaging and management',
       icon: <MessageCircle size={24} />,
-      path: '/lats/whatsapp-hub',
+      path: '/lats/whatsapp-connection-manager',
       color: 'from-green-500 to-green-600',
       category: 'communication'
     },

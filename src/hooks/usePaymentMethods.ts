@@ -17,9 +17,12 @@ export const usePaymentMethods = () => {
       setError(null);
       const methods = await financeAccountService.getPaymentMethods();
       setPaymentMethods(methods);
+      console.log('✅ Payment methods loaded:', methods.length);
     } catch (err) {
       setError('Failed to fetch payment methods');
       console.error('Error fetching payment methods:', err);
+      // Set empty array to prevent crashes
+      setPaymentMethods([]);
     } finally {
       setLoading(false);
     }

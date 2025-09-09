@@ -91,11 +91,7 @@ export async function fetchCustomersPaginated(page: number = 1, pageSize: number
     const { data, error, count } = await supabase
       .from('customers')
       .select(`
-        *,
-        customer_notes(*),
-        customer_payments(*),
-        devices(*),
-        promo_messages(*)
+        id, name, email, phone, gender, city, joined_date, loyalty_level, color_tag, referred_by, total_spent, points, last_visit, is_active, birth_month, birth_day, referral_source, total_returns, profile_image, created_at, updated_at, created_by, last_purchase_date, total_purchases, birthday, whatsapp, whatsapp_opt_out, initial_notes, notes, referrals, customer_tag
       `, { count: 'exact' })
       .range(offset, offset + pageSize - 1)
       .order('created_at', { ascending: false });
@@ -108,11 +104,11 @@ export async function fetchCustomersPaginated(page: number = 1, pageSize: number
     if (data) {
       const processedCustomers = data.map(customer => ({
         ...customer,
-        colorTag: normalizeColorTag(customer.colorTag || 'new'),
-        customerNotes: customer.customer_notes || [],
-        customerPayments: customer.customer_payments || [],
-        devices: customer.devices || [],
-        promoHistory: customer.promo_messages || []
+        colorTag: normalizeColorTag(customer.color_tag || 'new'),
+        customerNotes: [],
+        customerPayments: [],
+        devices: [],
+        promoHistory: []
       }));
       
       return {
@@ -146,11 +142,7 @@ export async function loadCustomerDetails(customerId: string) {
     const { data, error } = await supabase
       .from('customers')
       .select(`
-        *,
-        customer_notes(*),
-        customer_payments(*),
-        devices(*),
-        promo_messages(*)
+        id, name, email, phone, gender, city, joined_date, loyalty_level, color_tag, referred_by, total_spent, points, last_visit, is_active, birth_month, birth_day, referral_source, total_returns, profile_image, created_at, updated_at, created_by, last_purchase_date, total_purchases, birthday, whatsapp, whatsapp_opt_out, initial_notes, notes, referrals, customer_tag
       `)
       .eq('id', customerId)
       .single();
@@ -163,11 +155,11 @@ export async function loadCustomerDetails(customerId: string) {
     if (data) {
       const processedCustomer = {
         ...data,
-        colorTag: normalizeColorTag(data.colorTag || 'new'),
-        customerNotes: data.customer_notes || [],
-        customerPayments: data.customer_payments || [],
-        devices: data.devices || [],
-        promoHistory: data.promo_messages || []
+        colorTag: normalizeColorTag(data.color_tag || 'new'),
+        customerNotes: [],
+        customerPayments: [],
+        devices: [],
+        promoHistory: []
       };
       
       console.log(`✅ Customer details loaded: ${processedCustomer.name}`);

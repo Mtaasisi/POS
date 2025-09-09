@@ -132,9 +132,9 @@ const BulkImportModal: React.FC<{
             description: row.description || '',
             sku: row.sku,
             barcode: row.barcode || '',
-            categoryId: data.categoryId || row.category_id || '',
+            categoryId: data.categoryId || row.category_id || null,
 
-            supplierId: data.supplierId || row.supplier_id || '',
+            supplierId: data.supplierId || row.supplier_id || null,
             variants: [{
               sku: row.sku,
               name: row.variant_name || 'Default Variant',

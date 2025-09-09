@@ -21,6 +21,7 @@ import {
   MessageSquare
 } from 'lucide-react';
 
+
 interface QuickAction {
   id: string;
   name: string;
@@ -33,6 +34,15 @@ interface QuickAction {
 
 const QUICK_ACTIONS: QuickAction[] = [
   // Sales Actions
+  {
+    id: 'pos-system',
+    name: 'POS System',
+    description: 'Point of Sale transactions',
+    icon: ShoppingCart,
+    path: '/pos',
+    color: 'from-blue-500 to-blue-600',
+    category: 'sales'
+  },
   {
     id: 'new-sale',
     name: 'New Sale',
@@ -59,6 +69,15 @@ const QUICK_ACTIONS: QuickAction[] = [
     path: '/lats/customers',
     color: 'from-indigo-500 to-indigo-600',
     category: 'customers'
+  },
+  {
+    id: 'whatsapp-chat',
+    name: 'WhatsApp Chat',
+    description: 'Open WhatsApp chat interface',
+    icon: MessageSquare,
+    path: '/lats/whatsapp-chat',
+    color: 'from-green-500 to-green-600',
+    category: 'integration'
   },
   {
     id: 'view-analytics',
@@ -110,7 +129,7 @@ const QUICK_ACTIONS: QuickAction[] = [
     name: 'Green API',
     description: 'Manage WhatsApp integration',
     icon: MessageSquare,
-    path: '/lats/whatsapp-hub',
+    path: '/lats/whatsapp-connection-manager',
     color: 'from-green-500 to-green-600',
     category: 'integration'
   },
@@ -119,7 +138,7 @@ const QUICK_ACTIONS: QuickAction[] = [
     name: 'WhatsApp Manager',
     description: 'Comprehensive WhatsApp connection management',
     icon: MessageSquare,
-    path: '/lats/whatsapp-hub',
+    path: '/lats/whatsapp-connection-manager',
     color: 'from-green-500 to-green-600',
     category: 'integration'
   },

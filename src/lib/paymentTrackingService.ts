@@ -88,6 +88,109 @@ export interface PaymentMetrics {
 }
 
 class PaymentTrackingService {
+  private cache: Map<string, { data: any; timestamp: number }> = new Map();
+  private readonly CACHE_DURATION = 60000; // 60 seconds cache (increased from 30s)
+  private isFetching = false;
+  private fetchPromise: Promise<PaymentTransaction[]> | null = null;
+  private readonly MAX_RETRIES = 3;
+  private readonly RETRY_DELAY = 1000; // 1 second
+  private fetchLock = new Map<string, Promise<PaymentTransaction[]>>(); // Per-cache-key locks
+  private connectionStatus: 'connected' | 'disconnected' | 'unknown' = 'unknown';
+  private lastConnectionCheck = 0;
+  private readonly CONNECTION_CHECK_INTERVAL = 30000; // 30 seconds (increased from 10s)
+  private debounceTimers = new Map<string, NodeJS.Timeout>(); // Debounce timers for each cache key
+  private readonly DEBOUNCE_DELAY = 1000; // 1 second debounce (increased from 500ms)
+  private globalFetchLock = false; // Global lock to prevent multiple simultaneous fetches
+
+  // Clear cache
+  private clearCache() {
+    this.cache.clear();
+    this.fetchLock.clear();
+    // Clear all debounce timers
+    this.debounceTimers.forEach(timer => clearTimeout(timer));
+    this.debounceTimers.clear();
+  }
+
+  // Check connection status
+  private async checkConnection(): Promise<boolean> {
+    const now = Date.now();
+    if (now - this.lastConnectionCheck < this.CONNECTION_CHECK_INTERVAL) {
+      return this.connectionStatus === 'connected';
+    }
+
+    try {
+      this.lastConnectionCheck = now;
+      const { error } = await supabase
+        .from('customer_payments')
+        .select('id')
+        .limit(1);
+      
+      if (error) {
+        this.connectionStatus = 'disconnected';
+        console.warn('⚠️ Connection check failed:', error.message);
+        return false;
+      }
+      
+      this.connectionStatus = 'connected';
+      return true;
+    } catch (error) {
+      this.connectionStatus = 'disconnected';
+      console.warn('⚠️ Connection check failed:', error);
+      return false;
+    }
+  }
+
+  // Get cached data or null if expired
+  private getCachedData(key: string): any | null {
+    const cached = this.cache.get(key);
+    if (cached && Date.now() - cached.timestamp < this.CACHE_DURATION) {
+      return cached.data;
+    }
+    return null;
+  }
+
+  // Set cached data
+  private setCachedData(key: string, data: any) {
+    this.cache.set(key, { data, timestamp: Date.now() });
+  }
+
+  // Retry mechanism for database operations with connection error handling
+  private async retryOperation<T>(
+    operation: () => Promise<T>,
+    operationName: string,
+    retries: number = this.MAX_RETRIES
+  ): Promise<T> {
+    try {
+      return await operation();
+    } catch (error: any) {
+      const isConnectionError = error?.message?.includes('ERR_CONNECTION_CLOSED') || 
+                               error?.message?.includes('Failed to fetch') ||
+                               error?.code === 'PGRST301' ||
+                               error?.code === 'PGRST116';
+      
+      console.error(`❌ ${operationName} failed (attempt ${this.MAX_RETRIES - retries + 1}/${this.MAX_RETRIES}):`, error);
+      
+      if (retries > 1 && isConnectionError) {
+        const delay = this.RETRY_DELAY * (this.MAX_RETRIES - retries + 1); // Exponential backoff
+        console.log(`🔄 Retrying ${operationName} in ${delay}ms due to connection error...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return this.retryOperation(operation, operationName, retries - 1);
+      } else if (retries > 1) {
+        console.log(`🔄 Retrying ${operationName} in ${this.RETRY_DELAY}ms...`);
+        await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAY));
+        return this.retryOperation(operation, operationName, retries - 1);
+      }
+      
+      // If it's a connection error and we've exhausted retries, return empty data instead of throwing
+      if (isConnectionError) {
+        console.warn(`⚠️ ${operationName} failed after ${this.MAX_RETRIES} attempts due to connection issues. Returning empty data.`);
+        return [] as T;
+      }
+      
+      throw error;
+    }
+  }
+
   // Fetch sold items for a transaction
   async fetchSoldItems(transactionId: string, source: 'device_payment' | 'pos_sale' | 'repair_payment'): Promise<SoldItem[]> {
     try {
@@ -151,6 +254,38 @@ class PaymentTrackingService {
     }
   }
 
+  // Debounced fetch method to reduce duplicate requests
+  async fetchPaymentTransactionsDebounced(
+    startDate?: string,
+    endDate?: string,
+    status?: string,
+    method?: string
+  ): Promise<PaymentTransaction[]> {
+    const cacheKey = `payments_${startDate || 'all'}_${endDate || 'all'}_${status || 'all'}_${method || 'all'}`;
+    
+    return new Promise((resolve) => {
+      // Clear existing timer for this cache key
+      if (this.debounceTimers.has(cacheKey)) {
+        clearTimeout(this.debounceTimers.get(cacheKey)!);
+      }
+      
+      // Set new timer
+      const timer = setTimeout(async () => {
+        try {
+          const result = await this.fetchPaymentTransactions(startDate, endDate, status, method);
+          resolve(result);
+        } catch (error) {
+          console.error('Error in debounced fetch:', error);
+          resolve([]);
+        } finally {
+          this.debounceTimers.delete(cacheKey);
+        }
+      }, this.DEBOUNCE_DELAY);
+      
+      this.debounceTimers.set(cacheKey, timer);
+    });
+  }
+
   // Fetch all payment transactions from multiple sources
   async fetchPaymentTransactions(
     startDate?: string,
@@ -159,19 +294,93 @@ class PaymentTrackingService {
     method?: string
   ): Promise<PaymentTransaction[]> {
     try {
-      console.log('🔍 PaymentTrackingService: Fetching payment transactions...');
-      const allPayments: PaymentTransaction[] = [];
+      // Create cache key based on parameters
+      const cacheKey = `payments_${startDate || 'all'}_${endDate || 'all'}_${status || 'all'}_${method || 'all'}`;
+      
+      // Check cache first
+      const cachedData = this.getCachedData(cacheKey);
+      if (cachedData) {
+        console.log('📦 PaymentTrackingService: Returning cached payment data');
+        return cachedData;
+      }
 
-      // Fetch device payments (repair payments)
+      // Global lock to prevent multiple simultaneous fetches
+      if (this.globalFetchLock) {
+        console.log('⏳ PaymentTrackingService: Global fetch in progress, waiting...');
+        // Wait for global fetch to complete and return cached data
+        await new Promise(resolve => setTimeout(resolve, 100));
+        const freshCachedData = this.getCachedData(cacheKey);
+        if (freshCachedData) {
+          return freshCachedData;
+        }
+      }
+
+      // Check connection before proceeding
+      const isConnected = await this.checkConnection();
+      if (!isConnected) {
+        console.warn('⚠️ PaymentTrackingService: No connection available, returning cached data or empty array');
+        // Return cached data even if expired, or empty array
+        const expiredCachedData = this.cache.get(cacheKey)?.data;
+        return expiredCachedData || [];
+      }
+
+      // Check if there's already a fetch in progress for this cache key
+      if (this.fetchLock.has(cacheKey)) {
+        console.log('⏳ PaymentTrackingService: Already fetching, waiting for existing request...');
+        return this.fetchLock.get(cacheKey)!;
+      }
+
+      // Set global lock
+      this.globalFetchLock = true;
+
+      // Create new fetch promise and store it in the lock map
+      const fetchPromise = this.retryOperation(
+        () => this._fetchPaymentTransactionsInternal(startDate, endDate, status, method),
+        'fetchPaymentTransactions'
+      );
+      
+      this.fetchLock.set(cacheKey, fetchPromise);
+      
+      try {
+        const result = await fetchPromise;
+        this.setCachedData(cacheKey, result);
+        return result;
+      } finally {
+        // Clean up the locks
+        this.fetchLock.delete(cacheKey);
+        this.globalFetchLock = false;
+      }
+    } catch (error) {
+      console.error('Error fetching payment transactions:', error);
+      // Return cached data if available, even if expired
+      const cacheKey = `payments_${startDate || 'all'}_${endDate || 'all'}_${status || 'all'}_${method || 'all'}`;
+      const expiredCachedData = this.cache.get(cacheKey)?.data;
+      this.globalFetchLock = false; // Ensure lock is released on error
+      return expiredCachedData || [];
+    }
+  }
+
+  // Internal method to actually fetch the data
+  private async _fetchPaymentTransactionsInternal(
+    startDate?: string,
+    endDate?: string,
+    status?: string,
+    method?: string
+  ): Promise<PaymentTransaction[]> {
+    console.log('🔍 PaymentTrackingService: Fetching payment transactions...');
+    const allPayments: PaymentTransaction[] = [];
+
+    try {
+      // Fetch device payments (repair payments) with safe query
       const { data: devicePayments, error: devicePaymentsError } = await supabase
         .from('customer_payments')
         .select(`
           *,
           devices(brand, model),
-          customers(name),
-          auth_users(name)
+          customers(name)
         `)
-        .order('payment_date', { ascending: false });
+        .order('payment_date', { ascending: false })
+        .limit(1000); // Add reasonable limit to prevent performance issues
 
       if (!devicePaymentsError && devicePayments) {
         console.log(`📊 PaymentTrackingService: Found ${devicePayments.length} device payments`);
@@ -179,16 +388,19 @@ class PaymentTrackingService {
           id: payment.id,
           transactionId: `TXN-${payment.id.slice(0, 8).toUpperCase()}`,
           customerName: payment.customers?.name || 'Unknown Customer',
+          customerPhone: payment.customer_phone,
+          customerEmail: payment.customer_email,
+          customerAddress: payment.customer_address,
           amount: payment.amount || 0,
           method: this.mapPaymentMethod(payment.method),
           paymentMethod: this.mapPaymentMethod(payment.method),
-          reference: `REF-${payment.id.slice(0, 8).toUpperCase()}`,
+          reference: payment.reference || `REF-${payment.id.slice(0, 8).toUpperCase()}`,
           status: payment.status || 'completed',
           date: payment.payment_date || payment.created_at,
           timestamp: payment.payment_date || payment.created_at,
-          cashier: payment.auth_users?.name || 'System',
-          fees: 0, // Device payments typically don't have fees
-          netAmount: payment.amount || 0,
+          cashier: payment.cashier_name || 'System',
+          fees: payment.fees || 0,
+          netAmount: (payment.amount || 0) - (payment.fees || 0),
           orderId: payment.device_id,
           source: 'device_payment' as const,
           customerId: payment.customer_id,
@@ -198,13 +410,17 @@ class PaymentTrackingService {
             : undefined,
           paymentType: payment.payment_type || 'payment',
           createdBy: payment.created_by,
-          createdAt: payment.created_at
+          createdAt: payment.created_at,
+          failureReason: payment.failure_reason,
+          metadata: payment.metadata || {}
           // soldItems will be fetched on-demand when viewing transaction details
         }));
         allPayments.push(...transformedDevicePayments);
+      } else if (devicePaymentsError) {
+        console.error('❌ PaymentTrackingService: Error fetching device payments:', devicePaymentsError);
       }
 
-      // Fetch POS sales (if accessible)
+      // Fetch POS sales (if accessible) with safe query
       try {
         console.log('🔍 PaymentTrackingService: Fetching POS sales...');
         const { data: posSales, error: posSalesError } = await supabase
@@ -213,16 +429,20 @@ class PaymentTrackingService {
             *,
             customers(name)
           `)
-          .order('created_at', { ascending: false });
+          .order('created_at', { ascending: false })
+          .limit(1000); // Add reasonable limit
 
         if (!posSalesError && posSales) {
           console.log(`📊 PaymentTrackingService: Found ${posSales.length} POS sales`);
           
-          // Transform POS sales without fetching sold items initially
+          // Transform POS sales with safe data mapping
           const transformedPOSSales = posSales.map((sale: any) => ({
             id: sale.id,
             transactionId: sale.sale_number || `SALE-${sale.id.slice(0, 8).toUpperCase()}`,
             customerName: sale.customers?.name || 'Walk-in Customer',
+            customerPhone: sale.customer_phone,
+            customerEmail: sale.customer_email,
+            customerAddress: sale.customer_address,
             amount: sale.total_amount || 0,
             method: this.mapPaymentMethod(sale.payment_method),
             paymentMethod: this.mapPaymentMethod(sale.payment_method),
@@ -230,15 +450,17 @@ class PaymentTrackingService {
             status: this.mapSaleStatus(sale.status),
             date: sale.created_at,
             timestamp: sale.created_at,
-            cashier: 'System', // Auth user info not available in this query
-            fees: 0, // POS sales typically don't have separate fees
-            netAmount: sale.total_amount || 0,
+            cashier: sale.cashier_name || 'System',
+            fees: sale.processing_fees || 0,
+            netAmount: (sale.total_amount || 0) - (sale.processing_fees || 0),
             orderId: sale.id,
             source: 'pos_sale' as const,
             customerId: sale.customer_id || '',
             paymentType: 'payment' as const,
             createdBy: sale.created_by,
-            createdAt: sale.created_at
+            createdAt: sale.created_at,
+            failureReason: sale.failure_reason,
+            metadata: sale.metadata || {}
             // soldItems will be fetched on-demand when viewing transaction details
           }));
           allPayments.push(...transformedPOSSales);
@@ -252,6 +474,7 @@ class PaymentTrackingService {
       // Apply filters
       let filteredPayments = allPayments;
 
+      // Only apply date filters if both startDate and endDate are provided
       if (startDate && endDate) {
         filteredPayments = filteredPayments.filter(payment => {
           const paymentDate = new Date(payment.date);
@@ -261,15 +484,19 @@ class PaymentTrackingService {
         });
       }
 
-      if (status && status !== 'all') {
+      // Only apply status filter if status is provided and not 'all'
+      if (status && status !== 'all' && status !== undefined) {
         filteredPayments = filteredPayments.filter(payment => payment.status === status);
       }
 
-      if (method && method !== 'all') {
+      // Only apply method filter if method is provided and not 'all'
+      if (method && method !== 'all' && method !== undefined) {
         filteredPayments = filteredPayments.filter(payment => payment.method === method);
       }
 
       console.log(`✅ PaymentTrackingService: Returning ${filteredPayments.length} total payments (${filteredPayments.filter(p => p.source === 'pos_sale').length} POS sales, ${filteredPayments.filter(p => p.source === 'device_payment').length} device payments)`);
+      console.log(`🔍 PaymentTrackingService: Filters applied - startDate: ${startDate}, endDate: ${endDate}, status: ${status}, method: ${method}`);
+      console.log(`🔍 PaymentTrackingService: All payments before filtering: ${allPayments.length}, after filtering: ${filteredPayments.length}`);
       return filteredPayments;
     } catch (error) {
       console.error('Error fetching payment transactions:', error);
@@ -412,33 +639,135 @@ class PaymentTrackingService {
     }
   }
 
-  // Update payment status
+  // Update payment status with audit logging
   async updatePaymentStatus(
     paymentId: string,
     status: 'completed' | 'pending' | 'failed',
-    source: 'device_payment' | 'pos_sale'
+    source: 'device_payment' | 'pos_sale',
+    userId?: string
   ): Promise<boolean> {
     try {
+      const previousStatus = await this.getPaymentStatus(paymentId, source);
+      
       if (source === 'device_payment') {
         const { error } = await supabase
           .from('customer_payments')
-          .update({ status })
+          .update({ 
+            status,
+            updated_at: new Date().toISOString(),
+            updated_by: userId
+          })
           .eq('id', paymentId);
         
         if (error) throw error;
       } else if (source === 'pos_sale') {
         const { error } = await supabase
           .from('lats_sales')
-          .update({ status: this.mapStatusToSaleStatus(status) })
+          .update({ 
+            status: this.mapStatusToSaleStatus(status),
+            updated_at: new Date().toISOString(),
+            updated_by: userId
+          })
           .eq('id', paymentId);
         
         if (error) throw error;
       }
 
+      // Log the status change
+      await this.logPaymentOperation(
+        'status_update',
+        paymentId,
+        {
+          previous_status: previousStatus,
+          new_status: status,
+          source,
+          timestamp: new Date().toISOString()
+        },
+        userId
+      );
+
+      // Clear cache when data changes
+      this.clearCache();
       return true;
     } catch (error) {
       console.error('Error updating payment status:', error);
       return false;
+    }
+  }
+
+  // Get current payment status
+  private async getPaymentStatus(paymentId: string, source: 'device_payment' | 'pos_sale'): Promise<string> {
+    try {
+      if (source === 'device_payment') {
+        const { data, error } = await supabase
+          .from('customer_payments')
+          .select('status')
+          .eq('id', paymentId)
+          .single();
+        
+        if (error) throw error;
+        return data?.status || 'unknown';
+      } else if (source === 'pos_sale') {
+        const { data, error } = await supabase
+          .from('lats_sales')
+          .select('status')
+          .eq('id', paymentId)
+          .single();
+        
+        if (error) throw error;
+        return data?.status || 'unknown';
+      }
+      return 'unknown';
+    } catch (error) {
+      console.error('Error getting payment status:', error);
+      return 'unknown';
+    }
+  }
+
+  // Method to clear cache (can be called externally)
+  public clearPaymentCache() {
+    this.clearCache();
+  }
+
+  // Log payment operations for audit trail
+  private async logPaymentOperation(
+    operation: string,
+    paymentId: string,
+    details: Record<string, any>,
+    userId?: string
+  ): Promise<void> {
+    try {
+      await supabase
+        .from('payment_audit_log')
+        .insert({
+          operation,
+          payment_id: paymentId,
+          details,
+          user_id: userId,
+          timestamp: new Date().toISOString(),
+          ip_address: null, // Could be added if available
+          user_agent: null  // Could be added if available
+        });
+    } catch (error) {
+      console.error('Failed to log payment operation:', error);
+      // Don't throw error to avoid breaking the main operation
+    }
+  }
+
+  // Get payment audit trail
+  async getPaymentAuditTrail(paymentId: string): Promise<any[]> {
+    try {
+      const { data, error } = await supabase
+        .from('payment_audit_log')
+        .select('*')
+        .eq('payment_id', paymentId)
+        .order('timestamp', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching payment audit trail:', error);
+      return [];
     }
   }
 

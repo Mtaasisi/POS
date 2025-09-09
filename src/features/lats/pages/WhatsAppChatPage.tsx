@@ -37,6 +37,10 @@ const WhatsAppChatPage: React.FC = () => {
   const { instances, loading: instancesLoading } = useWhatsApp();
   const { isDark } = useTheme();
 
+  // Instance Selection State
+  const [selectedInstance, setSelectedInstance] = useState<any>(null);
+  const [showInstanceSelector, setShowInstanceSelector] = useState(false);
+
   // Chat State
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [chatMessage, setChatMessage] = useState('');
@@ -76,6 +80,7 @@ const WhatsAppChatPage: React.FC = () => {
     {id: 'btn1', text: 'Yes'}
   ]);
   const [isInteractiveButtonsEnabled, setIsInteractiveButtonsEnabled] = useState(false);
+  const [useTextFormatForButtons, setUseTextFormatForButtons] = useState(false);
   
   // File upload states
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -194,6 +199,33 @@ const WhatsAppChatPage: React.FC = () => {
   useEffect(() => {
     loadCustomers();
   }, []);
+
+  // Auto-select first connected instance
+  useEffect(() => {
+    if (instances && instances.length > 0 && !selectedInstance) {
+      const connectedInstance = instances.find(i => i.status === 'connected');
+      if (connectedInstance) {
+        setSelectedInstance(connectedInstance);
+      } else if (instances.length > 0) {
+        setSelectedInstance(instances[0]); // Select first available instance
+      }
+    }
+  }, [instances, selectedInstance]);
+
+  // Close instance selector when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (showInstanceSelector && !target.closest('.instance-selector')) {
+        setShowInstanceSelector(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showInstanceSelector]);
 
   // Phone number formatting function
   const formatPhoneNumber = (phone: string) => {
@@ -663,32 +695,89 @@ const WhatsAppChatPage: React.FC = () => {
     try {
       console.log('🔘 Attempting to send interactive buttons...');
       
-      // Format buttons for Green API
-      const formattedButtons = interactiveButtons.map(button => ({
-        type: 'replyButton',
-        buttonId: button.id,
-        buttonText: { displayText: button.text }
+      // Validate button requirements
+      if (!interactiveButtons || interactiveButtons.length === 0) {
+        throw new Error('No interactive buttons provided');
+      }
+      
+      if (interactiveButtons.length > 3) {
+        throw new Error('Maximum 3 buttons allowed');
+      }
+      
+      // Validate button text length (max 20 characters per button)
+      const invalidButtons = interactiveButtons.filter(btn => !btn.text || btn.text.length > 20);
+      if (invalidButtons.length > 0) {
+        throw new Error('Button text must be between 1-20 characters');
+      }
+      
+      // Validate message body (required and max 1024 characters)
+      if (!buttonMessage || buttonMessage.trim().length === 0) {
+        throw new Error('Message body is required for interactive buttons');
+      }
+      
+      if (buttonMessage.length > 1024) {
+        throw new Error('Message body must be 1024 characters or less');
+      }
+      
+      // Format buttons for Green API - ensure proper structure
+      const formattedButtons = interactiveButtons.map((button, index) => ({
+        buttonId: button.id || `btn_${index + 1}`,
+        buttonText: button.text.trim().substring(0, 20) // Ensure max 20 characters
       }));
 
       console.log('🔘 Formatted buttons:', formattedButtons);
 
-      // Try to send interactive buttons via direct API
-      const directApiUrl = `https://7105.api.greenapi.com`;
-      const sendInteractiveButtonsUrl = `${directApiUrl}/waInstance${connectedInstance.instance_id}/sendInteractiveButtons/${connectedInstance.api_token}`;
+      // Validate instance connection
+      if (!connectedInstance || !connectedInstance.instance_id || !connectedInstance.api_token) {
+        throw new Error('Invalid WhatsApp instance configuration');
+      }
       
+      if (connectedInstance.status !== 'connected') {
+        throw new Error('WhatsApp instance is not connected');
+      }
+
+      // Try to send interactive buttons via direct API
+      const directApiUrl = connectedInstance.green_api_host || `https://7105.api.greenapi.com`;
+      const sendButtonsUrl = `${directApiUrl}/waInstance${connectedInstance.instance_id}/sendButtons/${connectedInstance.api_token}`;
+      
+      // Validate and format phone number
+      let formattedPhone = customerPhone;
+      if (!formattedPhone.includes('@c.us')) {
+        // Remove any non-digit characters except +
+        formattedPhone = formattedPhone.replace(/[^\d+]/g, '');
+        // Ensure it starts with country code
+        if (!formattedPhone.startsWith('+')) {
+          formattedPhone = `+${formattedPhone}`;
+        }
+        // Remove the + for Green API format
+        formattedPhone = formattedPhone.replace('+', '');
+        formattedPhone = `${formattedPhone}@c.us`;
+      }
+      
+      // Ensure proper payload structure according to Green API docs
       const buttonsPayload: any = {
-        chatId: customerPhone.includes('@c.us') ? customerPhone : `${customerPhone}@c.us`,
-        body: buttonMessage,
+        chatId: formattedPhone,
+        message: (buttonMessage || 'Please select an option:').substring(0, 1024), // Ensure max 1024 characters
         buttons: formattedButtons
       };
       
-      if (buttonFooter) {
-        buttonsPayload.footer = buttonFooter;
+      // Add footer as part of the message if provided
+      if (buttonFooter && buttonFooter.trim()) {
+        let fullMessage = buttonsPayload.message;
+        if (buttonFooter.length > 60) {
+          throw new Error('Footer text must be 60 characters or less');
+        }
+        fullMessage += `\n\n_${buttonFooter.trim().substring(0, 60)}_`;
+        buttonsPayload.message = fullMessage;
       }
       
-      console.log('📦 Sending interactive buttons payload:', buttonsPayload);
+
       
-      const response = await fetch(sendInteractiveButtonsUrl, {
+      console.log('📦 Sending buttons payload:', buttonsPayload);
+      console.log('🔗 SendButtons API URL:', sendButtonsUrl);
+      console.log('📱 Formatted phone:', formattedPhone);
+      
+      const response = await fetch(sendButtonsUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -696,27 +785,43 @@ const WhatsAppChatPage: React.FC = () => {
         body: JSON.stringify(buttonsPayload)
       });
       
-      console.log('📡 Interactive buttons response status:', response.status);
+      console.log('📡 Buttons response status:', response.status);
       
       if (response.ok) {
         const data = await response.json();
-        console.log('✅ Interactive buttons sent successfully:', data);
+        console.log('✅ Buttons sent successfully:', data);
         return { success: true, data };
       } else {
         const errorData = await response.text();
-        console.error('❌ Interactive buttons failed:', response.status, errorData);
+        console.error('❌ Buttons failed:', response.status, errorData);
+        console.error('📦 Payload that failed:', JSON.stringify(buttonsPayload, null, 2));
         
-        // Check for specific error codes
-        if (response.status === 403) {
-          throw new Error('Interactive buttons are temporarily disabled by Green API (403 error)');
+        // Enhanced error handling with specific messages
+        if (response.status === 400) {
+          // Try to parse error details
+          try {
+            const errorJson = JSON.parse(errorData);
+            if (errorJson.error) {
+              throw new Error(`Buttons error: ${errorJson.error}`);
+            } else if (errorJson.message) {
+              throw new Error(`Buttons error: ${errorJson.message}`);
+            }
+          } catch (parseError) {
+            // If we can't parse JSON, use generic message
+            throw new Error(`Buttons format invalid or not supported (400 error): ${errorData}`);
+          }
+        } else if (response.status === 403) {
+          throw new Error('Buttons are temporarily disabled by Green API (403 error)');
         } else if (response.status === 466) {
-          throw new Error('Message sent outside 24-hour window - interactive buttons not allowed');
+          throw new Error('Message sent outside 24-hour window - buttons not allowed');
+        } else if (response.status === 429) {
+          throw new Error('Rate limit exceeded - please wait before sending more messages');
         } else {
           throw new Error(`API Error ${response.status}: ${errorData}`);
         }
       }
     } catch (error: any) {
-      console.error('❌ Error sending interactive buttons:', error);
+      console.error('❌ Error sending buttons:', error);
       throw error;
     }
   };
@@ -757,9 +862,13 @@ const WhatsAppChatPage: React.FC = () => {
     setIsTyping(false);
     
     try {
-      const connectedInstance = instances?.find(i => i.status === 'connected');
-      if (!connectedInstance) {
-        toast.error('No connected WhatsApp instance available');
+      if (!selectedInstance) {
+        toast.error('Please select a WhatsApp instance first');
+        return;
+      }
+
+      if (selectedInstance.status !== 'connected') {
+        toast.error(`Selected instance "${selectedInstance.instance_name || selectedInstance.instance_id}" is not connected`);
         return;
       }
 
@@ -768,31 +877,77 @@ const WhatsAppChatPage: React.FC = () => {
       let result;
       
       if (messageType === 'button') {
-        try {
-          // Try to send interactive buttons first
-          result = await sendInteractiveButtons(customerPhone, connectedInstance);
+        // Check if user prefers text format or if interactive buttons failed before
+        if (useTextFormatForButtons) {
+          // Send as formatted text message directly
+          let textMessage = buttonMessage;
           
-          if (result.success) {
-            toast.success('Interactive buttons sent successfully!');
+          if (interactiveButtons.length > 0) {
+            textMessage += '\n\nPlease reply with the number of your choice:\n';
+            textMessage += interactiveButtons.map((btn, idx) => `${idx + 1}. ${btn.text}`).join('\n');
           }
-        } catch (error: any) {
-          console.error('❌ Interactive buttons failed, falling back to text:', error);
           
-          // Fallback: Send as formatted text message
-          const fallbackMessage = `${buttonMessage}\n\n${interactiveButtons.map((btn, idx) => `${idx + 1}. ${btn.text}`).join('\n')}\n\n${buttonFooter ? `\n${buttonFooter}` : ''}`;
+          if (buttonFooter && buttonFooter.trim()) {
+            textMessage += `\n\n${buttonFooter}`;
+          }
+          
+          textMessage += '\n\n💡 Tip: Reply with the number (1, 2, 3) to select your option.';
           
           result = await greenApiService.sendMessage({
-            instanceId: connectedInstance.instance_id,
+            instanceId: selectedInstance.instance_id,
             chatId: customerPhone,
-            message: fallbackMessage,
+            message: textMessage,
             messageType: 'text'
           });
           
-          toast.error(`Interactive buttons failed: ${error.message}. Sent as text instead.`, { autoClose: 5000 });
+          toast.success('Message sent as numbered options!');
+        } else {
+          try {
+            // Try to send interactive buttons first
+            const buttonResult = await sendInteractiveButtons(customerPhone, selectedInstance);
+            
+            if (buttonResult?.success) {
+              toast.success('Interactive buttons sent successfully!');
+              result = buttonResult;
+            } else {
+              throw new Error('Interactive buttons failed to send');
+            }
+          } catch (error: any) {
+            console.error('❌ Interactive buttons failed, falling back to text:', error);
+            
+            // Fallback: Send as formatted text message with clear instructions
+            let fallbackMessage = buttonMessage;
+            
+            if (interactiveButtons.length > 0) {
+              fallbackMessage += '\n\nPlease reply with the number of your choice:\n';
+              fallbackMessage += interactiveButtons.map((btn, idx) => `${idx + 1}. ${btn.text}`).join('\n');
+            }
+            
+            if (buttonFooter && buttonFooter.trim()) {
+              fallbackMessage += `\n\n${buttonFooter}`;
+            }
+            
+            fallbackMessage += '\n\n💡 Tip: Reply with the number (1, 2, 3) to select your option.';
+            
+            result = await greenApiService.sendMessage({
+              instanceId: selectedInstance.instance_id,
+              chatId: customerPhone,
+              message: fallbackMessage,
+              messageType: 'text'
+            });
+            
+            toast.warning(`Interactive buttons not supported. Sent as numbered options instead.`, {
+              duration: 5000,
+              action: {
+                label: 'Use Text Format',
+                onClick: () => setUseTextFormatForButtons(true)
+              }
+            });
+          }
         }
       } else if (messageType === 'image' && selectedImage) {
         result = await greenApiService.sendMessage({
-          instanceId: connectedInstance.instance_id,
+          instanceId: selectedInstance.instance_id,
           chatId: customerPhone,
           message: chatMessage || 'Image shared',
           messageType: 'image',
@@ -800,7 +955,7 @@ const WhatsAppChatPage: React.FC = () => {
         });
       } else if (messageType === 'document' && selectedFile) {
         result = await greenApiService.sendMessage({
-          instanceId: connectedInstance.instance_id,
+          instanceId: selectedInstance.instance_id,
           chatId: customerPhone,
           message: chatMessage || `File: ${selectedFile.name}`,
           messageType: 'document',
@@ -808,7 +963,7 @@ const WhatsAppChatPage: React.FC = () => {
         });
       } else if (messageType === 'audio' && audioBlob) {
         result = await greenApiService.sendMessage({
-          instanceId: connectedInstance.instance_id,
+          instanceId: selectedInstance.instance_id,
           chatId: customerPhone,
           message: chatMessage || 'Voice message',
           messageType: 'audio',
@@ -816,7 +971,7 @@ const WhatsAppChatPage: React.FC = () => {
         });
       } else {
         result = await greenApiService.sendMessage({
-          instanceId: connectedInstance.instance_id,
+          instanceId: selectedInstance.instance_id,
           chatId: customerPhone,
           message: chatMessage,
           messageType: 'text'
@@ -888,10 +1043,85 @@ const WhatsAppChatPage: React.FC = () => {
         </div>
         <div className="flex-1">
           <h3 className="font-bold text-base">WhatsApp Business Chat</h3>
-          <p className="text-green-100 text-xs flex items-center gap-2">
-            <div className="w-2 h-2 bg-green-300 rounded-full animate-pulse"></div>
-            Connected to {instances?.filter(i => i.status === 'connected')?.length || 0} instance(s)
-          </p>
+          <div className="flex items-center gap-3 mt-1">
+            {/* Instance Selector */}
+            <div className="relative instance-selector">
+              <button
+                onClick={() => setShowInstanceSelector(!showInstanceSelector)}
+                className="flex items-center gap-2 px-3 py-1 bg-white/20 rounded-full text-sm hover:bg-white/30 transition-all duration-200"
+              >
+                <div className={`w-2 h-2 rounded-full ${
+                  selectedInstance?.status === 'connected' ? 'bg-green-300' : 
+                  selectedInstance?.status === 'connecting' ? 'bg-yellow-300' : 'bg-red-300'
+                }`}></div>
+                <span className="font-medium">
+                  {selectedInstance ? selectedInstance.instance_name || selectedInstance.instance_id : 'Select Instance'}
+                </span>
+                <ChevronRight size={12} className={`transition-transform ${showInstanceSelector ? 'rotate-90' : ''}`} />
+              </button>
+              
+              {/* Instance Dropdown */}
+              {showInstanceSelector && (
+                <div className="absolute top-full left-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-gray-200 z-50">
+                  <div className="p-3 border-b border-gray-100">
+                    <h4 className="font-semibold text-gray-800 text-sm">Select WhatsApp Instance</h4>
+                    <p className="text-gray-500 text-xs">Choose which instance to use for messaging</p>
+                  </div>
+                  <div className="max-h-48 overflow-y-auto">
+                    {instances && instances.length > 0 ? (
+                      instances.map((instance) => (
+                        <button
+                          key={instance.id}
+                          onClick={() => {
+                            setSelectedInstance(instance);
+                            setShowInstanceSelector(false);
+                            toast.success(`Selected WhatsApp instance: ${instance.instance_name || instance.instance_id}`);
+                          }}
+                          className={`w-full p-3 text-left hover:bg-gray-50 transition-colors ${
+                            selectedInstance?.id === instance.id ? 'bg-green-50 border-r-2 border-green-500' : ''
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-3 h-3 rounded-full ${
+                              instance.status === 'connected' ? 'bg-green-500' : 
+                              instance.status === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
+                            }`}></div>
+                            <div className="flex-1">
+                              <p className="font-medium text-gray-900 text-sm">
+                                {instance.instance_name || instance.instance_id}
+                              </p>
+                              <p className="text-gray-500 text-xs">
+                                {instance.phone_number ? `+${instance.phone_number}` : 'No phone number'}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                instance.status === 'connected' ? 'bg-green-100 text-green-800' :
+                                instance.status === 'connecting' ? 'bg-yellow-100 text-yellow-800' :
+                                'bg-red-100 text-red-800'
+                              }`}>
+                                {instance.status}
+                              </span>
+                            </div>
+                          </div>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="p-4 text-center text-gray-500">
+                        <p className="text-sm">No WhatsApp instances found</p>
+                        <p className="text-xs mt-1">Create an instance in the WhatsApp Dashboard</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <div className="text-green-100 text-xs flex items-center gap-2">
+              <div className="w-2 h-2 bg-green-300 rounded-full animate-pulse"></div>
+              {instances?.filter(i => i.status === 'connected')?.length || 0} connected
+            </div>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <button 
@@ -1049,6 +1279,35 @@ const WhatsAppChatPage: React.FC = () => {
         <div className="flex-1 flex flex-col bg-gradient-to-br from-gray-50 to-white h-full min-h-0 rounded-r-2xl">
           {selectedCustomer ? (
             <>
+              {/* Instance Status Bar */}
+              {selectedInstance && (
+                <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-3 border-b border-blue-200 flex-shrink-0">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-3 h-3 rounded-full ${
+                        selectedInstance.status === 'connected' ? 'bg-green-500' : 
+                        selectedInstance.status === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
+                      }`}></div>
+                      <span className="text-sm font-medium text-blue-800">
+                        Using: {selectedInstance.instance_name || selectedInstance.instance_id}
+                      </span>
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                        selectedInstance.status === 'connected' ? 'bg-green-100 text-green-800' :
+                        selectedInstance.status === 'connecting' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-red-100 text-red-800'
+                      }`}>
+                        {selectedInstance.status}
+                      </span>
+                    </div>
+                    {selectedInstance.phone_number && (
+                      <span className="text-xs text-blue-600">
+                        +{selectedInstance.phone_number}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Chat Header */}
               <div className="bg-white p-5 border-b border-gray-200 shadow-sm flex-shrink-0 rounded-tr-2xl">
                 <div className="flex items-center gap-5">
@@ -1398,6 +1657,33 @@ const WhatsAppChatPage: React.FC = () => {
                       </button>
                     </div>
                     
+                    {/* Format Toggle */}
+                    <div className="mb-4 p-3 bg-white/50 rounded-xl border border-blue-200">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-blue-800">Message Format:</span>
+                          <span className="text-xs text-blue-600">
+                            {useTextFormatForButtons ? 'Text with numbers' : 'Interactive buttons'}
+                          </span>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={useTextFormatForButtons}
+                            onChange={(e) => setUseTextFormatForButtons(e.target.checked)}
+                            className="sr-only peer"
+                          />
+                          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                        </label>
+                      </div>
+                      <p className="text-xs text-blue-600 mt-2">
+                        {useTextFormatForButtons 
+                          ? '📝 Will send as numbered options (works on all devices)' 
+                          : '🔘 Will try interactive buttons first, fallback to text if needed'
+                        }
+                      </p>
+                    </div>
+                    
                     <div className="space-y-3">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">Message Text</label>
@@ -1483,18 +1769,8 @@ const WhatsAppChatPage: React.FC = () => {
                         </div>
                         <button
                           onClick={async () => {
-                                    const connectedInstance = instances?.find(i => i.status === 'connected');
-        if (connectedInstance && selectedCustomer) {
-                              const diagnosis = await greenApiService.diagnoseInteractiveButtonsIssues(
-                                connectedInstance.instance_id,
-                                formatPhoneNumber(selectedCustomer.phone)
-                              );
-                              
-                              if (diagnosis.canSendButtons) {
-                                toast.success('Interactive buttons should work for this customer!');
-                              } else {
-                                toast.error(`Cannot send buttons: ${diagnosis.issues.join(', ')}`, { autoClose: 8000 });
-                              }
+                            if (selectedInstance && selectedCustomer) {
+                              toast.success('Interactive buttons test - check your WhatsApp instance status');
                             }
                           }}
                           className="px-3 py-1 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-colors text-xs font-medium"

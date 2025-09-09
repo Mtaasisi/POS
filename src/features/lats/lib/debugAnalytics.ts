@@ -117,49 +117,8 @@ export class DebugAnalytics {
    * Add some test data to verify the analytics work
    */
   static async addTestData() {
-    console.log('🧪 Adding test data for analytics...');
-    
-    try {
-      // First, check if we have any products
-      const { data: existingProducts } = await supabase
-        .from('lats_products')
-        .select('id, name')
-        .limit(1);
-
-      if (!existingProducts || existingProducts.length === 0) {
-        console.log('⚠️ No products found. Please add some products first.');
-        return;
-      }
-
-      const productId = existingProducts[0].id;
-      console.log(`📦 Using product: ${existingProducts[0].name} (${productId})`);
-
-      // Add a test variant with cost price and quantity
-      const { data: newVariant, error: variantError } = await supabase
-        .from('lats_product_variants')
-        .insert({
-          product_id: productId,
-          name: 'Test Variant',
-          quantity: 10,
-          cost_price: 25.00,
-          selling_price: 50.00,
-          sku: 'TEST-001',
-          barcode: '1234567890123'
-        })
-        .select()
-        .single();
-
-      if (variantError) {
-        console.error('❌ Error adding test variant:', variantError);
-        return;
-      }
-
-      console.log('✅ Test variant added:', newVariant);
-      console.log('💵 Expected total value: $25.00 × 10 = $250.00');
-
-    } catch (error) {
-      console.error('❌ Error adding test data:', error);
-    }
+    // Note: Test data generation removed - use real data instead
+    console.log('⚠️ Test data generation is no longer available. Use real product and sales data instead.');
   }
 
   /**
@@ -172,12 +131,7 @@ export class DebugAnalytics {
     await this.checkDatabaseData();
     
     console.log('=' .repeat(50));
-    console.log('🧪 Adding test data...');
-    await this.addTestData();
-    
-    console.log('=' .repeat(50));
-    console.log('🔄 Re-checking data after test...');
-    await this.checkDatabaseData();
+    console.log('⚠️ Test data generation is no longer available. Use real data instead.');
     
     console.log('=' .repeat(50));
     console.log('✅ Debug complete!');

@@ -56,8 +56,11 @@ import {
   CalendarDays,
   Star,
   ClipboardList,
-  Wifi
+  Wifi,
+  Instagram,
+  Truck
 } from 'lucide-react';
+
 import GlassButton from '../features/shared/components/ui/GlassButton';
 
 const AppLayout: React.FC = () => {
@@ -248,6 +251,20 @@ const AppLayout: React.FC = () => {
         count: Math.floor(Math.random() * 3) // Placeholder for low stock items
       },
       {
+        path: '/lats/purchase-orders',
+        label: 'Purchase Orders',
+        icon: <ShoppingCart size={20} />,
+        roles: ['admin', 'customer-care'],
+        count: Math.floor(Math.random() * 2) // Placeholder for pending orders
+      },
+      {
+        path: '/lats/shipping',
+        label: 'Shipping',
+        icon: <Truck size={20} />,
+        roles: ['admin', 'customer-care'],
+        count: Math.floor(Math.random() * 3) // Placeholder for active shipments
+      },
+      {
         path: '/lats/storage-rooms',
         label: 'Storage Rooms',
         icon: <Building size={20} />,
@@ -319,7 +336,7 @@ const AppLayout: React.FC = () => {
         count: Math.floor(Math.random() * 2) // Placeholder for finance alerts
       },
       {
-        path: '/points-management',
+        path: '/finance/payments',
         label: 'Payment Management',
         icon: <CreditCard size={20} />,
         roles: ['admin'],
@@ -327,13 +344,6 @@ const AppLayout: React.FC = () => {
       },
 
       // Communication & Integration
-      {
-        path: '/lats/whatsapp-hub',
-        label: 'WhatsApp Manager',
-        icon: <MessageCircle size={20} />,
-        roles: ['admin'],
-        count: Math.floor(Math.random() * 2) // Placeholder for WhatsApp alerts
-      },
       {
         path: '/lats/whatsapp-chat',
         label: 'WhatsApp Chat',
@@ -347,6 +357,13 @@ const AppLayout: React.FC = () => {
         icon: <Wifi size={20} />,
         roles: ['admin'],
         count: Math.floor(Math.random() * 2) // Placeholder for connection alerts
+      },
+      {
+        path: '/instagram/dm',
+        label: 'Instagram DMs',
+        icon: <Instagram size={20} />,
+        roles: ['admin', 'customer-care'],
+        count: Math.floor(Math.random() * 5) // Placeholder for unread Instagram messages
       },
 
       // Admin & Settings

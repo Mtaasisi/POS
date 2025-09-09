@@ -93,53 +93,15 @@ const CampaignsModal: React.FC<CampaignsModalProps> = ({ isOpen, onClose }) => {
   const loadCampaigns = async () => {
     try {
       setLoading(true);
-      // Simulate API call - in real implementation, this would fetch from your campaigns service
-      const mockCampaigns: Campaign[] = [
-        {
-          id: '1',
-          name: 'Welcome Campaign',
-          message: 'Welcome to our loyalty program!',
-          targetTier: 'all',
-          targetStatus: 'active',
-          scheduledDate: '2024-01-15T10:00:00',
-          type: 'whatsapp',
-          status: 'sent',
-          recipients: 150,
-          sent: 145,
-          failed: 5,
-          createdAt: '2024-01-15T09:00:00'
-        },
-        {
-          id: '2',
-          name: 'Points Update',
-          message: 'Great news! You\'ve earned points!',
-          targetTier: 'gold',
-          targetStatus: 'active',
-          scheduledDate: '2024-02-01T14:00:00',
-          type: 'sms',
-          status: 'scheduled',
-          recipients: 75,
-          sent: 0,
-          failed: 0,
-          createdAt: '2024-01-30T16:00:00'
-        },
-        {
-          id: '3',
-          name: 'Birthday Wishes',
-          message: 'Happy Birthday! Enjoy your special discount!',
-          targetTier: 'all',
-          targetStatus: 'active',
-          scheduledDate: '2024-03-01T09:00:00',
-          type: 'whatsapp',
-          status: 'draft',
-          recipients: 25,
-          sent: 0,
-          failed: 0,
-          createdAt: '2024-02-28T11:00:00'
-        }
-      ];
       
-      setCampaigns(mockCampaigns);
+      // TODO: Replace with real database queries
+      // This should fetch actual campaigns from your database
+      // including campaign details, status, recipients, etc.
+      
+      // For now, show empty campaigns until database integration is complete
+      const campaigns: Campaign[] = [];
+      
+      setCampaigns(campaigns);
     } catch (error) {
       console.error('Error loading campaigns:', error);
       toast.error('Failed to load campaigns');
@@ -503,7 +465,7 @@ const CampaignsModal: React.FC<CampaignsModalProps> = ({ isOpen, onClose }) => {
                           variant="secondary"
                           onClick={() => {
                             // View campaign details
-                            toast.info('Campaign details feature coming soon');
+                            toast('Campaign details feature coming soon');
                           }}
                         >
                           <BarChart3 className="w-4 h-4" />

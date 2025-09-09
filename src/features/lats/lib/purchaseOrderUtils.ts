@@ -12,6 +12,7 @@ export const SUPPORTED_CURRENCIES: Currency[] = [
   { code: 'USD', name: 'US Dollar', symbol: '$', flag: '🇺🇸' },
   { code: 'EUR', name: 'Euro', symbol: '€', flag: '🇪🇺' },
   { code: 'GBP', name: 'British Pound', symbol: '£', flag: '🇬🇧' },
+  { code: 'AED', name: 'UAE Dirham', symbol: 'د.إ', flag: '🇦🇪' },
   { code: 'KES', name: 'Kenyan Shilling', symbol: 'KSh', flag: '🇰🇪' },
   { code: 'UGX', name: 'Ugandan Shilling', symbol: 'USh', flag: '🇺🇬' },
   { code: 'RWF', name: 'Rwandan Franc', symbol: 'RF', flag: '🇷🇼' },
@@ -19,16 +20,7 @@ export const SUPPORTED_CURRENCIES: Currency[] = [
   { code: 'INR', name: 'Indian Rupee', symbol: '₹', flag: '🇮🇳' }
 ];
 
-// Payment Terms
-export const PAYMENT_TERMS = [
-  { id: 'net_15', name: 'Net 15', description: 'Payment due in 15 days' },
-  { id: 'net_30', name: 'Net 30', description: 'Payment due in 30 days' },
-  { id: 'net_45', name: 'Net 45', description: 'Payment due in 45 days' },
-  { id: 'net_60', name: 'Net 60', description: 'Payment due in 60 days' },
-  { id: 'advance', name: 'Advance Payment', description: 'Payment before delivery' },
-  { id: 'cod', name: 'Cash on Delivery', description: 'Payment on delivery' },
-  { id: '2_10_net_30', name: '2/10 Net 30', description: '2% discount if paid within 10 days, net 30' }
-];
+
 
 // Purchase Order Status Types
 export type PurchaseOrderStatus = 'draft' | 'pending_approval' | 'approved' | 'sent' | 'confirmed' | 'partial_received' | 'received' | 'cancelled';
@@ -42,6 +34,15 @@ export const formatMoney = (amount: number, currency: Currency) => {
       minimumFractionDigits: 0,
       maximumFractionDigits: 2
     }).format(amount).replace(/\.00$/, '').replace(/\.0$/, '');
+  }
+  
+  if (currency.code === 'AED') {
+    return new Intl.NumberFormat('en-AE', {
+      style: 'currency',
+      currency: 'AED',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(amount);
   }
   
   return `${currency.symbol}${amount.toLocaleString(undefined, { 
@@ -72,14 +73,15 @@ export const generatePONumber = () => {
 export const validatePurchaseOrder = (
   supplier: any, 
   cartItems: any[], 
-  expectedDelivery: string, 
+  _expectedDelivery: string, // Optional parameter, prefixed with _ to indicate unused
   paymentTerms: string
 ) => {
   const errors: string[] = [];
   
   if (!supplier) errors.push('Please select a supplier');
   if (cartItems.length === 0) errors.push('Please add items to the purchase order');
-  if (!expectedDelivery) errors.push('Please set expected delivery date');
+  // Expected delivery is now optional - can be set later
+  // if (!expectedDelivery) errors.push('Please set expected delivery date');
   if (!paymentTerms) errors.push('Please select payment terms');
   
   return {

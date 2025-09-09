@@ -36,7 +36,7 @@ export const usePOSCart = () => {
       if (existingItem) {
         return prevItems.map(item =>
           item.id === existingItem.id
-            ? { ...item, quantity: item.quantity + quantity, totalPrice: item.price * (item.quantity + quantity) }
+            ? { ...item, quantity: item.quantity + quantity, totalPrice: item.unitPrice * (item.quantity + quantity) }
             : item
         );
       }
@@ -71,7 +71,7 @@ export const usePOSCart = () => {
     setCartItems(prevItems =>
       prevItems.map(item =>
         item.id === itemId
-          ? { ...item, quantity, totalPrice: item.price * quantity }
+          ? { ...item, quantity, totalPrice: item.unitPrice * quantity }
           : item
       )
     );

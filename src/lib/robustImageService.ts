@@ -332,7 +332,7 @@ export class RobustImageService {
 
   private static generateFileName(file: File, productId: string): string {
     const timestamp = Date.now();
-    const randomId = Math.random().toString(36).substring(2, 8);
+    const randomId = crypto.randomUUID().replace(/-/g, '').substring(0, 8);
     const extension = file.name.split('.').pop()?.toLowerCase() || 'jpg';
     return `${productId}_${timestamp}_${randomId}.${extension}`;
   }
@@ -447,7 +447,7 @@ export class RobustImageService {
     if (data.productId.startsWith('temp-product-') || data.productId.startsWith('test-product-') || data.productId.startsWith('temp-sparepart-')) {
       console.log('📝 Creating temporary image record for product:', data.productId);
       return {
-        id: `temp-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+        id: `temp-${Date.now()}-${crypto.randomUUID().replace(/-/g, '').substring(0, 8)}`,
         url: data.imageUrl,
         thumbnailUrl: data.thumbnailUrl,
         fileName: data.fileName,

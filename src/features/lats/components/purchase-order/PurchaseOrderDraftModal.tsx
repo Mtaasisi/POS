@@ -38,7 +38,7 @@ interface PurchaseOrderDraftModalProps {
   supplier: Supplier | null;
   currency: Currency;
   expectedDelivery: string;
-  paymentTerms: string;
+  exchangeRates: string;
   notes: string;
 }
 
@@ -49,7 +49,7 @@ const PurchaseOrderDraftModal: React.FC<PurchaseOrderDraftModalProps> = ({
   supplier,
   currency,
   expectedDelivery,
-  paymentTerms,
+  exchangeRates,
   notes
 }) => {
   const [draftName, setDraftName] = useState('');

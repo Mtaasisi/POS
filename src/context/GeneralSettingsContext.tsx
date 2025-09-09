@@ -38,7 +38,43 @@ export const useGeneralSettingsContext = () => {
 };
 
 export const GeneralSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated } = useAuth();
+  // Add safety check for auth context
+  let authContext;
+  try {
+    authContext = useAuth();
+  } catch (error) {
+    console.warn('Auth context not available yet:', error);
+    // Return a minimal provider when auth is not available
+    return (
+      <GeneralSettingsContext.Provider value={{
+        settings: null,
+        loading: false,
+        error: null,
+        applyTheme: () => {},
+        applyLanguage: () => {},
+        applyCurrency: () => {},
+        applyTimezone: () => {},
+        formatCurrency: (amount: number) => `$${amount.toFixed(2)}`,
+        formatDate: (date: Date) => date.toLocaleDateString(),
+        formatTime: (date: Date) => date.toLocaleTimeString(),
+        showProductImages: true,
+        showStockLevels: true,
+        showPrices: true,
+        showBarcodes: true,
+        productsPerPage: 20,
+        autoCompleteSearch: true,
+        confirmDelete: true,
+        showConfirmations: true,
+        enableSoundEffects: true,
+        enableAnimations: true,
+        refreshSettings: async () => {}
+      }}>
+        {children}
+      </GeneralSettingsContext.Provider>
+    );
+  }
+  
+  const { isAuthenticated } = authContext;
   
   // Only initialize settings when authenticated
   const {

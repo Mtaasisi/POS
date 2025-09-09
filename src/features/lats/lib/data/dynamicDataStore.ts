@@ -295,7 +295,7 @@ export const simulateSale = (customerId: string, items: Array<{ productId: strin
     total,
     paymentMethod: 'M-Pesa',
     date: new Date().toISOString(),
-    cashier: 'John Cashier',
+    cashier: 'POS User',
     status: 'completed'
   };
 
@@ -308,7 +308,7 @@ export const simulateSale = (customerId: string, items: Array<{ productId: strin
     reference: `MPESA-${Date.now()}`,
     status: 'completed',
     date: new Date().toISOString(),
-    cashier: 'John Cashier',
+    cashier: 'POS User',
     fees: 0,
     netAmount: total
   };
@@ -318,94 +318,7 @@ export const simulateSale = (customerId: string, items: Array<{ productId: strin
   store.addPayment(payment);
 };
 
-// Helper function to initialize test data with more comprehensive data
-export const initializeTestData = () => {
-  const store = useDynamicDataStore.getState();
-  
-  // Add some historical sales for better analytics
-  const historicalSales: SaleTransaction[] = [
-    {
-      id: 'hist-1',
-      customerId: '1',
-      customerName: 'Mike Johnson',
-      items: [{ productId: '4', productName: 'AirPods Pro', quantity: 1, price: 45999, total: 45999 }],
-      total: 45999,
-      paymentMethod: 'Card',
-      date: '2024-01-14T09:30:00',
-      cashier: 'Jane Cashier',
-      status: 'completed'
-    },
-    {
-      id: 'hist-2',
-      customerId: '2',
-      customerName: 'David Brown',
-      items: [{ productId: '5', productName: 'Dell XPS 13', quantity: 1, price: 189999, total: 189999 }],
-      total: 189999,
-      paymentMethod: 'Bank Transfer',
-      date: '2024-01-13T15:20:00',
-      cashier: 'John Cashier',
-      status: 'completed'
-    },
-    {
-      id: 'hist-3',
-      customerId: '3',
-      customerName: 'John Doe',
-      items: [{ productId: '6', productName: 'Samsung Galaxy Watch', quantity: 1, price: 35999, total: 35999 }],
-      total: 35999,
-      paymentMethod: 'Cash',
-      date: '2024-01-12T11:45:00',
-      cashier: 'Jane Cashier',
-      status: 'completed'
-    }
-  ];
-
-  // Add historical payments
-  const historicalPayments: Payment[] = [
-    {
-      id: 'hist-pay-1',
-      transactionId: 'TXN-HIST-001',
-      customerName: 'Mike Johnson',
-      amount: 45999,
-      method: 'Card',
-      reference: 'CARD-HIST-001',
-      status: 'completed',
-      date: '2024-01-14T09:30:00',
-      cashier: 'Jane Cashier',
-      fees: 920,
-      netAmount: 45079
-    },
-    {
-      id: 'hist-pay-2',
-      transactionId: 'TXN-HIST-002',
-      customerName: 'David Brown',
-      amount: 189999,
-      method: 'Bank Transfer',
-      reference: 'BANK-HIST-001',
-      status: 'completed',
-      date: '2024-01-13T15:20:00',
-      cashier: 'John Cashier',
-      fees: 1000,
-      netAmount: 188999
-    },
-    {
-      id: 'hist-pay-3',
-      transactionId: 'TXN-HIST-003',
-      customerName: 'John Doe',
-      amount: 35999,
-      method: 'Cash',
-      reference: 'CASH-HIST-001',
-      status: 'completed',
-      date: '2024-01-12T11:45:00',
-      cashier: 'Jane Cashier',
-      fees: 0,
-      netAmount: 35999
-    }
-  ];
-
-  // Add historical data to the store
-  historicalSales.forEach(sale => store.addSale(sale));
-  historicalPayments.forEach(payment => store.addPayment(payment));
-};
+// Note: Test data initialization removed - use real database data instead
 
 // Export types for use in components
 export type { SaleTransaction, Customer, Product, Payment };

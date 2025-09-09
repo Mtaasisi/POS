@@ -42,6 +42,7 @@ import { format } from '../lib/format';
 import { latsEventBus } from '../lib/data/eventBus';
 import { runDatabaseDiagnostics, logDiagnosticResult } from '../lib/databaseDiagnostics';
 import { useCyclingLoadingMessage } from '../../../hooks/useCyclingLoadingMessage';
+import { LiveInventoryService, LiveInventoryMetrics } from '../lib/liveInventoryService';
 
 
 // Loading Progress Indicator Component
@@ -140,21 +141,12 @@ const UnifiedInventoryPage: React.FC = () => {
     adjustStock
   } = useInventoryStore();
 
-  // Debug logging for products state
+  // Minimal debug logging for products state
   useEffect(() => {
-    console.log('🔍 DEBUG: Products state updated:', {
-      productsCount: products?.length || 0,
-      isLoading,
-      error,
-      firstProduct: products?.[0] ? {
-        id: products[0].id,
-        name: products[0].name,
-        sku: products[0].sku,
-        price: products[0].price,
-        variants: products[0].variants?.length || 0
-      } : null
-    });
-  }, [products, isLoading, error]);
+    if (import.meta.env.MODE === 'development' && products?.length === 0 && !isLoading) {
+      console.log('⚠️ [UnifiedInventoryPage] No products loaded');
+    }
+  }, [products, isLoading]);
 
   // Database connection status
   const [dbStatus, setDbStatus] = useState<'connected' | 'connecting' | 'error'>('connecting');
@@ -185,6 +177,10 @@ const UnifiedInventoryPage: React.FC = () => {
     stockMovements: null as StockMovement[] | null,
     sales: null as any[] | null
   });
+
+  // Live inventory metrics state
+  const [liveMetrics, setLiveMetrics] = useState<LiveInventoryMetrics | null>(null);
+  const [isLoadingLiveMetrics, setIsLoadingLiveMetrics] = useState(false);
   
   // State management
   const [activeTab, setActiveTab] = useState<TabType>('inventory');
@@ -195,7 +191,7 @@ const UnifiedInventoryPage: React.FC = () => {
   const [showLowStockOnly, setShowLowStockOnly] = useState(false);
   const [showFeaturedOnly, setShowFeaturedOnly] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
-  const [sortBy, setSortBy] = useState('name');
+  const [sortBy, setSortBy] = useState('created');
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
 
@@ -232,14 +228,12 @@ const UnifiedInventoryPage: React.FC = () => {
     const loadData = async () => {
       // Prevent multiple simultaneous loads
       if (isDataLoading) {
-        console.log('⏳ Data loading already in progress, skipping...');
         return;
       }
 
       // Check cooldown period and use cache if available
       const timeSinceLastLoad = Date.now() - lastDataLoadTime;
       if (timeSinceLastLoad < DATA_LOAD_COOLDOWN && dataCache.products && dataCache.categories) {
-        console.log(`⏳ Data loaded recently (${Math.round(timeSinceLastLoad / 1000)}s ago), using cache...`);
         setShowLoadingSkeleton(false);
         return;
       }
@@ -327,10 +321,97 @@ const UnifiedInventoryPage: React.FC = () => {
     };
     
     loadData();
-  }, [withErrorHandling, loadProducts, loadCategories, loadSuppliers, loadStockMovements, loadSales, isDataLoading, lastDataLoadTime, dataCache.products, dataCache.categories]);
+  }, [withErrorHandling, loadProducts, loadCategories, loadSuppliers, loadStockMovements, loadSales, isDataLoading, lastDataLoadTime]);
 
-  // Calculate metrics
+  // Load live inventory metrics
+  const loadLiveMetrics = useCallback(async () => {
+    if (isLoadingLiveMetrics) return;
+    
+    setIsLoadingLiveMetrics(true);
+    try {
+      console.log('🔄 [UnifiedInventoryPage] Loading live inventory metrics...');
+      const liveData = await LiveInventoryService.getLiveInventoryMetrics();
+      setLiveMetrics(liveData);
+      console.log('✅ [UnifiedInventoryPage] Live metrics loaded:', liveData);
+    } catch (error) {
+      console.error('❌ [UnifiedInventoryPage] Error loading live metrics:', error);
+      // Don't show error toast for live metrics as it's not critical
+    } finally {
+      setIsLoadingLiveMetrics(false);
+    }
+  }, []); // Remove isLoadingLiveMetrics dependency to prevent infinite loop
+
+  // Load live metrics when products change or on initial load with debouncing
+  useEffect(() => {
+    if (products.length > 0 && !isLoadingLiveMetrics) {
+      // Add debouncing to prevent excessive API calls
+      const timeoutId = setTimeout(() => {
+        loadLiveMetrics();
+      }, 1000); // 1 second debounce
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [products.length, loadLiveMetrics, isLoadingLiveMetrics]);
+
+  // Listen for stock updates and refresh live metrics
+  useEffect(() => {
+    const handleStockUpdate = (event: any) => {
+      console.log('🔄 [UnifiedInventoryPage] Stock update detected, refreshing live metrics...', event);
+      // Small delay to ensure database is updated
+      setTimeout(() => {
+        loadLiveMetrics();
+      }, 500);
+    };
+
+    const handleProductUpdate = (event: any) => {
+      console.log('🔄 [UnifiedInventoryPage] Product update detected, refreshing live metrics...', event);
+      // Small delay to ensure database is updated
+      setTimeout(() => {
+        loadLiveMetrics();
+      }, 500);
+    };
+
+    const handleSaleCompleted = (event: any) => {
+      console.log('🔄 [UnifiedInventoryPage] Sale completed, refreshing live metrics...', event);
+      // Small delay to ensure database is updated
+      setTimeout(() => {
+        loadLiveMetrics();
+      }, 500);
+    };
+
+    // Subscribe to relevant events
+    const unsubscribeStock = latsEventBus.subscribe('lats:stock.updated', handleStockUpdate);
+    const unsubscribeProduct = latsEventBus.subscribe('lats:product.updated', handleProductUpdate);
+    const unsubscribeSale = latsEventBus.subscribe('lats:sale.completed', handleSaleCompleted);
+
+    // Cleanup subscriptions
+    return () => {
+      unsubscribeStock();
+      unsubscribeProduct();
+      unsubscribeSale();
+    };
+  }, [loadLiveMetrics]);
+
+  // Calculate metrics (use live data when available, fallback to cached data)
   const metrics = useMemo(() => {
+    // Use live metrics if available, otherwise calculate from cached products
+    if (liveMetrics) {
+      console.log('📊 [UnifiedInventoryPage] Using live metrics for calculation');
+      return {
+        totalItems: liveMetrics.totalProducts,
+        lowStockItems: liveMetrics.lowStockItems,
+        outOfStockItems: liveMetrics.outOfStockItems,
+        reorderAlerts: liveMetrics.reorderAlerts,
+        totalValue: liveMetrics.totalValue,
+        retailValue: liveMetrics.retailValue || 0, // Add retail value from live metrics
+        activeProducts: liveMetrics.activeProducts,
+        featuredProducts: products.filter(p => p.isFeatured).length, // Still use cached for featured
+        lastUpdated: liveMetrics.lastUpdated
+      };
+    }
+
+    // Fallback to cached data calculation
+    console.log('📊 [UnifiedInventoryPage] Using cached data for calculation');
     const totalItems = products.length;
     const lowStockItems = products.filter(product => {
       const totalStock = product.variants?.reduce((sum, variant) => sum + (variant.quantity || 0), 0) || 0;
@@ -346,9 +427,23 @@ const UnifiedInventoryPage: React.FC = () => {
       return mainVariant?.minQuantity && totalStock <= mainVariant.minQuantity;
     }).length;
     const totalValue = products.reduce((sum, product) => {
-      const mainVariant = product.variants?.[0];
-      const totalStock = product.variants?.reduce((stockSum, variant) => stockSum + (variant.quantity || 0), 0) || 0;
-      return sum + ((mainVariant?.costPrice || 0) * totalStock);
+      // Calculate value using ALL variants (consistent with LiveInventoryService)
+      const productValue = product.variants?.reduce((variantSum, variant) => {
+        const costPrice = variant.costPrice || 0;
+        const quantity = variant.quantity || 0;
+        return variantSum + (costPrice * quantity);
+      }, 0) || 0;
+      return sum + productValue;
+    }, 0);
+    
+    const retailValue = products.reduce((sum, product) => {
+      // Calculate retail value using ALL variants
+      const productRetailValue = product.variants?.reduce((variantSum, variant) => {
+        const sellingPrice = variant.sellingPrice || variant.price || 0;
+        const quantity = variant.quantity || 0;
+        return variantSum + (sellingPrice * quantity);
+      }, 0) || 0;
+      return sum + productRetailValue;
     }, 0);
     const activeProducts = products.filter(p => p.isActive).length;
     const featuredProducts = products.filter(p => p.isFeatured).length;
@@ -375,10 +470,12 @@ const UnifiedInventoryPage: React.FC = () => {
       outOfStockItems,
       reorderAlerts,
       totalValue,
+      retailValue,
       activeProducts,
-      featuredProducts
+      featuredProducts,
+      lastUpdated: new Date().toISOString()
     };
-  }, [products]);
+  }, [products, liveMetrics]);
 
   // Filter products based on active tab and filters
   const filteredProducts = useMemo(() => {
@@ -490,6 +587,11 @@ const UnifiedInventoryPage: React.FC = () => {
     try {
       await adjustStock(productId, variantId, quantity, reason);
       toast.success('Stock adjusted successfully');
+      
+      // Refresh live metrics after stock adjustment
+      setTimeout(() => {
+        loadLiveMetrics();
+      }, 1000); // Small delay to ensure database is updated
     } catch (error) {
       toast.error('Failed to adjust stock');
       console.error('Stock adjustment error:', error);
@@ -604,9 +706,9 @@ const UnifiedInventoryPage: React.FC = () => {
                 const product = {
                   name: productData.name || productData.product_name,
                   description: productData.description || productData.desc,
-                  categoryId: '',
+                  categoryId: null,
 
-                  supplierId: '',
+                  supplierId: null,
                   images: [],
           
                   variants: [{
@@ -723,7 +825,7 @@ const UnifiedInventoryPage: React.FC = () => {
       {/* Loading Progress Indicator */}
       {isDataLoading && <LoadingProgressIndicator progress={loadingProgress} />}
       
-      <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
+      <div className="p-4 sm:p-6 max-w-full mx-auto space-y-6">
         {/* Header */}
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
           <div className="flex items-center gap-4">
@@ -768,6 +870,14 @@ const UnifiedInventoryPage: React.FC = () => {
               className="bg-gradient-to-r from-blue-500 to-purple-600 text-white"
             >
               Add Product
+            </GlassButton>
+            <GlassButton
+              onClick={loadLiveMetrics}
+              icon={<RefreshCw size={18} className={isLoadingLiveMetrics ? 'animate-spin' : ''} />}
+              className="bg-gradient-to-r from-green-500 to-emerald-600 text-white"
+              disabled={isLoadingLiveMetrics}
+            >
+              {isLoadingLiveMetrics ? 'Refreshing...' : 'Refresh Data'}
             </GlassButton>
             {dbStatus === 'error' && (
               <GlassButton
@@ -1125,6 +1235,9 @@ const UnifiedInventoryPage: React.FC = () => {
             metrics={metrics}
             categories={categories}
             formatMoney={formatMoney}
+            liveMetrics={liveMetrics}
+            isLoadingLiveMetrics={isLoadingLiveMetrics}
+            onRefreshLiveMetrics={loadLiveMetrics}
           />
         )}
 

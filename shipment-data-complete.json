@@ -1,0 +1,27 @@
+{
+  "carrier": "DHL Express",
+  "trackingNumber": "TRK4495130640ZD",
+  "method": "Standard",
+  "cost": 0,
+  "notes": "",
+  "agentId": "2c6a8593-53fc-41bd-8c14-496f3a68bb5c",
+  "agent": {
+    "id": "2c6a8593-53fc-41bd-8c14-496f3a68bb5c",
+    "name": "DHL Express Tanzania",
+    "company": "DHL Express",
+    "phone": "+255 22 211 0000",
+    "email": "info@dhl.co.tz"
+  },
+  "managerId": "",
+  "estimatedDelivery": "2025-09-13",
+  "shippedDate": "2025-09-06",
+  "deliveredDate": "",
+  "portOfLoading": "",
+  "portOfDischarge": "",
+  "pricePerCBM": 0,
+  "enableInsurance": false,
+  "requireSignature": false,
+  "cargoBoxes": [],
+  "carrierId": "826320dc-7d7c-41a7-82d7-bd484c64c8ae",
+  "status": "pending"
+}

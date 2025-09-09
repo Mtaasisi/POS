@@ -6,6 +6,15 @@ import {
   CheckCircle, XCircle, RefreshCw, AlertCircle, Factory,
   Store, Coins, Scale, Target, Activity, TrendingUp
 } from 'lucide-react';
+
+// Country flag mapping
+const countryFlags: { [key: string]: string } = {
+  TZ: '🇹🇿', AE: '🇦🇪', CN: '🇨🇳', US: '🇺🇸', CA: '🇨🇦', UK: '🇬🇧',
+  DE: '🇩🇪', FR: '🇫🇷', JP: '🇯🇵', IN: '🇮🇳', BR: '🇧🇷', AU: '🇦🇺',
+  KE: '🇰🇪', UG: '🇺🇬', RW: '🇷🇼', ET: '🇪🇹', NG: '🇳🇬', ZA: '🇿🇦',
+  EG: '🇪🇬', SA: '🇸🇦', TR: '🇹🇷', RU: '🇷🇺', KR: '🇰🇷', SG: '🇸🇬',
+  MY: '🇲🇾', TH: '🇹🇭', VN: '🇻🇳', ID: '🇮🇩', PH: '🇵🇭'
+};
 import GlassCard from '../../../shared/components/ui/GlassCard';
 import GlassButton from '../../../shared/components/ui/GlassButton';
 import { formatMoney, formatDate } from '../../lib/purchaseOrderUtils';
@@ -20,7 +29,7 @@ interface Supplier {
   address?: string;
   city?: string;
   country?: string;
-  paymentTerms?: string;
+  exchangeRates?: string;
   leadTimeDays?: number;
   currency?: string;
   isActive: boolean;
@@ -46,7 +55,7 @@ const SupplierSelectionModal: React.FC<SupplierSelectionModalProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCountry, setSelectedCountry] = useState<string>('');
   const [sortBy, setSortBy] = useState<'name' | 'orders' | 'recent' | 'rating'>('name');
-  const [showInactiveSuppliers, setShowInactiveSuppliers] = useState(false);
+
 
   // Get unique countries from suppliers
   const countries = useMemo(() => {
@@ -57,11 +66,6 @@ const SupplierSelectionModal: React.FC<SupplierSelectionModalProps> = ({
   // Filter and sort suppliers
   const filteredSuppliers = useMemo(() => {
     let filtered = suppliers.filter(supplier => {
-      // Filter by active status
-      if (!showInactiveSuppliers && !supplier.isActive) {
-        return false;
-      }
-
       // Filter by search query
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
@@ -104,7 +108,7 @@ const SupplierSelectionModal: React.FC<SupplierSelectionModalProps> = ({
     });
 
     return filtered;
-  }, [suppliers, searchQuery, selectedCountry, sortBy, showInactiveSuppliers]);
+  }, [suppliers, searchQuery, selectedCountry, sortBy]);
 
 
 
@@ -132,8 +136,14 @@ const SupplierSelectionModal: React.FC<SupplierSelectionModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <GlassCard className="w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+    <div 
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+      onClick={onClose}
+    >
+      <GlassCard 
+        className="w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-orange-50 to-amber-50">
           <div className="flex items-center justify-between">
@@ -205,17 +215,6 @@ const SupplierSelectionModal: React.FC<SupplierSelectionModalProps> = ({
 
           {/* Additional Filters */}
           <div className="mt-4 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={showInactiveSuppliers}
-                  onChange={(e) => setShowInactiveSuppliers(e.target.checked)}
-                  className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
-                />
-                <span className="text-sm text-gray-600">Show inactive suppliers</span>
-              </label>
-            </div>
             <div className="text-sm text-gray-500">
               {filteredSuppliers.length} of {suppliers.length} suppliers
             </div>
@@ -279,7 +278,10 @@ const SupplierSelectionModal: React.FC<SupplierSelectionModalProps> = ({
                     {(supplier.city || supplier.country) && (
                       <div className="flex items-center gap-2 text-sm text-gray-600">
                         <MapPin className="w-4 h-4" />
-                        <span>{[supplier.city, supplier.country].filter(Boolean).join(', ')}</span>
+                        <span>
+                          {[supplier.city, supplier.country].filter(Boolean).join(', ')}
+                          {supplier.country && ` ${countryFlags[supplier.country] || '🌍'}`}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -292,7 +294,9 @@ const SupplierSelectionModal: React.FC<SupplierSelectionModalProps> = ({
                     </div>
                     <div>
                       <div className="text-xs text-gray-500">Currency</div>
-                      <div className="font-semibold text-gray-900">{supplier.currency || 'TZS'}</div>
+                      <div className="font-semibold text-gray-900 flex items-center gap-1">
+                        {supplier.country && (countryFlags[supplier.country] || '💱')} {supplier.currency || 'TZS'}
+                      </div>
                     </div>
                     {supplier.totalSpent && (
                       <div className="col-span-2">
@@ -306,10 +310,10 @@ const SupplierSelectionModal: React.FC<SupplierSelectionModalProps> = ({
                         <div className="font-semibold text-gray-900">{formatDate(supplier.lastOrderDate)}</div>
                       </div>
                     )}
-                    {supplier.paymentTerms && (
+                    {supplier.exchangeRates && (
                       <div className="col-span-2">
-                        <div className="text-xs text-gray-500">Payment Terms</div>
-                        <div className="font-semibold text-gray-900">{supplier.paymentTerms}</div>
+                        <div className="text-xs text-gray-500">Exchange Rates</div>
+                        <div className="font-semibold text-gray-900">{supplier.exchangeRates}</div>
                       </div>
                     )}
                     {supplier.leadTimeDays && (
@@ -348,31 +352,23 @@ const SupplierSelectionModal: React.FC<SupplierSelectionModalProps> = ({
 
         {/* Footer */}
         <div className="p-6 border-t border-gray-200 bg-gray-50">
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-gray-600">
+          <div className="space-y-4">
+            <div className="text-sm text-gray-600 text-center">
               {filteredSuppliers.length > 0 
                 ? `Select a supplier to continue with your purchase order`
                 : `No suppliers match your criteria`
               }
             </div>
-            <div className="flex gap-3">
-              <GlassButton
-                onClick={onClose}
-                variant="secondary"
-              >
-                Cancel
-              </GlassButton>
-              <GlassButton
-                onClick={() => {
-                  // TODO: Navigate to add supplier page
-                  onClose();
-                }}
-                icon={<Plus size={18} />}
-                className="bg-gradient-to-r from-orange-500 to-amber-600 text-white"
-              >
-                Add New Supplier
-              </GlassButton>
-            </div>
+            <GlassButton
+              onClick={() => {
+                // TODO: Navigate to add supplier page
+                onClose();
+              }}
+              icon={<Plus size={20} />}
+              className="w-full py-4 bg-gradient-to-r from-orange-500 to-amber-600 text-white text-lg font-semibold"
+            >
+              Add New Supplier
+            </GlassButton>
           </div>
         </div>
       </GlassCard>

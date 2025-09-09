@@ -71,6 +71,70 @@ export const getActiveCategories = async (): Promise<Category[]> => {
   }
 };
 
+// Get active categories excluding spare parts
+export const getActiveCategoriesExcludingSpare = async (): Promise<Category[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('lats_categories')
+      .select('*')
+      .eq('is_active', true)
+      .order('sort_order')
+      .order('name');
+
+    if (error) throw error;
+    
+    const allCategories = data || [];
+    
+    // More precise spare part category identification
+    const sparePartKeywords = [
+      'spare', 'parts', 'repair', 'replacement', 'component'
+    ];
+    
+    // Specific spare part patterns (these suggest parts, not full products)
+    const sparePartPatterns = [
+      'screen replacement', 'battery replacement', 'charging port', 'logic board',
+      'motherboard', 'circuit board', 'flex cable', 'ribbon cable', 'charging cable',
+      'home button', 'power button', 'volume button', 'camera module', 'speaker module',
+      'microphone module', 'antenna module', 'vibration motor', 'charging dock',
+      'connector port', 'headphone jack', 'sim tray', 'battery connector'
+    ];
+    
+    const filteredCategories = allCategories.filter(category => {
+      const categoryName = category.name.toLowerCase();
+      const categoryDesc = (category.description || '').toLowerCase();
+      
+      // Check for explicit spare part keywords
+      const hasSparePartKeyword = sparePartKeywords.some(keyword =>
+        categoryName.includes(keyword) || categoryDesc.includes(keyword)
+      );
+      
+      // Check for specific spare part patterns
+      const hasSparePartPattern = sparePartPatterns.some(pattern =>
+        categoryName.includes(pattern) || categoryDesc.includes(pattern)
+      );
+      
+      // Check if explicitly named as spare part or component
+      const isExplicitSparePart = categoryName.includes('spare') ||
+                                 categoryName.includes(' part') ||
+                                 categoryName.includes('parts') ||
+                                 (categoryName.includes('component') && !categoryName.includes('software'));
+      
+      // Return categories that are NOT spare parts
+      return !(hasSparePartKeyword || hasSparePartPattern || isExplicitSparePart);
+    });
+    
+    console.log('📂 Categories: Total categories:', allCategories.length);
+    console.log('📂 Categories: Filtered (excluding spare parts):', filteredCategories.length);
+    console.log('📂 Categories: All category names:', allCategories.map(c => c.name));
+    console.log('📂 Categories: Filtered category names:', filteredCategories.map(c => c.name));
+    
+    return filteredCategories;
+  } catch (error) {
+    console.error('Error fetching active categories excluding spare parts:', error);
+    throw error;
+  }
+};
+
 // Get root categories (no parent)
 export const getRootCategories = async (): Promise<Category[]> => {
   try {

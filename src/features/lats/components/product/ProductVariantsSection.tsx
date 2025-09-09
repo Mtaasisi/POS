@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Layers, Plus, Trash2, Package, QrCode, RefreshCw, DollarSign, Move } from 'lucide-react';
+import { Layers, Plus, Trash2, Package, QrCode, DollarSign, Move, Check } from 'lucide-react';
 
 interface ProductVariant {
   name: string;
@@ -8,7 +8,6 @@ interface ProductVariant {
   price: number;
   stockQuantity: number;
   minStockLevel: number;
-  specification?: string;
   attributes?: Record<string, any>;
 }
 
@@ -51,7 +50,6 @@ const ProductVariantsSection: React.FC<ProductVariantsSectionProps> = ({
       price: 0,
       stockQuantity: 0,
       minStockLevel: 2, // Set default min stock level to 2 pcs
-      specification: '',
       attributes: {}
     };
     setVariants(prev => [...prev, newVariant]);
@@ -69,16 +67,6 @@ const ProductVariantsSection: React.FC<ProductVariantsSectionProps> = ({
 
   const generateVariantSKU = (variantNumber: number) => {
     return `${baseSku}-V${variantNumber.toString().padStart(2, '0')}`;
-  };
-
-  const autoGenerateAllSKUs = () => {
-    setVariants(prev => prev.map((variant, index) => {
-      const newSKU = generateVariantSKU(index + 1);
-      return {
-        ...variant,
-        sku: newSKU
-      };
-    }));
   };
 
   // Import shared formatting utilities for consistency
@@ -291,14 +279,7 @@ const ProductVariantsSection: React.FC<ProductVariantsSectionProps> = ({
                 {isReorderingVariants ? 'Done' : 'Reorder'}
               </button>
               
-              <button
-                type="button"
-                onClick={autoGenerateAllSKUs}
-                className="text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-700"
-                title="Auto-generate all variant SKUs"
-              >
-                Auto-generate SKUs
-              </button>
+
             </>
           )}
           
@@ -413,21 +394,10 @@ const ProductVariantsSection: React.FC<ProductVariantsSectionProps> = ({
                         type="text"
                         value={variant.sku}
                         readOnly
-                        className="w-full py-3 pl-12 pr-12 bg-gray-100 border-2 rounded-lg border-gray-300 text-gray-600 cursor-not-allowed"
+                        className="w-full py-3 pl-12 pr-4 bg-gray-100 border-2 rounded-lg border-gray-300 text-gray-600 cursor-not-allowed"
                         placeholder="Auto-generated"
                       />
                       <QrCode className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const newSKU = generateVariantSKU(index + 1);
-                          updateVariant(index, 'sku', newSKU);
-                        }}
-                        className="absolute right-4 top-1/2 -translate-y-1/2 text-blue-600 hover:text-blue-700 p-1 rounded hover:bg-blue-50 transition-colors"
-                        title="Regenerate SKU"
-                      >
-                        <RefreshCw size={14} />
-                      </button>
                     </div>
                     <div className="text-xs text-gray-500 mt-1">
                       SKU is automatically generated for this variant
@@ -575,7 +545,7 @@ const ProductVariantsSection: React.FC<ProductVariantsSectionProps> = ({
                             e.target.value = '';
                           }
                         }}
-                        className="w-full py-3 px-20 bg-white/30 backdrop-blur-md border-2 rounded-lg text-center text-lg font-semibold text-gray-900 border-gray-300 focus:outline-none focus:border-blue-500 transition-colors"
+                        className="w-full py-3 px-20 bg-white/30 backdrop-blur-md border-2 rounded-lg text-center text-lg font-semibold text-gray-900 border-gray-300 focus:outline-none focus:border-blue-500 transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         placeholder="0"
                         min="0"
                         step="1"
@@ -616,7 +586,7 @@ const ProductVariantsSection: React.FC<ProductVariantsSectionProps> = ({
                             e.target.value = '';
                           }
                         }}
-                        className="w-full py-3 px-20 bg-white/30 backdrop-blur-md border-2 rounded-lg text-center text-lg font-semibold text-gray-900 border-gray-300 focus:outline-none focus:border-blue-500 transition-colors"
+                        className="w-full py-3 px-20 bg-white/30 backdrop-blur-md border-2 rounded-lg text-center text-lg font-semibold text-gray-900 border-gray-300 focus:outline-none focus:border-blue-500 transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         placeholder="2"
                         min="0"
                         step="1"
@@ -643,18 +613,7 @@ const ProductVariantsSection: React.FC<ProductVariantsSectionProps> = ({
                   </div>
                 </div>
 
-                {/* Profit Margin Display */}
-                {variant.price > 0 && variant.costPrice > 0 && (
-                  <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600">Profit Margin:</span>
-                      <span className="font-semibold text-blue-600">
-                        TZS {(variant.price - variant.costPrice).toLocaleString()} 
-                        ({(((variant.price - variant.costPrice) / variant.price) * 100).toFixed(1)}%)
-                      </span>
-                    </div>
-                  </div>
-                )}
+
               </div>
             ))}
           </div>

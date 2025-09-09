@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, memo, useMemo, useCallback } from 'react';
 import GlassCard from '../../../shared/components/ui/GlassCard';
 import GlassButton from '../../../shared/components/ui/GlassButton';
 import SearchBar from '../../../shared/components/ui/SearchBar';
@@ -7,11 +7,13 @@ import VariantProductCard from './VariantProductCard';
 import { SimpleImageDisplay } from '../../../../components/SimpleImageDisplay';
 import { ProductImage } from '../../../../lib/robustImageService';
 import { LabelPrintingModal } from '../../../../components/LabelPrintingModal';
+import GeneralProductDetailModal from '../product/GeneralProductDetailModal';
 import { 
   Package, Grid, List, Star, CheckCircle, XCircle, 
   Download, Upload, Edit, Eye, Trash2, DollarSign, TrendingUp,
   AlertTriangle, Calculator, Crown, Users, Printer
 } from 'lucide-react';
+import { validateProductsBatch } from '../../lib/productUtils';
 
 interface EnhancedInventoryTabProps {
   products: any[];
@@ -48,6 +50,9 @@ interface EnhancedInventoryTabProps {
   navigate: (path: string) => void;
   productModals: any;
   deleteProduct: (productId: string) => Promise<void>;
+  liveMetrics?: any;
+  isLoadingLiveMetrics?: boolean;
+  onRefreshLiveMetrics?: () => void;
 }
 
 // Helper function to convert old image format to new format
@@ -99,21 +104,49 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
   toggleSelectAll,
   navigate,
   productModals,
-  deleteProduct
+  deleteProduct,
+  liveMetrics,
+  isLoadingLiveMetrics,
+  onRefreshLiveMetrics
 }) => {
   const [showLabelModal, setShowLabelModal] = useState(false);
   const [selectedProductForLabel, setSelectedProductForLabel] = useState<any>(null);
-  // Debug logging (reduced to prevent console spam)
-  if (import.meta.env.MODE === 'development' && false) { // Disabled debug logging
-    console.log('🔍 EnhancedInventoryTab Debug:', {
-      categoriesCount: categories?.length || 0,
-      brandsCount: brands?.length || 0,
-      categories: categories?.slice(0, 3), // First 3 categories
-      brands: brands?.slice(0, 3), // First 3 brands
-      selectedCategory,
-      selectedBrand
-    });
-  }
+  const [showProductDetailModal, setShowProductDetailModal] = useState(false);
+  const [selectedProductForDetail, setSelectedProductForDetail] = useState<any>(null);
+
+  // Improved debug logging for development only - only log once per session
+  const [hasLoggedNoProducts, setHasLoggedNoProducts] = useState(false);
+  useEffect(() => {
+    if (import.meta.env.MODE === 'development' && products?.length === 0 && !hasLoggedNoProducts) {
+      console.log('ℹ️ [EnhancedInventoryTab] No products available - this may be normal during initial load');
+      setHasLoggedNoProducts(true);
+    } else if (products?.length > 0 && hasLoggedNoProducts) {
+      setHasLoggedNoProducts(false); // Reset for future loads
+    }
+  }, [products, hasLoggedNoProducts]);
+
+  // Log missing product information only when there are significant issues - with session tracking
+  const [hasLoggedMissingInfo, setHasLoggedMissingInfo] = useState(false);
+  useEffect(() => {
+    if (products && products.length > 0 && import.meta.env.MODE === 'development') {
+      const validationResult = validateProductsBatch(products);
+      
+      // Only log if there are significant issues (average completeness < 70%)
+      if (validationResult.averageCompleteness < 70 && !hasLoggedMissingInfo) {
+        console.log('⚠️ [EnhancedInventoryTab] Product data quality issues detected:', {
+          totalProducts: validationResult.totalProducts,
+          validProducts: validationResult.validProducts,
+          invalidProducts: validationResult.invalidProducts,
+          averageCompleteness: validationResult.averageCompleteness,
+          commonMissingFields: validationResult.commonMissingFields,
+          recommendations: validationResult.recommendations
+        });
+        
+        setHasLoggedMissingInfo(true);
+      }
+    }
+  }, [products, hasLoggedMissingInfo]);
+  
 
   // Card variant state for grid view
   const [cardVariant, setCardVariant] = React.useState<'default' | 'detailed'>('detailed');
@@ -144,7 +177,7 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
   return (
     <div className="space-y-6">
       {/* Comprehensive Statistics Dashboard */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-5 gap-4 overflow-x-auto">
         <GlassCard className="bg-gradient-to-br from-blue-50 to-blue-100">
           <div className="flex items-center justify-between">
             <div>
@@ -205,7 +238,22 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
             </div>
           </div>
           <div className="mt-2">
-            <span className="text-sm text-gray-600">Inventory value</span>
+            <span className="text-sm text-gray-600">Cost value</span>
+          </div>
+        </GlassCard>
+        
+        <GlassCard className="bg-gradient-to-br from-purple-50 to-purple-100">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-purple-600">Retail Value</p>
+              <p className="text-2xl font-bold text-purple-900">{formatMoney(metrics.retailValue || 0)}</p>
+            </div>
+            <div className="p-3 bg-purple-50/20 rounded-full">
+              <TrendingUp className="w-6 h-6 text-purple-600" />
+            </div>
+          </div>
+          <div className="mt-2">
+            <span className="text-sm text-gray-600">Selling value</span>
           </div>
         </GlassCard>
       </div>
@@ -400,12 +448,14 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
                       type="checkbox"
                       checked={selectedProducts.length === products.length && products.length > 0}
                       onChange={toggleSelectAll}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 focus:ring-2"
                     />
                   </th>
                   <th className="text-left py-4 px-4 font-medium text-gray-700">Product</th>
                   <th className="text-left py-4 px-4 font-medium text-gray-700">SKU</th>
                   <th className="text-left py-4 px-4 font-medium text-gray-700">Category</th>
+                  <th className="text-left py-4 px-4 font-medium text-gray-700">Supplier</th>
+                  <th className="text-left py-4 px-4 font-medium text-gray-700">Shelf</th>
                   <th className="text-right py-4 px-4 font-medium text-gray-700">Price</th>
                   <th className="text-right py-4 px-4 font-medium text-gray-700">Stock</th>
                   <th className="text-center py-4 px-4 font-medium text-gray-700">Status</th>
@@ -424,14 +474,21 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
                     <tr 
                       key={product.id} 
                       className="border-b border-gray-200/30 hover:bg-blue-50 cursor-pointer transition-colors"
-                      onClick={() => navigate(`/lats/products/${product.id}`)}
+                      onClick={(e) => {
+                        // Don't navigate if clicking on checkbox, button, or other interactive elements
+                        if ((e.target as Element).closest('input[type="checkbox"]') || 
+                            (e.target as Element).closest('button')) {
+                          return;
+                        }
+                        navigate(`/lats/products/${product.id}`);
+                      }}
                     >
                       <td className="py-4 px-4">
                         <input
                           type="checkbox"
                           checked={selectedProducts.includes(product.id)}
                           onChange={e => { e.stopPropagation(); toggleProductSelection(product.id); }}
-                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 focus:ring-2"
                         />
                       </td>
                       <td className="py-4 px-4">
@@ -462,6 +519,14 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
                       <td className="py-4 px-4">
                         <span className="text-sm text-gray-600">{category?.name || 'Uncategorized'}</span>
                       </td>
+                      <td className="py-4 px-4">
+                        <span className="text-sm text-gray-600">{product.supplier?.name || 'No Supplier'}</span>
+                      </td>
+                      <td className="py-4 px-4">
+                        <span className="text-sm text-gray-600">
+                          {product.shelfName || product.shelfCode || product.storeLocationName || product.storageRoomName || 'N/A'}
+                        </span>
+                      </td>
                       <td className="py-4 px-4 text-right">
                         <span className="font-semibold text-gray-900">{formatMoney(mainVariant?.sellingPrice || 0)}</span>
                       </td>
@@ -482,17 +547,21 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
                         <div className="flex items-center justify-center space-x-2">
                           <button
                             onClick={(e) => { e.stopPropagation(); navigate(`/lats/products/${product.id}/edit`); }}
-                            className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
+                            className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
                             title="Edit Product"
                           >
-                            <Edit className="w-4 h-4" />
+                            <Edit className="w-5 h-5" />
                           </button>
                           <button
-                            onClick={(e) => { e.stopPropagation(); navigate(`/lats/products/${product.id}`); }}
-                            className="p-1 text-green-600 hover:text-green-800 hover:bg-green-50 rounded"
+                            onClick={(e) => { 
+                              e.stopPropagation(); 
+                              setSelectedProductForDetail(product);
+                              setShowProductDetailModal(true);
+                            }}
+                            className="p-2 text-green-600 hover:text-green-800 hover:bg-green-50 rounded"
                             title="View Details"
                           >
-                            <Eye className="w-4 h-4" />
+                            <Eye className="w-5 h-5" />
                           </button>
                           <button
                             onClick={(e) => { 
@@ -500,10 +569,10 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
                               setSelectedProductForHistory(product.id);
                               setShowStockAdjustModal(true);
                             }}
-                            className="p-1 text-orange-600 hover:text-orange-800 hover:bg-orange-50 rounded"
+                            className="p-2 text-orange-600 hover:text-orange-800 hover:bg-orange-50 rounded"
                             title="Adjust Stock"
                           >
-                            <Calculator className="w-4 h-4" />
+                            <Calculator className="w-5 h-5" />
                           </button>
                           <button
                             onClick={(e) => { 
@@ -521,10 +590,10 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
                               });
                               setShowLabelModal(true);
                             }}
-                            className="p-1 text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded"
+                            className="p-2 text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded"
                             title="Print Label"
                           >
-                            <Printer className="w-4 h-4" />
+                            <Printer className="w-5 h-5" />
                           </button>
                         </div>
                       </td>
@@ -537,10 +606,10 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
         </GlassCard>
       ) : (
         /* Grid View */
-        <div className={`grid gap-4 ${
+        <div className={`grid gap-3 ${
           cardVariant === 'detailed' 
-            ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' 
-            : 'grid-cols-1 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6'
+            ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5' 
+            : 'grid-cols-1 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-8'
         }`}>
           {products.map((product) => {
             const category = categories.find(c => c.id === product.categoryId);
@@ -554,7 +623,10 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
                   categoryName: category?.name,
                   brandName: brand?.name
                 }}
-                onView={(product) => navigate(`/lats/products/${product.id}`)}
+                onView={(product) => {
+                  setSelectedProductForDetail(product);
+                  setShowProductDetailModal(true);
+                }}
                 onEdit={(product) => {
                   navigate(`/lats/products/${product.id}/edit`);
                 }}
@@ -565,6 +637,10 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
                 }}
                 showActions={true}
                 variant={cardVariant}
+                // Selection props
+                isSelected={selectedProducts.includes(product.id)}
+                onSelect={toggleProductSelection}
+                showCheckbox={true}
               />
             );
           })}
@@ -600,8 +676,43 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
           formatMoney={formatMoney}
         />
       )}
+
+      {/* Product Detail Modal */}
+      {selectedProductForDetail && (
+        <GeneralProductDetailModal
+          isOpen={showProductDetailModal}
+          onClose={() => {
+            setShowProductDetailModal(false);
+            setSelectedProductForDetail(null);
+          }}
+          product={selectedProductForDetail}
+          onEdit={(product) => {
+            setShowProductDetailModal(false);
+            setSelectedProductForDetail(null);
+            navigate(`/lats/products/${product.id}/edit`);
+          }}
+        />
+      )}
     </div>
   );
 };
 
-export default EnhancedInventoryTab;
+// Memoize the component to prevent unnecessary re-renders
+const MemoizedEnhancedInventoryTab = memo(EnhancedInventoryTab, (prevProps, nextProps) => {
+  // Custom comparison function to prevent re-renders when data hasn't actually changed
+  const propsToCompare = [
+    'products', 'searchQuery', 'metrics', 'categories', 'selectedProducts',
+    'selectedCategory', 'selectedBrand', 'selectedStatus', 'showLowStockOnly',
+    'showFeaturedOnly', 'viewMode', 'sortBy', 'brands'
+  ];
+  
+  for (const prop of propsToCompare) {
+    if (prevProps[prop] !== nextProps[prop]) {
+      return false; // Allow re-render
+    }
+  }
+  
+  return true; // Prevent re-render
+});
+
+export default MemoizedEnhancedInventoryTab;

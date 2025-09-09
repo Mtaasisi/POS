@@ -1,4 +1,3 @@
-import { createClient } from '@supabase/supabase-js';
 import { supabase } from './supabaseClient';
 
 export interface SupplierCategory {
@@ -23,10 +22,7 @@ export interface Supplier {
   country?: string;
   website?: string;
   notes?: string;
-  payment_account_type?: 'mobile_money' | 'bank_account' | 'other';
-  mobile_money_account?: string;
-  bank_account_number?: string;
-  bank_name?: string;
+  currency?: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -47,11 +43,8 @@ export interface CreateSupplierData {
   country?: string;
   website?: string;
   notes?: string;
-  payment_account_type?: 'mobile_money' | 'bank_account' | 'other';
-  mobile_money_account?: string;
-  bank_account_number?: string;
-  bank_name?: string;
-  is_active?: boolean;
+  currency?: string;
+  is_active?: boolean; // Will default to true if not provided
 }
 
 export interface UpdateSupplierData {
@@ -69,10 +62,7 @@ export interface UpdateSupplierData {
   country?: string;
   website?: string;
   notes?: string;
-  payment_account_type?: 'mobile_money' | 'bank_account' | 'other';
-  mobile_money_account?: string;
-  bank_account_number?: string;
-  bank_name?: string;
+  currency?: string;
   is_active?: boolean;
 }
 
@@ -82,7 +72,33 @@ export const getActiveSuppliers = async (): Promise<Supplier[]> => {
     // First try with is_active filter
     const { data, error } = await supabase
       .from('lats_suppliers')
-      .select('*')
+      .select(`
+        id,
+        name,
+        contact_person,
+        email,
+        phone,
+        address,
+        website,
+        notes,
+        company_name,
+        description,
+        phone2,
+        whatsapp,
+        instagram,
+        wechat_id,
+        city,
+        country,
+        payment_account_type,
+        mobile_money_account,
+        bank_account_number,
+        bank_name,
+        currency,
+        payment_terms,
+        is_active,
+        created_at,
+        updated_at
+      `)
       .eq('is_active', true)
       .order('name');
 
@@ -92,7 +108,32 @@ export const getActiveSuppliers = async (): Promise<Supplier[]> => {
       // Fallback: get all suppliers without is_active filter
       const { data: fallbackData, error: fallbackError } = await supabase
         .from('lats_suppliers')
-        .select('*')
+        .select(`
+          id,
+          name,
+          contact_person,
+          email,
+          phone,
+          address,
+          website,
+          notes,
+          company_name,
+          description,
+          phone2,
+          whatsapp,
+          instagram,
+          wechat_id,
+          city,
+          country,
+          payment_account_type,
+          mobile_money_account,
+          bank_account_number,
+          bank_name,
+          currency,
+          is_active,
+          created_at,
+          updated_at
+        `)
         .order('name');
 
       if (fallbackError) {
@@ -115,7 +156,33 @@ export const getAllSuppliers = async (): Promise<Supplier[]> => {
   try {
     const { data, error } = await supabase
       .from('lats_suppliers')
-      .select('*')
+      .select(`
+        id,
+        name,
+        contact_person,
+        email,
+        phone,
+        address,
+        website,
+        notes,
+        company_name,
+        description,
+        phone2,
+        whatsapp,
+        instagram,
+        wechat_id,
+        city,
+        country,
+        payment_account_type,
+        mobile_money_account,
+        bank_account_number,
+        bank_name,
+        currency,
+        payment_terms,
+        is_active,
+        created_at,
+        updated_at
+      `)
       .order('name');
 
     if (error) {
@@ -269,7 +336,33 @@ export const searchSuppliers = async (query: string): Promise<Supplier[]> => {
   try {
     const { data, error } = await supabase
       .from('lats_suppliers')
-      .select('*')
+      .select(`
+        id,
+        name,
+        contact_person,
+        email,
+        phone,
+        address,
+        website,
+        notes,
+        company_name,
+        description,
+        phone2,
+        whatsapp,
+        instagram,
+        wechat_id,
+        city,
+        country,
+        payment_account_type,
+        mobile_money_account,
+        bank_account_number,
+        bank_name,
+        currency,
+        payment_terms,
+        is_active,
+        created_at,
+        updated_at
+      `)
       .or(`name.ilike.%${query}%,company_name.ilike.%${query}%,contact_person.ilike.%${query}%`)
       .eq('is_active', true)
       .order('name');
@@ -291,7 +384,33 @@ export const getSuppliersByCountry = async (country: string): Promise<Supplier[]
   try {
     const { data, error } = await supabase
       .from('lats_suppliers')
-      .select('*')
+      .select(`
+        id,
+        name,
+        contact_person,
+        email,
+        phone,
+        address,
+        website,
+        notes,
+        company_name,
+        description,
+        phone2,
+        whatsapp,
+        instagram,
+        wechat_id,
+        city,
+        country,
+        payment_account_type,
+        mobile_money_account,
+        bank_account_number,
+        bank_name,
+        currency,
+        payment_terms,
+        is_active,
+        created_at,
+        updated_at
+      `)
       .eq('country', country)
       .eq('is_active', true)
       .order('name');
@@ -313,7 +432,33 @@ export const getSuppliersByPaymentType = async (paymentType: string): Promise<Su
   try {
     const { data, error } = await supabase
       .from('lats_suppliers')
-      .select('*')
+      .select(`
+        id,
+        name,
+        contact_person,
+        email,
+        phone,
+        address,
+        website,
+        notes,
+        company_name,
+        description,
+        phone2,
+        whatsapp,
+        instagram,
+        wechat_id,
+        city,
+        country,
+        payment_account_type,
+        mobile_money_account,
+        bank_account_number,
+        bank_name,
+        currency,
+        payment_terms,
+        is_active,
+        created_at,
+        updated_at
+      `)
       .eq('payment_account_type', paymentType)
       .eq('is_active', true)
       .order('name');

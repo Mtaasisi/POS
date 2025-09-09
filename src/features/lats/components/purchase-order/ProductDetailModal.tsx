@@ -1,18 +1,14 @@
 // ProductDetailModal component - Shows full product details for purchase orders with editing capabilities
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  X, Package, Tag, Hash, DollarSign, Plus, Minus, ShoppingCart, 
-  AlertTriangle, Star, Truck, Building, Info, 
-  CheckCircle, Camera, Barcode, TrendingUp, Users, ArrowUpDown,
-  Clock, Phone, Mail, MapPin, CreditCard, Calculator, Globe
+  X, Package, Tag, Hash, ShoppingCart, 
+  CheckCircle, Camera, Barcode, ArrowUpDown
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import GlassCard from '../../../shared/components/ui/GlassCard';
 import GlassButton from '../../../shared/components/ui/GlassButton';
-import GlassBadge from '../../../shared/components/ui/GlassBadge';
 import { SimpleImageDisplay } from '../../../../components/SimpleImageDisplay';
-import { ProductImage } from '../../../../lib/robustImageService';
-import { formatMoney, Currency, SUPPORTED_CURRENCIES, PAYMENT_TERMS } from '../../lib/purchaseOrderUtils';
+import { formatMoney, Currency, SUPPORTED_CURRENCIES } from '../../lib/purchaseOrderUtils';
 import { ProductSearchResult, ProductSearchVariant } from '../../types/pos';
 import { 
   getPrimaryVariant, 
@@ -20,33 +16,16 @@ import {
   isMultiVariantProduct 
 } from '../../lib/productUtils';
 import { RealTimeStockService } from '../../lib/realTimeStock';
-
-interface Supplier {
-  id: string;
-  name: string;
-  company_name?: string;
-  contactPerson?: string;
-  phone?: string;
-  email?: string;
-  address?: string;
-  city?: string;
-  country?: string;
-  paymentTerms?: string;
-  leadTimeDays?: number;
-  currency?: string;
-  isActive: boolean;
-  preferredCostPrice?: number;
-}
+import { useInventoryStore } from '../../stores/useInventoryStore';
+import { getLatsProvider } from '../../lib/data/provider';
 
 interface ProductDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   product: ProductSearchResult;
   currency: Currency;
-  suppliers: Supplier[];
-  selectedSupplier?: Supplier | null;
   onAddToCart: (product: ProductSearchResult, variant: ProductSearchVariant, quantity: number) => void;
-  onSupplierChange?: (supplier: Supplier | null) => void;
+  onProductUpdated?: (updatedProduct: ProductSearchResult) => void;
 }
 
 const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
@@ -54,54 +33,99 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   onClose,
   product,
   currency,
-  suppliers,
-  selectedSupplier,
   onAddToCart,
-  onSupplierChange
+  onProductUpdated
 }) => {
+  // DEBUG: Log product data received by purchase order modal
+  useEffect(() => {
+    if (isOpen && product) {
+      console.log('🔍 [PurchaseOrderProductDetailModal] DEBUG - Product data received:', {
+        id: product.id,
+        name: product.name,
+        sku: product.sku,
+        category: product.category,
+        supplier: product.supplier,
+        variants: product.variants,
+        specification: product.specification,
+        attributes: product.attributes,
+        images: product.images
+      });
+      
+      // DEBUG: Check for missing information
+      const missingInfo = [];
+      if (!product.supplier) missingInfo.push('supplier');
+      if (!product.category) missingInfo.push('category');
+      if (!product.variants || product.variants.length === 0) missingInfo.push('variants');
+      if (!product.images || product.images.length === 0) missingInfo.push('images');
+      if (!product.specification) missingInfo.push('specification');
+      
+      if (missingInfo.length > 0) {
+        console.warn('⚠️ [PurchaseOrderProductDetailModal] DEBUG - Missing information:', missingInfo);
+      } else {
+        console.log('✅ [PurchaseOrderProductDetailModal] DEBUG - All information present');
+      }
+    }
+  }, [isOpen, product]);
+  // Get inventory store for updating products
+  const { updateProduct } = useInventoryStore();
+  
+  // Ensure we have a valid currency, fallback to TZS if none provided
+  const defaultCurrency = SUPPORTED_CURRENCIES.find(c => c.code === 'TZS') || SUPPORTED_CURRENCIES[0];
+  const safeCurrency = currency || defaultCurrency;
+  
   const [selectedVariant, setSelectedVariant] = useState<ProductSearchVariant | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [customCostPrice, setCustomCostPrice] = useState<string>('');
-  const [notes, setNotes] = useState('');
-  const [selectedSupplierLocal, setSelectedSupplierLocal] = useState<Supplier | null>(selectedSupplier || null);
-  const [selectedCurrency, setSelectedCurrency] = useState<Currency>(currency);
+  const [selectedCurrency, setSelectedCurrency] = useState<Currency>(safeCurrency);
   const [exchangeRate, setExchangeRate] = useState<number>(1);
   const [minimumOrderQty, setMinimumOrderQty] = useState<number>(1);
+  const [minimumStock, setMinimumStock] = useState<number>(0);
   
   // Real-time stock state
   const [realTimeStock, setRealTimeStock] = useState<Map<string, number>>(new Map());
   const [isLoadingStock, setIsLoadingStock] = useState(false);
   const [lastStockUpdate, setLastStockUpdate] = useState<Date | null>(null);
+  const [isSavingPrice, setIsSavingPrice] = useState(false);
+  const dataProvider = getLatsProvider();
 
-  // Initialize with primary variant and supplier data
+  // Update selectedCurrency when currency prop changes
+  useEffect(() => {
+    if (currency) {
+      setSelectedCurrency(currency);
+    }
+  }, [currency]);
+
+  // Safety check to ensure selectedCurrency is always defined
+  const safeSelectedCurrency = selectedCurrency || safeCurrency;
+
+  // Initialize with primary variant
   useEffect(() => {
     if (product && !selectedVariant) {
       const primary = getPrimaryVariant(product);
       if (primary) {
         setSelectedVariant(primary);
-        setCustomCostPrice((primary.costPrice || product.price * 0.7).toString());
+        // Use product-level costPrice or price, fallback to 70% of selling price
+        const defaultCostPrice = product.costPrice || (product.price || 0) * 0.7;
+        setCustomCostPrice(defaultCostPrice.toString());
+        // Initialize minimum stock from product data (ProductSearchResult doesn't have minimumStock)
+        setMinimumStock(0); // Default to 0 since ProductSearchResult doesn't have this field
       }
     }
-    
-    // Set supplier-specific data
-    if (selectedSupplierLocal) {
-      if (selectedSupplierLocal.currency) {
-        const supplierCurrency = SUPPORTED_CURRENCIES.find(c => c.code === selectedSupplierLocal.currency);
-        if (supplierCurrency) {
-          setSelectedCurrency(supplierCurrency);
-          // Calculate exchange rate (simplified - in real app, fetch from API)
-          if (supplierCurrency.code !== currency.code) {
-            const rate = getExchangeRate(supplierCurrency.code, currency.code);
-            setExchangeRate(rate);
-          }
-        }
-      }
-    }
-  }, [product, selectedVariant, selectedSupplierLocal, currency]);
+  }, [product, selectedVariant]);
 
-  // Fetch real-time stock when modal opens (with debouncing)
+  // Fetch real-time stock when modal opens (with caching to prevent unnecessary fetches)
   useEffect(() => {
     if (isOpen && product?.id) {
+      // Check if we have recent stock data (within last 30 seconds)
+      const now = new Date();
+      const cacheAge = lastStockUpdate ? now.getTime() - lastStockUpdate.getTime() : Infinity;
+      const CACHE_DURATION = 30 * 1000; // 30 seconds
+      
+      if (cacheAge < CACHE_DURATION && realTimeStock.has(product.id)) {
+        console.log('📊 Using cached stock data (age:', Math.round(cacheAge / 1000), 'seconds)');
+        return;
+      }
+      
       // Add a small delay to prevent multiple rapid requests
       const timer = setTimeout(() => {
         fetchRealTimeStock();
@@ -111,7 +135,15 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     }
   }, [isOpen, product?.id]);
 
-  // Simplified exchange rate calculation (in real app, use live rates)
+  // Helper function to format numbers with commas (no trailing .0 or .00)
+  const formatNumberWithCommas = (num: number): string => {
+    const formatted = num.toLocaleString('en-US', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2
+    });
+    return formatted.replace(/\.00$/, '').replace(/\.0$/, '');
+  };
+
   // Fetch real-time stock data
   const fetchRealTimeStock = async () => {
     if (!product?.id) return;
@@ -143,11 +175,9 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     return rates[fromCurrency]?.[toCurrency] || 1;
   };
 
-  if (!isOpen || !product) return null;
-
-  // Convert product images to new format
-  const convertToProductImages = (): ProductImage[] => {
-    if (!product.images || product.images.length === 0) {
+  // Convert product images to new format - memoized to prevent unnecessary recalculations
+  const productImages = useMemo(() => {
+    if (!product?.images || product.images.length === 0) {
       return [];
     }
     
@@ -160,12 +190,14 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
       isPrimary: index === 0,
       uploadedAt: new Date().toISOString()
     }));
-  };
+  }, [product?.images, product?.id]);
 
-  const productImages = convertToProductImages();
+  if (!isOpen || !product || !safeSelectedCurrency || !currency) return null;
+  
   const hasMultipleVariants = isMultiVariantProduct(product);
   const totalStock = getProductTotalStock(product);
   const costPrice = parseFloat(customCostPrice) || 0;
+  
   // Get real-time stock for current product
   const getRealTimeStockForProduct = (): number => {
     if (!product?.id) return 0;
@@ -190,6 +222,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   // Get stock status
   const getStockStatus = () => {
     if (currentTotalStock === 0) return { status: 'Out of Stock', color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200' };
+    if (currentTotalStock <= minimumStock) return { status: 'Below Min Stock', color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200' };
     if (currentTotalStock <= 5) return { status: 'Low Stock', color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-200' };
     return { status: 'In Stock', color: 'text-green-600', bg: 'bg-green-50', border: 'border-green-200' };
   };
@@ -202,51 +235,34 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
   const handleVariantSelect = (variant: ProductSearchVariant) => {
     setSelectedVariant(variant);
-    setCustomCostPrice((variant.costPrice || product.price * 0.7).toString());
-  };
-
-  const handleSupplierSelect = (supplier: Supplier | null) => {
-    setSelectedSupplierLocal(supplier);
-    if (onSupplierChange) {
-      onSupplierChange(supplier);
-    }
-    
-    if (supplier) {
-      // Update cost price if supplier has preferred pricing
-      if (supplier.preferredCostPrice) {
-        setCustomCostPrice(supplier.preferredCostPrice.toString());
-      }
-      
-      // Update currency if supplier has preferred currency
-      if (supplier.currency) {
-        const supplierCurrency = SUPPORTED_CURRENCIES.find(c => c.code === supplier.currency);
-        if (supplierCurrency) {
-          setSelectedCurrency(supplierCurrency);
-        }
-      }
-    }
+    // Use product-level costPrice or price, fallback to 70% of selling price
+    const defaultCostPrice = product.costPrice || (product.price || 0) * 0.7;
+    setCustomCostPrice(defaultCostPrice.toString());
   };
 
   const calculateExchangedPrice = (price: number): number => {
-    if (selectedCurrency.code === currency.code) return price;
+    if (safeSelectedCurrency.code === currency.code) return price;
     return price * exchangeRate;
   };
 
+  const handleAddToCart = async () => {
+    console.log('🛒 handleAddToCart called with:', {
+      selectedVariant,
+      customCostPrice,
+      costPrice,
+      quantity,
+      minimumOrderQty,
+      product: product.name
+    });
 
-
-  const handleAddToCart = () => {
     if (!selectedVariant) {
       toast.error('Please select a variant');
       return;
     }
 
     if (costPrice <= 0) {
-      toast.error('Please enter a valid cost price');
-      return;
-    }
-
-    if (!selectedSupplierLocal) {
-      toast.error('Please select a supplier for this product');
+      console.log('❌ Cost price validation failed:', { costPrice, customCostPrice });
+      toast.error('Please enter a cost price above 0 in the "Cost Price (per unit)" field');
       return;
     }
 
@@ -255,25 +271,62 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
       return;
     }
 
-    // Create modified variant with custom cost price and supplier info
-    const modifiedVariant = {
-      ...selectedVariant,
-      costPrice: selectedCurrency.code !== currency.code ? calculateExchangedPrice(costPrice) : costPrice,
-      supplierInfo: {
-        supplierId: selectedSupplierLocal.id,
-        supplierName: selectedSupplierLocal.name,
-        originalCostPrice: costPrice,
-        originalCurrency: selectedCurrency.code,
-        exchangeRate: exchangeRate,
+    try {
+      setIsSavingPrice(true);
+      
+      // Save the updated cost price to the database before adding to cart
+      const finalCostPrice = safeSelectedCurrency.code !== currency.code ? calculateExchangedPrice(costPrice) : costPrice;
+      
+      console.log('💾 Saving updated cost price:', finalCostPrice);
+      
+      // Update the variant cost price in the database
+      const updateResult = await dataProvider.updateProductVariantCostPrice(selectedVariant.id, finalCostPrice);
 
-        paymentTerms: selectedSupplierLocal.paymentTerms,
-        notes: notes
+      if (updateResult.ok) {
+        console.log('✅ Product cost price saved successfully');
+        toast.success('Cost price updated and saved!');
+        
+        // Notify parent component about the updated product
+        if (onProductUpdated) {
+          const updatedProduct = {
+            ...product,
+            costPrice: finalCostPrice,
+            minimumStock: minimumStock
+          };
+          onProductUpdated(updatedProduct);
+        }
+      } else {
+        console.warn('⚠️ Failed to save cost price');
+        // Continue anyway, don't block the add to cart
       }
-    };
 
-    onAddToCart(product, modifiedVariant, quantity);
-    toast.success(`Added ${quantity}x ${product.name} from ${selectedSupplierLocal.name} to purchase order`);
-    onClose();
+      // Create modified variant with custom cost price
+      const modifiedVariant = {
+        ...selectedVariant,
+        costPrice: finalCostPrice
+      };
+
+      console.log('🛒 Calling onAddToCart with:', { product: product.name, variant: modifiedVariant, quantity });
+      onAddToCart(product, modifiedVariant, quantity);
+      toast.success(`Added ${quantity}x ${product.name} to purchase order`);
+      onClose();
+      
+    } catch (error) {
+      console.error('❌ Error saving cost price:', error);
+      toast.error('Failed to save cost price, but product will still be added to cart');
+      
+      // Fallback: add to cart without saving
+      const modifiedVariant = {
+        ...selectedVariant,
+        costPrice: safeSelectedCurrency.code !== currency.code ? calculateExchangedPrice(costPrice) : costPrice
+      };
+      
+      onAddToCart(product, modifiedVariant, quantity);
+      toast.success(`Added ${quantity}x ${product.name} to purchase order`);
+      onClose();
+    } finally {
+      setIsSavingPrice(false);
+    }
   };
 
   return (
@@ -312,7 +365,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                       images={productImages}
                       productName={product.name}
                       size="xl"
-                      className="w-full h-64 rounded-xl"
+                      className="w-[392px] h-[392px] rounded-xl"
                     />
                   ) : (
                     <div className="w-full h-64 bg-gradient-to-br from-orange-100 to-amber-100 rounded-xl flex items-center justify-center border-2 border-dashed border-orange-300">
@@ -322,6 +375,116 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                       </div>
                     </div>
                   )}
+                </div>
+
+                {/* Product Specifications */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-1 h-6 bg-gradient-to-b from-orange-400 to-orange-600 rounded-full"></div>
+                    <h3 className="text-lg font-semibold text-gray-800">Specifications</h3>
+                  </div>
+                  
+                  <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-200/50 p-6 shadow-sm">
+                    {/* Combined specifications display */}
+                    {(() => {
+                      const allSpecs: Array<{key: string, value: string, type: 'general' | 'attribute' | 'variant', isJson: boolean}> = [];
+                      
+                      // Add general specifications
+                      if (product.specification) {
+                        try {
+                          const specs = JSON.parse(product.specification);
+                          Object.entries(specs).forEach(([key, value]) => {
+                            allSpecs.push({
+                              key: key.replace(/_/g, ' '),
+                              value: String(value),
+                              type: 'general',
+                              isJson: false
+                            });
+                          });
+                        } catch {
+                          allSpecs.push({
+                            key: 'Specification',
+                            value: product.specification,
+                            type: 'general',
+                            isJson: false
+                          });
+                        }
+                      }
+                      
+                      // Add product attributes
+                      if (product.attributes && Object.keys(product.attributes).length > 0) {
+                        Object.entries(product.attributes).forEach(([key, value]) => {
+                          allSpecs.push({
+                            key: key.replace(/_/g, ' '),
+                            value: String(value),
+                            type: 'attribute',
+                            isJson: false
+                          });
+                        });
+                      }
+                      
+                      // Add variant specifications
+                      if (selectedVariant?.attributes && Object.keys(selectedVariant.attributes).length > 0) {
+                        Object.entries(selectedVariant.attributes).forEach(([key, value]) => {
+                          let displayValue = String(value);
+                          let isJson = false;
+                          
+                          try {
+                            const parsed = JSON.parse(String(value));
+                            if (typeof parsed === 'object' && parsed !== null) {
+                              isJson = true;
+                              displayValue = Object.entries(parsed)
+                                .map(([k, v]) => `${k}: ${v}`)
+                                .join(', ');
+                            }
+                          } catch {
+                            // Not JSON, use as is
+                          }
+                          
+                          allSpecs.push({
+                            key: key.replace(/_/g, ' '),
+                            value: displayValue,
+                            type: 'variant',
+                            isJson
+                          });
+                        });
+                      }
+                      
+                      if (allSpecs.length === 0) {
+                        return (
+                          <div className="text-center py-8">
+                            <div className="w-16 h-16 bg-gradient-to-br from-gray-100 to-gray-200 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                              <Package className="w-8 h-8 text-gray-400" />
+                            </div>
+                            <p className="text-gray-500 font-medium">No specifications available</p>
+                            <p className="text-sm text-gray-400 mt-1">Product details will appear here</p>
+                          </div>
+                        );
+                      }
+                      
+                      return (
+                        <div className="space-y-3">
+                          {allSpecs.map((spec, index) => (
+                            <div key={index} className="flex items-center justify-between py-3 px-4 bg-white rounded-lg border border-gray-100 hover:border-gray-200 transition-colors">
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-medium text-gray-800 capitalize">
+                                  {spec.key}
+                                </div>
+                                <div className="text-sm text-gray-500 mt-1">
+                                  {spec.value}
+                                </div>
+                              </div>
+                              {spec.isJson && (
+                                <div className="flex-shrink-0 ml-3">
+                                  <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </div>
                 </div>
 
                 {/* Basic Information */}
@@ -361,140 +524,12 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                         <div className="font-medium text-gray-900">{product.categoryName || 'Uncategorized'}</div>
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-3">
-                      <Building className="w-5 h-5 text-gray-500" />
-                      
-                    </div>
-                  </div>
-                </div>
-
-                {/* Stock Information */}
-                <div className="space-y-4">
-                  <h3 className="text-lg font-medium text-gray-800">Stock Information</h3>
-                  <div className={`p-4 rounded-lg ${stockStatus.bg} ${stockStatus.border} border-2`}>
-                    <div className="flex items-center gap-3 mb-3">
-                      <AlertTriangle className={`w-5 h-5 ${stockStatus.color}`} />
-                      <div>
-                        <div className={`font-medium ${stockStatus.color}`}>{stockStatus.status}</div>
-                                                    <div className="text-sm text-gray-600">
-                              Current total stock: {isLoadingStock ? 'Loading...' : `${currentTotalStock} units`}
-                              {isLoadingStock && <span className="ml-1 text-orange-500">🔄</span>}
-                              {!isLoadingStock && realTimeStock.has(product.id) && (
-                                <span className="ml-1 text-green-500" title="Real-time data">✓</span>
-                              )}
-                            </div>
-                            {lastStockUpdate && (
-                              <div className="text-xs text-gray-500 mt-1">
-                                Last updated: {lastStockUpdate.toLocaleTimeString()}
-                              </div>
-                            )}
-                      </div>
-                    </div>
-                    
-                    {totalStock === 0 && (
-                      <div className="mt-2 p-3 bg-red-100 rounded-lg border border-red-200">
-                        <div className="flex items-center gap-2">
-                          <AlertTriangle className="w-4 h-4 text-red-600" />
-                          <span className="text-sm text-red-700 font-medium">
-                            This product is out of stock and needs to be restocked
-                          </span>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>
 
               {/* Right Column - Purchase Order Setup */}
               <div className="space-y-6">
-
-                {/* Supplier Selection */}
-                <div className="space-y-4">
-                  <h3 className="text-lg font-medium text-gray-800">Supplier Selection</h3>
-                  <div className="space-y-3">
-                    {selectedSupplierLocal ? (
-                      <div className="p-4 bg-gradient-to-br from-orange-50 to-amber-50 rounded-lg border-2 border-orange-200">
-                        <div className="flex items-start justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-amber-600 rounded-lg flex items-center justify-center text-white font-bold">
-                              {selectedSupplierLocal.name.charAt(0)}
-                            </div>
-                            <div>
-                              <div className="font-medium text-gray-900">{selectedSupplierLocal.name}</div>
-                              <div className="text-sm text-gray-600">{selectedSupplierLocal.company_name}</div>
-                              <div className="flex items-center gap-4 mt-1 text-xs text-gray-600">
-                                {selectedSupplierLocal.phone && (
-                                  <div className="flex items-center gap-1">
-                                    <Phone className="w-3 h-3" />
-                                    {selectedSupplierLocal.phone}
-                                  </div>
-                                )}
-
-                              </div>
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => handleSupplierSelect(null)}
-                            className="text-red-500 hover:text-red-700"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div>
-                        <select
-                          value={selectedSupplierLocal?.id || ''}
-                          onChange={(e) => {
-                            const supplier = suppliers.find(s => s.id === e.target.value) || null;
-                            handleSupplierSelect(supplier);
-                          }}
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                        >
-                          <option value="">Select supplier for this product</option>
-                          {suppliers.filter(s => s.isActive).map(supplier => (
-                            <option key={supplier.id} value={supplier.id}>
-                              {supplier.name} ({supplier.country || 'Unknown'}) - {supplier.currency || 'KES'}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Currency & Exchange Rate */}
-                {selectedSupplierLocal && selectedCurrency.code !== currency.code && (
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-medium text-gray-800">Currency Exchange</h3>
-                    <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <Globe className="w-5 h-5 text-blue-600" />
-                          <span className="font-medium text-gray-800">Exchange Rate</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <ArrowUpDown className="w-4 h-4 text-blue-600" />
-                          <Calculator className="w-4 h-4 text-blue-600" />
-                        </div>
-                      </div>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span>From ({selectedCurrency.code}):</span>
-                          <span className="font-mono">1.00</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>To ({currency.code}):</span>
-                          <span className="font-mono">{exchangeRate.toFixed(4)}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-
-                
                 {/* Variant Selection */}
                 {hasMultipleVariants && (
                   <div className="space-y-4">
@@ -524,7 +559,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                             </div>
                             <div className="text-right">
                               <div className="font-bold text-gray-900">
-                                {formatMoney(variant.costPrice || product.price * 0.7, currency)}
+                                {formatMoney(product.costPrice || (product.price || 0) * 0.7, currency).replace(/\.00$/, '').replace(/\.0$/, '')}
                               </div>
                               {selectedVariant?.id === variant.id && (
                                 <CheckCircle className="w-5 h-5 text-orange-600 mt-1" />
@@ -537,245 +572,291 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                   </div>
                 )}
 
-                {/* Purchase Order Configuration */}
-                <div className="space-y-4">
-                  <h3 className="text-lg font-medium text-gray-800">Purchase Order Setup</h3>
-                  
-                  {/* Quantity Selection */}
-                  <div className="space-y-3">
-                    <label className="block text-sm font-medium text-gray-700">Order Quantity</label>
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-3">
-                        <button
-                          onClick={() => handleQuantityChange(-1)}
-                          disabled={quantity <= 1}
-                          className="w-10 h-10 flex items-center justify-center border-2 border-orange-300 rounded-lg hover:bg-orange-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                          <Minus className="w-4 h-4 text-orange-600" />
-                        </button>
-                        <span className="w-16 text-center font-bold text-xl text-gray-900">
-                          {quantity}
-                        </span>
-                        <button
-                          onClick={() => handleQuantityChange(1)}
-                          className="w-10 h-10 flex items-center justify-center border-2 border-orange-300 rounded-lg hover:bg-orange-50 transition-colors"
-                        >
-                          <Plus className="w-4 h-4 text-orange-600" />
-                        </button>
-                      </div>
-                      
-                      <div className="flex-1">
-                        <input
-                          type="number"
-                          value={quantity}
-                          onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                          min="1"
-                        />
-                      </div>
-                    </div>
+                {/* Minimum Stock */}
+                <div className="flex items-center justify-between bg-amber-50 rounded-lg border border-amber-200 p-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-amber-500 rounded-full"></div>
+                    <span className="text-sm font-medium text-amber-800">Min Stock</span>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      value={minimumStock}
+                      onChange={(e) => {
+                        const value = parseInt(e.target.value) || 0;
+                        setMinimumStock(Math.max(0, value));
+                      }}
+                      min="0"
+                      placeholder="0"
+                      className="w-16 text-center text-sm font-medium text-gray-800 border border-amber-200 rounded px-2 py-1 focus:border-amber-400 focus:outline-none bg-white"
+                    />
+                    <span className="text-xs text-amber-700">units</span>
+                    {minimumStock > 0 && (
+                      <div className="w-2 h-2 bg-amber-500 rounded-full"></div>
+                    )}
+                  </div>
+                </div>
 
-                  {/* Cost Price with Exchange Rate */}
-                  <div className="space-y-3">
-                    <label className="block text-sm font-medium text-gray-700">Cost Price (per unit)</label>
-                    <div className="relative">
+                {/* Quantity Selection */}
+                <div className="space-y-3">
+                  <label className="block text-sm font-medium text-gray-700">Quantity</label>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => handleQuantityChange(-1)}
+                      disabled={quantity <= 1}
+                      className="w-10 h-10 flex items-center justify-center bg-gray-100 hover:bg-gray-200 disabled:bg-gray-50 disabled:text-gray-400 rounded-lg border border-gray-200 transition-colors"
+                    >
+                      <span className="text-lg font-bold">-</span>
+                    </button>
+                    
+                    <div className="flex-1">
                       <input
                         type="number"
-                        value={customCostPrice}
-                        onChange={(e) => setCustomCostPrice(e.target.value)}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent text-lg"
-                        step="0.01"
-                        min="0"
-                        placeholder="0.00"
+                        value={quantity}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value) || 1;
+                          setQuantity(Math.max(1, value));
+                        }}
+                        min="1"
+                        className="w-full text-center text-xl font-bold text-gray-800 border-2 border-gray-200 rounded-lg py-2 px-4 focus:border-orange-500 focus:outline-none"
                       />
-                      <div className="absolute inset-y-0 right-0 flex items-center pr-3">
-                        <span className="text-gray-500 text-sm">{selectedCurrency.symbol}</span>
-                      </div>
                     </div>
                     
-                    {/* Exchange Rate Calculation */}
-                    {selectedCurrency.code !== currency.code && (
-                      <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-blue-700">
-                            Price in {selectedCurrency.code}: {formatMoney(costPrice, selectedCurrency)}
-                          </span>
-                          <ArrowUpDown className="w-4 h-4 text-blue-600" />
-                          <span className="text-blue-700">
-                            Converted to {currency.code}: {formatMoney(calculateExchangedPrice(costPrice), currency)}
-                          </span>
+                    <button
+                      type="button"
+                      onClick={() => handleQuantityChange(1)}
+                      className="w-10 h-10 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-lg border border-gray-200 transition-colors"
+                    >
+                      <span className="text-lg font-bold">+</span>
+                    </button>
+                  </div>
+                  
+                  {/* Stock availability indicator */}
+                  <div className="bg-white rounded-lg border border-gray-100 p-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-3 h-3 rounded-full ${stockStatus.bg.replace('bg-', 'bg-')}`}></div>
+                        <div>
+                          <div className={`text-sm font-medium ${stockStatus.color}`}>
+                            {stockStatus.status}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {isLoadingStock ? 'Loading...' : `${currentTotalStock} units available`}
+                          </div>
                         </div>
                       </div>
-                    )}
-
-                    {selectedVariant?.costPrice && (
-                      <div className="text-sm text-gray-600">
-                        Suggested cost: {formatMoney(selectedVariant.costPrice, selectedCurrency)}
+                      <div className="flex items-center gap-2">
+                        {isLoadingStock && <div className="w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>}
+                        {!isLoadingStock && realTimeStock.has(product.id) && (
+                          <div className="w-4 h-4 bg-green-100 rounded-full flex items-center justify-center">
+                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {minimumStock > 0 && (
+                      <div className="mt-2 pt-2 border-t border-gray-100">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-gray-500">Min stock: {minimumStock} units</span>
+                          {currentTotalStock <= minimumStock && (
+                            <span className="text-xs text-red-600 font-medium flex items-center gap-1">
+                              <div className="w-1.5 h-1.5 bg-red-500 rounded-full"></div>
+                              Below minimum
+                            </span>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
+                </div>
 
-                  {/* Minimum Order Quantity */}
-                  {selectedSupplierLocal && (
-                    <div className="space-y-3">
-                      <label className="block text-sm font-medium text-gray-700">Order Requirements</label>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-xs text-gray-600 mb-1">Minimum Order</label>
-                          <input
-                            type="number"
-                            value={minimumOrderQty}
-                            onChange={(e) => setMinimumOrderQty(parseInt(e.target.value) || 1)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 text-sm"
-                            min="1"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs text-gray-600 mb-1">Payment Terms</label>
-                          <div className="px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-sm text-gray-700">
-                            {selectedSupplierLocal.paymentTerms || 'Net 30'}
-                          </div>
-                        </div>
-                      </div>
-                      
-                      {quantity < minimumOrderQty && (
-                        <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
-                          <div className="flex items-center gap-2">
-                            <AlertTriangle className="w-4 h-4 text-amber-600" />
-                            <span className="text-sm text-amber-700">
-                              Minimum order quantity is {minimumOrderQty} units
-                            </span>
-                          </div>
+                {/* Cost Price with Exchange Rate */}
+                <div className="space-y-3">
+                  <label className="block text-sm font-medium text-gray-700">Cost Price (per unit)</label>
+                  <div className="flex items-center gap-2 p-2 bg-white border-2 border-gray-200 rounded-lg hover:border-orange-300 focus-within:border-orange-500 transition-all duration-200">
+                    {/* Currency Selector */}
+                    <div className="flex-shrink-0 flex items-center gap-2 p-2 bg-gray-100 rounded-md">
+                      <select
+                        value={safeSelectedCurrency.code}
+                        onChange={(e) => {
+                          const newCurrency = SUPPORTED_CURRENCIES.find(c => c.code === e.target.value);
+                          if (newCurrency) {
+                            setSelectedCurrency(newCurrency);
+                            // Recalculate exchange rate
+                            if (newCurrency.code !== currency.code) {
+                              const rate = getExchangeRate(newCurrency.code, currency.code);
+                              setExchangeRate(rate);
+                            }
+                          }
+                        }}
+                        className="bg-transparent border-none text-gray-700 font-medium text-sm focus:outline-none focus:ring-0 cursor-pointer hover:text-orange-600 transition-colors pr-6"
+                      >
+                        {SUPPORTED_CURRENCIES.map(currencyOption => (
+                          <option key={currencyOption.code} value={currencyOption.code}>
+                            {currencyOption.flag} {currencyOption.code}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    
+                    {/* Divider */}
+                    <div className="w-px h-6 bg-gray-300"></div>
+                    
+                    {/* Price Input */}
+                    <div className="flex-1">
+                      <input
+                        type="text"
+                        value={customCostPrice ? formatNumberWithCommas(parseFloat(customCostPrice)) : ''}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/,/g, '');
+                          if (value === '' || parseFloat(value) >= 0) {
+                            setCustomCostPrice(value);
+                          }
+                        }}
+                        onFocus={(e) => {
+                          if (customCostPrice && parseFloat(customCostPrice) > 0) {
+                            (e.target as HTMLInputElement).select();
+                          }
+                        }}
+                        onClick={(e) => {
+                          if (customCostPrice && parseFloat(customCostPrice) > 0) {
+                            (e.target as HTMLInputElement).select();
+                          }
+                        }}
+                        placeholder={product.costPrice ? product.costPrice.toString() : "0"}
+                        className="w-full border-0 focus:outline-none focus:ring-0 text-xl font-bold text-gray-800 placeholder-gray-400 bg-transparent"
+                        step="0.01"
+                        min="0"
+                      />
+                    </div>
+                    
+                    {/* Exchange Rate Display */}
+                    <div className="flex-shrink-0">
+                      {safeSelectedCurrency.code !== currency.code && customCostPrice && parseFloat(customCostPrice) > 0 && (
+                        <div className="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded-md font-medium">
+                          ≈ {formatMoney(calculateExchangedPrice(parseFloat(customCostPrice)), currency).replace(/\.00$/, '').replace(/\.0$/, '')}
                         </div>
                       )}
                     </div>
-                  )}
-
-                  {/* Notes */}
-                  <div className="space-y-3">
-                    <label className="block text-sm font-medium text-gray-700">Notes (Optional)</label>
-                    <textarea
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                      rows={3}
-                      placeholder="Add any notes about this order item..."
-                    />
                   </div>
-                </div>
-
-                {/* Enhanced Order Summary */}
-                <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl p-4 border-2 border-orange-200">
-                  <h3 className="text-lg font-medium text-gray-800 mb-4">Complete Order Summary</h3>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-600">Product:</span>
-                      <span className="font-medium text-gray-900">{product.name}</span>
-                    </div>
-                    {selectedVariant && selectedVariant.name !== 'Default' && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-600">Variant:</span>
-                        <span className="font-medium text-gray-900">{selectedVariant.name}</span>
-                      </div>
-                    )}
-                    {selectedSupplierLocal && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-600">Supplier:</span>
-                        <span className="font-medium text-gray-900">{selectedSupplierLocal.name}</span>
-                      </div>
-                    )}
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-600">Order Quantity:</span>
-                      <span className="font-medium text-gray-900">{quantity} units</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-600">Unit Cost ({selectedCurrency.code}):</span>
-                      <span className="font-medium text-gray-900">{formatMoney(costPrice, selectedCurrency)}</span>
-                    </div>
-                    
-                    {/* Exchange Rate Info */}
-                    {selectedCurrency.code !== currency.code && (
-                      <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-blue-700">Exchange Rate:</span>
-                          <span className="font-mono text-blue-700">1 {selectedCurrency.code} = {exchangeRate.toFixed(4)} {currency.code}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-sm mt-1">
-                          <span className="text-blue-700">Converted Unit Cost:</span>
-                          <span className="font-medium text-blue-700">{formatMoney(calculateExchangedPrice(costPrice), currency)}</span>
-                        </div>
-                      </div>
-                    )}
-
-
-
-                    {/* Payment Terms */}
-                    {selectedSupplierLocal && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-600">Payment Terms:</span>
-                        <span className="font-medium text-gray-900">{selectedSupplierLocal.paymentTerms || 'Net 30'}</span>
-                      </div>
-                    )}
-
-                    <div className="border-t border-orange-200 pt-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-lg font-bold text-gray-900">Total Cost ({currency.code}):</span>
-                        <span className="text-xl font-bold text-orange-600">
-                          {formatMoney(selectedCurrency.code !== currency.code ? calculateExchangedPrice(totalPrice) : totalPrice, currency)}
+                  
+                  {/* Exchange Rate Calculation */}
+                  {safeSelectedCurrency.code !== currency.code && customCostPrice && parseFloat(customCostPrice) > 0 && (
+                    <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-blue-700">
+                          Price in {safeSelectedCurrency.code}: {formatMoney(costPrice, safeSelectedCurrency).replace(/\.00$/, '').replace(/\.0$/, '')}
+                        </span>
+                        <ArrowUpDown className="w-4 h-4 text-blue-600" />
+                        <span className="text-blue-700">
+                          Converted to {currency.code}: {formatMoney(calculateExchangedPrice(costPrice), currency).replace(/\.00$/, '').replace(/\.0$/, '')}
                         </span>
                       </div>
                     </div>
-                  </div>
+                  )}
+
+                  {product.costPrice && (
+                    <div className="text-sm text-gray-600">
+                      Suggested cost: {formatMoney(product.costPrice, safeSelectedCurrency).replace(/\.00$/, '').replace(/\.0$/, '')}
+                    </div>
+                  )}
                 </div>
 
-                {/* Current Stock Warning */}
-                {selectedVariant && (
-                  <div className={`p-4 rounded-lg ${stockStatus.bg} ${stockStatus.border} border-2`}>
-                    <div className="flex items-center gap-3">
-                      <AlertTriangle className={`w-5 h-5 ${stockStatus.color}`} />
-                      <div>
-                        <div className={`font-medium ${stockStatus.color}`}>
-                          Current Stock: {isLoadingStock ? 'Loading...' : `${currentVariantStock} units`}
-                          {isLoadingStock && <span className="ml-1 text-orange-500">🔄</span>}
+                {/* Order Summary - Card Design */}
+                <div className="bg-gradient-to-br from-slate-50 to-gray-100 rounded-xl border border-gray-200 p-5">
+                  {/* Header */}
+                  <div className="flex items-center gap-3 mb-5">
+                    <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center">
+                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                      </svg>
+                    </div>
+                    <h3 className="text-lg font-semibold text-gray-800">Order Summary</h3>
+                  </div>
+                  
+                  {/* Content grid */}
+                  <div className="grid grid-cols-1 gap-4">
+                    {/* Product section */}
+                    <div className="bg-white rounded-lg p-3 border border-gray-200">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-500">Product</span>
+                        <span className="font-medium text-gray-900 text-right">{product.name}</span>
+                      </div>
+                      
+                      {selectedVariant && selectedVariant.name !== 'Default' && (
+                        <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-100">
+                          <span className="text-sm text-gray-500">Variant</span>
+                          <span className="font-medium text-gray-800 text-right">{selectedVariant.name}</span>
                         </div>
-                        <div className="text-sm text-gray-600">
-                          {isLoadingStock 
-                            ? 'Fetching latest stock data...'
-                            : currentVariantStock === 0 
-                            ? 'This variant is completely out of stock'
-                            : currentVariantStock <= 5
-                            ? 'Low stock - consider ordering more'
-                            : 'Stock levels are adequate'
-                          }
+                      )}
+                    </div>
+                    
+                    {/* Quantity and cost row */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-white rounded-lg p-3 border border-gray-200 text-center">
+                        <span className="text-xs text-gray-500 block mb-1">Quantity</span>
+                        <span className="text-xl font-bold text-gray-900">{quantity}</span>
+                      </div>
+                      
+                      {customCostPrice && parseFloat(customCostPrice) > 0 && (
+                        <div className="bg-white rounded-lg p-3 border border-gray-200 text-center">
+                          <span className="text-xs text-gray-500 block mb-1">Unit Cost</span>
+                          <span className="text-lg font-bold text-gray-900">{formatMoney(costPrice, safeSelectedCurrency).replace(/\.00$/, '').replace(/\.0$/, '')}</span>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Exchange rate info */}
+                    {safeSelectedCurrency.code !== currency.code && customCostPrice && parseFloat(customCostPrice) > 0 && (
+                      <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+                        <div className="flex items-center gap-2 mb-2">
+                          <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+                          </svg>
+                          <span className="text-sm font-medium text-blue-800">Exchange Rate</span>
+                        </div>
+                        <div className="text-sm text-blue-700">
+                          1 {safeSelectedCurrency.code} = {exchangeRate.toFixed(4)} {currency.code}
                         </div>
                       </div>
-                    </div>
+                    )}
+                    
+                    {/* Total cost */}
+                    {customCostPrice && costPrice > 0 && (
+                      <div className="bg-gradient-to-r from-orange-100 to-amber-100 rounded-lg p-4 border-2 border-orange-200">
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <span className="text-sm font-medium text-gray-700 block">Total Cost</span>
+                            <span className="text-xs text-gray-500">({currency.code})</span>
+                          </div>
+                          <span className="text-2xl font-bold text-orange-600">
+                            {formatMoney(safeSelectedCurrency.code !== currency.code ? calculateExchangedPrice(totalPrice) : totalPrice, currency).replace(/\.00$/, '').replace(/\.0$/, '')}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
             </div>
+          </div>
 
-            {/* Action Buttons */}
-            <div className="flex items-center justify-end gap-3 pt-6 border-t border-gray-200 mt-6">
-              <GlassButton
-                type="button"
-                variant="outline"
-                onClick={onClose}
-              >
-                Cancel
-              </GlassButton>
-              
-              <GlassButton
-                type="button"
-                onClick={handleAddToCart}
-                disabled={!selectedVariant || costPrice <= 0}
-                className="bg-orange-600 text-white hover:bg-orange-700"
-                icon={<ShoppingCart size={18} />}
-              >
-                Add to Purchase Order
-              </GlassButton>
-            </div>
+          {/* Action Buttons */}
+          <div className="pt-6 border-t border-gray-200 mt-6 px-6 pb-6">
+            <GlassButton
+              type="button"
+              onClick={handleAddToCart}
+              disabled={!selectedVariant || costPrice <= 0 || isSavingPrice}
+              className="w-full py-4 bg-orange-600 text-white hover:bg-orange-700 text-lg font-semibold"
+              icon={isSavingPrice ? (
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+              ) : (
+                <ShoppingCart size={20} />
+              )}
+            >
+              {isSavingPrice ? 'Saving Price...' : 'Add to Purchase Order'}
+            </GlassButton>
           </div>
         </GlassCard>
       </div>

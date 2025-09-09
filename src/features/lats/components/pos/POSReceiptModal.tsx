@@ -94,10 +94,10 @@ const POSReceiptModal: React.FC<POSReceiptModalProps> = ({
               {receipt.items.map((item, index) => (
                 <div key={index} className="flex justify-between items-center text-sm">
                   <div className="flex-1">
-                    <p className="font-medium text-gray-900">{item.name}</p>
-                    <p className="text-gray-600">Qty: {item.quantity} × {formatMoney(item.price)}</p>
+                    <p className="font-medium text-gray-900">{item.productName}</p>
+                    <p className="text-gray-600">Qty: {item.quantity} × {formatMoney(item.unitPrice)}</p>
                   </div>
-                  <p className="font-semibold text-gray-900">{formatMoney(item.quantity * item.price)}</p>
+                  <p className="font-semibold text-gray-900">{formatMoney(item.quantity * item.unitPrice)}</p>
                 </div>
               ))}
             </div>
@@ -185,10 +185,10 @@ const POSReceiptModal: React.FC<POSReceiptModalProps> = ({
                       await printBluetoothReceipt({
                         header: 'LATS POS System',
                         items: receipt.items.map(item => ({
-                          name: item.name,
+                          name: item.productName,
                           quantity: item.quantity,
-                          price: item.price,
-                          total: item.quantity * item.price
+                          price: item.unitPrice,
+                          total: item.quantity * item.unitPrice
                         })),
                         subtotal: receipt.subtotal,
                         tax: receipt.tax,

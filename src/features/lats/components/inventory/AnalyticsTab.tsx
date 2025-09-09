@@ -12,13 +12,19 @@ interface AnalyticsTabProps {
   metrics: any;
   categories: any[];
   formatMoney: (amount: number) => string;
+  liveMetrics?: any;
+  isLoadingLiveMetrics?: boolean;
+  onRefreshLiveMetrics?: () => void;
 }
 
 const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   products,
   metrics,
   categories,
-  formatMoney
+  formatMoney,
+  liveMetrics,
+  isLoadingLiveMetrics,
+  onRefreshLiveMetrics
 }) => {
   const [isBackingUp, setIsBackingUp] = React.useState(false);
   const [backupProgress, setBackupProgress] = React.useState(0);
@@ -51,17 +57,24 @@ const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       return totalStock <= minStock;
     }).length || 0;
     
-    // Value analytics
+    // Value analytics - use ALL variants for accurate calculation
     const totalValue = products?.reduce((sum, product) => {
-      const mainVariant = product.variants?.[0];
-      const totalStock = product.variants?.reduce((stockSum: number, variant: any) => stockSum + (variant.quantity || 0), 0) || 0;
-      return sum + ((mainVariant?.costPrice || 0) * totalStock);
+      const productValue = product.variants?.reduce((variantSum: number, variant: any) => {
+        const costPrice = variant.costPrice || 0;
+        const quantity = variant.quantity || 0;
+        return variantSum + (costPrice * quantity);
+      }, 0) || 0;
+      return sum + productValue;
     }, 0) || 0;
     
     const retailValue = products?.reduce((sum, product) => {
-      const mainVariant = product.variants?.[0];
-      const totalStock = product.variants?.reduce((stockSum: number, variant: any) => stockSum + (variant.quantity || 0), 0) || 0;
-      return sum + ((mainVariant?.sellingPrice || 0) * totalStock);
+      // Calculate retail value using ALL variants for consistency
+      const productRetailValue = product.variants?.reduce((variantSum: number, variant: any) => {
+        const sellingPrice = variant.sellingPrice || 0;
+        const quantity = variant.quantity || 0;
+        return variantSum + (sellingPrice * quantity);
+      }, 0) || 0;
+      return sum + productRetailValue;
     }, 0) || 0;
     
     const potentialProfit = retailValue - totalValue;
@@ -430,7 +443,26 @@ const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       {/* Financial Analytics */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <GlassCard className="p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Financial Overview</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Financial Overview</h3>
+            {liveMetrics && (
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                  <span className="text-xs text-green-600 font-medium">Live Data</span>
+                </div>
+                {onRefreshLiveMetrics && (
+                  <button
+                    onClick={onRefreshLiveMetrics}
+                    disabled={isLoadingLiveMetrics}
+                    className="text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                  >
+                    {isLoadingLiveMetrics ? 'Refreshing...' : 'Refresh'}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
           <div className="space-y-4">
             <div className="flex justify-between items-center">
               <span className="text-gray-600">Total Cost Value:</span>

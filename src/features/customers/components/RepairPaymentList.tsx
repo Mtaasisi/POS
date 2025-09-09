@@ -98,8 +98,8 @@ const RepairPaymentList: React.FC<RepairPaymentListProps> = ({
 
   // Calculate total payments
   const totalAmount = payments.reduce((sum, payment) => sum + payment.amount, 0);
-  const completedPayments = payments.filter(p => p.payment_status === 'completed');
-  const pendingPayments = payments.filter(p => p.payment_status === 'pending');
+  const completedPayments = payments.filter(p => p.status === 'completed');
+  const pendingPayments = payments.filter(p => p.status === 'pending');
 
   // Display payments (limit to 5 if not showing all)
   const displayPayments = showAll ? payments : payments.slice(0, 5);
@@ -196,10 +196,10 @@ const RepairPaymentList: React.FC<RepairPaymentListProps> = ({
                 </div>
                 
                 <div className="flex items-center space-x-3">
-                  <div className={`px-2 py-1 rounded-full text-xs font-medium ${getPaymentStatusColor(payment.payment_status)}`}>
+                  <div className={`px-2 py-1 rounded-full text-xs font-medium ${getPaymentStatusColor(payment.status)}`}>
                     <div className="flex items-center space-x-1">
-                      {getPaymentStatusIcon(payment.payment_status)}
-                      <span className="capitalize">{payment.payment_status}</span>
+                      {getPaymentStatusIcon(payment.status)}
+                      <span className="capitalize">{payment.status}</span>
                     </div>
                   </div>
                   

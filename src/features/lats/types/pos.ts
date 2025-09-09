@@ -100,6 +100,24 @@ export interface ProductSearchResult {
   variants: ProductSearchVariant[];
   images: string[];
   tags: string[];
+  // Product specifications
+  specification?: string;
+  attributes?: Record<string, any>;
+  // Pricing information
+  price?: number;
+  costPrice?: number;
+  // Product identifiers
+  sku?: string;
+  barcode?: string;
+  // Shelf information
+  shelfName?: string;
+  shelfCode?: string;
+  storeLocationName?: string;
+  storeLocationCity?: string;
+  storageRoomName?: string;
+  storageRoomCode?: string;
+  isRefrigerated?: boolean;
+  requiresLadder?: boolean;
 }
 
 export interface ProductSearchVariant {

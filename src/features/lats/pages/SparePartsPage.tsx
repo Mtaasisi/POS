@@ -129,28 +129,150 @@ const SparePartsPage: React.FC = () => {
     return filtered;
   }, [spareParts, searchTerm, selectedCategory, stockFilter, sortBy, sortOrder]);
 
+  // Transform form data to match database schema
+  const transformSparePartData = (formData: any) => {
+    console.log('🔍 [DEBUG] ===== TRANSFORM START =====');
+    console.log('🔍 [DEBUG] Input formData:', formData);
+    console.log('🔍 [DEBUG] Input formData type:', typeof formData);
+    console.log('🔍 [DEBUG] Input formData keys:', Object.keys(formData || {}));
+    
+    const transformedData: any = {
+      name: formData.name,
+      part_number: formData.partNumber,
+      category_id: formData.categoryId,
+      brand: formData.brand,
+      supplier_id: formData.supplierId,
+      condition: formData.condition,
+      description: formData.description,
+      cost_price: formData.costPrice,
+      selling_price: formData.sellingPrice,
+      quantity: formData.quantity,
+      min_quantity: formData.minQuantity,
+      location: formData.location,
+      compatible_devices: formData.compatibleDevices
+    };
+
+    console.log('🔍 [DEBUG] Basic transformed data:', transformedData);
+
+    // Add storage location fields if they exist
+    if (formData.storageRoomId) {
+      transformedData.storage_room_id = formData.storageRoomId;
+      console.log('🔍 [DEBUG] Added storage_room_id:', formData.storageRoomId);
+    } else {
+      console.log('🔍 [DEBUG] No storageRoomId found in formData');
+    }
+    
+    if (formData.shelfId) {
+      transformedData.store_shelf_id = formData.shelfId;
+      console.log('🔍 [DEBUG] Added store_shelf_id:', formData.shelfId);
+    } else {
+      console.log('🔍 [DEBUG] No shelfId found in formData');
+    }
+
+    // Add images if present (only if the column exists in database)
+    if (formData.images && formData.images.length > 0) {
+      transformedData.images = formData.images;
+      console.log('🔍 [DEBUG] Added images:', formData.images);
+    } else {
+      console.log('🔍 [DEBUG] No images found in formData');
+    }
+
+    // Add additional fields that might exist
+    if (formData.partType) {
+      transformedData.part_type = formData.partType;
+      console.log('🔍 [DEBUG] Added part_type:', formData.partType);
+    } else {
+      console.log('🔍 [DEBUG] No partType found in formData');
+    }
+    
+    if (formData.primaryDeviceType) {
+      transformedData.primary_device_type = formData.primaryDeviceType;
+      console.log('🔍 [DEBUG] Added primary_device_type:', formData.primaryDeviceType);
+    } else {
+      console.log('🔍 [DEBUG] No primaryDeviceType found in formData');
+    }
+    
+    if (formData.searchTags) {
+      transformedData.search_tags = formData.searchTags;
+      console.log('🔍 [DEBUG] Added search_tags:', formData.searchTags);
+    } else {
+      console.log('🔍 [DEBUG] No searchTags found in formData');
+    }
+
+    console.log('🔍 [DEBUG] Final transformed data:', transformedData);
+    console.log('🔍 [DEBUG] Final transformed data keys:', Object.keys(transformedData));
+    console.log('🔍 [DEBUG] ===== TRANSFORM END =====');
+    
+    return transformedData;
+  };
+
   // Handle spare part creation/editing
   const handleSaveSparePart = async (data: any) => {
     try {
+      console.log('🔍 [DEBUG] ===== SPARE PART SAVE START =====');
+      console.log('🔍 [DEBUG] handleSaveSparePart called with data:', data);
+      console.log('🔍 [DEBUG] Data type:', typeof data);
+      console.log('🔍 [DEBUG] Data keys:', Object.keys(data || {}));
+      console.log('🔍 [DEBUG] Data values:', Object.values(data || {}));
+      
+      const transformedData = transformSparePartData(data);
+      console.log('🔍 [DEBUG] Transformed data:', transformedData);
+      console.log('🔍 [DEBUG] Transformed data type:', typeof transformedData);
+      console.log('🔍 [DEBUG] Transformed data keys:', Object.keys(transformedData || {}));
+      console.log('🔍 [DEBUG] Transformed data values:', Object.values(transformedData || {}));
+      
       if (editingSparePart) {
-        const response = await updateSparePart(editingSparePart.id, data);
+        console.log('🔍 [DEBUG] Updating existing spare part with ID:', editingSparePart.id);
+        console.log('🔍 [DEBUG] Editing spare part data:', editingSparePart);
+        const response = await updateSparePart(editingSparePart.id, transformedData);
+        console.log('✅ [DEBUG] Update response:', response);
+        console.log('✅ [DEBUG] Response ok:', response.ok);
+        console.log('✅ [DEBUG] Response message:', response.message);
+        console.log('✅ [DEBUG] Response data:', response.data);
+        
         if (response.ok) {
           toast.success('Spare part updated successfully');
           setShowSparePartForm(false);
           setEditingSparePart(null);
         } else {
+          console.error('❌ [DEBUG] Update failed:', response.message);
           toast.error(response.message || 'Failed to update spare part');
         }
       } else {
-        const response = await createSparePart(data);
+        console.log('🔍 [DEBUG] Creating new spare part');
+        const response = await createSparePart(transformedData);
+        console.log('✅ [DEBUG] Create response:', response);
+        console.log('✅ [DEBUG] Response ok:', response.ok);
+        console.log('✅ [DEBUG] Response message:', response.message);
+        console.log('✅ [DEBUG] Response data:', response.data);
+        
         if (response.ok) {
           toast.success('Spare part created successfully');
           setShowSparePartForm(false);
         } else {
+          console.error('❌ [DEBUG] Create failed:', response.message);
           toast.error(response.message || 'Failed to create spare part');
         }
       }
-    } catch (error) {
+      console.log('🔍 [DEBUG] ===== SPARE PART SAVE END =====');
+    } catch (error: any) {
+      console.error('❌ [DEBUG] ===== SPARE PART SAVE ERROR =====');
+      console.error('❌ [DEBUG] Error saving spare part:', error);
+      console.error('❌ [DEBUG] Error message:', error?.message);
+      console.error('❌ [DEBUG] Error name:', error?.name);
+      console.error('❌ [DEBUG] Error stack:', error?.stack);
+      
+      if (error?.response) {
+        console.error('❌ [DEBUG] Error response:', error.response);
+        console.error('❌ [DEBUG] Error response data:', error.response.data);
+        console.error('❌ [DEBUG] Error response status:', error.response.status);
+        console.error('❌ [DEBUG] Error response headers:', error.response.headers);
+      }
+      
+      if (error?.request) {
+        console.error('❌ [DEBUG] Error request:', error.request);
+      }
+      
       toast.error('An error occurred');
     }
   };

@@ -300,7 +300,7 @@ const POSTopBar: React.FC<POSTopBarProps> = ({
             {/* Process Payment Button */}
             <button
               onClick={onProcessPayment}
-              disabled={cartItemsCount === 0 || !hasSelectedCustomer || isProcessingPayment}
+              disabled={cartItemsCount === 0 || isProcessingPayment}
               className="px-5 py-3 rounded-lg bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 disabled:from-gray-400 disabled:to-gray-500 text-white font-medium transition-all duration-300 shadow-sm flex items-center gap-2"
             >
               <CreditCard size={18} />

@@ -5,7 +5,7 @@ import path from 'path';
 const filesToUpdate = [
   'src/features/lats/pages/ProductCatalogPage.tsx',
   'src/features/lats/pages/UnifiedInventoryPage.tsx',
-  'src/features/lats/pages/NewPurchaseOrderPage.tsx',
+  'src/features/lats/pages/PurchaseOrderPage.tsx',
   'src/features/lats/components/pos/EnhancedPOSComponent.tsx',
   'src/features/lats/components/pos/POSComponent.tsx'
 ];

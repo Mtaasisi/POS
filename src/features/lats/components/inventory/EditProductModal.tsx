@@ -8,6 +8,7 @@ import GlassCard from '../../../shared/components/ui/GlassCard';
 import GlassInput from '../../../shared/components/ui/GlassInput';
 import GlassSelect from '../../../shared/components/ui/GlassSelect';
 import GlassButton from '../../../shared/components/ui/GlassButton';
+import AIDescriptionGenerator from '../product/AIDescriptionGenerator';
 
 import CategoryInput from '../../../shared/components/ui/CategoryInput';
 import GlassBadge from '../../../shared/components/ui/GlassBadge';
@@ -113,9 +114,9 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
       description: '',
       sku: '',
       barcode: '',
-      categoryId: '',
+      categoryId: null,
 
-      supplierId: '',
+      supplierId: null,
       condition: 'new',
       storeLocationId: '',
       storeShelf: '',
@@ -228,7 +229,7 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
               barcode: fetchedProduct.barcode || '',
               categoryId: fetchedProduct.categoryId,
 
-              supplierId: fetchedProduct.supplierId || '',
+              supplierId: fetchedProduct.supplierId || null,
               condition: fetchedProduct.condition || 'new',
               storeLocationId: '', // Will be set based on shelf lookup
               storeShelf: fetchedProduct.storeShelf || '',
@@ -643,6 +644,17 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
                     {errors.description?.message && (
                       <p className="mt-1 text-sm text-red-600">{errors.description.message}</p>
                     )}
+                    
+                    {/* AI Description Generator */}
+                    <div className="mt-4">
+                      <AIDescriptionGenerator
+                        productName={watch('name')}
+                        categoryName={categories.find(c => c.id === watch('categoryId'))?.name}
+                        currentDescription={watch('description')}
+                        onDescriptionGenerated={(description) => setValue('description', description)}
+                        disabled={!watch('name')?.trim()}
+                      />
+                    </div>
                   </div>
                 )}
               />

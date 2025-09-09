@@ -1,6 +1,7 @@
 import React from 'react';
 import { DollarSign, Package } from 'lucide-react';
 import PriceInput from '../../../../shared/components/ui/PriceInput';
+import { format } from '../../lib/format';
 
 interface PricingAndStockFormProps {
   formData: {
@@ -98,7 +99,7 @@ const PricingAndStockForm: React.FC<PricingAndStockFormProps> = ({
                   e.target.value = '';
                 }
               }}
-              className="w-full py-3 px-20 bg-white/30 backdrop-blur-md border-2 rounded-lg text-center text-lg font-semibold text-gray-900 border-gray-300 focus:outline-none focus:border-blue-500 transition-colors"
+              className="w-full py-3 px-20 bg-white/30 backdrop-blur-md border-2 rounded-lg text-center text-lg font-semibold text-gray-900 border-gray-300 focus:outline-none focus:border-blue-500 transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               placeholder="0"
               min="0"
               step="1"
@@ -149,7 +150,7 @@ const PricingAndStockForm: React.FC<PricingAndStockFormProps> = ({
                   e.target.value = '';
                 }
               }}
-              className="w-full py-3 px-20 bg-white/30 backdrop-blur-md border-2 rounded-lg text-center text-lg font-semibold text-gray-900 border-gray-300 focus:outline-none focus:border-blue-500 transition-colors"
+              className="w-full py-3 px-20 bg-white/30 backdrop-blur-md border-2 rounded-lg text-center text-lg font-semibold text-gray-900 border-gray-300 focus:outline-none focus:border-blue-500 transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               placeholder="2"
               min="0"
               step="1"
@@ -189,7 +190,7 @@ const PricingAndStockForm: React.FC<PricingAndStockFormProps> = ({
           <div className="flex items-center justify-between text-sm">
             <span className="text-gray-600">Profit Margin:</span>
             <span className="font-semibold text-blue-600">
-              TZS {(formData.price - formData.costPrice).toLocaleString()} 
+              TZS {format.number(formData.price - formData.costPrice)} 
               ({(((formData.price - formData.costPrice) / formData.price) * 100).toFixed(1)}%)
             </span>
           </div>

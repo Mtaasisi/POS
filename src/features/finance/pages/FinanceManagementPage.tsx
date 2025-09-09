@@ -266,7 +266,7 @@ const FinanceManagementPage: React.FC = () => {
           <div className="flex gap-2">
             <GlassButton
               variant="primary"
-              onClick={() => navigate('/payments-accounts')}
+              onClick={() => navigate('/finance/payments')}
               className="text-sm bg-gradient-to-r from-blue-500 to-purple-600 text-white"
             >
               <Wallet size={16} />

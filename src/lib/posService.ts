@@ -18,7 +18,7 @@ export interface POSSaleItem {
   product_id: string;
   variant_id: string;
   quantity: number;
-  price: number;
+  unit_price: number;
   total_price: number;
   created_at?: string;
 }
@@ -104,7 +104,7 @@ class POSService {
       product_id: item.productId,
       variant_id: item.variantId,
       quantity: item.quantity,
-      price: item.price,
+      unit_price: item.price,
       total_price: item.totalPrice
     }));
   }

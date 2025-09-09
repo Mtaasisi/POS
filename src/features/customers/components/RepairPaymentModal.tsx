@@ -152,22 +152,31 @@ const RepairPaymentModal: React.FC<RepairPaymentModalProps> = ({
         paymentType: 'repair_payment'
       };
 
+      // Validate customer_id - must be UUID or null
+      let validCustomerId = null;
+      if (customerId) {
+        // Check if it's a valid UUID format
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        if (uuidRegex.test(customerId)) {
+          validCustomerId = customerId;
+        } else {
+          console.warn('⚠️ Invalid customer_id format in repair payment, using null instead:', customerId);
+          validCustomerId = null;
+        }
+      }
+
       // Insert into customer_payments table
       const { data: paymentRecord, error: paymentError } = await supabase
         .from('customer_payments')
         .insert({
-          customer_id: customerId,
+          customer_id: validCustomerId, // Validated UUID or null
           device_id: deviceId,
           amount: repairAmount,
-          payment_method: selectedMethod?.name || selectedPaymentMethod,
-          payment_account_id: selectedPaymentAccount,
-          reference: reference.trim() || null,
-          notes: notes.trim() || null,
+          method: selectedMethod?.name || selectedPaymentMethod,
           payment_type: 'payment',
-          payment_status: 'completed',
+          status: 'completed',
           payment_date: new Date().toISOString(),
-          created_by: user.id,
-          source: 'repair_payment'
+          created_by: user.id
         })
         .select()
         .single();

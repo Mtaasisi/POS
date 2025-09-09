@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
 import GlassCard from '../../../features/shared/components/ui/GlassCard';
@@ -8,11 +8,14 @@ import LATSBreadcrumb from '../components/ui/LATSBreadcrumb';
 import { 
   Package, Edit, Save, X, AlertCircle, 
   FileText, ShoppingCart, Clock, CheckSquare, XSquare, Send, Truck,
-  DollarSign, Calendar, Printer, Download, ArrowLeft, ArrowRight
+  DollarSign, Calendar, Printer, Download, ArrowLeft, ArrowRight,
+  Ship, PackageCheck
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useInventoryStore } from '../stores/useInventoryStore';
 import { PurchaseOrder } from '../types/inventory';
+import ShippingAssignmentModal from '../components/shipping/ShippingAssignmentModal';
+import ShippingTracker from '../components/shipping/ShippingTracker';
 
 const PurchaseOrderDetailPage: React.FC = () => {
   const { currentUser } = useAuth();
@@ -23,10 +26,13 @@ const PurchaseOrderDetailPage: React.FC = () => {
   const { 
     getPurchaseOrder,
     updatePurchaseOrder,
+    updatePurchaseOrderShipping,
     deletePurchaseOrder,
     receivePurchaseOrder,
     isLoading,
-    error
+    error,
+    shippingAgents,
+    loadShippingAgents
   } = useInventoryStore();
 
   // Local state
@@ -34,27 +40,63 @@ const PurchaseOrderDetailPage: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [isLoadingOrder, setIsLoadingOrder] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [showShippingModal, setShowShippingModal] = useState(false);
+  const [showShippingTracker, setShowShippingTracker] = useState(false);
 
-  // Load purchase order on component mount
+  // Load purchase order and shipping data on component mount
   useEffect(() => {
     if (id) {
       loadPurchaseOrder();
     }
-  }, [id]);
+    
+    // Load shipping agents only once on mount
+    loadShippingAgents().catch((error) => {
+      console.error('❌ [PurchaseOrderDetailPage] Failed to load shipping agents:', error);
+    });
+  }, [id]); // Remove loadShippingAgents from dependencies to prevent re-runs
 
   const loadPurchaseOrder = async () => {
     if (!id) return;
     
     setIsLoadingOrder(true);
-    const response = await getPurchaseOrder(id);
-    if (response.ok) {
-      setPurchaseOrder(response.data);
-    } else {
-      toast.error(response.message || 'Failed to load purchase order');
+    
+    try {
+      const response = await getPurchaseOrder(id);
+      
+      if (response.ok) {
+        console.log('🔍 [PurchaseOrderDetailPage] DEBUG - Purchase order data received:', {
+          id: response.data.id,
+          orderNumber: response.data.orderNumber,
+          itemsCount: response.data.items?.length || 0,
+          items: response.data.items?.map(item => ({
+            id: item.id,
+            productId: item.productId,
+            variantId: item.variantId,
+            product: item.product,
+            variant: item.variant,
+            hasProductData: !!item.product,
+            hasVariantData: !!item.variant
+          }))
+        });
+        setPurchaseOrder(response.data);
+      } else {
+        console.error('❌ [PurchaseOrderDetailPage] Failed to load purchase order:', response.message);
+        toast.error(response.message || 'Failed to load purchase order');
+        navigate('/lats/purchase-orders');
+      }
+    } catch (error) {
+      console.error('❌ [PurchaseOrderDetailPage] Error loading purchase order:', error);
+      toast.error('Failed to load purchase order');
       navigate('/lats/purchase-orders');
+    } finally {
+      setIsLoadingOrder(false);
     }
-    setIsLoadingOrder(false);
   };
+
+  // Memoized refresh function to prevent infinite re-renders
+  const handleRefresh = useCallback(() => {
+    loadPurchaseOrder();
+  }, [id]); // Only recreate if id changes
 
   const handleSave = async () => {
     if (!purchaseOrder) return;
@@ -109,10 +151,53 @@ const PurchaseOrderDetailPage: React.FC = () => {
     }
   };
 
+  const handleAssignShipping = () => {
+    setShowShippingModal(true);
+  };
+
+  const handleShippingAssigned = async (shippingData: any) => {
+    console.log('🚚 [PurchaseOrderDetailPage] Shipping assignment triggered');
+    console.log('🚚 [PurchaseOrderDetailPage] Shipping data received:', shippingData);
+    console.log('🚚 [PurchaseOrderDetailPage] Purchase order ID:', purchaseOrder?.id);
+    
+    if (!purchaseOrder) {
+      console.log('⚠️ [PurchaseOrderDetailPage] No purchase order available for shipping assignment');
+      return;
+    }
+    
+    try {
+      console.log('🚚 [PurchaseOrderDetailPage] Calling updatePurchaseOrderShipping...');
+      const response = await updatePurchaseOrderShipping(purchaseOrder.id, shippingData);
+      console.log('🚚 [PurchaseOrderDetailPage] updatePurchaseOrderShipping response:', response);
+      
+      if (response.success) {
+        console.log('✅ [PurchaseOrderDetailPage] Shipping assigned successfully');
+        toast.success('Shipping assigned successfully');
+        setShowShippingModal(false);
+        // Reload the purchase order to reflect the changes
+        console.log('🔄 [PurchaseOrderDetailPage] Reloading purchase order after shipping assignment...');
+        loadPurchaseOrder();
+      } else {
+        console.error('❌ [PurchaseOrderDetailPage] Failed to assign shipping:', response.message);
+        toast.error(response.message || 'Failed to assign shipping');
+      }
+    } catch (error) {
+      console.error('❌ [PurchaseOrderDetailPage] Error assigning shipping:', error);
+      toast.error('Failed to assign shipping');
+    }
+  };
+
+  const handleViewShipping = () => {
+    setShowShippingTracker(true);
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'draft': return 'text-yellow-600 bg-yellow-100';
       case 'sent': return 'text-blue-600 bg-blue-100';
+      case 'confirmed': return 'text-purple-600 bg-purple-100';
+      case 'shipping': return 'text-orange-600 bg-orange-100';
+      case 'shipped': return 'text-indigo-600 bg-indigo-100';
       case 'received': return 'text-green-600 bg-green-100';
       case 'cancelled': return 'text-red-600 bg-red-100';
       default: return 'text-gray-600 bg-gray-100';
@@ -123,16 +208,19 @@ const PurchaseOrderDetailPage: React.FC = () => {
     switch (status) {
       case 'draft': return <FileText className="w-4 h-4" />;
       case 'sent': return <Send className="w-4 h-4" />;
-      case 'received': return <Truck className="w-4 h-4" />;
+      case 'confirmed': return <CheckSquare className="w-4 h-4" />;
+      case 'shipping': return <Package className="w-4 h-4" />;
+      case 'shipped': return <Truck className="w-4 h-4" />;
+      case 'received': return <CheckSquare className="w-4 h-4" />;
       case 'cancelled': return <XSquare className="w-4 h-4" />;
       default: return <Clock className="w-4 h-4" />;
     }
   };
 
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amount: number, currencyCode: string = 'TZS') => {
     return new Intl.NumberFormat('en-TZ', {
       style: 'currency',
-      currency: 'TZS'
+      currency: currencyCode
     }).format(amount);
   };
 
@@ -233,6 +321,26 @@ const PurchaseOrderDetailPage: React.FC = () => {
               </GlassButton>
             )}
             
+            {(purchaseOrder.status === 'draft' || purchaseOrder.status === 'sent' || purchaseOrder.status === 'confirmed') && (
+              <GlassButton
+                onClick={handleAssignShipping}
+                className="flex items-center gap-2 bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200"
+              >
+                <Truck className="w-4 h-4" />
+                Assign Shipping
+              </GlassButton>
+            )}
+            
+            {(purchaseOrder.status === 'shipping' || purchaseOrder.status === 'shipped' || purchaseOrder.status === 'received') && (
+              <GlassButton
+                onClick={handleViewShipping}
+                className="flex items-center gap-2 bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
+              >
+                <Ship className="w-4 h-4" />
+                View Shipping
+              </GlassButton>
+            )}
+            
             <GlassButton
               onClick={() => navigate('/lats/purchase-orders')}
               variant="outline"
@@ -295,9 +403,47 @@ const PurchaseOrderDetailPage: React.FC = () => {
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Currency
+                    </label>
+                    <p className="text-gray-900 font-medium">{purchaseOrder.currency || 'TZS'}</p>
+                  </div>
+                  
+                  {purchaseOrder.paymentTerms && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Payment Terms
+                      </label>
+                      <p className="text-gray-900">{purchaseOrder.paymentTerms}</p>
+                    </div>
+                  )}
+                  
+                  {purchaseOrder.exchangeRate && purchaseOrder.exchangeRate !== 1.0 && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Exchange Rate
+                      </label>
+                      <p className="text-gray-900">
+                        1 {purchaseOrder.currency} = {parseFloat(purchaseOrder.exchangeRate.toString()).toString()} TZS
+                        {purchaseOrder.exchangeRateSource && purchaseOrder.exchangeRateSource !== 'default' && (
+                          <span className="text-sm text-gray-500 ml-2">({purchaseOrder.exchangeRateSource})</span>
+                        )}
+                      </p>
+                    </div>
+                  )}
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Total Amount
                     </label>
-                    <p className="text-gray-900 font-semibold text-lg">{formatCurrency(purchaseOrder.totalAmount)}</p>
+                    <p className="text-gray-900 font-semibold text-lg">{formatCurrency(purchaseOrder.totalAmount, purchaseOrder.currency)}</p>
+                    {purchaseOrder.exchangeRate && purchaseOrder.exchangeRate !== 1.0 && purchaseOrder.totalAmountBaseCurrency && (
+                      <p className="text-sm text-gray-600 mt-1">
+                        TZS {purchaseOrder.totalAmountBaseCurrency.toLocaleString()} 
+                        <span className="text-xs text-gray-500 ml-2">
+                          (Rate: 1 {purchaseOrder.currency} = {parseFloat(purchaseOrder.exchangeRate.toString()).toString()} TZS)
+                        </span>
+                      </p>
+                    )}
                   </div>
                 </div>
                 
@@ -332,6 +478,9 @@ const PurchaseOrderDetailPage: React.FC = () => {
                           <th className="text-right py-3 px-4 font-medium text-gray-700">Quantity</th>
                           <th className="text-right py-3 px-4 font-medium text-gray-700">Cost Price</th>
                           <th className="text-right py-3 px-4 font-medium text-gray-700">Total</th>
+                          {purchaseOrder.exchangeRate && purchaseOrder.exchangeRate !== 1.0 && (
+                            <th className="text-right py-3 px-4 font-medium text-gray-700">TZS Total</th>
+                          )}
                           <th className="text-right py-3 px-4 font-medium text-gray-700">Received</th>
                         </tr>
                       </thead>
@@ -340,22 +489,29 @@ const PurchaseOrderDetailPage: React.FC = () => {
                           <tr key={index} className="border-b border-gray-100">
                             <td className="py-3 px-4">
                               <div>
-                                <p className="font-medium text-gray-900">Product {item.productId}</p>
-                                <p className="text-sm text-gray-500">SKU: {item.productId}</p>
+                                <p className="font-medium text-gray-900">{item.product?.name || `Product ${item.productId}`}</p>
+                                <p className="text-sm text-gray-500">SKU: {item.product?.sku || item.productId}</p>
                               </div>
                             </td>
                             <td className="py-3 px-4">
-                              <p className="text-gray-900">Variant {item.variantId}</p>
+                              <p className="text-gray-900">{item.variant?.name || `Variant ${item.variantId}`}</p>
                             </td>
                             <td className="py-3 px-4 text-right">
                               <p className="text-gray-900">{item.quantity}</p>
                             </td>
                             <td className="py-3 px-4 text-right">
-                              <p className="text-gray-900">{formatCurrency(item.costPrice)}</p>
+                              <p className="text-gray-900">{formatCurrency(item.costPrice, purchaseOrder.currency)}</p>
                             </td>
                             <td className="py-3 px-4 text-right">
-                              <p className="font-medium text-gray-900">{formatCurrency(item.quantity * item.costPrice)}</p>
+                              <p className="font-medium text-gray-900">{formatCurrency(item.quantity * item.costPrice, purchaseOrder.currency)}</p>
                             </td>
+                            {purchaseOrder.exchangeRate && purchaseOrder.exchangeRate !== 1.0 && (
+                              <td className="py-3 px-4 text-right">
+                                <p className="text-sm text-gray-600">
+                                  TZS {((item.quantity * item.costPrice) * purchaseOrder.exchangeRate).toLocaleString()}
+                                </p>
+                              </td>
+                            )}
                             <td className="py-3 px-4 text-right">
                               <p className="text-gray-900">{item.receivedQuantity}</p>
                             </td>
@@ -367,6 +523,21 @@ const PurchaseOrderDetailPage: React.FC = () => {
                 )}
               </div>
             </GlassCard>
+
+            {/* Shipping Information */}
+            {(purchaseOrder.status === 'shipping' || purchaseOrder.status === 'shipped' || purchaseOrder.status === 'received') && purchaseOrder.shippingInfo && (
+              <GlassCard>
+                <div className="p-6">
+                  <h2 className="text-xl font-semibold text-gray-900 mb-4">Shipping Information</h2>
+                  <ShippingTracker 
+                    shippingInfo={purchaseOrder.shippingInfo} 
+                    compact={true}
+                    debugMode={process.env.NODE_ENV === 'development'}
+                    onRefresh={handleRefresh}
+                  />
+                </div>
+              </GlassCard>
+            )}
           </div>
 
           {/* Sidebar */}
@@ -467,14 +638,61 @@ const PurchaseOrderDetailPage: React.FC = () => {
                   <div className="border-t pt-3">
                     <div className="flex justify-between text-lg font-semibold">
                       <span>Total Amount:</span>
-                      <span>{formatCurrency(purchaseOrder.totalAmount)}</span>
+                      <span>{formatCurrency(purchaseOrder.totalAmount, purchaseOrder.currency)}</span>
                     </div>
+                    {purchaseOrder.exchangeRate && purchaseOrder.exchangeRate !== 1.0 && purchaseOrder.totalAmountBaseCurrency && (
+                      <div className="flex justify-between text-sm text-gray-600 mt-2">
+                        <span>TZS Equivalent:</span>
+                        <span>TZS {purchaseOrder.totalAmountBaseCurrency.toLocaleString()}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
             </GlassCard>
           </div>
         </div>
+
+        {/* Shipping Assignment Modal */}
+        <ShippingAssignmentModal
+          isOpen={showShippingModal}
+          onClose={() => setShowShippingModal(false)}
+          purchaseOrder={purchaseOrder!}
+          agents={shippingAgents || []}
+          settings={{
+            defaultAgentId: '',
+            defaultShippingCost: 0,
+            maxShippingCost: 100000,
+            requireSignature: false,
+            enableInsurance: false,
+            autoAssignAgents: false
+          }}
+          onAssignShipping={handleShippingAssigned}
+        />
+
+        {/* Shipping Tracker Modal */}
+        {purchaseOrder?.shippingInfo && (
+          <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm ${showShippingTracker ? 'block' : 'hidden'}`}>
+            <div className="max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+              <ShippingTracker 
+                shippingInfo={purchaseOrder.shippingInfo}
+                compact={false}
+                debugMode={process.env.NODE_ENV === 'development'}
+                onRefresh={handleRefresh}
+              />
+              <div className="mt-4 flex justify-end">
+                <GlassButton
+                  onClick={() => setShowShippingTracker(false)}
+                  variant="outline"
+                  className="flex items-center gap-2"
+                >
+                  <X className="w-4 h-4" />
+                  Close
+                </GlassButton>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

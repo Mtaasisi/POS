@@ -27,7 +27,8 @@ export class LatsDataTransformer {
       shortDescription: formData.description || '',
       sku: formData.product_code || this.generateSKU(formData.name),
     
-      categoryId: this.isValidUUID(formData.category_id) ? formData.category_id : '',
+      // Fix UUID validation - use null instead of empty string for invalid UUIDs
+      categoryId: this.isValidUUID(formData.category_id) ? formData.category_id : null,
 
       supplierId: this.isValidUUID(formData.supplier_id) ? formData.supplier_id : undefined,
       images: [],
@@ -46,7 +47,7 @@ export class LatsDataTransformer {
         stockQuantity: variant.quantity_in_stock || 0,
         minStockLevel: formData.minimum_stock_level || 0,
 
-        attributes: variant.attributes || {},
+        attributes: typeof variant.attributes === 'string' ? JSON.parse(variant.attributes) : (variant.attributes || {}),
         isActive: true
       }));
     } else {
@@ -76,7 +77,7 @@ export class LatsDataTransformer {
       shortDescription: data.shortDescription,
       sku: data.sku,
       barcode: data.barcode,
-      categoryId: this.isValidUUID(data.categoryId) ? data.categoryId : '',
+      categoryId: this.isValidUUID(data.categoryId) ? data.categoryId : null,
 
       supplierId: this.isValidUUID(data.supplierId || '') ? data.supplierId : undefined,
       images: data.images || [],
@@ -103,7 +104,7 @@ export class LatsDataTransformer {
       shortDescription: apiData.shortDescription || '',
       sku: apiData.sku || '',
       barcode: apiData.barcode || '',
-      categoryId: apiData.categoryId || apiData.category_id || '',
+      categoryId: this.isValidUUID(apiData.categoryId || apiData.category_id) ? (apiData.categoryId || apiData.category_id) : null,
 
       supplierId: apiData.supplierId || apiData.supplier_id || undefined,
       images: apiData.images || [],
@@ -117,7 +118,7 @@ export class LatsDataTransformer {
         minStockLevel: variant.minStockLevel || variant.min_quantity || 0,
 
 
-        attributes: variant.attributes || {},
+        attributes: typeof variant.attributes === 'string' ? JSON.parse(variant.attributes) : (variant.attributes || {}),
         isActive: variant.isActive ?? true
       }))
     };
@@ -150,7 +151,8 @@ export class LatsDataTransformer {
       address: data.address || undefined,
       city: data.city || undefined,
       country: data.country || 'Tanzania',
-      paymentTerms: data.paymentTerms || data.payment_terms || undefined,
+      currency: data.currency || 'TZS', // Add currency with default
+      exchangeRates: data.exchangeRates || data.exchange_rates || undefined,
       leadTimeDays: data.leadTimeDays || data.lead_time_days || 7,
       isActive: data.isActive ?? true,
       metadata: data.metadata || {}
@@ -275,7 +277,7 @@ export class LatsDataTransformer {
         minStockLevel: variant.minStockLevel || variant.minQuantity || 0,
         weight: variant.weight || undefined,
         dimensions: variant.dimensions || undefined,
-        attributes: variant.attributes || {},
+        attributes: typeof variant.attributes === 'string' ? JSON.parse(variant.attributes) : (variant.attributes || {}),
         isActive: variant.isActive ?? true
       })),
       category: product.category,
@@ -317,7 +319,7 @@ export class LatsDataTransformer {
       address: supplier.address,
       city: supplier.city,
       country: supplier.country,
-      paymentTerms: supplier.paymentTerms || supplier.payment_terms,
+      exchangeRates: supplier.exchangeRates || supplier.exchange_rates,
       leadTimeDays: supplier.leadTimeDays || supplier.lead_time_days,
       isActive: supplier.isActive ?? true,
       metadata: supplier.metadata || {},
@@ -357,7 +359,7 @@ export class LatsDataTransformer {
       shortDescription: csvData.Description || csvData.description || '',
       sku: csvData.SKU || csvData.sku || this.generateSKU(csvData.Name || csvData.name),
       barcode: csvData.Barcode || csvData.barcode || '',
-      categoryId: '', // Will need to be resolved
+      categoryId: null, // Will need to be resolved
 
       supplierId: undefined, // Will need to be resolved
       images: [],

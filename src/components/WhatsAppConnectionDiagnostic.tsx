@@ -206,7 +206,7 @@ const WhatsAppConnectionDiagnostic: React.FC<WhatsAppConnectionDiagnosticProps> 
             <h3 className="font-semibold text-gray-800 mb-3">Quick Actions</h3>
             <div className="flex flex-wrap gap-2">
               <button
-                onClick={() => window.location.href = '/lats/whatsapp-hub'}
+                onClick={() => window.location.href = '/lats/whatsapp-connection-manager'}
                 className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors flex items-center gap-2"
               >
                 <Settings size={14} />

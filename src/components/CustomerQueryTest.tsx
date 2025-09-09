@@ -1,16 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { createClient } from '@supabase/supabase-js';
 
 export const CustomerQueryTest: React.FC = () => {
   const [testResults, setTestResults] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
-  
-  // Create a client without authentication for comparison
-  const supabaseNoAuth = createClient(
-    process.env.VITE_SUPABASE_URL || '',
-    process.env.VITE_SUPABASE_ANON_KEY || ''
-  );
 
   const addResult = (message: string) => {
     setTestResults(prev => [...prev, `${new Date().toLocaleTimeString()}: ${message}`]);

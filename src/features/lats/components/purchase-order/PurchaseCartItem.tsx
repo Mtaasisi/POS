@@ -1,5 +1,5 @@
 // PurchaseCartItem component - Enhanced cart item for purchase orders (based on POS design)
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Package, Minus, Plus, XCircle, ChevronDown, ChevronUp, 
   Coins, Truck, Calendar, Hash, Tag, AlertTriangle 
@@ -28,6 +28,7 @@ interface PurchaseCartItemProps {
   item: PurchaseCartItem;
   index: number;
   currency: Currency;
+  exchangeRates?: string;
   isLatest?: boolean;
   onUpdateQuantity: (itemId: string, quantity: number) => void;
   onUpdateCostPrice: (itemId: string, costPrice: number) => void;
@@ -38,11 +39,26 @@ const PurchaseCartItem: React.FC<PurchaseCartItemProps> = ({
   item,
   index,
   currency,
+  exchangeRates,
   isLatest = false,
   onUpdateQuantity,
   onUpdateCostPrice,
   onRemove
 }) => {
+  // Debug logging - only log on first render or when item changes
+  useEffect(() => {
+    console.log('🔍 DEBUG: PurchaseCartItem rendered with item:', {
+      id: item.id,
+      name: item.name,
+      category: item.category,
+      variantName: item.variantName,
+      sku: item.sku,
+      hasCategory: !!item.category,
+      categoryType: typeof item.category,
+      itemKeys: Object.keys(item)
+    });
+  }, [item.id, item.name, item.category, item.variantName, item.sku]);
+  
   const [isExpanded, setIsExpanded] = useState(false);
   const [isEditingPrice, setIsEditingPrice] = useState(false);
   const [tempCostPrice, setTempCostPrice] = useState(item.costPrice.toString());
@@ -56,13 +72,13 @@ const PurchaseCartItem: React.FC<PurchaseCartItemProps> = ({
     generalSettings = { show_product_images: true, enable_animations: true };
   }
 
-  // Convert product images to new format
-  const convertToProductImages = (imageUrls: string[]): ProductImage[] => {
-    if (!imageUrls || imageUrls.length === 0) {
+  // Convert product images to new format - memoized to prevent unnecessary re-renders
+  const productImages = useMemo(() => {
+    if (!item.images || item.images.length === 0) {
       return [];
     }
     
-    return imageUrls.map((imageUrl, index) => ({
+    return item.images.map((imageUrl, index) => ({
       id: `temp-${item.productId}-${index}`,
       url: imageUrl,
       thumbnailUrl: imageUrl,
@@ -71,9 +87,54 @@ const PurchaseCartItem: React.FC<PurchaseCartItemProps> = ({
       isPrimary: index === 0,
       uploadedAt: new Date().toISOString()
     }));
-  };
+  }, [item.images, item.productId]);
 
-  const productImages = convertToProductImages(item.images || []);
+  // Exchange rate calculation functions - memoized to prevent unnecessary recalculations
+  const exchangeRate = useMemo(() => {
+    if (!exchangeRates?.trim()) return null;
+    
+    // Try to parse common exchange rate formats
+    const patterns = [
+      /1\s*([A-Z]{3})\s*=\s*([\d,]+\.?\d*)\s*([A-Z]{3})/i,  // "1 USD = 150 TZS"
+      /([\d,]+\.?\d*)\s*([A-Z]{3})\s*=\s*1\s*([A-Z]{3})/i,  // "150 TZS = 1 USD"
+      /([\d,]+\.?\d*)/i  // Just the number
+    ];
+    
+    for (const pattern of patterns) {
+      const match = exchangeRates.match(pattern);
+      if (match) {
+        if (match.length === 4) {
+          // Format: "1 USD = 150 TZS" or "150 TZS = 1 USD"
+          const fromCurrency = match[1] || match[3];
+          const toCurrency = match[3] || match[1];
+          const rate = parseFloat(match[2].replace(/,/g, ''));
+          
+          if (fromCurrency === currency.code && toCurrency === 'TZS') {
+            return rate; // Direct rate to TZS
+          } else if (fromCurrency === 'TZS' && toCurrency === currency.code) {
+            return 1 / rate; // Inverse rate from TZS
+          }
+        } else if (match.length === 2) {
+          // Just the number - assume it's the rate to TZS
+          return parseFloat(match[1].replace(/,/g, ''));
+        }
+      }
+    }
+    
+    return null;
+  }, [exchangeRates, currency.code]);
+
+  const convertToTZS = useMemo(() => {
+    return (amount: number): number => {
+      if (currency.code === 'TZS') return amount;
+      
+      if (exchangeRate) {
+        return amount * exchangeRate;
+      }
+      
+      return amount; // Return original amount if no exchange rate
+    };
+  }, [exchangeRate, currency.code]);
 
   const handleToggleExpand = () => {
     setIsExpanded(!isExpanded);
@@ -147,6 +208,11 @@ const PurchaseCartItem: React.FC<PurchaseCartItemProps> = ({
               )}
               <div className="text-lg text-orange-600 mt-1 font-bold">
                 {formatMoney(item.totalPrice, currency)}
+                {currency.code !== 'TZS' && exchangeRates && (
+                  <div className="text-xs text-blue-600 mt-1">
+                    ≈ {formatMoney(convertToTZS(item.totalPrice), { code: 'TZS', name: 'Tanzanian Shilling', symbol: 'TZS', flag: '🇹🇿' })}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -214,7 +280,14 @@ const PurchaseCartItem: React.FC<PurchaseCartItemProps> = ({
                 <div className="flex items-center gap-2">
                   <Coins className="w-4 h-4 text-gray-500" />
                   <span className="text-gray-600">Unit Cost:</span>
-                  <span className="font-medium">{formatMoney(item.costPrice, currency)}</span>
+                  <div className="text-right">
+                    <span className="font-medium">{formatMoney(item.costPrice, currency)}</span>
+                    {currency.code !== 'TZS' && exchangeRates && (
+                      <div className="text-xs text-blue-600">
+                        ≈ {formatMoney(convertToTZS(item.costPrice), { code: 'TZS', name: 'Tanzanian Shilling', symbol: 'TZS', flag: '🇹🇿' })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -262,6 +335,11 @@ const PurchaseCartItem: React.FC<PurchaseCartItemProps> = ({
               ) : (
                 <div className="text-lg font-bold text-orange-600">
                   {formatMoney(item.costPrice, currency)}
+                  {currency.code !== 'TZS' && exchangeRates && (
+                    <div className="text-xs text-blue-600 mt-1">
+                      ≈ {formatMoney(convertToTZS(item.costPrice), { code: 'TZS', name: 'Tanzanian Shilling', symbol: 'TZS', flag: '🇹🇿' })}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -296,6 +374,11 @@ const PurchaseCartItem: React.FC<PurchaseCartItemProps> = ({
                   <span className="text-orange-600 font-medium">Total Cost:</span>
                   <div className="text-lg font-bold text-orange-700">
                     {formatMoney(item.totalPrice, currency)}
+                    {currency.code !== 'TZS' && exchangeRates && (
+                      <div className="text-xs text-blue-600">
+                        ≈ {formatMoney(convertToTZS(item.totalPrice), { code: 'TZS', name: 'Tanzanian Shilling', symbol: 'TZS', flag: '🇹🇿' })}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div>

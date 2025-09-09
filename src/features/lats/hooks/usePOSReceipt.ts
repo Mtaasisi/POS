@@ -142,7 +142,7 @@ export const usePOSReceipt = () => {
     content += '-'.repeat(40) + '\n';
     
     receipt.items.forEach(item => {
-      const itemName = item.variantName ? `${item.name} (${item.variantName})` : item.name;
+      const itemName = item.variantName ? `${item.productName} (${item.variantName})` : item.productName;
       content += `${item.quantity}x ${itemName}\n`;
       content += `  ${formatMoney(item.unitPrice)} TZS each\n`;
       content += `  ${formatMoney(item.totalPrice)} TZS\n\n`;

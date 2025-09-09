@@ -7,6 +7,7 @@ import { format } from '../../lib/format';
 import { CartItem } from '../../types/pos';
 import { SimpleImageDisplay } from '../../../../components/SimpleImageDisplay';
 import { ProductImage } from '../../../../lib/robustImageService';
+import { getSpecificationIcon, getSpecificationTooltip, formatSpecificationValue } from '../../lib/specificationUtils';
 
 interface VariantCartItemProps {
   item: CartItem;
@@ -204,30 +205,58 @@ const VariantCartItem: React.FC<VariantCartItemProps> = ({
             </div>
             {/* Show specifications if available */}
             {item.attributes && Object.keys(item.attributes).length > 0 && (
-              <div className="mt-2">
-                <div className="flex flex-wrap gap-1">
-                  {Object.entries(item.attributes).map(([key, value]) => {
-                    // Get color based on specification type
+              <div className="mt-3">
+                <div className="space-y-1.5">
+                  {Object.entries(item.attributes).slice(0, 6).map(([key, value]) => {
+                    const IconComponent = getSpecificationIcon(key);
+                    const tooltip = getSpecificationTooltip(key);
+                    const formattedValue = formatSpecificationValue(key, value);
+                    
+                    // Enhanced color scheme with better contrast
                     const getSpecColor = (specKey: string) => {
                       const spec = specKey.toLowerCase();
-                      if (spec.includes('ram')) return 'bg-green-100 text-green-700';
-                      if (spec.includes('storage') || spec.includes('memory')) return 'bg-blue-100 text-blue-700';
-                      if (spec.includes('processor') || spec.includes('cpu')) return 'bg-purple-100 text-purple-700';
-                      if (spec.includes('screen') || spec.includes('display')) return 'bg-orange-100 text-orange-700';
-                      if (spec.includes('battery')) return 'bg-teal-100 text-teal-700';
-                      if (spec.includes('camera')) return 'bg-pink-100 text-pink-700';
-                      if (spec.includes('color')) return 'bg-red-100 text-red-700';
-                      if (spec.includes('size')) return 'bg-gray-100 text-gray-700';
-                      return 'bg-indigo-100 text-indigo-700';
+                      if (spec.includes('ram')) return 'bg-emerald-50 text-emerald-800 border-emerald-200';
+                      if (spec.includes('storage') || spec.includes('memory')) return 'bg-blue-50 text-blue-800 border-blue-200';
+                      if (spec.includes('processor') || spec.includes('cpu')) return 'bg-purple-50 text-purple-800 border-purple-200';
+                      if (spec.includes('screen') || spec.includes('display')) return 'bg-orange-50 text-orange-800 border-orange-200';
+                      if (spec.includes('battery')) return 'bg-teal-50 text-teal-800 border-teal-200';
+                      if (spec.includes('camera')) return 'bg-pink-50 text-pink-800 border-pink-200';
+                      if (spec.includes('color')) return 'bg-red-50 text-red-800 border-red-200';
+                      if (spec.includes('weight') || spec.includes('size')) return 'bg-gray-50 text-gray-800 border-gray-200';
+                      if (spec.includes('charger') || spec.includes('port')) return 'bg-cyan-50 text-cyan-800 border-cyan-200';
+                      return 'bg-slate-50 text-slate-800 border-slate-200';
                     };
                     
                     return (
-                      <span key={key} className={`px-2 py-1 rounded text-xs font-medium ${getSpecColor(key)}`}>
-                        {key.replace(/_/g, ' ')}: {value}
-                      </span>
+                      <div 
+                        key={key} 
+                        className={`p-2 rounded-md border ${getSpecColor(key)} hover:shadow-sm transition-all duration-200 cursor-help`}
+                        title={tooltip}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            {IconComponent && <IconComponent className="w-3.5 h-3.5 flex-shrink-0" />}
+                            <div>
+                              <div className="text-xs font-medium capitalize text-gray-700">
+                                {key.replace(/([A-Z])/g, ' $1').trim()}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-xs font-semibold">
+                            {formattedValue}
+                          </div>
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
+                {Object.keys(item.attributes).length > 6 && (
+                  <div className="text-center mt-2">
+                    <span className="inline-flex items-center px-2 py-1 rounded-full border border-gray-200 bg-gray-50 text-gray-600 text-xs font-medium">
+                      +{Object.keys(item.attributes).length - 6} more
+                    </span>
+                  </div>
+                )}
               </div>
             )}
             

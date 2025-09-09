@@ -46,8 +46,6 @@ export interface Database {
           phone: string
           gender: 'male' | 'female' | 'other' | null
           city: string | null
-          location_description: string | null
-          national_id: string | null
           joined_date: string
           loyalty_level: 'bronze' | 'silver' | 'gold' | 'platinum'
           color_tag: 'new' | 'vip' | 'complainer' | 'purchased'
@@ -59,7 +57,6 @@ export interface Database {
           total_purchases: number
           birthday: string | null
           is_active: boolean
-
           referral_source: string | null
           birth_month: string | null
           birth_day: string | null
@@ -68,6 +65,12 @@ export interface Database {
           created_at: string
           updated_at: string
           created_by: string | null
+          whatsapp: string | null
+          whatsapp_opt_out: boolean | null
+          initial_notes: string | null
+          notes: string | null
+          referrals: string | null
+          customer_tag: string | null
         }
         Insert: {
           id: string
@@ -76,8 +79,6 @@ export interface Database {
           phone: string
           gender?: 'male' | 'female' | 'other' | null
           city?: string | null
-          location_description?: string | null
-          national_id?: string | null
           joined_date?: string
           loyalty_level?: 'bronze' | 'silver' | 'gold' | 'platinum'
           color_tag?: 'new' | 'vip' | 'complainer' | 'purchased'
@@ -90,6 +91,7 @@ export interface Database {
           birthday?: string | null
           is_active?: boolean
           whatsapp?: string | null
+          whatsapp_opt_out?: boolean | null
           referral_source?: string | null
           birth_month?: string | null
           birth_day?: string | null
@@ -98,6 +100,10 @@ export interface Database {
           created_at?: string
           updated_at?: string
           created_by?: string | null
+          initial_notes?: string | null
+          notes?: string | null
+          referrals?: string | null
+          customer_tag?: string | null
         }
         Update: {
           id?: string
@@ -106,8 +112,6 @@ export interface Database {
           phone?: string
           gender?: 'male' | 'female' | 'other' | null
           city?: string | null
-          location_description?: string | null
-          national_id?: string | null
           joined_date?: string
           loyalty_level?: 'bronze' | 'silver' | 'gold' | 'platinum'
           color_tag?: 'new' | 'vip' | 'complainer' | 'purchased'
@@ -115,7 +119,12 @@ export interface Database {
           total_spent?: number
           points?: number
           last_visit?: string
+          last_purchase_date?: string | null
+          total_purchases?: number
+          birthday?: string | null
           is_active?: boolean
+          whatsapp?: string | null
+          whatsapp_opt_out?: boolean | null
           referral_source?: string | null
           birth_month?: string | null
           birth_day?: string | null
@@ -124,6 +133,10 @@ export interface Database {
           created_at?: string
           updated_at?: string
           created_by?: string | null
+          initial_notes?: string | null
+          notes?: string | null
+          referrals?: string | null
+          customer_tag?: string | null
         }
       }
       devices: {
@@ -415,6 +428,65 @@ export interface Database {
           status?: 'completed' | 'pending' | 'failed'
           created_by?: string | null
           created_at?: string
+        }
+      }
+      finance_accounts: {
+        Row: {
+          id: string
+          name: string
+          type: 'bank' | 'cash' | 'mobile_money' | 'credit_card' | 'savings' | 'investment' | 'other'
+          balance: number
+          account_number: string | null
+          bank_name: string | null
+          currency: string
+          is_active: boolean
+          is_payment_method: boolean
+          payment_icon: string | null
+          payment_color: string | null
+          payment_description: string | null
+          requires_reference: boolean
+          requires_account_number: boolean
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          type: 'bank' | 'cash' | 'mobile_money' | 'credit_card' | 'savings' | 'investment' | 'other'
+          balance?: number
+          account_number?: string | null
+          bank_name?: string | null
+          currency?: string
+          is_active?: boolean
+          is_payment_method?: boolean
+          payment_icon?: string | null
+          payment_color?: string | null
+          payment_description?: string | null
+          requires_reference?: boolean
+          requires_account_number?: boolean
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          type?: 'bank' | 'cash' | 'mobile_money' | 'credit_card' | 'savings' | 'investment' | 'other'
+          balance?: number
+          account_number?: string | null
+          bank_name?: string | null
+          currency?: string
+          is_active?: boolean
+          is_payment_method?: boolean
+          payment_icon?: string | null
+          payment_color?: string | null
+          payment_description?: string | null
+          requires_reference?: boolean
+          requires_account_number?: boolean
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
         }
       }
       sms_campaigns: {
@@ -1202,6 +1274,246 @@ export interface Database {
           reason?: string
           reference?: string | null
           performed_by?: string
+          created_at?: string
+        }
+      }
+      lats_sales: {
+        Row: {
+          id: string
+          sale_number: string
+          customer_id: string | null
+          total_amount: number
+          payment_method: string
+          status: string
+          created_by: string | null
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          sale_number: string
+          customer_id?: string | null
+          total_amount: number
+          payment_method: string
+          status?: string
+          created_by?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          sale_number?: string
+          customer_id?: string | null
+          total_amount?: number
+          payment_method?: string
+          status?: string
+          created_by?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      lats_sale_items: {
+        Row: {
+          id: string
+          sale_id: string
+          product_id: string
+          variant_id: string
+          quantity: number
+          unit_price: number
+          total_price: number
+          cost_price: number
+          profit: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          sale_id: string
+          product_id: string
+          variant_id: string
+          quantity: number
+          unit_price: number
+          total_price: number
+          cost_price?: number
+          profit?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          sale_id?: string
+          product_id?: string
+          variant_id?: string
+          quantity?: number
+          unit_price?: number
+          total_price?: number
+          cost_price?: number
+          profit?: number
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      lats_products: {
+        Row: {
+          id: string
+          name: string
+          description: string | null
+          category_id: string | null
+          sku: string | null
+          barcode: string | null
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          description?: string | null
+          category_id?: string | null
+          sku?: string | null
+          barcode?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          description?: string | null
+          category_id?: string | null
+          sku?: string | null
+          barcode?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      lats_product_variants: {
+        Row: {
+          id: string
+          product_id: string
+          name: string
+          sku: string | null
+          attributes: Json | null
+          price: number
+          cost_price: number
+          quantity: number
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          product_id: string
+          name: string
+          sku?: string | null
+          attributes?: Json | null
+          price: number
+          cost_price?: number
+          quantity?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          product_id?: string
+          name?: string
+          sku?: string | null
+          attributes?: Json | null
+          price?: number
+          cost_price?: number
+          quantity?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      lats_receipts: {
+        Row: {
+          id: string
+          sale_id: string
+          receipt_number: string
+          customer_name: string | null
+          customer_phone: string | null
+          total_amount: number
+          payment_method: string
+          items_count: number
+          generated_by: string
+          receipt_content: Json | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          sale_id: string
+          receipt_number: string
+          customer_name?: string | null
+          customer_phone?: string | null
+          total_amount: number
+          payment_method: string
+          items_count: number
+          generated_by: string
+          receipt_content?: Json | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          sale_id?: string
+          receipt_number?: string
+          customer_name?: string | null
+          customer_phone?: string | null
+          total_amount?: number
+          payment_method?: string
+          items_count?: number
+          generated_by?: string
+          receipt_content?: Json | null
+          created_at?: string
+        }
+      }
+      lats_stock_movements: {
+        Row: {
+          id: string
+          product_id: string
+          variant_id: string
+          type: 'in' | 'out' | 'adjustment'
+          quantity: number
+          previous_quantity: number
+          new_quantity: number
+          reason: string
+          reference: string | null
+          notes: string | null
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          product_id: string
+          variant_id: string
+          type: 'in' | 'out' | 'adjustment'
+          quantity: number
+          previous_quantity?: number
+          new_quantity?: number
+          reason: string
+          reference?: string | null
+          notes?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          product_id?: string
+          variant_id?: string
+          type?: 'in' | 'out' | 'adjustment'
+          quantity?: number
+          previous_quantity?: number
+          new_quantity?: number
+          reason?: string
+          reference?: string | null
+          notes?: string | null
+          created_by?: string | null
           created_at?: string
         }
       }

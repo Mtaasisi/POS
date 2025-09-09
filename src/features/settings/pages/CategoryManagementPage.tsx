@@ -63,12 +63,7 @@ const CategoryManagementPage: React.FC = () => {
   ];
 
   useEffect(() => {
-    console.log('🔍 CategoryManagementPage: Component loaded');
-    console.log('🔍 CategoryManagementPage: Environment check:', {
-      isDev: import.meta.env.DEV,
-      hostname: window.location.hostname,
-      url: window.location.href
-    });
+    // Component loaded
   }, []);
 
   useEffect(() => {

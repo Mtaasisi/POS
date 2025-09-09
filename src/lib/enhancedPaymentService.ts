@@ -242,15 +242,28 @@ class EnhancedPaymentService {
   // Get payment summary for all accounts
   async getPaymentSummary(): Promise<PaymentSummary[]> {
     try {
+      // Check if payment_summary table exists by trying to query it
       const { data, error } = await supabase
         .from('payment_summary')
         .select('*')
-        .order('account_name');
+        .order('account_name')
+        .limit(1);
 
-      if (error) throw error;
+      if (error) {
+        // If table doesn't exist, return empty array without logging error
+        if (error.code === 'PGRST116' || 
+            error.message.includes('relation "payment_summary" does not exist') ||
+            error.message.includes('does not exist') ||
+            error.status === 404) {
+          // Silently return empty array for missing table
+          return [];
+        }
+        console.warn('Error fetching payment summary:', error.message);
+        return [];
+      }
       return data || [];
     } catch (error) {
-      console.error('Error fetching payment summary:', error);
+      // Silently handle any errors to prevent console spam
       return [];
     }
   }
@@ -263,10 +276,13 @@ class EnhancedPaymentService {
         .select('*')
         .order('payment_method_name');
 
-      if (error) throw error;
+      if (error) {
+        console.warn('Payment method summary table not found, returning empty array:', error.message);
+        return [];
+      }
       return data || [];
     } catch (error) {
-      console.error('Error fetching payment method summary:', error);
+      console.warn('Error fetching payment method summary, returning empty array:', error);
       return [];
     }
   }

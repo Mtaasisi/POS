@@ -14,14 +14,16 @@ import {
   ApiResponse,
   PaginatedResponse 
 } from '../types/inventory';
+import { ShippingAgent, ShippingManager } from '../lib/data/provider';
 import { getLatsProvider } from '../lib/data/provider';
 import { latsEventBus, LatsEventType } from '../lib/data/eventBus';
 import { latsAnalyticsService as latsAnalytics } from '../lib/analytics';
 import { supabase } from '../../../lib/supabaseClient';
-import { processLatsData, validateDataIntegrity, emergencyDataCleanup } from '../lib/dataProcessor';
+import { processLatsData, processCategoriesOnly, processProductsOnly, processSuppliersOnly, validateDataIntegrity, emergencyDataCleanup } from '../lib/dataProcessor';
 import { categoryService } from '../lib/categoryService';
 import { 
   getActiveSuppliers as getActiveSuppliersApi, 
+  getAllSuppliers as getAllSuppliersApi,
   createSupplier as createSupplierApi, 
   updateSupplier as updateSupplierApi 
 } from '../../../lib/supplierApi';
@@ -35,6 +37,7 @@ interface InventoryState {
   
   // Prevent multiple simultaneous loads
   isDataLoading: boolean;
+  isCategoriesLoading: boolean;
   lastDataLoadTime: number;
   // Supplier-specific loading to avoid global guard skipping
   isSuppliersLoading?: boolean;
@@ -59,6 +62,8 @@ interface InventoryState {
   purchaseOrders: PurchaseOrder[];
   spareParts: SparePart[];
   sparePartUsage: SparePartUsage[];
+  shippingAgents: ShippingAgent[];
+  shippingManagers: ShippingManager[];
 
   // Filters and search
   searchTerm: string;
@@ -105,6 +110,7 @@ interface InventoryState {
 
   // Categories
   loadCategories: () => Promise<void>;
+  loadSparePartCategories: () => Promise<void>;
   createCategory: (category: Omit<Category, 'id' | 'createdAt' | 'updatedAt'>) => Promise<ApiResponse<Category>>;
   updateCategory: (id: string, category: Partial<Category>) => Promise<ApiResponse<Category>>;
   deleteCategory: (id: string) => Promise<ApiResponse<void>>;
@@ -138,8 +144,16 @@ interface InventoryState {
   getPurchaseOrder: (id: string) => Promise<ApiResponse<PurchaseOrder>>;
   createPurchaseOrder: (order: any) => Promise<ApiResponse<PurchaseOrder>>;
   updatePurchaseOrder: (id: string, order: any) => Promise<ApiResponse<PurchaseOrder>>;
+  updatePurchaseOrderStatus: (id: string, status: string) => Promise<ApiResponse<PurchaseOrder>>;
+  updatePurchaseOrderShipping: (id: string, shippingInfo: any) => Promise<ApiResponse<PurchaseOrder>>;
   receivePurchaseOrder: (id: string) => Promise<ApiResponse<void>>;
   deletePurchaseOrder: (id: string) => Promise<ApiResponse<void>>;
+
+  // Shipping Agents
+  loadShippingAgents: () => Promise<void>;
+  getShippingAgents: () => Promise<ApiResponse<ShippingAgent[]>>;
+  loadShippingManagers: () => Promise<void>;
+  getShippingManagers: () => Promise<ApiResponse<ShippingManager[]>>;
 
   // Spare Parts
   loadSpareParts: () => Promise<void>;
@@ -168,6 +182,7 @@ export const useInventoryStore = create<InventoryState>()(
       isUpdating: false,
       isDeleting: false,
       isDataLoading: false,
+      isCategoriesLoading: false,
       isSuppliersLoading: false,
       lastDataLoadTime: 0,
 
@@ -190,6 +205,8 @@ export const useInventoryStore = create<InventoryState>()(
       purchaseOrders: [],
       spareParts: [],
       sparePartUsage: [],
+      shippingAgents: [],
+      shippingManagers: [],
 
       searchTerm: '',
       selectedCategory: null,
@@ -316,47 +333,103 @@ export const useInventoryStore = create<InventoryState>()(
 
       // Categories
       loadCategories: async () => {
-        console.log('📂 Inventory Store: loadCategories called');
         const state = get();
         
-        // Check cache first
-        if (state.isCacheValid('categories')) {
-          console.log('📂 Inventory Store: Using cached categories');
+        // Check cache first (but force refresh for now to test)
+        if (state.isCacheValid('categories') && false) { // Temporarily disabled to force refresh
           set({ categories: state.dataCache.categories || [] });
           return;
         }
 
-        // Prevent multiple simultaneous loads
-        if (state.isDataLoading) {
-          console.log('📂 Inventory Store: Data already loading, skipping');
+        // Prevent multiple simultaneous category loads (use separate flag)
+        if (state.isCategoriesLoading) {
           return;
         }
 
-        console.log('📂 Inventory Store: Loading categories from service');
-        set({ isLoading: true, isDataLoading: true, error: null });
+        set({ isLoading: true, isCategoriesLoading: true, error: null });
         try {
           // Use optimized category service
           const categories = await categoryService.getCategories();
-          console.log('📂 Inventory Store: Categories received from service:', categories.length);
           
           // Validate and process categories
           if (categories.length > 0) {
             validateDataIntegrity(categories, 'Categories');
           }
-          const processedCategories = processLatsData({ categories }).categories;
-          console.log('📂 Inventory Store: Processed categories:', processedCategories.length);
+          const processedCategories = processCategoriesOnly(categories);
           
-          set({ 
-            categories: processedCategories, 
-            lastDataLoadTime: Date.now(),
-            error: null // Clear any previous errors
-          });
-          get().updateCache('categories', processedCategories);
-          latsAnalytics.track('categories_loaded', { count: processedCategories.length });
-          console.log('📂 Inventory Store: Categories loaded successfully');
+          // Only update if categories have actually changed
+          const currentCategories = get().categories;
+          const hasChanged = !currentCategories || 
+            currentCategories.length !== processedCategories.length ||
+            currentCategories.some((cat, index) => 
+              !processedCategories[index] || 
+              cat.id !== processedCategories[index].id ||
+              cat.name !== processedCategories[index].name
+            );
+          
+          if (hasChanged) {
+            console.log('🔄 [useInventoryStore] Categories changed, updating state');
+            set({ 
+              categories: processedCategories, 
+              lastDataLoadTime: Date.now(),
+              error: null // Clear any previous errors
+            });
+            get().updateCache('categories', processedCategories);
+            latsAnalytics.track('categories_loaded', { count: processedCategories.length });
+          } else {
+            console.log('✅ [useInventoryStore] Categories unchanged, skipping state update');
+          }
         } catch (error) {
           console.error('Categories exception:', error);
           set({ error: 'Failed to load categories' });
+        } finally {
+          set({ isLoading: false, isCategoriesLoading: false });
+        }
+      },
+
+      loadSparePartCategories: async () => {
+        const state = get();
+        
+        // Prevent multiple simultaneous loads
+        if (state.isDataLoading) {
+          return;
+        }
+
+        set({ isLoading: true, isDataLoading: true, error: null });
+        try {
+          // Use optimized category service to get spare part categories
+          const sparePartCategories = await categoryService.getSparePartCategories();
+          
+          // Validate and process categories
+          if (sparePartCategories.length > 0) {
+            validateDataIntegrity(sparePartCategories, 'Spare Part Categories');
+          }
+          const processedCategories = processCategoriesOnly(sparePartCategories);
+          
+          // Only update if categories have actually changed
+          const currentCategories = get().categories;
+          const hasChanged = !currentCategories || 
+            currentCategories.length !== processedCategories.length ||
+            currentCategories.some((cat, index) => 
+              !processedCategories[index] || 
+              cat.id !== processedCategories[index].id ||
+              cat.name !== processedCategories[index].name
+            );
+          
+          if (hasChanged) {
+            console.log('🔄 [useInventoryStore] Spare part categories changed, updating state');
+            set({ 
+              categories: processedCategories, 
+              lastDataLoadTime: Date.now(),
+              error: null // Clear any previous errors
+            });
+            latsAnalytics.track('spare_part_categories_loaded', { count: processedCategories.length });
+          } else {
+            console.log('✅ [useInventoryStore] Spare part categories unchanged, skipping state update');
+          }
+        } catch (error) {
+          console.error('Spare part categories exception:', error);
+          set({ error: 'Failed to load spare part categories' });
         } finally {
           set({ isLoading: false, isDataLoading: false });
         }
@@ -451,17 +524,14 @@ export const useInventoryStore = create<InventoryState>()(
         );
 
         try {
-          // Race between actual fetch and timeout
+          // Race between actual fetch and timeout - now loading ALL suppliers (including inactive)
           const suppliers = await Promise.race([
-            getActiveSuppliersApi(),
+            getAllSuppliersApi(),
             timeoutPromise
           ]);
           
-          // Optimized processing - minimal validation for suppliers
-          const processedSuppliers = suppliers.map(supplier => ({
-            ...supplier,
-            name: supplier.name || 'Unnamed Supplier'
-          }));
+          // Use data processor for consistent processing
+          const processedSuppliers = processSuppliersOnly(suppliers);
           
           set({ 
             suppliers: processedSuppliers, 
@@ -553,19 +623,45 @@ export const useInventoryStore = create<InventoryState>()(
         console.log('🔍 DEBUG: Safe filters:', safeFilters);
 
         // Check cache if no filters applied and cache is valid
-        if (!filters && state.isCacheValid('products')) {
-          console.log('🔍 DEBUG: Using cached products');
+        // Temporarily disabled to test supplier data loading
+        if (false && !filters && state.isCacheValid('products')) {
+          console.log('🔍 [useInventoryStore] Using cached products (supplier data may be outdated)');
+          console.log('📊 [useInventoryStore] Cached products count:', state.dataCache.products?.length || 0);
           set({ products: state.dataCache.products || [] });
           return;
         }
+        
+        console.log('🔍 [useInventoryStore] Cache check result:', {
+          hasFilters: !!filters,
+          isCacheValid: state.isCacheValid('products'),
+          cacheDisabled: true,
+          willLoadFromProvider: true
+        });
 
-        console.log('🔍 DEBUG: Loading products from provider...');
+        console.log('🔍 [useInventoryStore] Loading products from provider...');
+        console.log('🔍 [useInventoryStore] Cache status:', {
+          isCacheValid: state.isCacheValid('products'),
+          cacheTimestamp: state.cacheTimestamp,
+          currentTime: Date.now(),
+          cacheAge: Date.now() - state.cacheTimestamp
+        });
         set({ isLoading: true, error: null, isDataLoading: true });
+        
+        // Add timeout to prevent infinite loading
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Products loading timeout after 30 seconds')), 30000);
+        });
+        
         try {
           const provider = getLatsProvider();
           
           console.log('🔍 DEBUG: Calling provider.getProducts...');
-          const response = await provider.getProducts(safeFilters);
+          
+          // Race between the actual request and timeout
+          const response = await Promise.race([
+            provider.getProducts(safeFilters),
+            timeoutPromise
+          ]);
           console.log('🔍 DEBUG: Provider response:', {
             ok: response.ok,
             message: response.message,
@@ -585,7 +681,7 @@ export const useInventoryStore = create<InventoryState>()(
             
             // Process and clean up product data to prevent HTTP 431 errors
             console.log('🔍 DEBUG: Processing products...');
-            const processedProducts = processLatsData({ products: rawProducts }).products;
+            const processedProducts = processProductsOnly(rawProducts);
             console.log('🔍 DEBUG: Processed products:', processedProducts.length);
             
             // Update pagination info
@@ -599,6 +695,61 @@ export const useInventoryStore = create<InventoryState>()(
             console.log('🔍 DEBUG: Setting store state with products:', {
               productsCount: processedProducts.length,
               paginationInfo
+            });
+            
+            // DEBUG: Log detailed product information from store
+            console.log('🔍 [InventoryStore] DEBUG - Products loaded in store:', processedProducts.map(product => ({
+              id: product.id,
+              name: product.name,
+              sku: product.sku,
+              category: product.category,
+              supplier: product.supplier,
+              totalQuantity: product.totalQuantity,
+              variants: product.variants,
+              price: product.price,
+              costPrice: product.costPrice,
+              hasSupplier: !!product.supplier,
+              hasCategory: !!product.category,
+              hasVariants: product.variants && product.variants.length > 0
+            })));
+            
+            // DEBUG: Check for missing information in store data
+            const missingInfoCount = {
+              supplier: 0,
+              category: 0,
+              variants: 0,
+              price: 0,
+              stock: 0
+            };
+            
+            processedProducts.forEach(product => {
+              if (!product.supplier) missingInfoCount.supplier++;
+              if (!product.category) missingInfoCount.category++;
+              if (!product.variants || product.variants.length === 0) missingInfoCount.variants++;
+              if (!product.price || product.price === 0) missingInfoCount.price++;
+              if (!product.totalQuantity || product.totalQuantity === 0) missingInfoCount.stock++;
+            });
+            
+            console.log('🔍 [InventoryStore] DEBUG - Missing information in store:', {
+              totalProducts: processedProducts.length,
+              missingInfoCount,
+              percentageMissing: {
+                supplier: Math.round((missingInfoCount.supplier / processedProducts.length) * 100),
+                category: Math.round((missingInfoCount.category / processedProducts.length) * 100),
+                variants: Math.round((missingInfoCount.variants / processedProducts.length) * 100),
+                price: Math.round((missingInfoCount.price / processedProducts.length) * 100),
+                stock: Math.round((missingInfoCount.stock / processedProducts.length) * 100)
+              }
+            });
+            
+            console.log('🔍 [useInventoryStore] Setting products in store:', {
+              count: processedProducts.length,
+              sampleProduct: processedProducts[0] ? {
+                id: processedProducts[0].id,
+                name: processedProducts[0].name,
+                hasSupplier: !!processedProducts[0].supplier,
+                supplier: processedProducts[0].supplier
+              } : null
             });
             
             set({ 
@@ -625,7 +776,96 @@ export const useInventoryStore = create<InventoryState>()(
         } catch (error) {
           console.error('Exception in loadProducts:', error);
           console.log('🔍 DEBUG: Setting error state due to exception');
-          set({ error: 'Failed to load products' });
+          
+          // Create fallback sample products so the interface works
+          console.log('🔄 Creating fallback sample products...');
+          const fallbackProducts = [
+            {
+              id: 'sample-1',
+              name: 'Sample iPhone 13',
+              shortDescription: 'Sample iPhone 13 for testing',
+              sku: 'IPH13-SAMPLE',
+              categoryId: 'sample-category',
+              supplierId: 'sample-supplier',
+              images: [],
+              isActive: true,
+              totalQuantity: 10,
+              totalValue: 50000,
+              price: 50000,
+              costPrice: 40000,
+              priceRange: '50000',
+              condition: 'new',
+              internalNotes: 'Sample product for testing',
+              attributes: { color: 'Black', storage: '128GB' },
+              variants: [
+                {
+                  id: 'sample-variant-1',
+                  productId: 'sample-1',
+                  sku: 'IPH13-SAMPLE-BLK-128',
+                  name: 'Black 128GB',
+                  attributes: { color: 'Black', storage: '128GB' },
+                  costPrice: 40000,
+                  sellingPrice: 50000,
+                  quantity: 10,
+                  min_quantity: 1,
+                  max_quantity: null,
+                  weight: null,
+                  dimensions: null,
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString()
+                }
+              ],
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            },
+            {
+              id: 'sample-2',
+              name: 'Sample Samsung Galaxy',
+              shortDescription: 'Sample Samsung Galaxy for testing',
+              sku: 'SAMSUNG-SAMPLE',
+              categoryId: 'sample-category',
+              supplierId: 'sample-supplier',
+              images: [],
+              isActive: true,
+              totalQuantity: 15,
+              totalValue: 45000,
+              price: 45000,
+              costPrice: 35000,
+              priceRange: '45000',
+              condition: 'new',
+              internalNotes: 'Sample product for testing',
+              attributes: { color: 'Blue', storage: '256GB' },
+              variants: [
+                {
+                  id: 'sample-variant-2',
+                  productId: 'sample-2',
+                  sku: 'SAMSUNG-SAMPLE-BLU-256',
+                  name: 'Blue 256GB',
+                  attributes: { color: 'Blue', storage: '256GB' },
+                  costPrice: 35000,
+                  sellingPrice: 45000,
+                  quantity: 15,
+                  min_quantity: 1,
+                  max_quantity: null,
+                  weight: null,
+                  dimensions: null,
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString()
+                }
+              ],
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            }
+          ];
+          
+          set({ 
+            products: fallbackProducts,
+            error: 'Using sample products due to database connection issue',
+            isLoading: false,
+            isDataLoading: false
+          });
+          
+          console.log('✅ Fallback products loaded:', fallbackProducts.length);
         } finally {
           console.log('🔍 DEBUG: Finishing loadProducts, setting loading to false');
           set({ isLoading: false, isDataLoading: false });
@@ -839,7 +1079,13 @@ export const useInventoryStore = create<InventoryState>()(
 
       // Purchase Orders
       loadPurchaseOrders: async () => {
-        set({ isLoading: true, error: null });
+        const state = get();
+        // Prevent multiple simultaneous loads
+        if (state.isLoading || state.isDataLoading) {
+          return;
+        }
+        
+        set({ isLoading: true, isDataLoading: true, error: null });
         try {
           const provider = getLatsProvider();
           const response = await provider.getPurchaseOrders();
@@ -853,17 +1099,40 @@ export const useInventoryStore = create<InventoryState>()(
           set({ error: 'Failed to load purchase orders' });
           console.error('Error loading purchase orders:', error);
         } finally {
-          set({ isLoading: false });
+          set({ isLoading: false, isDataLoading: false });
         }
       },
 
       getPurchaseOrder: async (id) => {
         try {
+          if (!id) {
+            console.error('❌ No purchase order ID provided');
+            return { ok: false, message: 'Purchase order ID is required' };
+          }
+
           const provider = getLatsProvider();
-          return await provider.getPurchaseOrder(id);
+          const result = await provider.getPurchaseOrder(id);
+          
+          if (!result.ok) {
+            console.error('❌ Provider error getting purchase order:', result.message);
+          }
+          
+          return result;
         } catch (error) {
-          console.error('Error getting purchase order:', error);
-          return { ok: false, message: 'Failed to get purchase order' };
+          console.error('❌ Store error getting purchase order:', error);
+          
+          // Provide more specific error messages
+          if (error instanceof Error) {
+            if (error.message.includes('network') || error.message.includes('fetch')) {
+              return { ok: false, message: 'Network error: Please check your internet connection' };
+            } else if (error.message.includes('timeout')) {
+              return { ok: false, message: 'Request timeout: Please try again' };
+            } else {
+              return { ok: false, message: `Error: ${error.message}` };
+            }
+          }
+          
+          return { ok: false, message: 'Failed to get purchase order: Unknown error occurred' };
         }
       },
 
@@ -907,6 +1176,180 @@ export const useInventoryStore = create<InventoryState>()(
         }
       },
 
+      updatePurchaseOrderShipping: async (id, shippingInfo) => {
+        set({ isUpdating: true, error: null });
+        try {
+          console.log('🚚 [useInventoryStore] Starting shipping assignment...');
+          console.log('🚚 [useInventoryStore] Purchase Order ID:', id);
+          console.log('🚚 [useInventoryStore] Shipping info received:', shippingInfo);
+          
+          const provider = getLatsProvider();
+          
+          // Validate shipping info before processing
+          if (!shippingInfo || !shippingInfo.agentId) {
+            console.error('❌ [useInventoryStore] Missing shipping agent ID');
+            throw new Error('Shipping agent is required');
+          }
+          
+          if (!shippingInfo.trackingNumber) {
+            console.error('❌ [useInventoryStore] Missing tracking number');
+            throw new Error('Tracking number is required');
+          }
+          
+          console.log('✅ [useInventoryStore] Validation passed, creating shipping info in database...');
+          
+          // Import the shipping data service
+          const { shippingDataService } = await import('../services/shippingDataService');
+          
+          // Determine carrier ID from agent or use provided carrier ID
+          let carrierId = shippingInfo.carrierId || '';
+          
+          console.log('🔍 [useInventoryStore] Determining carrier ID...');
+          console.log('🔍 [useInventoryStore] Provided carrier ID:', carrierId);
+          console.log('🔍 [useInventoryStore] Agent ID:', shippingInfo.agentId);
+          
+          // If no carrier ID provided, try to determine from agent
+          if (!carrierId && shippingInfo.agentId) {
+            // Get agent details to determine carrier
+            const agent = get().shippingAgents?.find(a => a.id === shippingInfo.agentId);
+            console.log('🔍 [useInventoryStore] Found agent:', agent);
+            
+            if (agent?.company) {
+              // Map agent company to carrier ID (this is a simple mapping)
+              // In a real implementation, you'd have a proper agent-to-carrier relationship
+              const carrierMapping: Record<string, string> = {
+                'DHL Express': '826320dc-7d7c-41a7-82d7-bd484c64c8ae', // DHL Express ID
+                'FedEx Corporation': '826320dc-7d7c-41a7-82d7-bd484c64c8ae', // Use DHL as fallback
+                'United Parcel Service': '826320dc-7d7c-41a7-82d7-bd484c64c8ae', // Use DHL as fallback
+                'Maersk Line': '826320dc-7d7c-41a7-82d7-bd484c64c8ae', // Use DHL as fallback
+                'TED Services': '826320dc-7d7c-41a7-82d7-bd484c64c8ae', // Use DHL as fallback
+                'Shipping Company': '826320dc-7d7c-41a7-82d7-bd484c64c8ae' // Use DHL as fallback
+              };
+              carrierId = carrierMapping[agent.company] || '826320dc-7d7c-41a7-82d7-bd484c64c8ae'; // Default to DHL
+              console.log('🔍 [useInventoryStore] Mapped carrier ID:', carrierId, 'for company:', agent.company);
+            } else {
+              // Default to DHL Express if no company found
+              carrierId = '826320dc-7d7c-41a7-82d7-bd484c64c8ae';
+              console.log('🔍 [useInventoryStore] No agent company found, using default DHL carrier');
+            }
+          }
+          
+          console.log('✅ [useInventoryStore] Final carrier ID:', carrierId);
+          
+          // Create shipping info in the dedicated table
+          console.log('🚚 [useInventoryStore] Creating shipping info with data:', {
+            purchaseOrderId: id,
+            carrierId: carrierId,
+            agentId: shippingInfo.agentId,
+            managerId: shippingInfo.managerId || '',
+            trackingNumber: shippingInfo.trackingNumber,
+            status: 'pending',
+            estimatedDelivery: shippingInfo.estimatedDelivery || '',
+            cost: shippingInfo.cost || 0,
+            requireSignature: shippingInfo.requireSignature || false,
+            enableInsurance: shippingInfo.enableInsurance || false,
+            notes: shippingInfo.notes || ''
+          });
+          
+          const createdShippingInfo = await shippingDataService.createShippingInfo(id, {
+            carrierId: carrierId,
+            agentId: shippingInfo.agentId,
+            managerId: shippingInfo.managerId || '',
+            trackingNumber: shippingInfo.trackingNumber,
+            status: 'pending',
+            estimatedDelivery: shippingInfo.estimatedDelivery || '',
+            cost: shippingInfo.cost || 0,
+            requireSignature: shippingInfo.requireSignature || false,
+            enableInsurance: shippingInfo.enableInsurance || false,
+            notes: shippingInfo.notes || ''
+          });
+          
+          console.log('✅ [useInventoryStore] Shipping info created:', createdShippingInfo.id);
+          
+          // Create initial tracking event
+          try {
+            console.log('🚚 [useInventoryStore] Creating initial tracking event...');
+            await shippingDataService.addShippingEvent(createdShippingInfo.id, {
+              status: 'pending',
+              description: 'Shipment created and ready for pickup',
+              location: 'Origin',
+              timestamp: new Date().toISOString(),
+              notes: 'Shipment assigned via shipping assignment modal'
+            });
+            console.log('✅ [useInventoryStore] Initial tracking event created');
+          } catch (eventError) {
+            console.warn('⚠️ [useInventoryStore] Failed to create tracking event:', eventError);
+            // Don't fail the entire operation if event creation fails
+          }
+          
+          // Create draft products from purchase order items
+          try {
+            console.log('🔄 [useInventoryStore] Creating draft products from purchase order...');
+            const { draftProductsService } = await import('../services/draftProductsService');
+            
+            const draftResult = await draftProductsService.createDraftProductsFromPO(
+              id,
+              createdShippingInfo.id
+            );
+            
+            if (draftResult.success) {
+              console.log('✅ [useInventoryStore] Draft products created:', draftResult.message);
+            } else {
+              console.warn('⚠️ [useInventoryStore] Failed to create draft products:', draftResult.message);
+              // Don't fail the entire operation if draft products creation fails
+            }
+          } catch (draftError) {
+            console.warn('⚠️ [useInventoryStore] Error creating draft products:', draftError);
+            // Don't fail the entire operation if draft products creation fails
+          }
+          
+          // Update the purchase order status
+          console.log('🚚 [useInventoryStore] Updating purchase order status...');
+          const response = await provider.updatePurchaseOrder(id, {
+            status: 'shipped',
+            shippingInfo: createdShippingInfo,
+            shippingDate: new Date().toISOString(),
+            trackingNumber: shippingInfo.trackingNumber,
+            shippingStatus: 'shipped',
+            estimatedDelivery: shippingInfo.estimatedDelivery,
+            shippingNotes: shippingInfo.notes
+          });
+          
+          console.log('🚚 [useInventoryStore] Purchase order update response:', response);
+          
+          if (response.ok) {
+            console.log('🚚 [useInventoryStore] Reloading purchase orders...');
+            await get().loadPurchaseOrders();
+            
+            latsAnalytics.track('purchase_order_shipped', { 
+              orderId: id, 
+              carrier: shippingInfo.carrier || 'Unknown',
+              trackingNumber: shippingInfo.trackingNumber,
+              shippingInfoId: createdShippingInfo.id
+            });
+            
+            console.log('✅ [useInventoryStore] Purchase order updated and shipping info saved to database');
+          } else {
+            console.error('❌ [useInventoryStore] Failed to update purchase order:', response.message);
+            throw new Error(response.message || 'Failed to update purchase order');
+          }
+          
+          return { success: true, data: createdShippingInfo, message: 'Shipping assigned successfully' };
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : 'Failed to update shipping information';
+          set({ error: errorMsg });
+          console.error('❌ [useInventoryStore] Error updating shipping info:', error);
+          console.error('❌ [useInventoryStore] Error details:', {
+            message: error instanceof Error ? error.message : 'Unknown error',
+            stack: error instanceof Error ? error.stack : undefined,
+            name: error instanceof Error ? error.name : undefined
+          });
+          return { success: false, message: errorMsg };
+        } finally {
+          set({ isUpdating: false });
+        }
+      },
+
       receivePurchaseOrder: async (id) => {
         set({ isUpdating: true, error: null });
         try {
@@ -922,6 +1365,26 @@ export const useInventoryStore = create<InventoryState>()(
           const errorMsg = 'Failed to receive purchase order';
           set({ error: errorMsg });
           console.error('Error receiving purchase order:', error);
+          return { ok: false, message: errorMsg };
+        } finally {
+          set({ isUpdating: false });
+        }
+      },
+
+      updatePurchaseOrderStatus: async (id, status) => {
+        set({ isUpdating: true, error: null });
+        try {
+          const provider = getLatsProvider();
+          const response = await provider.updatePurchaseOrder(id, { status });
+          if (response.ok) {
+            await get().loadPurchaseOrders();
+            latsAnalytics.track('purchase_order_status_updated', { orderId: id, status });
+          }
+          return response;
+        } catch (error) {
+          const errorMsg = 'Failed to update purchase order status';
+          set({ error: errorMsg });
+          console.error('Error updating purchase order status:', error);
           return { ok: false, message: errorMsg };
         } finally {
           set({ isUpdating: false });
@@ -945,6 +1408,75 @@ export const useInventoryStore = create<InventoryState>()(
           return { ok: false, message: errorMsg };
         } finally {
           set({ isDeleting: false });
+        }
+      },
+
+      // Shipping Agents
+      loadShippingAgents: async () => {
+        const state = get();
+        // Prevent multiple simultaneous loads if already loading
+        if (state.isLoading) {
+          return;
+        }
+        
+        set({ isLoading: true, error: null });
+        try {
+          const provider = getLatsProvider();
+          const response = await provider.getShippingAgents();
+          if (response.ok) {
+            set({ shippingAgents: response.data || [] });
+            latsAnalytics.track('shipping_agents_loaded', { count: response.data?.length || 0 });
+          } else {
+            set({ error: response.message || 'Failed to load shipping agents' });
+          }
+        } catch (error) {
+          const errorMsg = 'Failed to load shipping agents';
+          set({ error: errorMsg });
+          console.error('Error loading shipping agents:', error);
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      getShippingAgents: async () => {
+        try {
+          const provider = getLatsProvider();
+          const response = await provider.getShippingAgents();
+          return response;
+        } catch (error) {
+          console.error('Error getting shipping agents:', error);
+          return { ok: false, message: 'Failed to get shipping agents' };
+        }
+      },
+
+      loadShippingManagers: async () => {
+        set({ isLoading: true, error: null });
+        try {
+          const provider = getLatsProvider();
+          const response = await provider.getShippingManagers();
+          if (response.ok) {
+            set({ shippingManagers: response.data || [] });
+            latsAnalytics.track('shipping_managers_loaded', { count: response.data?.length || 0 });
+          } else {
+            set({ error: response.message || 'Failed to load shipping managers' });
+          }
+        } catch (error) {
+          const errorMsg = 'Failed to load shipping managers';
+          set({ error: errorMsg });
+          console.error('Error loading shipping managers:', error);
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      getShippingManagers: async () => {
+        try {
+          const provider = getLatsProvider();
+          const response = await provider.getShippingManagers();
+          return response;
+        } catch (error) {
+          console.error('Error getting shipping managers:', error);
+          return { ok: false, message: 'Failed to get shipping managers' };
         }
       },
 
@@ -1284,6 +1816,19 @@ latsEventBus.subscribeToAll((event) => {
       }
       if (!store.isCacheValid('sparePartUsage')) {
         store.loadSparePartUsage();
+      }
+      break;
+      
+    case 'lats:sale.completed':
+      // Reload products and stock movements when a sale is completed
+      if (!store.isCacheValid('products')) {
+        store.loadProducts();
+      }
+      if (!store.isCacheValid('stockMovements')) {
+        store.loadStockMovements();
+      }
+      if (!store.isCacheValid('sales')) {
+        store.loadSales();
       }
       break;
   }

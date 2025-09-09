@@ -13,6 +13,8 @@ export interface FinanceAccount {
   payment_icon?: string;
   payment_color?: string;
   payment_description?: string;
+  requires_reference: boolean;
+  requires_account_number: boolean;
   notes?: string;
   created_at: string;
   updated_at: string;
@@ -24,6 +26,7 @@ export interface FinanceAccountWithStats extends FinanceAccount {
 }
 
 class FinanceAccountService {
+  public supabase = supabase;
   // Get all active finance accounts that are payment methods
   async getPaymentMethods(): Promise<FinanceAccount[]> {
     try {
@@ -37,7 +40,8 @@ class FinanceAccountService {
 
       if (error) {
         console.error('❌ Error fetching payment methods:', error);
-        throw error;
+        // Return empty array instead of throwing to prevent app crashes
+        return [];
       }
       
       console.log('📋 FinanceAccountService: Fetched payment methods:', data?.length || 0);

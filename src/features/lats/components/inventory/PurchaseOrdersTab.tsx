@@ -41,11 +41,8 @@ const PurchaseOrdersTab: React.FC<PurchaseOrdersTabProps> = ({
 
   // Load purchase orders on component mount
   useEffect(() => {
-    // Temporarily disabled to prevent 400 errors while fixing foreign key relationships
-    // TODO: Re-enable when purchase orders are properly set up
-    console.log('📝 Purchase orders loading temporarily disabled');
-    // loadPurchaseOrders();
-  }, [loadPurchaseOrders]);
+    loadPurchaseOrders();
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -123,7 +120,7 @@ const PurchaseOrdersTab: React.FC<PurchaseOrdersTabProps> = ({
               Create Purchase Order
             </GlassButton>
             <GlassButton
-              onClick={() => navigate('/lats/purchase-orders/new')}
+              onClick={() => navigate('/lats/purchase-order/create')}
               icon={<FileText size={18} />}
               className="bg-purple-600 hover:bg-purple-700 text-white"
             >

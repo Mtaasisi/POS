@@ -47,6 +47,10 @@ interface VariantProductCardProps {
   showActions?: boolean;
   variant?: 'default' | 'compact' | 'detailed';
   className?: string;
+  // Selection props
+  isSelected?: boolean;
+  onSelect?: (productId: string) => void;
+  showCheckbox?: boolean;
 }
 
 const VariantProductCard: React.FC<VariantProductCardProps> = ({
@@ -57,7 +61,11 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
   onToggleActive,
   showActions = true,
   variant = 'default',
-  className = ''
+  className = '',
+  // Selection props
+  isSelected = false,
+  onSelect,
+  showCheckbox = false
 }) => {
   const [showVariants, setShowVariants] = useState(false);
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
@@ -172,8 +180,8 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
 
   // Handle card click to view product
   const handleCardClick = (e: React.MouseEvent) => {
-    // Don't trigger if clicking on action buttons
-    if ((e.target as Element).closest('button')) {
+    // Don't trigger if clicking on action buttons or checkboxes
+    if ((e.target as Element).closest('button') || (e.target as Element).closest('input[type="checkbox"]')) {
       return;
     }
     onView?.(product);
@@ -182,10 +190,26 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
   if (variant === 'compact') {
     return (
       <div 
-        className={`transition-all duration-300 ease-in-out backdrop-blur-sm relative bg-white/80 border border-gray-200/60 p-4 rounded-2xl shadow-sm hover:shadow-xl hover:scale-[1.02] hover:border-gray-300/80 cursor-pointer group overflow-hidden ${className}`}
+        className={`transition-all duration-300 ease-in-out backdrop-blur-sm relative bg-white/80 border border-gray-200/60 p-3 rounded-xl shadow-sm hover:shadow-lg hover:scale-[1.01] hover:border-gray-300/80 cursor-pointer group overflow-hidden ${className}`}
         onClick={handleCardClick}
       >
         <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 to-indigo-50/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+        
+        {/* Selection Checkbox */}
+        {showCheckbox && (
+          <div className="absolute top-3 left-3 z-20">
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={(e) => {
+                e.stopPropagation();
+                onSelect?.(product.id);
+              }}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 focus:ring-2"
+            />
+          </div>
+        )}
+        
         <div className="relative z-10">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3 flex-1 min-w-0">
@@ -245,10 +269,26 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
   if (variant === 'detailed') {
     return (
       <div 
-        className={`transition-all duration-300 ease-in-out backdrop-blur-sm relative bg-white/90 border border-gray-200/60 p-6 rounded-2xl shadow-sm hover:shadow-2xl hover:scale-[1.02] hover:border-gray-300/80 cursor-pointer group overflow-hidden ${className}`}
+        className={`transition-all duration-300 ease-in-out backdrop-blur-sm relative bg-white/90 border border-gray-200/60 p-4 rounded-xl shadow-sm hover:shadow-lg hover:scale-[1.01] hover:border-gray-300/80 cursor-pointer group overflow-hidden ${className}`}
         onClick={handleCardClick}
       >
         <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 to-indigo-50/30 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+        
+        {/* Selection Checkbox */}
+        {showCheckbox && (
+          <div className="absolute top-4 left-4 z-20">
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={(e) => {
+                e.stopPropagation();
+                onSelect?.(product.id);
+              }}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 focus:ring-2"
+            />
+          </div>
+        )}
+        
         <div className="relative z-10">
           {/* Product Image with Enhanced Styling */}
           <div className="relative mb-6">
@@ -413,10 +453,10 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
                         e.stopPropagation();
                         onView(product);
                       }}
-                      className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-all duration-200 rounded-lg"
+                      className="p-3 text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-all duration-200 rounded-lg"
                       title="View Details"
                     >
-                      <Eye size={16} />
+                      <Eye size={18} />
                     </button>
                   )}
                   {onEdit && (
@@ -425,10 +465,10 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
                         e.stopPropagation();
                         window.location.href = `/lats/products/${product.id}/edit`;
                       }}
-                      className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 transition-all duration-200 rounded-lg"
+                      className="p-3 text-gray-500 hover:text-green-600 hover:bg-green-50 transition-all duration-200 rounded-lg"
                       title="Edit Product"
                     >
-                      <Edit size={16} />
+                      <Edit size={18} />
                     </button>
                   )}
                   {onDelete && (
@@ -437,10 +477,10 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
                         e.stopPropagation();
                         onDelete(product);
                       }}
-                      className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 transition-all duration-200 rounded-lg"
+                      className="p-3 text-gray-500 hover:text-red-600 hover:bg-red-50 transition-all duration-200 rounded-lg"
                       title="Delete Product"
                     >
-                      <Trash2 size={16} />
+                      <Trash2 size={18} />
                     </button>
                   )}
                 </div>
@@ -455,10 +495,26 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
   // Default variant with enhanced design
   return (
     <div 
-      className={`transition-all duration-300 ease-in-out backdrop-blur-sm relative bg-white/90 border border-gray-200/60 p-5 rounded-2xl shadow-sm hover:shadow-xl hover:scale-[1.02] hover:border-gray-300/80 cursor-pointer group overflow-hidden ${className}`}
+      className={`transition-all duration-300 ease-in-out backdrop-blur-sm relative bg-white/90 border border-gray-200/60 p-4 rounded-xl shadow-sm hover:shadow-lg hover:scale-[1.01] hover:border-gray-300/80 cursor-pointer group overflow-hidden ${className}`}
       onClick={handleCardClick}
     >
       <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 to-indigo-50/30 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+      
+      {/* Selection Checkbox */}
+      {showCheckbox && (
+        <div className="absolute top-4 left-4 z-20">
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={(e) => {
+              e.stopPropagation();
+              onSelect?.(product.id);
+            }}
+            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 focus:ring-2"
+          />
+        </div>
+      )}
+      
       <div className="relative z-10">
         {/* Enhanced Product Header */}
         <div className="flex items-start justify-between mb-4">
@@ -635,10 +691,10 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
                   e.stopPropagation();
                   setShowLabelModal(true);
                 }}
-                className="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 transition-all duration-200 rounded-lg"
+                className="p-3 text-gray-500 hover:text-purple-600 hover:bg-purple-50 transition-all duration-200 rounded-lg"
                 title="Print Label"
               >
-                <Printer size={16} />
+                <Printer size={18} />
               </button>
               
               {onView && (
@@ -647,10 +703,10 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
                     e.stopPropagation();
                     onView(product);
                   }}
-                  className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-all duration-200 rounded-lg"
+                  className="p-3 text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-all duration-200 rounded-lg"
                   title="View Details"
                 >
-                  <Eye size={16} />
+                  <Eye size={18} />
                 </button>
               )}
               {onEdit && (
@@ -659,10 +715,10 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
                     e.stopPropagation();
                     onEdit(product);
                   }}
-                  className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 transition-all duration-200 rounded-lg"
+                  className="p-3 text-gray-500 hover:text-green-600 hover:bg-green-50 transition-all duration-200 rounded-lg"
                   title="Edit Product"
                 >
-                  <Edit size={16} />
+                  <Edit size={18} />
                 </button>
               )}
               {onDelete && (
@@ -671,10 +727,10 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
                     e.stopPropagation();
                     onDelete(product);
                   }}
-                  className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 transition-all duration-200 rounded-lg"
+                  className="p-3 text-gray-500 hover:text-red-600 hover:bg-red-50 transition-all duration-200 rounded-lg"
                   title="Delete Product"
                 >
-                  <Trash2 size={16} />
+                  <Trash2 size={18} />
                 </button>
               )}
             </div>

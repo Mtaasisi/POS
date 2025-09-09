@@ -150,7 +150,7 @@ const AssignedDiagnosticsTab: React.FC = () => {
                   <GlassButton
                     onClick={() => {
                       // Navigate to diagnostic details
-                      toast.info('Opening diagnostic details...');
+                      toast('Opening diagnostic details...');
                     }}
                     className="bg-blue-500 hover:bg-blue-600 text-white"
                   >

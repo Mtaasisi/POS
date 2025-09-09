@@ -233,6 +233,10 @@ export class StoreShelfApi {
       .single();
 
     if (error) {
+      // Handle duplicate key errors more gracefully
+      if (error.code === '23505' || error.message?.includes('duplicate')) {
+        throw new Error(`Shelf with code "${data.code}" already exists in this location`);
+      }
       throw new Error(`Failed to create store shelf: ${error.message}`);
     }
 

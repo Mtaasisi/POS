@@ -42,11 +42,6 @@ Instructions:
 5. Category and Supplier IDs can be left empty if not available
 
 Required Fields (*),name*,sku*,description,price,cost_price,stock_quantity,min_stock,max_stock,category_id,supplier_id,tags,variant_name
-Product 1,Example Product 1,PROD-001,Example product description,159999,120000,15,5,50,,,electronics,example,Default Variant
-Product 2,Example Product 2,PROD-002,Another example product,129999,100000,12,5,50,,,electronics,example,Default Variant
-Product 3,Example Product 3,PROD-003,Third example product,899999,750000,8,3,25,,,electronics,example,Default Variant
-Product 4,Example Product 4,PROD-004,Fourth example product,299999,200000,20,10,100,,,electronics,example,Default Variant
-Product 5,Example Product 5,PROD-005,Fifth example product,199999,150000,10,5,30,,,electronics,example,Default Variant
 
 Field Descriptions:
 name* - Product name (required)
@@ -73,10 +68,6 @@ Instructions:
 5. Color tags: new, vip, complainer, purchased
 
 Required Fields (*),Name*,Phone Number*,Gender,City,WhatsApp Number,Notes,Loyalty Level,Color Tag,Birth Month,Birth Day,Referral Source,Location Description,National ID,Referred By,Total Spent,Points,Is Active,Email
-Customer 1,Example Customer 1,+255712345678,male,Dar es Salaam,+255712345678,Example customer notes,bronze,new,3,15,social media,123 Main Street Dar es Salaam,1234567890123456,Example Referrer,50000,100,true,example1@email.com
-Customer 2,Example Customer 2,+255723456789,female,Arusha,+255723456789,Another example customer,silver,vip,6,22,recommendation,456 Business Ave Arusha,2345678901234567,Example Referrer,75000,150,true,example2@email.com
-Customer 3,Example Customer 3,+255734567890,male,Mwanza,+255734567890,Third example customer,gold,new,12,5,physically,789 Home Road Mwanza,3456789012345678,Example Referrer,100000,200,true,example3@email.com
-Customer 4,Example Customer 4,+255745678901,female,Dodoma,+255745678901,Fourth example customer,platinum,purchased,9,10,instagram,321 Social Street Dodoma,4567890123456789,Example Referrer,150000,300,true,example4@email.com
 
 Field Descriptions:
 Name* - Customer full name (required)

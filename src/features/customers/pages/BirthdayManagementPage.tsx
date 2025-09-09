@@ -13,7 +13,7 @@ import BirthdayNotification from '../components/BirthdayNotification';
 import BirthdayMessageSender from '../components/BirthdayMessageSender';
 import BirthdayCalendar from '../components/BirthdayCalendar';
 import BirthdayRewards from '../components/BirthdayRewards';
-import { fetchAllCustomers } from '../../../lib/customerApi';
+import { fetchAllCustomersSimple } from '../../../lib/customerApi';
 import { toast } from 'react-hot-toast';
 
 type TabType = 'overview' | 'calendar' | 'messages' | 'rewards' | 'settings';
@@ -145,7 +145,7 @@ const BirthdayManagementPage: React.FC = () => {
     const loadCustomers = async () => {
       try {
         setLoading(true);
-        const allCustomers = await fetchAllCustomers();
+        const allCustomers = await fetchAllCustomersSimple();
         setCustomers(allCustomers);
       } catch (error) {
         console.error('Error loading customers:', error);

@@ -32,27 +32,21 @@ class CategoryService {
   }
 
   async getCategories(forceRefresh = false): Promise<Category[]> {
-    console.log('📂 Categories: getCategories called, forceRefresh:', forceRefresh);
-    
     // Return cached data if valid and not forcing refresh
     if (!forceRefresh && this.isCacheValid()) {
-      console.log('📂 Categories: Using cached data, count:', this.cache!.data.length);
       return this.cache!.data;
     }
 
     // If already loading, return the existing promise
     if (this.loadingPromise) {
-      console.log('📂 Categories: Waiting for existing request');
       return this.loadingPromise;
     }
 
     // Start new loading process
-    console.log('📂 Categories: Starting new fetch from database');
     this.loadingPromise = this.fetchCategoriesFromDatabase();
     
     try {
       const categories = await this.loadingPromise;
-      console.log('📂 Categories: Fetch completed, count:', categories.length);
       return categories;
     } finally {
       this.loadingPromise = null;
@@ -60,24 +54,51 @@ class CategoryService {
   }
 
   private async fetchCategoriesFromDatabase(): Promise<Category[]> {
-    console.log('📂 Categories: Fetching from database...');
     const startTime = performance.now();
 
     try {
-      const { data, error } = await supabase
+      // Add network request monitoring for debugging
+      const originalFetch = window.fetch;
+      window.fetch = function(...args) {
+        const url = args[0];
+        if (typeof url === 'string' && url.includes('lats_categories')) {
+          console.log('🌐 [CategoryService] Network request detected:', url);
+          console.log('🌐 [CategoryService] Request method:', args[1]?.method || 'GET');
+          console.log('🌐 [CategoryService] Request stack:', new Error().stack);
+        }
+        return originalFetch.apply(this, args);
+      };
+
+      // Ensure we use proper Supabase syntax - no custom parameters
+      const query = supabase
         .from('lats_categories')
         .select('*')
         .order('name');
 
+      console.log('🔍 [CategoryService] Executing categories query with proper syntax');
+      console.log('🔍 [CategoryService] Query object:', query);
+      console.log('🔍 [CategoryService] Stack trace:', new Error().stack);
+      
+      const { data, error } = await query;
+
+      // Restore original fetch
+      window.fetch = originalFetch;
+
       if (error) {
         console.error('❌ Categories fetch error:', error);
+        console.error('❌ Error details:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
         throw error;
       }
 
       const categories = data || [];
       const endTime = performance.now();
       
-      console.log(`✅ Categories: Fetched ${categories.length} categories in ${(endTime - startTime).toFixed(2)}ms`);
+      console.log(`✅ [CategoryService] Categories fetched successfully in ${(endTime - startTime).toFixed(2)}ms, count: ${categories.length}`);
 
       // Update cache
       this.cache = {
@@ -95,7 +116,95 @@ class CategoryService {
 
   async getActiveCategories(forceRefresh = false): Promise<Category[]> {
     const allCategories = await this.getCategories(forceRefresh);
-    return allCategories.filter(category => category.is_active !== false);
+    return allCategories.filter(category => category.isActive !== false && category.is_active !== false);
+  }
+
+  async getActiveCategoriesExcludingSpare(forceRefresh = false): Promise<Category[]> {
+    const allCategories = await this.getCategories(forceRefresh);
+    
+    // More precise spare part category identification
+    const sparePartKeywords = [
+      'spare', 'parts', 'repair', 'replacement', 'component'
+    ];
+    
+    // Specific spare part patterns (these suggest parts, not full products)
+    const sparePartPatterns = [
+      'screen replacement', 'battery replacement', 'charging port', 'logic board',
+      'motherboard', 'circuit board', 'flex cable', 'ribbon cable', 'charging cable',
+      'home button', 'power button', 'volume button', 'camera module', 'speaker module',
+      'microphone module', 'antenna module', 'vibration motor', 'charging dock',
+      'connector port', 'headphone jack', 'sim tray', 'battery connector'
+    ];
+    
+    const filteredCategories = allCategories.filter(category => {
+      // Check if category is active
+      if (category.isActive === false || category.is_active === false) return false;
+      
+      const categoryName = category.name.toLowerCase();
+      const categoryDesc = (category.description || '').toLowerCase();
+      
+      // Check for explicit spare part keywords
+      const hasSparePartKeyword = sparePartKeywords.some(keyword =>
+        categoryName.includes(keyword) || categoryDesc.includes(keyword)
+      );
+      
+      // Check for specific spare part patterns
+      const hasSparePartPattern = sparePartPatterns.some(pattern =>
+        categoryName.includes(pattern) || categoryDesc.includes(pattern)
+      );
+      
+      // Check if explicitly named as spare part or component
+      const isExplicitSparePart = categoryName.includes('spare') ||
+                                 categoryName.includes(' part') ||
+                                 categoryName.includes('parts') ||
+                                 (categoryName.includes('component') && !categoryName.includes('software'));
+      
+      // Return categories that are NOT spare parts
+      return !(hasSparePartKeyword || hasSparePartPattern || isExplicitSparePart);
+    });
+    
+    
+    return filteredCategories;
+  }
+
+    async getSparePartCategories(forceRefresh = false): Promise<Category[]> {
+    const allCategories = await this.getCategories(forceRefresh);
+    
+    // Filter for spare part categories
+    // Look for categories that are likely spare parts based on name patterns
+    const sparePartKeywords = [
+      'spare', 'parts', 'components', 'accessories', 'repair', 'replacement',
+      'screen', 'battery', 'charger', 'cable', 'adapter', 'connector',
+      'button', 'speaker', 'microphone', 'camera', 'lens', 'antenna',
+      'circuit', 'board', 'chip', 'processor', 'memory', 'storage',
+      'keyboard', 'touchpad', 'hinge', 'case', 'cover', 'protector'
+    ];
+    
+    const filteredCategories = allCategories.filter(category => {
+      // Check if category is active
+      if (category.isActive === false || category.is_active === false) return false;
+      
+      const categoryName = category.name.toLowerCase();
+      const categoryDesc = (category.description || '').toLowerCase();
+      
+      // Check if category name or description contains spare part keywords
+      const hasSparePartKeyword = sparePartKeywords.some(keyword =>
+        categoryName.includes(keyword) || categoryDesc.includes(keyword)
+      );
+      
+      // Also check if it's a subcategory (has parentId) which might indicate it's a specific part type
+      const isSubcategory = category.parentId && category.parentId.trim() !== '';
+      
+      // Check if the category name suggests it's a spare part
+      const isSparePartByName = categoryName.includes('spare') ||
+                               categoryName.includes('part') ||
+                               categoryName.includes('component') ||
+                               categoryName.includes('accessory');
+      
+      return hasSparePartKeyword || isSubcategory || isSparePartByName;
+    });
+    
+    return filteredCategories;
   }
 
   async getCategoryById(id: string, forceRefresh = false): Promise<Category | null> {
@@ -115,8 +224,13 @@ class CategoryService {
 
   // Invalidate cache when categories are modified
   invalidateCache(): void {
-    console.log('📂 Categories: Cache invalidated');
     this.clearCache();
+  }
+
+  // Force refresh categories (clears cache and fetches fresh)
+  async forceRefresh(): Promise<Category[]> {
+    this.clearCache();
+    return await this.getCategories(true);
   }
 
   // Get categories for specific product IDs (optimized for product pages)

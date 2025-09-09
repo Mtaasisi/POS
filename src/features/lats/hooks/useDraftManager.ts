@@ -19,7 +19,7 @@ export const useDraftManager = ({
 
   // Auto-save draft when cart changes
   useEffect(() => {
-    if (cartItems.length > 0) {
+    if (cartItems && cartItems.length > 0) {
       const saveDraft = () => {
         try {
           const draftId = draftService.saveDraft(cartItems, customer, deliveryInfo, notes);
@@ -39,14 +39,14 @@ export const useDraftManager = ({
   // Check for existing draft on mount
   useEffect(() => {
     const latestDraft = draftService.getLatestDraft();
-    if (latestDraft && cartItems.length === 0) {
+    if (latestDraft && (!cartItems || cartItems.length === 0)) {
       setCurrentDraftId(latestDraft.id);
     }
-  }, []);
+  }, [cartItems]);
 
   // Manual save draft
   const saveDraft = useCallback((customNotes?: string) => {
-    if (cartItems.length === 0) return null;
+    if (!cartItems || cartItems.length === 0) return null;
     
     try {
       const draftId = draftService.saveDraft(
