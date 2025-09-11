@@ -368,571 +368,141 @@ const EnhancedPaymentManagementPage: React.FC = () => {
             onExport={handleExportData}
           />
         );
-      case 'reconciliation':
-        return (
-          <div className="space-y-6">
-            {/* Reconciliation Overview */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                    <Activity className="w-5 h-5 text-green-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Today's Matched</p>
-                    <p className="text-xl font-semibold text-green-700">1,247</p>
-                  </div>
-                </div>
-              </div>
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">
-                    <AlertCircle className="w-5 h-5 text-yellow-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Discrepancies</p>
-                    <p className="text-xl font-semibold text-yellow-700">23</p>
-                  </div>
-                </div>
-              </div>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <BarChart3 className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Success Rate</p>
-                    <p className="text-xl font-semibold text-blue-700">98.2%</p>
-                  </div>
+        case 'reconciliation':
+          return (
+            <div className="space-y-6">
+              <div className="text-center py-12">
+                <div className="text-4xl mb-4">📊</div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Payment Reconciliation</h3>
+                <p className="text-gray-600 mb-4">Database-driven reconciliation with automated transaction matching</p>
+                <div className="flex gap-3 justify-center">
+                  <GlassButton
+                    onClick={() => handleNavigateToPage('/finance/payments/reconciliation')}
+                    className="bg-green-600 text-white hover:bg-green-700"
+                  >
+                    <Activity className="w-4 h-4 mr-2" />
+                    Manage Reconciliation
+                  </GlassButton>
+                  <GlassButton
+                    onClick={async () => {
+                      try {
+                        const today = new Date().toISOString().split('T')[0];
+                        await paymentReconciliationService.performDailyReconciliation(today);
+                        toast.success('Daily reconciliation completed');
+                      } catch (error) {
+                        console.error('Reconciliation error:', error);
+                        toast.error('Reconciliation failed - service may not be available');
+                      }
+                    }}
+                    variant="secondary"
+                  >
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Run Today's Reconciliation
+                  </GlassButton>
                 </div>
               </div>
             </div>
-
-            {/* Recent Reconciliation Activity */}
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Reconciliation Activity</h3>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                  <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                    <span className="text-sm text-gray-900">Morning reconciliation completed</span>
-                  </div>
-                  <span className="text-xs text-gray-500">2 hours ago</span>
-                </div>
-                <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                  <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-                    <span className="text-sm text-gray-900">3 discrepancies found in M-Pesa transactions</span>
-                  </div>
-                  <span className="text-xs text-gray-500">4 hours ago</span>
-                </div>
-                <div className="flex items-center justify-between py-2">
-                  <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                    <span className="text-sm text-gray-900">Bank reconciliation successful</span>
-                  </div>
-                  <span className="text-xs text-gray-500">6 hours ago</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex flex-wrap gap-3">
-              <GlassButton
-                onClick={async () => {
-                  try {
-                    const today = new Date().toISOString().split('T')[0];
-                    await paymentReconciliationService.performDailyReconciliation(today);
-                    toast.success('Daily reconciliation completed');
-                  } catch (error) {
-                    console.error('Reconciliation error:', error);
-                    toast.error('Reconciliation failed - service may not be available');
-                  }
-                }}
-                className="bg-green-600 text-white hover:bg-green-700"
-              >
-                <Activity className="w-4 h-4 mr-2" />
-                Run Today's Reconciliation
-              </GlassButton>
-              <GlassButton
-                onClick={() => handleNavigateToPage('/finance/payments/reconciliation')}
-                variant="secondary"
-              >
-                <BarChart3 className="w-4 h-4 mr-2" />
-                View Detailed Reports
-              </GlassButton>
-              <GlassButton
-                onClick={() => toast('Exporting reconciliation report...')}
-                variant="secondary"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Export Report
-              </GlassButton>
-            </div>
-          </div>
-        );
+          );
       case 'providers':
         return (
           <div className="space-y-6">
-            {/* Provider Status Overview */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                    <Settings className="w-5 h-5 text-green-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Active Providers</p>
-                    <p className="text-xl font-semibold text-green-700">4</p>
-                  </div>
-                </div>
+            <div className="text-center py-12">
+              <div className="text-4xl mb-4">⚙️</div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Payment Providers</h3>
+              <p className="text-gray-600 mb-4">Database-driven provider management with real-time monitoring</p>
+              <div className="flex gap-3 justify-center">
+                <GlassButton
+                  onClick={() => handleNavigateToPage('/finance/payments/providers')}
+                  className="bg-blue-600 text-white hover:bg-blue-700"
+                >
+                  <Settings className="w-4 h-4 mr-2" />
+                  Manage Providers
+                </GlassButton>
+                <GlassButton
+                  onClick={async () => {
+                    try {
+                      const providers = await paymentProviderService.getPaymentProvidersWithRealMetrics();
+                      const activeProviders = providers.filter(p => p.status === 'active');
+                      toast.success(`Found ${activeProviders.length} active payment providers with real transaction data`);
+                    } catch (error) {
+                      console.error('Provider service error:', error);
+                      toast.error('Failed to fetch providers - service may not be available');
+                    }
+                  }}
+                  variant="secondary"
+                >
+                  <Activity className="w-4 h-4 mr-2" />
+                  Check Provider Status
+                </GlassButton>
               </div>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <Activity className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Total Transactions</p>
-                    <p className="text-xl font-semibold text-blue-700">12.5K</p>
-                  </div>
-                </div>
-              </div>
-              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-                    <BarChart3 className="w-5 h-5 text-purple-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Success Rate</p>
-                    <p className="text-xl font-semibold text-purple-700">99.1%</p>
-                  </div>
-                </div>
-              </div>
-              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
-                    <AlertCircle className="w-5 h-5 text-orange-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Issues</p>
-                    <p className="text-xl font-semibold text-orange-700">2</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Provider List */}
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Payment Providers</h3>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-4 bg-green-50 border border-green-200 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                    <div>
-                      <p className="font-medium text-gray-900">M-Pesa</p>
-                      <p className="text-sm text-gray-600">Mobile Money Provider</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-green-700">Active</p>
-                    <p className="text-xs text-gray-500">8.2K transactions</p>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between p-4 bg-green-50 border border-green-200 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                    <div>
-                      <p className="font-medium text-gray-900">Tigo Pesa</p>
-                      <p className="text-sm text-gray-600">Mobile Money Provider</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-green-700">Active</p>
-                    <p className="text-xs text-gray-500">2.1K transactions</p>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between p-4 bg-green-50 border border-green-200 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                    <div>
-                      <p className="font-medium text-gray-900">Airtel Money</p>
-                      <p className="text-sm text-gray-600">Mobile Money Provider</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-green-700">Active</p>
-                    <p className="text-xs text-gray-500">1.8K transactions</p>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                    <div>
-                      <p className="font-medium text-gray-900">Bank Transfer</p>
-                      <p className="text-sm text-gray-600">Banking Provider</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-yellow-700">Maintenance</p>
-                    <p className="text-xs text-gray-500">0.4K transactions</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex flex-wrap gap-3">
-              <GlassButton
-                onClick={async () => {
-                  try {
-                    const providers = await paymentProviderService.getPaymentProvidersWithRealMetrics();
-                    const activeProviders = providers.filter(p => p.status === 'active');
-                    toast.success(`Found ${activeProviders.length} active payment providers with real transaction data`);
-                  } catch (error) {
-                    console.error('Provider service error:', error);
-                    toast.error('Failed to fetch providers - service may not be available');
-                  }
-                }}
-                className="bg-blue-600 text-white hover:bg-blue-700"
-              >
-                <Settings className="w-4 h-4 mr-2" />
-                Check Provider Status
-              </GlassButton>
-              <GlassButton
-                onClick={() => handleNavigateToPage('/finance/payments/providers')}
-                variant="secondary"
-              >
-                <Activity className="w-4 h-4 mr-2" />
-                Manage Providers
-              </GlassButton>
-              <GlassButton
-                onClick={() => toast('Refreshing provider metrics...')}
-                variant="secondary"
-              >
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Refresh Metrics
-              </GlassButton>
             </div>
           </div>
         );
       case 'security':
         return (
           <div className="space-y-6">
-            {/* Security Overview */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                    <Shield className="w-5 h-5 text-green-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Security Score</p>
-                    <p className="text-xl font-semibold text-green-700">98%</p>
-                  </div>
-                </div>
+            <div className="text-center py-12">
+              <div className="text-4xl mb-4">🔒</div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Security & Compliance</h3>
+              <p className="text-gray-600 mb-4">Database-driven security monitoring and compliance checks</p>
+              <div className="flex gap-3 justify-center">
+                <GlassButton
+                  onClick={() => handleNavigateToPage('/finance/payments/security')}
+                  className="bg-red-600 text-white hover:bg-red-700"
+                >
+                  <Shield className="w-4 h-4 mr-2" />
+                  Manage Security
+                </GlassButton>
+                <GlassButton
+                  onClick={async () => {
+                    try {
+                      await paymentSecurityService.performComplianceChecks();
+                      toast.success('Compliance checks completed');
+                    } catch (error) {
+                      console.error('Security service error:', error);
+                      toast.error('Compliance check failed - service may not be available');
+                    }
+                  }}
+                  variant="secondary"
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Run Compliance Check
+                </GlassButton>
               </div>
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
-                    <AlertCircle className="w-5 h-5 text-red-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Active Alerts</p>
-                    <p className="text-xl font-semibold text-red-700">3</p>
-                  </div>
-                </div>
-              </div>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <Activity className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Last Scan</p>
-                    <p className="text-xl font-semibold text-blue-700">2h ago</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Security Alerts */}
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Security Alerts</h3>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-4 bg-red-50 border border-red-200 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                    <div>
-                      <p className="font-medium text-gray-900">High Risk Transaction Detected</p>
-                      <p className="text-sm text-gray-600">Unusual payment pattern from account #12345</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-red-700">High</p>
-                    <p className="text-xs text-gray-500">1 hour ago</p>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                    <div>
-                      <p className="font-medium text-gray-900">Failed Login Attempts</p>
-                      <p className="text-sm text-gray-600">Multiple failed attempts from IP 192.168.1.100</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-yellow-700">Medium</p>
-                    <p className="text-xs text-gray-500">3 hours ago</p>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                    <div>
-                      <p className="font-medium text-gray-900">Certificate Expiry Warning</p>
-                      <p className="text-sm text-gray-600">SSL certificate expires in 15 days</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-yellow-700">Medium</p>
-                    <p className="text-xs text-gray-500">1 day ago</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Compliance Status */}
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Compliance Status</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
-                  <span className="text-sm font-medium text-gray-900">PCI DSS Compliance</span>
-                  <span className="text-sm font-medium text-green-700">Compliant</span>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
-                  <span className="text-sm font-medium text-gray-900">GDPR Compliance</span>
-                  <span className="text-sm font-medium text-green-700">Compliant</span>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <span className="text-sm font-medium text-gray-900">ISO 27001</span>
-                  <span className="text-sm font-medium text-yellow-700">In Review</span>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
-                  <span className="text-sm font-medium text-gray-900">SOC 2 Type II</span>
-                  <span className="text-sm font-medium text-green-700">Compliant</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex flex-wrap gap-3">
-              <GlassButton
-                onClick={async () => {
-                  try {
-                    await paymentSecurityService.performComplianceChecks();
-                    toast.success('Compliance checks completed');
-                  } catch (error) {
-                    console.error('Security service error:', error);
-                    toast.error('Compliance check failed - service may not be available');
-                  }
-                }}
-                className="bg-red-600 text-white hover:bg-red-700"
-              >
-                <Shield className="w-4 h-4 mr-2" />
-                Run Compliance Check
-              </GlassButton>
-              <GlassButton
-                onClick={async () => {
-                  try {
-                    const alerts = await paymentSecurityService.getSecurityAlerts('open');
-                    toast.success(`Found ${alerts.length} open security alerts`);
-                  } catch (error) {
-                    console.error('Security alerts error:', error);
-                    toast.error('Failed to fetch security alerts - service may not be available');
-                  }
-                }}
-                variant="secondary"
-              >
-                <AlertCircle className="w-4 h-4 mr-2" />
-                View Security Alerts
-              </GlassButton>
-              <GlassButton
-                onClick={() => toast('Generating security report...')}
-                variant="secondary"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Export Report
-              </GlassButton>
             </div>
           </div>
         );
       case 'automation':
         return (
           <div className="space-y-6">
-            {/* Automation Overview */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
-                    <Zap className="w-5 h-5 text-orange-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Active Rules</p>
-                    <p className="text-xl font-semibold text-orange-700">12</p>
-                  </div>
-                </div>
+            <div className="text-center py-12">
+              <div className="text-4xl mb-4">⚡</div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Payment Automation</h3>
+              <p className="text-gray-600 mb-4">Database-driven automation rules and workflow management</p>
+              <div className="flex gap-3 justify-center">
+                <GlassButton
+                  onClick={() => handleNavigateToPage('/finance/payments/automation')}
+                  className="bg-orange-600 text-white hover:bg-orange-700"
+                >
+                  <Zap className="w-4 h-4 mr-2" />
+                  Manage Automation
+                </GlassButton>
+                <GlassButton
+                  onClick={async () => {
+                    try {
+                      const rules = await paymentAutomationService.getActiveAutomationRules();
+                      toast.success(`Found ${rules.length} active automation rules`);
+                    } catch (error) {
+                      console.error('Automation service error:', error);
+                      toast.error('Failed to fetch automation rules - service may not be available');
+                    }
+                  }}
+                  variant="secondary"
+                >
+                  <Activity className="w-4 h-4 mr-2" />
+                  Check Rules
+                </GlassButton>
               </div>
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                    <Activity className="w-5 h-5 text-green-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Success Rate</p>
-                    <p className="text-xl font-semibold text-green-700">96.8%</p>
-                  </div>
-                </div>
-              </div>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <BarChart3 className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Processed Today</p>
-                    <p className="text-xl font-semibold text-blue-700">2.3K</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Active Automation Rules */}
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Active Automation Rules</h3>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-4 bg-green-50 border border-green-200 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                    <div>
-                      <p className="font-medium text-gray-900">Auto-Refund Failed Payments</p>
-                      <p className="text-sm text-gray-600">Automatically refund payments that fail after 3 attempts</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-green-700">Active</p>
-                    <p className="text-xs text-gray-500">Last run: 5 min ago</p>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between p-4 bg-green-50 border border-green-200 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                    <div>
-                      <p className="font-medium text-gray-900">Daily Reconciliation</p>
-                      <p className="text-sm text-gray-600">Run daily reconciliation at 6:00 AM</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-green-700">Active</p>
-                    <p className="text-xs text-gray-500">Next run: Tomorrow 6:00 AM</p>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between p-4 bg-green-50 border border-green-200 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                    <div>
-                      <p className="font-medium text-gray-900">Fraud Detection Alert</p>
-                      <p className="text-sm text-gray-600">Send alerts for transactions over $1,000</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-green-700">Active</p>
-                    <p className="text-xs text-gray-500">Last triggered: 2 hours ago</p>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                    <div>
-                      <p className="font-medium text-gray-900">Weekly Report Generation</p>
-                      <p className="text-sm text-gray-600">Generate weekly payment reports every Monday</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-yellow-700">Paused</p>
-                    <p className="text-xs text-gray-500">Next run: Monday 9:00 AM</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Recent Automation Activity */}
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Automation Activity</h3>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                  <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                    <span className="text-sm text-gray-900">Auto-refund processed for payment #12345</span>
-                  </div>
-                  <span className="text-xs text-gray-500">10 minutes ago</span>
-                </div>
-                <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                  <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                    <span className="text-sm text-gray-900">Daily reconciliation completed successfully</span>
-                  </div>
-                  <span className="text-xs text-gray-500">2 hours ago</span>
-                </div>
-                <div className="flex items-center justify-between py-2">
-                  <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
-                    <span className="text-sm text-gray-900">Fraud alert triggered for high-value transaction</span>
-                  </div>
-                  <span className="text-xs text-gray-500">3 hours ago</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex flex-wrap gap-3">
-              <GlassButton
-                onClick={async () => {
-                  try {
-                    const rules = await paymentAutomationService.getActiveAutomationRules();
-                    toast.success(`Found ${rules.length} active automation rules`);
-                  } catch (error) {
-                    console.error('Automation service error:', error);
-                    toast.error('Failed to fetch automation rules - service may not be available');
-                  }
-                }}
-                className="bg-orange-600 text-white hover:bg-orange-700"
-              >
-                <Zap className="w-4 h-4 mr-2" />
-                Check Automation Rules
-              </GlassButton>
-              <GlassButton
-                onClick={async () => {
-                  try {
-                    const metrics = await paymentAutomationService.getAutomationMetrics();
-                    toast.success(`Automation success rate: ${metrics.successRate}%`);
-                  } catch (error) {
-                    console.error('Automation metrics error:', error);
-                    toast.error('Failed to fetch automation metrics - service may not be available');
-                  }
-                }}
-                variant="secondary"
-              >
-                <BarChart3 className="w-4 h-4 mr-2" />
-                View Metrics
-              </GlassButton>
-              <GlassButton
-                onClick={() => toast('Creating new automation rule...')}
-                variant="secondary"
-              >
-                <Settings className="w-4 h-4 mr-2" />
-                Create Rule
-              </GlassButton>
             </div>
           </div>
         );

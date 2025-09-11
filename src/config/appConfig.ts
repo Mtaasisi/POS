@@ -26,7 +26,7 @@ export const APP_CONFIG = {
 
   // API Configuration
   api: {
-    baseUrl: import.meta.env.VITE_API_URL || 'https://inauzwa.store',
+    baseUrl: import.meta.env.VITE_API_URL || (import.meta.env.MODE === 'development' ? 'http://localhost:5173' : window.location.origin),
     timeout: 30000, // 30 seconds
     maxRetries: 3,
   },

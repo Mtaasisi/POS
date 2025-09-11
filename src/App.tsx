@@ -37,6 +37,8 @@ const SMSControlCenterPage = lazy(() => import('./features/reports/pages/SMSCont
 const EnhancedPaymentManagementPage = lazy(() => import('./features/payments/pages/EnhancedPaymentManagementPage'));
 const PaymentReconciliationPage = lazy(() => import('./features/payments/pages/PaymentReconciliationPage'));
 const PaymentProviderManagementPage = lazy(() => import('./features/payments/pages/PaymentProviderManagementPage'));
+const PaymentSecurityCompliancePage = lazy(() => import('./features/payments/pages/PaymentSecurityCompliancePage'));
+const PaymentAutomationPage = lazy(() => import('./features/payments/pages/PaymentAutomationPage'));
 
 import AuditLogsPage from './features/admin/pages/AuditLogsPage';
 const FinanceManagementPage = lazy(() => import('./features/finance/pages/FinanceManagementPage'));
@@ -124,6 +126,35 @@ const PageLoadingSpinner = () => (
     <div className="text-center">
       <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
       <p className="text-gray-600">Loading...</p>
+    </div>
+  </div>
+);
+
+// Error fallback for dynamic imports
+const DynamicImportErrorFallback = ({ error, retry }: { error: Error; retry: () => void }) => (
+  <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-50 to-orange-50">
+    <div className="text-center max-w-md mx-auto p-6">
+      <div className="text-red-600 mb-4">
+        <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+        </svg>
+      </div>
+      <h3 className="text-lg font-medium text-gray-900 mb-2">Failed to load page</h3>
+      <p className="text-gray-600 mb-4">There was an error loading this page. This might be a temporary issue.</p>
+      <div className="flex gap-3 justify-center">
+        <button
+          onClick={retry}
+          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+        >
+          Try Again
+        </button>
+        <button
+          onClick={() => window.location.reload()}
+          className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+        >
+          Refresh Page
+        </button>
+      </div>
     </div>
   </div>
 );
@@ -353,46 +384,56 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
   // Handle offline sync
   useEffect(() => {
     async function syncPending() {
-      // Only proceed if context functions are available
-      if (!customersContext?.addCustomer || !devicesContext?.assignToTechnician || !devicesContext?.updateDeviceStatus) {
-        console.warn('Context functions not ready, skipping sync');
-        return;
-      }
-      
-      const actions = await getPendingActions();
-      for (const action of actions) {
-        if (action.type === 'submitData') {
-          await fetch('/api/endpoint', { method: 'POST', body: JSON.stringify(action.payload) });
-        } else if (action.type === 'createCustomerFromSearch') {
-          await customersContext.addCustomer(action.payload);
-        } else if (action.type === 'adjustPoints') {
-          const { operation, pointsToAdjust, reason, customerId } = action.payload;
-          const adjustment = operation === 'add' ? Math.abs(pointsToAdjust) : -Math.abs(pointsToAdjust);
-          
-          // Use the proper customer update function instead of direct Supabase calls
-          if (customersContext?.updateCustomer) {
-            // Fetch current customer to get current points
-            const currentCustomer = customersContext.customers.find(c => c.id === customerId);
-            if (currentCustomer) {
-              const newPoints = (currentCustomer.points || 0) + adjustment;
-              await customersContext.updateCustomer(customerId, { points: newPoints });
-              
-              // Add a note about the points adjustment
-              if (customersContext.addNote) {
-                await customersContext.addNote(customerId, `${operation === 'add' ? 'Added' : 'Subtracted'} ${Math.abs(pointsToAdjust)} points - ${reason}`);
-              }
-            }
-          }
-        } else if (action.type === 'assignTechnician') {
-          const { deviceId, selectedTechId } = action.payload;
-          await devicesContext.assignToTechnician(deviceId, selectedTechId, '');
-        } else if (action.type === 'markDeviceFailed') {
-          const { deviceId, remark } = action.payload;
-          await devicesContext.updateDeviceStatus(deviceId, 'failed', remark || '');
+      try {
+        // Only proceed if context functions are available
+        if (!customersContext?.addCustomer || !devicesContext?.assignToTechnician || !devicesContext?.updateDeviceStatus) {
+          console.warn('Context functions not ready, skipping sync');
+          return;
         }
-      }
-      if (actions.length > 0) {
-        await clearPendingActions();
+        
+        const actions = await getPendingActions();
+        for (const action of actions) {
+          try {
+            if (action.type === 'submitData') {
+              await fetch('/api/endpoint', { method: 'POST', body: JSON.stringify(action.payload) });
+            } else if (action.type === 'createCustomerFromSearch') {
+              await customersContext.addCustomer(action.payload);
+            } else if (action.type === 'adjustPoints') {
+              const { operation, pointsToAdjust, reason, customerId } = action.payload;
+              const adjustment = operation === 'add' ? Math.abs(pointsToAdjust) : -Math.abs(pointsToAdjust);
+              
+              // Use the proper customer update function instead of direct Supabase calls
+              if (customersContext?.updateCustomer) {
+                // Fetch current customer to get current points
+                const currentCustomer = customersContext.customers.find(c => c.id === customerId);
+                if (currentCustomer) {
+                  const newPoints = (currentCustomer.points || 0) + adjustment;
+                  await customersContext.updateCustomer(customerId, { points: newPoints });
+                  
+                  // Add a note about the points adjustment
+                  if (customersContext.addNote) {
+                    await customersContext.addNote(customerId, `${operation === 'add' ? 'Added' : 'Subtracted'} ${Math.abs(pointsToAdjust)} points - ${reason}`);
+                  }
+                }
+              }
+            } else if (action.type === 'assignTechnician') {
+              const { deviceId, selectedTechId } = action.payload;
+              await devicesContext.assignToTechnician(deviceId, selectedTechId, '');
+            } else if (action.type === 'markDeviceFailed') {
+              const { deviceId, remark } = action.payload;
+              await devicesContext.updateDeviceStatus(deviceId, 'failed', remark || '');
+            }
+          } catch (actionError) {
+            console.error('Error syncing action:', actionError);
+            // Continue with other actions even if one fails
+          }
+        }
+        if (actions.length > 0) {
+          await clearPendingActions();
+        }
+      } catch (error) {
+        console.error('Error during offline sync:', error);
+        // Don't throw - let the app continue
       }
     }
 
@@ -447,7 +488,13 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
         <Route path="/excel-templates" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><ExcelTemplateDownloadPage /></RoleProtectedRoute>} />
         <Route path="/product-export" element={<RoleProtectedRoute allowedRoles={['admin']}><ProductExportPage /></RoleProtectedRoute>} />
 
-          <Route path="/customers" element={<Suspense fallback={<PageLoadingSpinner />}><CustomersPage /></Suspense>} />
+          <Route path="/customers" element={
+            <ErrorBoundary fallback={DynamicImportErrorFallback}>
+              <Suspense fallback={<PageLoadingSpinner />}>
+                <CustomersPage />
+              </Suspense>
+            </ErrorBoundary>
+          } />
 
           <Route path="/customers/:id" element={<Suspense fallback={<PageLoadingSpinner />}><CustomerDetailPage /></Suspense>} />
           <Route path="/customers/update" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><CustomerDataUpdatePage /></RoleProtectedRoute>} />
@@ -465,6 +512,8 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
           <Route path="/finance/payments" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><EnhancedPaymentManagementPage /></Suspense></RoleProtectedRoute>} />
           <Route path="/finance/payments/reconciliation" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><PaymentReconciliationPage /></Suspense></RoleProtectedRoute>} />
           <Route path="/finance/payments/providers" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><PaymentProviderManagementPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/finance/payments/security" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><PaymentSecurityCompliancePage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/finance/payments/automation" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><PaymentAutomationPage /></Suspense></RoleProtectedRoute>} />
           
           {/* Appointment Management Routes */}
           <Route path="/appointments" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedAppointmentPage /></Suspense></RoleProtectedRoute>} />
@@ -577,12 +626,25 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
 };
 
 function _clearAllIndexedDB() {
-  const databases = ['offline-cache', 'pending-actions', 'user-goals'];
+  const databases = ['clean-app-cache', 'clean-app-offline-sync', 'user-goals', 'offline-cache', 'pending-actions'];
   databases.forEach(dbName => {
     const request = indexedDB.deleteDatabase(dbName);
     request.onsuccess = () => console.log(`Deleted database: ${dbName}`);
     request.onerror = () => console.error(`Error deleting database: ${dbName}`);
   });
+}
+
+// Function to clear all IndexedDB databases and reset the app
+function clearAllDatabases() {
+  try {
+    _clearAllIndexedDB();
+    // Also clear localStorage and sessionStorage
+    localStorage.clear();
+    sessionStorage.clear();
+    console.log('All databases and storage cleared');
+  } catch (error) {
+    console.error('Error clearing databases:', error);
+  }
 }
 
 function App() {
@@ -622,6 +684,14 @@ function App() {
   // Initialize cache
   useEffect(() => {
     initializeCache();
+  }, []);
+
+  // Make clearAllDatabases available globally for debugging
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).clearAllDatabases = clearAllDatabases;
+      (window as any).clearAllIndexedDB = _clearAllIndexedDB;
+    }
   }, []);
 
   useEffect(() => {

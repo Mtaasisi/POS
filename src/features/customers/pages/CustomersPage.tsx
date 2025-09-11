@@ -1343,6 +1343,9 @@ const CustomersPage = () => {
         </>
       )}
 
+      {/* Customer-specific content - only show when customers tab is active */}
+      {activeTab === 'customers' && (
+        <>
           {/* Daily Birthday Card - DISABLED */}
           {/* {todaysBirthdays.length > 0 && (
             <div className="relative overflow-hidden">
@@ -1350,10 +1353,8 @@ const CustomersPage = () => {
             </div>
           )} */}
 
-      
-
-      {/* Revenue Breakdown */}
-      {(stats.deviceRevenue > 0 || stats.posRevenue > 0) && (
+          {/* Revenue Breakdown */}
+          {(stats.deviceRevenue > 0 || stats.posRevenue > 0) && (
         <GlassCard className="bg-gradient-to-br from-blue-50 to-indigo-100">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Revenue Breakdown</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1869,6 +1870,7 @@ const CustomersPage = () => {
             );
           })}
         </div>
+        </>
         </>
       )}
 

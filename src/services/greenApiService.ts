@@ -206,7 +206,7 @@ class GreenApiService {
   private baseUrl = 'https://api.green-api.com';
   private proxyUrl = typeof window !== 'undefined' && window.location.hostname === 'localhost' 
     ? 'http://localhost:8889/green-api-proxy' 
-    : 'https://inauzwa.store/.netlify/functions/green-api-proxy';
+    : (import.meta.env.MODE === 'development' ? 'http://localhost:8889/green-api-proxy' : `${window.location.origin}/api/green-api-proxy`);
   
   // Configuration to disable proxy in development
   private useDirectApiOnly = typeof window !== 'undefined' && window.location.hostname === 'localhost';
@@ -1755,7 +1755,7 @@ class GreenApiService {
       // Test proxy connection
       try {
         console.log('🔄 Testing proxy connection...');
-        const proxyResponse = await fetch('https://inauzwa.store/api/green-api-proxy', {
+        const proxyResponse = await fetch(import.meta.env.MODE === 'development' ? 'http://localhost:8889/green-api-proxy' : `${window.location.origin}/api/green-api-proxy`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

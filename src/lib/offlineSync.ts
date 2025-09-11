@@ -1,6 +1,6 @@
 import { openDB } from 'idb';
 
-const DB_NAME = 'clean-app-db';
+const DB_NAME = 'clean-app-offline-sync';
 const STORE_NAME = 'pending-actions';
 
 export async function getDB() {
