@@ -1305,7 +1305,10 @@ const CustomersPage = () => {
                             <Edit size={16} />
                           </button>
                           <button
-                            onClick={() => {/* TODO: View details */}}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/customers/${customer.id}`);
+                            }}
                             className="p-1 text-gray-500 hover:text-green-600 transition-colors"
                             title="View Details"
                           >

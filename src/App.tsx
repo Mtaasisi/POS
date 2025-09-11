@@ -9,6 +9,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import { LoadingProvider, useLoading } from './context/LoadingContext';
 import { GeneralSettingsProvider } from './context/GeneralSettingsContext';
 import { PaymentMethodsProvider } from './context/PaymentMethodsContext';
+import { SimpleRepairPage } from './features/repair/pages/SimpleRepairPage';
 import { Toaster } from 'react-hot-toast';
 
 // import BackgroundSelector from './features/settings/components/BackgroundSelector';
@@ -475,6 +476,9 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
           <Route path="/devices/new" element={<Suspense fallback={<PageLoadingSpinner />}><NewDevicePage /></Suspense>} />
           <Route path="/devices/:id" element={<DeviceDetailPage />} />
 
+          {/* Repair Module Routes */}
+          <Route path="/repair" element={<Suspense fallback={<PageLoadingSpinner />}><SimpleRepairPage /></Suspense>} />
+
 
         <Route path="/category-management" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><CategoryManagementPage /></Suspense></RoleProtectedRoute>} />
                   <Route path="/supplier-management" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedSupplierManagementPage /></Suspense></RoleProtectedRoute>} />
@@ -714,15 +718,16 @@ function App() {
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ThemeProvider>
           <AuthProvider>
-            <DevicesProvider>
-              <CustomersProvider>
-                <UserGoalsProvider>
-                  <PaymentsProvider>
-                    <PaymentMethodsProvider>
-                      <LoadingProvider>
-                      <GeneralSettingsProvider>
-                          <SuppliersProvider>
-                            <WhatsAppProvider>
+            {/* <RepairProvider> */}
+              <DevicesProvider>
+                <CustomersProvider>
+                  <UserGoalsProvider>
+                    <PaymentsProvider>
+                      <PaymentMethodsProvider>
+                        <LoadingProvider>
+                        <GeneralSettingsProvider>
+                            <SuppliersProvider>
+                              <WhatsAppProvider>
                               <POSSettingsDatabaseSetup>
                                 <AppContent 
                                   isOnline={isOnline} 
@@ -740,6 +745,7 @@ function App() {
                 </UserGoalsProvider>
               </CustomersProvider>
             </DevicesProvider>
+            {/* </RepairProvider> */}
           </AuthProvider>
         </ThemeProvider>
       </BrowserRouter>

@@ -241,6 +241,13 @@ const AppLayout: React.FC = () => {
         roles: ['admin', 'customer-care'],
         count: Math.floor(Math.random() * 2) // Placeholder for active services
       },
+      {
+        path: '/repair',
+        label: 'Repair Service',
+        icon: <Wrench size={20} />,
+        roles: ['admin', 'customer-care', 'technician'],
+        count: Math.floor(Math.random() * 5) // Placeholder for active repairs
+      },
 
       // Inventory Management
       {

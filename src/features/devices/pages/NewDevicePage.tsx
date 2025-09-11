@@ -164,6 +164,10 @@ const DeviceIntakeUnifiedPage: React.FC = () => {
   const [showPartDetails, setShowPartDetails] = useState<any>(null);
   const [showDepositField, setShowDepositField] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<{ [key: string]: boolean }>({});
+  const [errorMessages, setErrorMessages] = useState<{ [key: string]: string }>({});
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const [isRetrying, setIsRetrying] = useState(false);
   const { addDevice } = useDevices();
   const { currentUser } = useAuth();
   const [technicians, setTechnicians] = useState<any[]>([]);
@@ -898,13 +902,29 @@ IMPORTANT INSTRUCTIONS:
 
   const validateForm = () => {
     const errors: { [key: string]: boolean } = {};
+    const messages: { [key: string]: string } = {};
     let valid = true;
-    if (!formData.brand.trim()) {
+
+    // Clear previous errors
+    setSubmitError(null);
+    setErrorMessages({});
+
+    // Brand validation - brand is included in model name
+    const hasBrand = formData.brand || (formData.model && formData.model.trim().length > 0);
+    if (!hasBrand) {
       errors.brand = true;
+      messages.brand = 'Brand is required (included in model name)';
       valid = false;
     }
+
+    // Model validation
     if (!formData.model.trim()) {
       errors.model = true;
+      messages.model = 'Model is required';
+      valid = false;
+    } else if (formData.model.trim().length < 2) {
+      errors.model = true;
+      messages.model = 'Model must be at least 2 characters';
       valid = false;
     }
     
@@ -912,25 +932,239 @@ IMPORTANT INSTRUCTIONS:
     const imeiValidation = validateImeiOrSerial(imeiOrSerial);
     if (!imeiValidation.isValid) {
       errors.imeiOrSerial = true;
+      messages.imeiOrSerial = imeiValidation.error || 'Please enter a valid IMEI or Serial Number';
       valid = false;
     }
     
-    if (!formData.issueDescription.trim() || !isIssueDescriptionValid) {
+    // Issue description validation
+    if (!formData.issueDescription.trim()) {
       errors.issueDescription = true;
+      messages.issueDescription = 'Issue description is required';
+      valid = false;
+    } else if (!isIssueDescriptionValid) {
+      errors.issueDescription = true;
+      messages.issueDescription = `Issue description must be at least ${minIssueWords} words (currently ${countWords(formData.issueDescription)} words)`;
       valid = false;
     }
+
+    // Technician assignment validation
     if (!formData.assignedTo) {
       errors.assignedTo = true;
+      messages.assignedTo = 'Please assign the device to a technician';
       valid = false;
     }
-    // Require at least one condition assessment
+
+    // Customer validation
+    if (!selectedCustomer) {
+      errors.customer = true;
+      messages.customer = 'Please select or create a customer';
+      valid = false;
+    }
+
+    // Expected return date validation
+    if (!formData.expectedReturnDate) {
+      errors.expectedReturnDate = true;
+      messages.expectedReturnDate = 'Expected return date is required';
+      valid = false;
+    } else {
+      const returnDate = new Date(formData.expectedReturnDate);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      if (returnDate < today) {
+        errors.expectedReturnDate = true;
+        messages.expectedReturnDate = 'Expected return date cannot be in the past';
+        valid = false;
+      }
+    }
+
+    // Condition assessment validation
     const anyCondition = Object.values(deviceCondition).some(v => v) || selectedConditions.length > 0 || !!otherConditionText.trim();
     if (!anyCondition) {
       errors.conditionAssessment = true;
+      messages.conditionAssessment = 'Please complete the device condition assessment';
       valid = false;
     }
+
+    // Repair cost validation (if provided)
+    if (formData.repairCost && formData.repairCost.trim()) {
+      const cost = parseFloat(formData.repairCost);
+      if (isNaN(cost) || cost < 0) {
+        errors.repairCost = true;
+        messages.repairCost = 'Repair cost must be a valid positive number';
+        valid = false;
+      }
+    }
+
+    // Deposit amount validation (if provided)
+    if (formData.depositAmount && formData.depositAmount.trim()) {
+      const deposit = parseFloat(formData.depositAmount);
+      if (isNaN(deposit) || deposit < 0) {
+        errors.depositAmount = true;
+        messages.depositAmount = 'Deposit amount must be a valid positive number';
+        valid = false;
+      }
+    }
+
     setFieldErrors(errors);
+    setErrorMessages(messages);
     return valid;
+  };
+
+  // Enhanced error handling for device creation
+  const handleDeviceCreationError = (error: any) => {
+    console.error('Device creation error:', error);
+    
+    let errorMessage = 'An unexpected error occurred while creating the device.';
+    
+    // Handle specific error types
+    if (error?.code === '23505') {
+      errorMessage = 'A device with this serial number already exists. Please check the IMEI/Serial Number.';
+    } else if (error?.code === '23503') {
+      errorMessage = 'Invalid customer or technician selected. Please refresh and try again.';
+    } else if (error?.code === '23514') {
+      errorMessage = 'Invalid data provided. Please check all fields and try again.';
+    } else if (error?.message?.includes('network') || error?.message?.includes('fetch')) {
+      errorMessage = 'Network error. Please check your connection and try again.';
+    } else if (error?.message?.includes('timeout')) {
+      errorMessage = 'Request timed out. Please try again.';
+    } else if (error?.message) {
+      errorMessage = error.message;
+    }
+    
+    setSubmitError(errorMessage);
+    toast.error(errorMessage);
+    
+    // Reset loading states
+    setIsSubmitting(false);
+    setIsLoading(false);
+  };
+
+  // Retry mechanism for failed submissions
+  const retryDeviceCreation = async () => {
+    if (retryCount >= 3) {
+      toast.error('Maximum retry attempts reached. Please refresh the page and try again.');
+      return;
+    }
+    
+    setIsRetrying(true);
+    setRetryCount(prev => prev + 1);
+    
+    try {
+      // Wait a bit before retrying
+      await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+      
+      // Retry the submission
+      await submitDeviceForm();
+    } catch (error) {
+      handleDeviceCreationError(error);
+    } finally {
+      setIsRetrying(false);
+    }
+  };
+
+  // Extract brand from model name
+  const extractBrandFromModel = (model: string): string => {
+    if (!model) return '';
+    
+    const modelLower = model.toLowerCase();
+    
+    // Check for common brand patterns
+    if (modelLower.includes('iphone') || modelLower.includes('ipad') || modelLower.includes('macbook')) {
+      return 'Apple';
+    } else if (modelLower.includes('samsung') || modelLower.includes('galaxy')) {
+      return 'Samsung';
+    } else if (modelLower.includes('google') || modelLower.includes('pixel')) {
+      return 'Google';
+    } else if (modelLower.includes('huawei')) {
+      return 'Huawei';
+    } else if (modelLower.includes('xiaomi') || modelLower.includes('redmi') || modelLower.includes('poco')) {
+      return 'Xiaomi';
+    } else if (modelLower.includes('oneplus')) {
+      return 'OnePlus';
+    } else if (modelLower.includes('sony') || modelLower.includes('xperia')) {
+      return 'Sony';
+    } else if (modelLower.includes('lg')) {
+      return 'LG';
+    } else if (modelLower.includes('motorola')) {
+      return 'Motorola';
+    } else if (modelLower.includes('nokia')) {
+      return 'Nokia';
+    } else if (modelLower.includes('microsoft') || modelLower.includes('surface')) {
+      return 'Microsoft';
+    } else if (modelLower.includes('hp')) {
+      return 'HP';
+    } else if (modelLower.includes('dell')) {
+      return 'Dell';
+    } else if (modelLower.includes('lenovo')) {
+      return 'Lenovo';
+    }
+    
+    // If no brand found, return the first word as brand
+    return model.split(' ')[0] || '';
+  };
+
+  // Main device submission function
+  const submitDeviceForm = async () => {
+    if (!validateForm()) {
+      toast.error('Please fix the form errors before submitting.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setIsLoading(true);
+    setSubmitError(null);
+
+    try {
+      const extractedBrand = formData.brand || extractBrandFromModel(formData.model);
+      
+      const newDevice = {
+        brand: extractedBrand,
+        model: formData.model,
+        serialNumber: imeiOrSerial,
+        unlockCode: formData.unlockCode,
+        customerId: selectedCustomer?.id,
+        customerName: selectedCustomer?.name || '',
+        phoneNumber: selectedCustomer?.phone || '',
+        expectedReturnDate: formData.expectedReturnDate,
+        status: 'assigned' as DeviceStatus,
+        issueDescription: formData.issueDescription,
+        conditions: selectedConditions,
+        otherText: otherConditionText,
+        depositAmount: showDepositField && !formData.diagnosisRequired ? formData.depositAmount : undefined,
+        repairCost: formData.repairCost,
+        assignedTo: formData.assignedTo,
+        createdBy: currentUser?.id,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      // Handle offline mode
+      if (!navigator.onLine) {
+        await saveActionOffline({ type: 'addDevice', payload: newDevice });
+        setOfflineSuccess(true);
+        setFormData(initialForm);
+        setIsSubmitting(false);
+        setIsLoading(false);
+        setTimeout(() => setOfflineSuccess(false), 3000);
+        toast.success('Device saved offline. Will sync when connection is restored.');
+        return;
+      }
+
+      // Online submission
+      const device = await addDevice(newDevice);
+      
+      if (device) {
+        toast.success('Device intake created successfully!');
+        setIsSubmitting(false);
+        setIsLoading(false);
+        navigate(`/device/${device.id}`);
+      } else {
+        throw new Error('Failed to create device intake. Please try again.');
+      }
+    } catch (error) {
+      handleDeviceCreationError(error);
+    }
   };
 
   // ... more handlers and helpers as needed ...
@@ -1006,9 +1240,12 @@ IMPORTANT INSTRUCTIONS:
 
   // Calculate form completion percentage
   const getFormCompletion = () => {
+    // Extract brand from model name if model is provided
+    const hasBrand = formData.brand || (formData.model && formData.model.trim().length > 0);
+    
     const requiredFields = [
       selectedCustomer ? 1 : 0,
-      formData.brand ? 1 : 0,
+      hasBrand ? 1 : 0,
       formData.model ? 1 : 0,
       imeiOrSerial ? 1 : 0,
       formData.assignedTo ? 1 : 0,
@@ -1036,7 +1273,10 @@ IMPORTANT INSTRUCTIONS:
               
               {!selectedCustomer ? (
                 <div className="space-y-4">
-                  <label className="block text-gray-700 mb-3 font-semibold">Search Customer</label>
+                  <label className={`block text-gray-700 mb-3 font-semibold ${fieldErrors.customer ? 'text-red-600' : ''}`}>
+                    Search Customer *
+                    {fieldErrors.customer && <span className="text-xs text-red-500 ml-2">(Required)</span>}
+                  </label>
                   <div className="flex items-center gap-3">
                     <div className="relative flex-1">
                       <input
@@ -1337,6 +1577,11 @@ IMPORTANT INSTRUCTIONS:
                       </svg>
                     </button>
                   </div>
+                  {fieldErrors.customer && (
+                    <div className="text-red-500 text-xs mt-2">
+                      {errorMessages.customer || 'Please select or create a customer'}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4">
@@ -1471,10 +1716,15 @@ IMPORTANT INSTRUCTIONS:
                       onChange={val => setFormData(prev => ({ ...prev, model: val }))}
                       placeholder="Enter model or model number"
                       required
-                      className={`w-full ${!formData.model ? 'ring-2 ring-yellow-200' : ''}`}
+                      className={`w-full ${fieldErrors.model ? 'ring-2 ring-red-200' : !formData.model ? 'ring-2 ring-yellow-200' : ''}`}
                       modelLogos={modelLogos}
 
                     />
+                    {fieldErrors.model && (
+                      <div className="text-red-500 text-xs mt-1">
+                        {errorMessages.model || 'Model is required'}
+                      </div>
+                    )}
                   </div>
                   {/* IMEI or Serial Number */}
                   <div>
@@ -1516,9 +1766,9 @@ IMPORTANT INSTRUCTIONS:
                       />
                       <Hash className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
                     </div>
-                    {fieldErrors.imeiOrSerial && imeiOrSerial && (
+                    {fieldErrors.imeiOrSerial && (
                       <div className="text-red-500 text-xs mt-1">
-                        {validateImeiOrSerial(imeiOrSerial).error || 'Please enter a valid IMEI or Serial Number'}
+                        {errorMessages.imeiOrSerial || 'Please enter a valid IMEI or Serial Number'}
                       </div>
                     )}
                     {fieldErrors.imeiOrSerial && imeiOrSerial && (
@@ -1569,12 +1819,17 @@ IMPORTANT INSTRUCTIONS:
                           name="expectedReturnDate"
                           value={formData.expectedReturnDate}
                           onChange={handleInputChange}
-                          className="w-full py-3 pl-12 pr-4 bg-white/30 backdrop-blur-md border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                          className={`w-full py-3 pl-12 pr-4 bg-white/30 backdrop-blur-md border-2 rounded-lg focus:outline-none ${fieldErrors.expectedReturnDate ? 'border-red-500 focus:border-red-600' : 'border-gray-300 focus:border-blue-500'}`}
                           required
                           autoComplete="off"
                           autoCorrect="off"
                           spellCheck={false}
                         />
+                      </div>
+                    )}
+                    {fieldErrors.expectedReturnDate && (
+                      <div className="text-red-500 text-xs mt-1">
+                        {errorMessages.expectedReturnDate || 'Please select a valid return date'}
                       </div>
                     )}
                   </div>
@@ -1605,7 +1860,7 @@ IMPORTANT INSTRUCTIONS:
                         name="repairCost"
                         value={formData.repairCost}
                         onChange={handleInputChange}
-                        className="w-full py-3 pl-12 pr-4 bg-white/30 backdrop-blur-md border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                        className={`w-full py-3 pl-12 pr-4 bg-white/30 backdrop-blur-md border-2 rounded-lg focus:outline-none ${fieldErrors.repairCost ? 'border-red-500 focus:border-red-600' : 'border-gray-300 focus:border-blue-500'}`}
                         placeholder="Enter estimated cost"
                         autoComplete="off"
                         autoCorrect="off"
@@ -1613,12 +1868,18 @@ IMPORTANT INSTRUCTIONS:
                       />
                       <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
                     </div>
+                    {fieldErrors.repairCost && (
+                      <div className="text-red-500 text-xs mt-1">
+                        {errorMessages.repairCost || 'Repair cost must be a valid positive number'}
+                      </div>
+                    )}
                   </div>
                   {/* Technician Assignment */}
                   <div>
                     <label className={`block mb-2 font-medium ${fieldErrors.assignedTo ? 'text-red-600' : 'text-gray-700'}`}>Assign Technician *</label>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                      {technicians.map(tech => {
+                    {technicians.length > 0 ? (
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        {technicians.map(tech => {
                         const initials = (tech.name || tech.email || '').split(' ').map((w: string) => w[0]).join('').slice(0,2).toUpperCase();
                         const selected = formData.assignedTo === tech.id;
                         return (
@@ -1647,8 +1908,19 @@ IMPORTANT INSTRUCTIONS:
                           </button>
                         );
                       })}
-                    </div>
-                    {fieldErrors.assignedTo && <div className="text-red-500 text-xs mt-1">Please select a technician</div>}
+                      </div>
+                    ) : (
+                      <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                        <div className="flex items-center gap-2 text-yellow-800">
+                          <AlertIcon size={20} />
+                          <div>
+                            <p className="font-medium">No technicians available</p>
+                            <p className="text-sm text-yellow-700">Please add technicians to the system first, or contact your administrator.</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {fieldErrors.assignedTo && <div className="text-red-500 text-xs mt-1">{errorMessages.assignedTo || 'Please select a technician'}</div>}
                   </div>
                   {/* Deposit Field Toggle */}
                   {/* Arrange toggles vertically as a list */}
@@ -1701,7 +1973,7 @@ IMPORTANT INSTRUCTIONS:
                           name="depositAmount"
                           value={formData.depositAmount}
                           onChange={handleInputChange}
-                          className="w-full py-3 pl-12 pr-4 bg-white/30 backdrop-blur-md border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                          className={`w-full py-3 pl-12 pr-4 bg-white/30 backdrop-blur-md border-2 rounded-lg focus:outline-none ${fieldErrors.depositAmount ? 'border-red-500 focus:border-red-600' : 'border-gray-300 focus:border-blue-500'}`}
                           placeholder="Enter deposit amount"
                           autoComplete="off"
                           autoCorrect="off"
@@ -1709,9 +1981,33 @@ IMPORTANT INSTRUCTIONS:
                         />
                         <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
                       </div>
+                      {fieldErrors.depositAmount && (
+                        <div className="text-red-500 text-xs mt-1">
+                          {errorMessages.depositAmount || 'Deposit amount must be a valid positive number'}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
+                
+                {/* Device Notes */}
+                <div className="md:col-span-2">
+                  <label className="block text-gray-700 mb-2 font-medium">Device Notes (Optional)</label>
+                  <div className="relative">
+                    <textarea
+                      name="deviceNotes"
+                      value={formData.deviceNotes}
+                      onChange={handleInputChange}
+                      className="w-full py-3 pl-4 pr-4 bg-white/30 backdrop-blur-md border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none resize-none"
+                      placeholder="Add any additional notes about the device..."
+                      rows={2}
+                      autoComplete="off"
+                      autoCorrect="off"
+                      spellCheck={false}
+                    />
+                  </div>
+                </div>
+                
                 {/* Issue Description */}
                 <div className="md:col-span-2">
                   <div className="flex items-center justify-between mb-2">
@@ -1747,8 +2043,10 @@ IMPORTANT INSTRUCTIONS:
                     spellCheck={false}
                   />
                   {/* Validation message */}
-                  {issueDescriptionTouched && !isIssueDescriptionValid && (
-                    <div className="text-red-600 text-xs mt-1">Please enter at least 5 words in the Issue Description.</div>
+                  {fieldErrors.issueDescription && (
+                    <div className="text-red-500 text-xs mt-1">
+                      {errorMessages.issueDescription || 'Please enter at least 5 words in the Issue Description.'}
+                    </div>
                   )}
                   
                   {/* AI Analysis Status */}
@@ -1825,9 +2123,70 @@ IMPORTANT INSTRUCTIONS:
                     )}
                   </div>
                   {fieldErrors.conditionAssessment && (
-                    <div className="text-red-500 text-xs mt-2">Please select at least one condition in the assessment.</div>
+                    <div className="text-red-500 text-xs mt-2">{errorMessages.conditionAssessment || 'Please select at least one condition in the assessment.'}</div>
                   )}
                 </div>
+
+                {/* Error Display */}
+                {submitError && (
+                  <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <div className="flex items-start gap-3">
+                      <AlertIcon className="text-red-500 mt-0.5 flex-shrink-0" size={20} />
+                      <div className="flex-1">
+                        <h4 className="text-red-800 font-medium mb-1">Submission Error</h4>
+                        <p className="text-red-700 text-sm mb-3">{submitError}</p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={retryDeviceCreation}
+                            disabled={isRetrying || retryCount >= 3}
+                            className="px-3 py-1.5 bg-red-600 text-white text-sm rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                          >
+                            {isRetrying ? (
+                              <>
+                                <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin"></div>
+                                Retrying...
+                              </>
+                            ) : (
+                              <>
+                                <RefreshCw size={14} />
+                                Retry ({retryCount}/3)
+                              </>
+                            )}
+                          </button>
+                          <button
+                            onClick={() => setSubmitError(null)}
+                            className="px-3 py-1.5 bg-gray-200 text-gray-700 text-sm rounded-md hover:bg-gray-300"
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Form Validation Errors Summary */}
+                {Object.keys(fieldErrors).length > 0 && (
+                  <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <div className="flex items-start gap-3">
+                      <AlertIcon className="text-yellow-600 mt-0.5 flex-shrink-0" size={20} />
+                      <div className="flex-1">
+                        <h4 className="text-yellow-800 font-medium mb-2">Please fix the following errors:</h4>
+                        <ul className="text-yellow-700 text-sm space-y-1">
+                          {Object.entries(fieldErrors).map(([field, hasError]) => 
+                            hasError && errorMessages[field] && (
+                              <li key={field} className="flex items-center gap-2">
+                                <span className="w-1 h-1 bg-yellow-600 rounded-full"></span>
+                                {errorMessages[field]}
+                              </li>
+                            )
+                          )}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Submit Button */}
                 <div className="flex justify-end gap-2 mt-6">
                   <button
@@ -1847,60 +2206,7 @@ IMPORTANT INSTRUCTIONS:
                         ? 'bg-blue-600 text-white hover:bg-blue-700'
                         : 'bg-gray-400 text-gray-600 cursor-not-allowed'
                     }`}
-                    onClick={async () => {
-                      if (validateForm()) {
-                        setIsSubmitting(true);
-                        setIsLoading(true);
-                        const newDevice = {
-                          brand: formData.brand,
-                          model: formData.model,
-                          serialNumber: imeiOrSerial,
-                          unlockCode: formData.unlockCode,
-                          customerId: selectedCustomer?.id,
-                          customerName: selectedCustomer?.name || '',
-                          phoneNumber: selectedCustomer?.phone || '',
-                          expectedReturnDate: formData.expectedReturnDate,
-                          status: 'assigned' as DeviceStatus,
-                          issueDescription: formData.issueDescription,
-                          conditions: selectedConditions,
-                          otherText: otherConditionText,
-                          depositAmount: showDepositField && !formData.diagnosisRequired ? formData.depositAmount : undefined,
-                          repairCost: formData.repairCost,
-                          assignedTo: formData.assignedTo,
-                          createdBy: currentUser?.id,
-                          createdAt: new Date().toISOString(),
-                          updatedAt: new Date().toISOString(),
-                        };
-                        if (!navigator.onLine) {
-                          await saveActionOffline({ type: 'addDevice', payload: newDevice });
-                          setOfflineSuccess(true);
-                          setFormData(initialForm);
-                          setIsSubmitting(false);
-                          setIsLoading(false);
-                          setTimeout(() => setOfflineSuccess(false), 3000);
-                          return;
-                        }
-                        addDevice(newDevice)
-                          .then(async (device) => {
-                            if (device) {
-                              toast.success('Device intake created successfully!');
-
-                              setIsSubmitting(false);
-                              setIsLoading(false);
-                              navigate(`/device/${device.id}`);
-                            } else {
-                              toast.error('Failed to create device intake.');
-                              setIsSubmitting(false);
-                              setIsLoading(false);
-                            }
-                          })
-                          .catch(error => {
-                            toast.error(`Error: ${error.message}`);
-                            setIsSubmitting(false);
-                            setIsLoading(false);
-                          });
-                      }
-                    }}
+                    onClick={submitDeviceForm}
                     disabled={isLoading || isSubmitting || completionPercentage < 100}
                   >
                     {isLoading || isSubmitting ? (

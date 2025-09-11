@@ -38,7 +38,7 @@ const DeviceDetailPage: React.FC = () => {
   // All hooks must be called unconditionally before any early returns
   const { getDeviceById, updateDeviceStatus, addRemark, addRating, devices, loading: devicesLoading } = useDevices();
   const { getCustomerById } = useCustomers();
-  const { payments } = usePayments();
+  const { payments, refreshPayments } = usePayments();
   const navigate = useNavigate();
   const { handleBackClick } = useNavigationHistory();
 
@@ -66,6 +66,7 @@ const DeviceDetailPage: React.FC = () => {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'transfer'>('cash');
+  const [paymentType, setPaymentType] = useState<'payment' | 'deposit' | 'refund'>('payment');
   const [recordingPayment, setRecordingPayment] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [showPaymentConfirmation, setShowPaymentConfirmation] = useState(false);
@@ -96,6 +97,10 @@ const DeviceDetailPage: React.FC = () => {
   const [allRatings, setAllRatings] = useState<any[]>([]);
   const [allAttachments, setAllAttachments] = useState<any[]>([]);
 
+  // User names and customer state
+  const [userNames, setUserNames] = useState<{ [id: string]: string }>({});
+  const [dbCustomer, setDbCustomer] = useState<any>(null);
+
   // Get device early to avoid temporal dead zone issues
   const device = id ? getDeviceById(id) : null;
 
@@ -121,18 +126,18 @@ const DeviceDetailPage: React.FC = () => {
     warrantyEnd: device?.warrantyEnd || '',
     warrantyStatus: device?.warrantyStatus || 'None',
     // Add missing fields from New Device Form
-    unlockCode: device?.unlockCode || '',
-    repairCost: device?.repairCost || '',
-    depositAmount: device?.depositAmount || '',
-    diagnosisRequired: device?.diagnosisRequired || false,
-    deviceNotes: device?.deviceNotes || '',
-    deviceCost: device?.deviceCost || '',
+    unlockCode: device?.unlockCode || device?.unlock_code || '',
+    repairCost: device?.repairCost || device?.repair_cost || '',
+    depositAmount: device?.depositAmount || device?.deposit_amount || '',
+    diagnosisRequired: device?.diagnosisRequired || device?.diagnosis_required || false,
+    deviceNotes: device?.deviceNotes || device?.device_notes || '',
+    deviceCost: device?.deviceCost || device?.device_cost || '',
     // Add fields for device condition assessment
-    deviceCondition: device?.deviceCondition || {},
-    deviceImages: device?.deviceImages || [],
-    accessoriesConfirmed: device?.accessoriesConfirmed || false,
-    problemConfirmed: device?.problemConfirmed || false,
-    privacyConfirmed: device?.privacyConfirmed || false,
+    deviceCondition: device?.deviceCondition || device?.device_condition || {},
+    deviceImages: device?.deviceImages || device?.device_images || [],
+    accessoriesConfirmed: device?.accessoriesConfirmed || device?.accessories_confirmed || false,
+    problemConfirmed: device?.problemConfirmed || device?.problem_confirmed || false,
+    privacyConfirmed: device?.privacyConfirmed || device?.privacy_confirmed || false,
   }), [device]);
 
   // All useEffects must be called before any early returns
@@ -165,8 +170,16 @@ const DeviceDetailPage: React.FC = () => {
     d => d.serialNumber === safeDevice.serialNumber && d.id !== safeDevice.id
   ), [devices, safeDevice.serialNumber, safeDevice.id]);
 
-  // Payments for this device
-  const totalPaid = useMemo(() => payments.filter((p: any) => p.status === 'completed').reduce((sum: number, p: any) => sum + (p.amount || 0), 0), [payments]);
+  // Payments for this device - filter by device_id
+  const devicePayments = useMemo(() => 
+    payments.filter((p: any) => p.device_id === safeDevice.id), 
+    [payments, safeDevice.id]
+  );
+  
+  const totalPaid = useMemo(() => 
+    devicePayments.filter((p: any) => p.status === 'completed').reduce((sum: number, p: any) => sum + (p.amount || 0), 0), 
+    [devicePayments]
+  );
   
   // Try to get invoice total from attachments (if any invoice has an amount in file_name, e.g., 'invoice-1234-amount-500.pdf')
   const invoiceAttachments = useMemo(() => attachments.filter(att => att.type === 'invoice'), [attachments]);
@@ -207,45 +220,80 @@ const DeviceDetailPage: React.FC = () => {
   // All useCallback hooks must be called before any early returns
   const fetchAllDeviceActivity = useCallback(async () => {
     if (!safeDevice.id) return;
-    // Payments
-    const { data: paymentsData } = await supabase
-      .from('customer_payments')
-      .select(`
-        *,
-        customers(name)
-      `)
-      .eq('device_id', safeDevice.id);
     
-    // Transform payments to include customer names
-    const transformedPayments = (paymentsData || []).map((payment: any) => ({
-      ...payment,
-      customer_name: payment.customers?.name || undefined
-    }));
-    setAllPayments(transformedPayments);
-    // Transitions
-    const { data: transitionsData } = await supabase
-      .from('device_transitions')
-      .select('*')
-      .eq('device_id', safeDevice.id);
-    setAllTransitions(transitionsData || []);
-    // Remarks
-    const { data: remarksData } = await supabase
-      .from('device_remarks')
-      .select('*')
-      .eq('device_id', safeDevice.id);
-    setAllRemarks(remarksData || []);
-    // Ratings
-    const { data: ratingsData } = await supabase
-      .from('device_ratings')
-      .select('*')
-      .eq('device_id', safeDevice.id);
-    setAllRatings(ratingsData || []);
-    // Attachments
-    const { data: attachmentsData } = await supabase
-      .from('device_attachments')
-      .select('*')
-      .eq('device_id', safeDevice.id);
-    setAllAttachments(attachmentsData || []);
+    try {
+      // Payments
+      const { data: paymentsData, error: paymentsError } = await supabase
+        .from('customer_payments')
+        .select(`
+          *,
+          customers(name)
+        `)
+        .eq('device_id', safeDevice.id);
+      
+      if (paymentsError) {
+        console.error('Error fetching payments:', paymentsError);
+      }
+      
+      // Transform payments to include customer names
+      const transformedPayments = (paymentsData || []).map((payment: any) => ({
+        ...payment,
+        customer_name: payment.customers?.name || undefined
+      }));
+      setAllPayments(transformedPayments);
+      
+      // Transitions
+      const { data: transitionsData, error: transitionsError } = await supabase
+        .from('device_transitions')
+        .select('*')
+        .eq('device_id', safeDevice.id);
+      
+      if (transitionsError) {
+        console.error('Error fetching transitions:', transitionsError);
+      }
+      setAllTransitions(transitionsData || []);
+      
+      // Remarks
+      const { data: remarksData, error: remarksError } = await supabase
+        .from('device_remarks')
+        .select('*')
+        .eq('device_id', safeDevice.id);
+      
+      if (remarksError) {
+        console.error('Error fetching remarks:', remarksError);
+      }
+      setAllRemarks(remarksData || []);
+      
+      // Ratings
+      const { data: ratingsData, error: ratingsError } = await supabase
+        .from('device_ratings')
+        .select('*')
+        .eq('device_id', safeDevice.id);
+      
+      if (ratingsError) {
+        console.error('Error fetching ratings:', ratingsError);
+      }
+      setAllRatings(ratingsData || []);
+      
+      // Attachments
+      const { data: attachmentsData, error: attachmentsError } = await supabase
+        .from('device_attachments')
+        .select('*')
+        .eq('device_id', safeDevice.id);
+      
+      if (attachmentsError) {
+        console.error('Error fetching attachments:', attachmentsError);
+      }
+      setAllAttachments(attachmentsData || []);
+    } catch (error) {
+      console.error('Error fetching device activity:', error);
+      // Set empty arrays on error to prevent undefined issues
+      setAllPayments([]);
+      setAllTransitions([]);
+      setAllRemarks([]);
+      setAllRatings([]);
+      setAllAttachments([]);
+    }
   }, [safeDevice.id]);
 
   // Fetch device checklist and additional device info - commented out device_checklists until table is created
@@ -473,12 +521,22 @@ const DeviceDetailPage: React.FC = () => {
   useEffect(() => {
     async function fetchCustomer() {
       if (!safeDevice.customerId) return;
-      const { data, error } = await supabase
-        .from('customers')
-        .select('*')
-        .eq('id', safeDevice.customerId)
-        .single();
-      if (!error && data) setDbCustomer(data);
+      try {
+        const { data, error } = await supabase
+          .from('customers')
+          .select('*')
+          .eq('id', safeDevice.customerId)
+          .single();
+        if (error) {
+          console.error('Error fetching customer:', error);
+          setDbCustomer(null);
+        } else if (data) {
+          setDbCustomer(data);
+        }
+      } catch (err) {
+        console.error('Error fetching customer:', err);
+        setDbCustomer(null);
+      }
     }
     fetchCustomer();
   }, [safeDevice.customerId]);
@@ -500,19 +558,38 @@ const DeviceDetailPage: React.FC = () => {
     );
   }
 
+  // Check if device data is still loading
+  if (loading) {
+    return (
+      <div className="p-8 text-center">
+        <Loader2 className="animate-spin h-8 w-8 mx-auto mb-4 text-blue-600" />
+        <p className="text-gray-600">Loading device details...</p>
+      </div>
+    );
+  }
+
   // Check if device is not found
   if (!device && !devicesLoading) {
     return (
       <div className="p-8 text-center">
         <div className="text-red-500 font-bold text-lg mb-4">Device Not Found</div>
         <p className="text-gray-600 mb-4">The device with ID "{id}" could not be found.</p>
-        <GlassButton
-          variant="secondary"
-          onClick={() => navigate('/devices')}
-          icon={<ArrowLeft size={16} />}
-        >
-          Back to Devices
-        </GlassButton>
+        <div className="space-y-2">
+          <GlassButton
+            variant="secondary"
+            onClick={() => navigate('/devices')}
+            icon={<ArrowLeft size={16} />}
+          >
+            Back to Devices
+          </GlassButton>
+          <GlassButton
+            variant="primary"
+            onClick={() => window.location.reload()}
+            icon={<RefreshCw size={16} />}
+          >
+            Retry Loading
+          </GlassButton>
+        </div>
       </div>
     );
   }
@@ -819,7 +896,7 @@ const DeviceDetailPage: React.FC = () => {
         method: paymentMethod,
         device_id: safeDevice.id,
         payment_date: new Date().toISOString(),
-        payment_type: 'payment',
+        payment_type: paymentType,
         status: 'completed',
         created_by: currentUser.id,
         created_at: new Date().toISOString(),
@@ -833,7 +910,8 @@ const DeviceDetailPage: React.FC = () => {
       setPaymentMethod('cash');
       setLastPayment(payment);
       setShowPaymentConfirmation(true);
-      // The payments context will handle updating the list
+      // Refresh payments to show the new payment
+      await refreshPayments();
       toast.success('Payment recorded!');
     } catch (err: any) {
       setPaymentError(err.message || 'Failed to record payment');
@@ -986,7 +1064,6 @@ const DeviceDetailPage: React.FC = () => {
     return events;
   }
 
-  const [userNames, setUserNames] = useState<{ [id: string]: string }>({});
 
 
 
@@ -999,8 +1076,7 @@ const DeviceDetailPage: React.FC = () => {
     return userId.slice(0, 8) + '...';
   };
 
-  // Fetch customer info directly from Supabase
-  const [dbCustomer, setDbCustomer] = useState<any>(null);
+
   return (
     <>
       {/* Main Tablet-Optimized Layout */}
@@ -1178,14 +1254,14 @@ const DeviceDetailPage: React.FC = () => {
               <GlassCard className="bg-gradient-to-br from-green-500/10 to-green-400/5">
                 <h3 className="text-xl md:text-2xl font-bold text-green-900 mb-6">Payments</h3>
                 
-                {payments.length === 0 ? (
+                {devicePayments.length === 0 ? (
                   <div className="text-center py-8 md:py-12">
                     <CreditCard className="w-16 h-16 md:w-20 md:h-20 text-gray-400 mx-auto mb-4" />
                     <div className="text-gray-700 text-base md:text-lg">No payments recorded for this device.</div>
                   </div>
                 ) : (
                   <div className="space-y-4 mb-6">
-                    {payments.map((p: any) => (
+                    {devicePayments.map((p: any) => (
                       <div key={p.id} className="bg-white rounded-xl border border-green-200 p-4 md:p-6">
                         <div className="flex items-center justify-between mb-4">
                           <div className="flex items-center gap-3">
@@ -1215,7 +1291,7 @@ const DeviceDetailPage: React.FC = () => {
                         <div className="mt-3 text-sm md:text-base text-gray-500">
                           {p.payment_date ? formatRelativeTime(p.payment_date) : ''}
                           {p.created_by && (
-                            <span className="ml-2 text-blue-700">by {p.created_by}</span>
+                            <span className="ml-2 text-blue-700">by {getUserName(p.created_by)}</span>
                           )}
                         </div>
                       </div>
@@ -1282,7 +1358,11 @@ const DeviceDetailPage: React.FC = () => {
             {currentUser.role === 'admin' && (
               <GlassCard className="bg-gradient-to-br from-purple-500/10 to-purple-400/5">
                 <h3 className="text-xl md:text-2xl font-bold text-purple-900 mb-6">Assign Technician</h3>
-                <AssignTechnicianForm device={safeDevice} />
+                <AssignTechnicianForm 
+                  deviceId={safeDevice.id}
+                  currentTechId={safeDevice.assignedTo}
+                  currentUser={currentUser}
+                />
               </GlassCard>
             )}
           </div>
@@ -1610,6 +1690,7 @@ const DeviceDetailPage: React.FC = () => {
           setShowPaymentModal(false);
           setPaymentAmount('');
           setPaymentMethod('cash');
+          setPaymentType('payment');
           setPaymentError(null);
         }} 
         title="Record Payment" 
@@ -1622,7 +1703,7 @@ const DeviceDetailPage: React.FC = () => {
           }}
           className="space-y-6"
         >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div>
               <label className="block text-gray-700 mb-3 font-semibold text-base md:text-lg">Amount</label>
               <input
@@ -1648,6 +1729,18 @@ const DeviceDetailPage: React.FC = () => {
                 <option value="transfer">Transfer</option>
               </select>
             </div>
+            <div>
+              <label className="block text-gray-700 mb-3 font-semibold text-base md:text-lg">Payment Type</label>
+              <select
+                value={paymentType}
+                onChange={e => setPaymentType(e.target.value as 'payment' | 'deposit' | 'refund')}
+                className="w-full py-4 px-6 bg-white/30 backdrop-blur-md border border-white/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-base md:text-lg"
+              >
+                <option value="payment">Payment</option>
+                <option value="deposit">Deposit</option>
+                <option value="refund">Refund</option>
+              </select>
+            </div>
           </div>
 
           <div className="bg-gray-50 rounded-lg p-4 md:p-6">
@@ -1662,8 +1755,16 @@ const DeviceDetailPage: React.FC = () => {
                 <span className="font-medium">{safeDevice.brand} {safeDevice.model}</span>
               </div>
               <div className="flex justify-between">
+                <span className="text-gray-600">Type:</span>
+                <span className="font-medium capitalize">{paymentType}</span>
+              </div>
+              <div className="flex justify-between">
                 <span className="text-gray-600">Amount:</span>
                 <span className="font-bold text-lg">{paymentAmount ? formatCurrency(Number(paymentAmount)) : '0.00'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Method:</span>
+                <span className="font-medium capitalize">{paymentMethod}</span>
               </div>
             </div>
           </div>
@@ -1682,6 +1783,7 @@ const DeviceDetailPage: React.FC = () => {
                 setShowPaymentModal(false);
                 setPaymentAmount('');
                 setPaymentMethod('cash');
+                setPaymentType('payment');
                 setPaymentError(null);
               }}
               className="h-12 md:h-14 px-6 md:px-8 text-base md:text-lg"
