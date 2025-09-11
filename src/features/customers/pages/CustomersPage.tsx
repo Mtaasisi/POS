@@ -1535,6 +1535,8 @@ const CustomersPage = () => {
           </div>
         </GlassCard>
       )}
+        </>
+      )}
 
       {/* Customers Display */}
       {viewMode === 'list' ? (
@@ -1720,7 +1722,7 @@ const CustomersPage = () => {
         </GlassCard>
       ) : (
         /* Grid View */
-        <>
+        <div>
           {pageLoading && (
             <div className="flex items-center justify-center py-8">
               <div className="flex items-center gap-2 text-blue-600">
@@ -1870,8 +1872,7 @@ const CustomersPage = () => {
             );
           })}
         </div>
-        </>
-        </>
+        </div>
       )}
 
       {/* Pagination Controls */}

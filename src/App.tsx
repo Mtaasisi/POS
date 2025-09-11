@@ -37,8 +37,6 @@ const SMSControlCenterPage = lazy(() => import('./features/reports/pages/SMSCont
 const EnhancedPaymentManagementPage = lazy(() => import('./features/payments/pages/EnhancedPaymentManagementPage'));
 const PaymentReconciliationPage = lazy(() => import('./features/payments/pages/PaymentReconciliationPage'));
 const PaymentProviderManagementPage = lazy(() => import('./features/payments/pages/PaymentProviderManagementPage'));
-const PaymentSecurityCompliancePage = lazy(() => import('./features/payments/pages/PaymentSecurityCompliancePage'));
-const PaymentAutomationPage = lazy(() => import('./features/payments/pages/PaymentAutomationPage'));
 
 import AuditLogsPage from './features/admin/pages/AuditLogsPage';
 const FinanceManagementPage = lazy(() => import('./features/finance/pages/FinanceManagementPage'));
@@ -512,8 +510,6 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
           <Route path="/finance/payments" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><EnhancedPaymentManagementPage /></Suspense></RoleProtectedRoute>} />
           <Route path="/finance/payments/reconciliation" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><PaymentReconciliationPage /></Suspense></RoleProtectedRoute>} />
           <Route path="/finance/payments/providers" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><PaymentProviderManagementPage /></Suspense></RoleProtectedRoute>} />
-          <Route path="/finance/payments/security" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><PaymentSecurityCompliancePage /></Suspense></RoleProtectedRoute>} />
-          <Route path="/finance/payments/automation" element={<RoleProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoadingSpinner />}><PaymentAutomationPage /></Suspense></RoleProtectedRoute>} />
           
           {/* Appointment Management Routes */}
           <Route path="/appointments" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><UnifiedAppointmentPage /></Suspense></RoleProtectedRoute>} />
