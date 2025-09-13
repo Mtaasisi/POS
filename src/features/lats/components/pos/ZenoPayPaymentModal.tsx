@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { X, CreditCard, Smartphone, CheckCircle, AlertCircle, Loader2, Phone } from 'lucide-react';
+import { X, CreditCard, Smartphone, CheckCircle, AlertCircle, Loader2, Phone, Edit3 } from 'lucide-react';
 import GlassCard from '../../../shared/components/ui/GlassCard';
 import GlassButton from '../../../shared/components/ui/GlassButton';
 import GlassBadge from '../../../shared/components/ui/GlassBadge';
+import GlassInput from '../../../shared/components/ui/GlassInput';
 import { CartItem, Sale } from '../../types/pos';
 import { ZENOPAY_CONFIG, UssdPopupService, USSD_CONFIG } from '../../config/zenopay';
 import { useAuth } from '../../../../context/AuthContext';
+import { validateMobileMoneyReference, getReferencePlaceholder, getReferenceHelpText } from '../../../../utils/mobileMoneyValidation';
 
 interface ZenoPayPaymentModalProps {
   isOpen: boolean;
@@ -49,6 +51,8 @@ const ZenoPayPaymentModal: React.FC<ZenoPayPaymentModalProps> = ({
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [ussdStatus, setUssdStatus] = useState<string>('idle');
   const [ussdPollingInterval, setUssdPollingInterval] = useState<NodeJS.Timeout | null>(null);
+  const [showManualEntry, setShowManualEntry] = useState(false);
+  const [manualReference, setManualReference] = useState('');
 
   // Auth context
   const { currentUser } = useAuth();
@@ -275,6 +279,33 @@ const ZenoPayPaymentModal: React.FC<ZenoPayPaymentModalProps> = ({
     }
   };
 
+  // Handle manual reference entry
+  const handleManualReferenceSubmit = async () => {
+    if (!manualReference.trim()) {
+      setError('Please enter a reference number');
+      return;
+    }
+
+    const validation = validateMobileMoneyReference(manualReference, 'ZenoPay');
+    if (!validation.isValid) {
+      setError(validation.error);
+      return;
+    }
+
+    // Create a mock order with the manual reference
+    const mockOrder: ZenoPayOrder = {
+      order_id: `MANUAL_${Date.now()}`,
+      buyer_email: customer!.email || `${customer!.phone}@mobile.money`,
+      buyer_name: customer!.name,
+      buyer_phone: customer!.phone,
+      amount: total,
+      payment_status: 'COMPLETED',
+      reference: manualReference.trim()
+    };
+
+    await completeSale(mockOrder);
+  };
+
   // Complete the sale
   const completeSale = async (order: ZenoPayOrder) => {
     try {
@@ -336,6 +367,8 @@ const ZenoPayPaymentModal: React.FC<ZenoPayPaymentModalProps> = ({
       setIsCheckingStatus(false);
       setIsTriggeringUssd(false);
       setUssdStatus('idle');
+      setShowManualEntry(false);
+      setManualReference('');
       
       // Clear polling interval
       if (ussdPollingInterval) {
@@ -532,6 +565,46 @@ const ZenoPayPaymentModal: React.FC<ZenoPayPaymentModalProps> = ({
                 </>
               )}
             </GlassButton>
+          )}
+
+          {/* Manual Reference Entry */}
+          {!currentOrder && (
+            <GlassButton
+              onClick={() => setShowManualEntry(!showManualEntry)}
+              variant="outline"
+              className="w-full"
+            >
+              <Edit3 className="w-4 h-4 mr-2" />
+              {showManualEntry ? 'Hide Manual Entry' : 'Enter Reference Manually'}
+            </GlassButton>
+          )}
+
+          {showManualEntry && (
+            <div className="space-y-3 p-3 bg-gray-50 rounded-lg">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Reference Number *
+                </label>
+                <GlassInput
+                  value={manualReference}
+                  onChange={(value) => setManualReference(value)}
+                  placeholder={getReferencePlaceholder('ZenoPay')}
+                  maxLength={50}
+                />
+                <div className="text-xs text-gray-500 mt-1">
+                  {getReferenceHelpText('ZenoPay')}
+                </div>
+              </div>
+              <GlassButton
+                onClick={handleManualReferenceSubmit}
+                disabled={!manualReference.trim()}
+                className="w-full"
+                size="sm"
+              >
+                <CheckCircle className="w-4 h-4 mr-2" />
+                Complete Payment
+              </GlassButton>
+            </div>
           )}
 
           <GlassButton

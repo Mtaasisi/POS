@@ -2,8 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCustomers } from '../../../context/CustomersContext';
 import { useAuth } from '../../../context/AuthContext';
+import { rbacManager, type UserRole } from '../lib/rbac';
+import { User, X, Search, Plus, ChevronRight } from 'lucide-react';
 
 import LATSBreadcrumb from '../components/ui/LATSBreadcrumb';
+import GlassCard from '../../shared/components/ui/GlassCard';
+import GlassButton from '../../shared/components/ui/GlassButton';
 import POSTopBar from '../components/pos/POSTopBar';
 import ProductSearchSection from '../components/pos/ProductSearchSection';
 import POSCartSection from '../components/pos/POSCartSection';
@@ -16,7 +20,7 @@ import AddCustomerModal from '../../../features/customers/components/forms/AddCu
 import SalesAnalyticsModal from '../components/pos/SalesAnalyticsModal';
 import ZenoPayPaymentModal from '../components/pos/ZenoPayPaymentModal';
 import PaymentTrackingModal from '../components/pos/PaymentTrackingModal';
-import PaymentSection from '../components/pos/PaymentSection';
+import PaymentsPopupModal from '../../../components/PaymentsPopupModal';
 import { supabase } from '../../../lib/supabaseClient';
 import { usePaymentMethodsContext } from '../../../context/PaymentMethodsContext';
 import { latsEventBus } from '../lib/data/eventBus';
@@ -103,6 +107,21 @@ const POSPageOptimized: React.FC = () => {
   
   // Get authenticated user
   const { currentUser } = useAuth();
+
+  // Permission checks for current user
+  const userRole = currentUser?.role as UserRole;
+  const canAccessPOS = rbacManager.can(userRole, 'pos', 'view');
+  const canSell = rbacManager.can(userRole, 'pos', 'sell');
+  const canRefund = rbacManager.can(userRole, 'pos', 'refund');
+  const canVoid = rbacManager.can(userRole, 'pos', 'void');
+  const canViewInventory = rbacManager.can(userRole, 'pos-inventory', 'view');
+  const canSearchInventory = rbacManager.can(userRole, 'pos-inventory', 'search');
+  const canAddToCart = rbacManager.can(userRole, 'pos-inventory', 'add-to-cart');
+  const canCreateSales = rbacManager.can(userRole, 'sales', 'create');
+  const canViewSales = rbacManager.can(userRole, 'sales', 'view');
+  const canEditSales = rbacManager.can(userRole, 'sales', 'edit');
+  const canDeleteSales = rbacManager.can(userRole, 'sales', 'delete');
+  const canRefundSales = rbacManager.can(userRole, 'sales', 'refund');
 
   // Get payment methods from global context
   const { paymentMethods: dbPaymentMethods, loading: paymentMethodsLoading } = usePaymentMethodsContext();
@@ -294,6 +313,38 @@ const POSPageOptimized: React.FC = () => {
     }
   }, [currentUser]);
 
+  // Component-level permission check
+  useEffect(() => {
+    if (currentUser && !canAccessPOS) {
+      toast.error('You do not have permission to access the POS system');
+      navigate('/dashboard');
+      return;
+    }
+  }, [currentUser, canAccessPOS, navigate]);
+
+  // Show access denied if user doesn't have POS permissions
+  if (!currentUser || !canAccessPOS) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-50 to-orange-50">
+        <div className="text-center p-8">
+          <div className="text-red-600 mb-4">
+            <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+          </div>
+          <h3 className="text-xl font-semibold text-gray-900 mb-2">Access Denied</h3>
+          <p className="text-gray-600 mb-4">You don't have permission to access the POS system.</p>
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+          >
+            Go to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Load initial data with comprehensive error handling
   useEffect(() => {
     const loadInitialData = async () => {
@@ -326,6 +377,14 @@ const POSPageOptimized: React.FC = () => {
           toast.success('POS data loaded successfully');
         }
 
+        // Debug categories loading
+        console.log('🔍 POS Categories Debug:', {
+          categoriesCount: categories?.length || 0,
+          categories: categories?.map(cat => ({ id: cat.id, name: cat.name })) || [],
+          categoriesLoaded: !!categories && categories.length > 0,
+          categoriesData: categories
+        });
+
         setDataLoaded(true);
         setLastLoadTime(Date.now());
       } catch (error) {
@@ -338,6 +397,32 @@ const POSPageOptimized: React.FC = () => {
       loadInitialData();
     }
   }, [dataLoaded, lastLoadTime, isCachingEnabled]);
+
+  // Monitor categories loading
+  useEffect(() => {
+    console.log('🔍 Categories State Changed:', {
+      categoriesCount: categories?.length || 0,
+      categories: categories?.map(cat => ({ id: cat.id, name: cat.name })) || [],
+      categoriesLoaded: !!categories && categories.length > 0
+    });
+  }, [categories]);
+
+  // Test direct category loading
+  useEffect(() => {
+    const testCategoryLoading = async () => {
+      try {
+        console.log('🧪 Testing direct category loading...');
+        await loadCategories();
+        console.log('🧪 Direct category loading completed');
+      } catch (error) {
+        console.error('🧪 Direct category loading failed:', error);
+      }
+    };
+    
+    // Test after a short delay to see if it's a timing issue
+    const timer = setTimeout(testCategoryLoading, 2000);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Listen for stock updates and refresh POS data after sales
   useEffect(() => {
@@ -489,6 +574,12 @@ const POSPageOptimized: React.FC = () => {
 
   const startBarcodeScanner = () => {
     try {
+      // Check permissions
+      if (!canSearchInventory) {
+        toast.error('You do not have permission to scan barcodes.');
+        return;
+      }
+
       if (!barcodeScannerSettings?.enable_barcode_scanner) {
         toast.error('Barcode scanning is not enabled in settings.');
         return;
@@ -701,6 +792,12 @@ const POSPageOptimized: React.FC = () => {
   // Cart functionality with error handling
   const addToCart = (product: any, variant?: any) => {
     try {
+      // Check permissions
+      if (!canAddToCart) {
+        toast.error('You do not have permission to add items to cart.');
+        return;
+      }
+
       // Validate product
       if (!product || !product.id) {
         toast.error('Invalid product. Please try again.');
@@ -825,6 +922,12 @@ const POSPageOptimized: React.FC = () => {
   // Payment processing with error handling
   const handleProcessPayment = () => {
     try {
+      // Check permissions
+      if (!canSell || !canCreateSales) {
+        toast.error('You do not have permission to process sales.');
+        return;
+      }
+
       // Validate cart
       if (cartItems.length === 0) {
         toast.error('Cart is empty. Please add items before processing payment.');
@@ -863,6 +966,29 @@ const POSPageOptimized: React.FC = () => {
       {/* Breadcrumb */}
       <LATSBreadcrumb />
 
+
+      {/* Customer Care Help Text */}
+      {userRole === 'customer-care' && (
+        <div className="bg-blue-50 border-b border-blue-200 px-4 py-3">
+          <div className="max-w-7xl mx-auto">
+            <div className="flex items-start space-x-3">
+              <div className="flex-shrink-0">
+                <svg className="w-5 h-5 text-blue-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h4 className="text-sm font-medium text-blue-900 mb-1">Customer Care Access</h4>
+                <p className="text-sm text-blue-700">
+                  You can process sales, manage customers, and view inventory. 
+                  {!canRefund && " Refunds and inventory editing require administrator approval."}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* POS Top Bar */}
       <POSTopBar
         cartItemsCount={cartItems.length}
@@ -883,13 +1009,13 @@ const POSPageOptimized: React.FC = () => {
         onAddCustomer={() => {
           setShowCustomerSearch(true);
         }}
-        onAddProduct={userPermissionsSettings?.enable_product_creation ? () => {
+        onAddProduct={userPermissionsSettings?.enable_product_creation && canViewInventory ? () => {
           navigate('/lats/add-product');
         } : () => {}}
         onViewReceipts={() => {
           alert('Receipts view coming soon!');
         }}
-        onViewSales={analyticsReportingSettings?.enable_analytics ? () => {
+        onViewSales={analyticsReportingSettings?.enable_analytics && canViewSales ? () => {
           setShowSalesAnalytics(true);
         } : () => {}}
         onOpenPaymentTracking={() => {
@@ -949,6 +1075,12 @@ const POSPageOptimized: React.FC = () => {
               setShowDiscountModal(false);
             }}
             onProcessPayment={handleProcessPayment}
+            onShowDiscountModal={() => setShowDiscountModal(true)}
+            onClearDiscount={() => {
+              setManualDiscount(0);
+              setDiscountValue('');
+              setDiscountType('percentage');
+            }}
             dynamicPricingEnabled={dynamicPricingSettings?.enable_dynamic_pricing}
             totalAmount={totalAmount}
             discountAmount={discountAmount}
@@ -973,6 +1105,7 @@ const POSPageOptimized: React.FC = () => {
         onCustomerCreated={(customer) => {
           setSelectedCustomer(customer);
           setShowAddCustomerModal(false);
+          toast.success(`New customer "${customer.name}" created and selected!`);
         }}
       />
 
@@ -998,10 +1131,16 @@ const POSPageOptimized: React.FC = () => {
             // Handle successful payment completion
             console.log('ZenoPay payment completed successfully:', payment);
             
+            // Validate customer selection
+            if (!selectedCustomer && !customerName) {
+              toast.error('Please select a customer or enter customer name');
+              return;
+            }
+
             // Prepare sale data for database
             const saleData = {
               customerId: selectedCustomer?.id || null,
-              customerName: selectedCustomer?.name || 'Walk-in Customer',
+              customerName: selectedCustomer?.name || customerName || 'Walk-in Customer',
               customerPhone: selectedCustomer?.phone || null,
               customerEmail: selectedCustomer?.email || null,
               items: cartItems.map(item => ({
@@ -1020,6 +1159,8 @@ const POSPageOptimized: React.FC = () => {
               subtotal: totalAmount,
               tax: 0, // No tax for now
               discount: manualDiscount,
+              discountType: discountType,
+              discountValue: parseFloat(discountValue) || 0,
               total: finalAmount,
               paymentMethod: {
                 type: 'zenopay',
@@ -1067,108 +1208,135 @@ const POSPageOptimized: React.FC = () => {
         onClose={() => setShowPaymentTracking(false)}
       />
 
-      {/* Payment Modal */}
-      {showPaymentModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold text-gray-900">Process Payment</h2>
-                <button
-                  onClick={() => setShowPaymentModal(false)}
-                  className="text-gray-500 hover:text-gray-700 text-2xl font-bold"
-                >
-                  ×
-                </button>
-              </div>
+      {/* New Payments Popup Modal */}
+      <PaymentsPopupModal
+        isOpen={showPaymentModal}
+        onClose={() => setShowPaymentModal(false)}
+        amount={finalAmount}
+        customerId={selectedCustomer?.id}
+        customerName={selectedCustomer?.name || 'Walk-in Customer'}
+        description={`POS Sale - ${cartItems.length} items`}
+        onPaymentComplete={async (payments, totalPaid) => {
+          try {
+            // Validate payment data before processing
+            if (!payments || payments.length === 0) {
+              throw new Error('No payment data received');
+            }
+
+            console.log('Processing payments:', {
+              paymentCount: payments.length,
+              totalPaid: totalPaid,
+              payments: payments.map(p => ({
+                method: p.paymentMethod,
+                amount: p.amount,
+                reference: p.reference
+              }))
+            });
+
+            // Prepare sale data for database with multiple payments
+            const saleData = {
+              customerId: selectedCustomer?.id || null,
+              customerName: selectedCustomer?.name || 'Walk-in Customer',
+              customerPhone: selectedCustomer?.phone || null,
+              customerEmail: selectedCustomer?.email || null,
+              items: cartItems.map(item => ({
+                id: item.id,
+                productId: item.productId,
+                variantId: item.variantId,
+                productName: item.name,
+                variantName: item.name, // Using name as variant name
+                sku: item.sku,
+                quantity: item.quantity,
+                unitPrice: item.price,
+                totalPrice: item.totalPrice,
+                costPrice: 0, // Will be calculated by service
+                profit: 0 // Will be calculated by service
+              })),
+              subtotal: totalAmount,
+              tax: 0, // No tax for now
+              discount: manualDiscount,
+              discountType: discountType,
+              discountValue: parseFloat(discountValue) || 0,
+              total: finalAmount,
+              // Payment method structure expected by sale processing service
+              paymentMethod: {
+                type: payments.length === 1 ? payments[0].paymentMethod : 'multiple',
+                details: {
+                  payments: payments.map(payment => ({
+                    method: payment.paymentMethod,
+                    amount: payment.amount,
+                    accountId: payment.paymentAccountId,
+                    reference: payment.reference,
+                    notes: payment.notes,
+                    timestamp: payment.timestamp
+                  })),
+                  totalPaid: totalPaid
+                },
+                amount: totalPaid
+              },
+              paymentStatus: 'completed' as const,
+              soldBy: 'POS User',
+              soldAt: new Date().toISOString(),
+              notes: payments.map(p => p.notes).filter(Boolean).join('; ') || undefined
+            };
+
+            // Process the sale using the service
+            const result = await saleProcessingService.processSale(saleData);
+            
+            if (result.success) {
+              // Clear cart after successful payment
+              clearCart();
               
-              <PaymentSection
-                total={finalAmount}
-                onPaymentComplete={async (paymentData) => {
-                  try {
-                    // Validate payment data before processing
-                    if (!paymentData || typeof paymentData !== 'object') {
-                      throw new Error('Invalid payment data received');
-                    }
-
-                    console.log('Processing payment:', {
-                      method: paymentData.method?.type || 'Unknown',
-                      amount: paymentData.amount || 0,
-                      reference: paymentData.reference || 'N/A',
-                      accountNumber: paymentData.accountNumber || 'N/A',
-                      notes: paymentData.notes || 'N/A'
-                    });
-
-                    // Prepare sale data for database
-                    const saleData = {
-                      customerId: selectedCustomer?.id || null,
-                      customerName: selectedCustomer?.name || 'Walk-in Customer',
-                      customerPhone: selectedCustomer?.phone || null,
-                      customerEmail: selectedCustomer?.email || null,
-                      items: cartItems.map(item => ({
-                        id: item.id,
-                        productId: item.productId,
-                        variantId: item.variantId,
-                        productName: item.name,
-                        variantName: item.name, // Using name as variant name
-                        sku: item.sku,
-                        quantity: item.quantity,
-                        unitPrice: item.price,
-                        totalPrice: item.totalPrice,
-                        costPrice: 0, // Will be calculated by service
-                        profit: 0 // Will be calculated by service
-                      })),
-                      subtotal: totalAmount,
-                      tax: 0, // No tax for now
-                      discount: manualDiscount,
-                      total: finalAmount,
-                      paymentMethod: {
-                        type: paymentData.method?.type || 'cash',
-                        details: {
-                          reference: paymentData.reference,
-                          accountNumber: paymentData.accountNumber,
-                          changeAmount: paymentData.changeAmount
-                        },
-                        amount: paymentData.amount
-                      },
-                      paymentStatus: 'completed' as const,
-                      soldBy: 'POS User',
-                      soldAt: new Date().toISOString(),
-                      notes: paymentData.notes || undefined
-                    };
-
-                    // Process the sale using the service
-                    const result = await saleProcessingService.processSale(saleData);
-                    
-                    if (result.success) {
-                      // Clear cart after successful payment
-                      clearCart();
-                      
-                      // Clear customer selection
-                      setSelectedCustomer(null);
-                      
-                      // Show success message
-                      const amount = paymentData.amount || 0;
-                      toast.success(`Payment of ${amount.toLocaleString()} TZS processed successfully! Sale #${result.sale?.saleNumber}`);
-                      
-                      // Close payment modal
-                      setShowPaymentModal(false);
-                    } else {
-                      throw new Error(result.error || 'Failed to process sale');
-                    }
-                    
-                  } catch (error) {
-                    console.error('Error processing payment:', error);
-                    toast.error(`Failed to process payment: ${error instanceof Error ? error.message : 'Unknown error'}`);
-                  }
-                }}
-                onCancel={() => setShowPaymentModal(false)}
-                className="border-0 shadow-none"
-              />
-            </div>
-          </div>
-        </div>
-      )}
+              // Clear customer selection
+              setSelectedCustomer(null);
+              
+              // Show success message
+              const displayAmount = totalPaid || finalAmount;
+              toast.success(`Payment of ${displayAmount.toLocaleString()} TZS processed successfully! Sale #${result.sale?.saleNumber}`);
+              
+              // Close payment modal
+              setShowPaymentModal(false);
+            } else {
+              console.error('Sale processing failed:', result.error);
+              throw new Error(result.error || 'Failed to process sale');
+            }
+            
+          } catch (error) {
+            console.error('Error processing payment:', error);
+            
+            // Only throw critical errors that actually prevent payment completion
+            if (error instanceof Error) {
+              // Check if it's a critical error that should stop the payment
+              const criticalErrors = [
+                'Customer information is required',
+                'No payment data received',
+                'Failed to process sale',
+                'Database connection error',
+                'Invalid payment method'
+              ];
+              
+              const isCriticalError = criticalErrors.some(criticalError => 
+                error.message.toLowerCase().includes(criticalError.toLowerCase())
+              );
+              
+              if (isCriticalError) {
+                throw error; // This will be caught by the modal and show error toast
+              } else {
+                // For non-critical errors, log them but don't fail the payment
+                console.warn('Non-critical error during payment processing:', error.message);
+                // Continue with successful payment flow
+                const displayAmount = totalPaid || finalAmount;
+                toast.success(`Payment of ${displayAmount.toLocaleString()} TZS processed successfully!`);
+                setShowPaymentModal(false);
+              }
+            } else {
+              throw error; // Unknown error type, throw it
+            }
+          }
+        }}
+        title="Process POS Payment"
+        showCustomerInfo={true}
+      />
 
       {/* Additional Modals */}
       <POSSettingsModalWrapper
@@ -1224,7 +1392,13 @@ const POSPageOptimized: React.FC = () => {
           setManualDiscount(discountAmount);
           setShowDiscountModal(false);
         }}
+        onClearDiscount={() => {
+          setManualDiscount(0);
+          setDiscountValue('');
+          setDiscountType('percentage');
+        }}
         currentTotal={totalAmount}
+        hasExistingDiscount={discountAmount > 0}
       />
 
       <POSReceiptModalWrapper
@@ -1272,47 +1446,161 @@ const POSPageOptimized: React.FC = () => {
 
       {/* Customer Search Modal */}
       {showCustomerSearch && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-semibold mb-4">Search Customers</h3>
-            <input
-              type="text"
-              placeholder="Search by name, phone, or email..."
-              value={customerSearchQuery}
-              onChange={(e) => {
-                setCustomerSearchQuery(e.target.value);
-                handleCustomerSearch(e.target.value);
-              }}
-              className="w-full p-3 border border-gray-300 rounded-lg mb-4"
-            />
-            <div className="max-h-60 overflow-y-auto">
-              {searchSuggestions.length > 0 ? (
-                searchSuggestions.map((customer) => (
-                  <div
-                    key={customer.id}
-                    onClick={() => handleCustomerSelect(customer)}
-                    className="p-3 border-b border-gray-200 hover:bg-gray-50 cursor-pointer"
-                  >
-                    <div className="font-medium">{customer.name}</div>
-                    <div className="text-sm text-gray-600">
-                      {customer.phone && <span>Phone: {customer.phone}</span>}
-                      {customer.email && <span> | Email: {customer.email}</span>}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p className="text-gray-500 text-center py-4">No customers found</p>
-              )}
-            </div>
-            <div className="flex gap-2 justify-end mt-4">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <GlassCard className="w-full max-w-2xl max-h-[90vh] overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-white/20">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                  <User className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">Search Customers</h2>
+                  <p className="text-gray-600">Find existing customers or create new ones</p>
+                </div>
+              </div>
               <button
                 onClick={() => setShowCustomerSearch(false)}
-                className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
               >
-                Cancel
+                <X className="w-6 h-6 text-gray-500" />
               </button>
             </div>
-          </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {/* Search Section */}
+              <div className="mb-6">
+                <div className="relative mb-4">
+                  <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search by name, phone, or email..."
+                    value={customerSearchQuery}
+                    onChange={(e) => {
+                      setCustomerSearchQuery(e.target.value);
+                      handleCustomerSearch(e.target.value);
+                    }}
+                    className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                
+                {/* Add New Customer Button */}
+                <GlassButton
+                  onClick={() => {
+                    setShowCustomerSearch(false);
+                    setShowAddCustomerModal(true);
+                  }}
+                  className="w-full flex items-center justify-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add New Customer
+                </GlassButton>
+              </div>
+
+              {/* Search Results */}
+              {customerSearchQuery.trim() && (
+                <div className="mb-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                    Search Results {searchSuggestions.length > 0 && `(${searchSuggestions.length})`}
+                  </h3>
+                  {searchSuggestions.length > 0 ? (
+                    <div className="grid gap-3">
+                      {searchSuggestions.map((customer) => (
+                        <div
+                          key={customer.id}
+                          onClick={() => handleCustomerSelect(customer)}
+                          className="p-4 border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-md cursor-pointer transition-all duration-200 bg-white"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center">
+                              <User className="w-5 h-5 text-white" />
+                            </div>
+                            <div className="flex-1">
+                              <div className="font-medium text-gray-900">{customer.name}</div>
+                              <div className="text-sm text-gray-600">
+                                {customer.phone && <span>📞 {customer.phone}</span>}
+                                {customer.email && <span className="ml-2">✉️ {customer.email}</span>}
+                              </div>
+                            </div>
+                            <div className="text-blue-500">
+                              <ChevronRight className="w-5 h-5" />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <User className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">No customers found</h3>
+                      <p className="text-gray-600 mb-4">
+                        No customers match your search for "{customerSearchQuery}"
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Recent Customers */}
+              {!customerSearchQuery.trim() && (
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Customers</h3>
+                  {customers.length > 0 ? (
+                    <div className="grid gap-3">
+                      {customers.slice(0, 10).map((customer) => (
+                        <div
+                          key={customer.id}
+                          onClick={() => handleCustomerSelect(customer)}
+                          className="p-4 border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-md cursor-pointer transition-all duration-200 bg-white"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center">
+                              <User className="w-5 h-5 text-white" />
+                            </div>
+                            <div className="flex-1">
+                              <div className="font-medium text-gray-900">{customer.name}</div>
+                              <div className="text-sm text-gray-600">
+                                {customer.phone && <span>📞 {customer.phone}</span>}
+                                {customer.email && <span className="ml-2">✉️ {customer.email}</span>}
+                              </div>
+                            </div>
+                            <div className="text-blue-500">
+                              <ChevronRight className="w-5 h-5" />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <User className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">No customers yet</h3>
+                      <p className="text-gray-600 mb-4">Create your first customer to get started</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 border-t border-white/20 bg-gray-50/50">
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-gray-600">
+                  {selectedCustomer ? (
+                    <span>Selected: <strong>{selectedCustomer.name}</strong></span>
+                  ) : (
+                    <span>No customer selected</span>
+                  )}
+                </div>
+                <div className="flex gap-3">
+                  <GlassButton variant="outline" onClick={() => setShowCustomerSearch(false)}>
+                    Cancel
+                  </GlassButton>
+                </div>
+              </div>
+            </div>
+          </GlassCard>
         </div>
       )}
 

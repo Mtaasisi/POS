@@ -15,9 +15,9 @@ CREATE TABLE IF NOT EXISTS payment_providers (
     fee_percentage DECIMAL(5,2) DEFAULT 0,
     fee_fixed DECIMAL(10,2) DEFAULT 0,
     currency VARCHAR(3) DEFAULT 'TZS',
-    min_amount DECIMAL(10,2) DEFAULT 0,
-    max_amount DECIMAL(10,2) DEFAULT 1000000,
-    daily_limit DECIMAL(12,2) DEFAULT 10000000,
+    min_amount DECIMAL(12,2) DEFAULT 0,
+    max_amount DECIMAL(12,2) DEFAULT 1000000,
+    daily_limit DECIMAL(15,2) DEFAULT 10000000,
     features JSONB DEFAULT '[]',
     last_tested TIMESTAMP WITH TIME ZONE,
     test_status VARCHAR(50), -- 'success', 'failed', 'pending'
@@ -71,7 +71,7 @@ INSERT INTO payment_providers (name, type, status, supported_methods, fee_percen
 ('M-Pesa', 'mobile_money', 'active', '["M-Pesa", "M-Pesa STK Push"]', 1.5, 0, 'TZS', 100, 1000000, 10000000, '["STK Push", "B2C", "C2B"]', 'success', 98.5, 2.3, 15420, 99.9),
 ('Airtel Money', 'mobile_money', 'active', '["Airtel Money"]', 1.2, 0, 'TZS', 100, 500000, 5000000, '["Mobile Money", "B2C"]', 'success', 97.8, 2.8, 8930, 99.7),
 ('Beem Africa', 'card', 'testing', '["Card", "Mobile Money", "Bank Transfer"]', 2.5, 50, 'TZS', 100, 2000000, 20000000, '["Card Processing", "Mobile Money", "Bank Transfer", "USSD"]', 'pending', 0, 0, 0, 0),
-('Cash', 'cash', 'active', '["Cash"]', 0, 0, 'TZS', 0, 999999999, 999999999, '["Cash Payment"]', 'success', 100, 0, 0, 100),
+('Cash', 'cash', 'active', '["Cash"]', 0, 0, 'TZS', 0, 99999999.99, 99999999.99, '["Cash Payment"]', 'success', 100, 0, 0, 100),
 ('Bank Transfer', 'bank', 'active', '["Bank Transfer"]', 0.5, 0, 'TZS', 1000, 5000000, 50000000, '["Bank Transfer", "RTGS"]', 'success', 99.2, 5.0, 2340, 99.5);
 
 -- Create function to update updated_at timestamp

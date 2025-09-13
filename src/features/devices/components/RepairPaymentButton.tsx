@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { DollarSign, Wrench } from 'lucide-react';
+import { DollarSign } from 'lucide-react';
 import GlassButton from '../../shared/components/ui/GlassButton';
-import RepairPaymentModal from '../../customers/components/RepairPaymentModal';
+import PaymentsPopupModal from '../../../components/PaymentsPopupModal';
 
 interface RepairPaymentButtonProps {
   customerId: string;
@@ -28,11 +28,16 @@ const RepairPaymentButton: React.FC<RepairPaymentButtonProps> = ({
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const handlePaymentComplete = (paymentData: any) => {
-    if (onPaymentComplete) {
-      onPaymentComplete(paymentData);
+  const handlePaymentComplete = async (payments: any[], totalPaid: number) => {
+    try {
+      if (onPaymentComplete) {
+        await onPaymentComplete({ payments, totalPaid });
+      }
+      setIsModalOpen(false);
+    } catch (error) {
+      console.error('Payment processing error:', error);
+      throw error; // This will be caught by the modal and show error toast
     }
-    setIsModalOpen(false);
   };
 
   return (
@@ -47,15 +52,16 @@ const RepairPaymentButton: React.FC<RepairPaymentButtonProps> = ({
         Pay Repair
       </GlassButton>
 
-      <RepairPaymentModal
+      <PaymentsPopupModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
+        amount={repairAmount}
         customerId={customerId}
         customerName={customerName}
-        deviceId={deviceId}
-        deviceName={deviceName}
-        repairAmount={repairAmount}
+        description={`Repair payment for ${deviceName}`}
         onPaymentComplete={handlePaymentComplete}
+        title="Process Repair Payment"
+        showCustomerInfo={true}
       />
     </>
   );

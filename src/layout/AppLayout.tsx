@@ -469,21 +469,22 @@ const AppLayout: React.FC = () => {
             <ul className="space-y-1">
               {navItems.map(item => (
                 <li key={item.path}>
-                  <Link
-                    to={item.path}
-                    className={`
-                      flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300
-                      ${isNavCollapsed ? 'justify-center' : ''}
-                      ${location.pathname === item.path
-                        ? 'bg-gradient-to-r from-blue-500/10 to-indigo-500/10 text-blue-700 font-medium shadow-sm backdrop-blur-sm border border-blue-200/30'
-                        : 'text-gray-700 hover:bg-white/40 hover:text-gray-900'
-                      }
-                    `}
-                    onClick={() => {
-                      setIsMenuOpen(false);
-                      markAsRead(item.path);
-                    }}
-                  >
+                  <div className="relative group">
+                    <Link
+                      to={item.path}
+                      className={`
+                        flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300
+                        ${isNavCollapsed ? 'justify-center' : ''}
+                        ${location.pathname === item.path
+                          ? 'bg-gradient-to-r from-blue-500/10 to-indigo-500/10 text-blue-700 font-medium shadow-sm backdrop-blur-sm border border-blue-200/30'
+                          : 'text-gray-700 hover:bg-white/40 hover:text-gray-900'
+                        }
+                      `}
+                      onClick={() => {
+                        setIsMenuOpen(false);
+                        markAsRead(item.path);
+                      }}
+                    >
                     <span className={`
                       ${location.pathname === item.path ? 'text-blue-600' : 'text-blue-500'}
                       ${isNavCollapsed ? 'w-8 h-8 flex items-center justify-center' : ''}
@@ -512,13 +513,22 @@ const AppLayout: React.FC = () => {
                       />
                     )}
                     
-                    {location.pathname === item.path && (
-                      <ChevronRightIcon size={16} className={`
-                        ml-auto text-blue-500
-                        ${isNavCollapsed ? 'md:hidden' : ''}
-                      `} />
+                      {location.pathname === item.path && (
+                        <ChevronRightIcon size={16} className={`
+                          ml-auto text-blue-500
+                          ${isNavCollapsed ? 'md:hidden' : ''}
+                        `} />
+                      )}
+                    </Link>
+                    
+                    {/* Hover tooltip - only show when sidebar is collapsed */}
+                    {isNavCollapsed && (
+                      <div className="absolute left-full ml-2 top-1/2 transform -translate-y-1/2 px-3 py-2 bg-white/95 backdrop-blur-sm border border-gray-200/50 text-gray-700 text-xs font-medium rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-50">
+                        {item.label}
+                        <div className="absolute right-full top-1/2 transform -translate-y-1/2 w-0 h-0 border-t-4 border-b-4 border-r-4 border-transparent border-r-white/95"></div>
+                      </div>
                     )}
-                  </Link>
+                  </div>
                 </li>
               ))}
             </ul>

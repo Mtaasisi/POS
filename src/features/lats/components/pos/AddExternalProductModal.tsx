@@ -5,7 +5,7 @@ import GlassButton from '../../../shared/components/ui/GlassButton';
 import PriceInput from '../../../../shared/components/ui/PriceInput';
 import { X, Package, DollarSign, Hash, Tag, Plus, Search, UserPlus, Layers } from 'lucide-react';
 import { getCategories } from '../../../../lib/categoryApi';
-import CategoryInput from '@/features/shared/components/ui/CategoryInput';
+import CategoryInput from '../../../shared/components/ui/CategoryInput';
 
 import { createExternalProduct } from '../../../../lib/externalProductApi';
 

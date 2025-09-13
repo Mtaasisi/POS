@@ -107,7 +107,7 @@ export const usePayments = (): UsePaymentsReturn => {
     try {
       // This would use the existing paymentTrackingService
       const { paymentTrackingService } = await import('../../../lib/paymentTrackingService');
-      const data = await paymentTrackingService.fetchPaymentTransactions();
+      const data = await paymentTrackingService.debouncedFetchPaymentTransactions();
       setTransactions(data);
       
       // Also get metrics

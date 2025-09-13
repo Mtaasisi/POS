@@ -21,14 +21,12 @@ export async function fetchAllDevices(): Promise<Device[]> {
           expected_return_date,
           created_at,
           updated_at,
-          unlock_code,
-          repair_cost,
-          deposit_amount,
-          diagnosis_required,
-          device_notes,
-          device_cost,
           estimated_hours,
-          device_condition,
+          warranty_start,
+          warranty_end,
+          warranty_status,
+          repair_count,
+          last_return_date,
           customers (id, name, phone, email),
           remarks:device_remarks(*),
           transitions:device_transitions(*),
@@ -54,14 +52,12 @@ export async function fetchAllDevices(): Promise<Device[]> {
             status,
             assigned_to,
             expected_return_date,
-            unlock_code,
-            repair_cost,
-            deposit_amount,
-            diagnosis_required,
-            device_notes,
-            device_cost,
             estimated_hours,
-            device_condition,
+            warranty_start,
+            warranty_end,
+            warranty_status,
+            repair_count,
+            last_return_date,
             created_at,
             updated_at,
             remarks:device_remarks(*),
@@ -235,8 +231,27 @@ export async function addDeviceToDb(device: Device) {
 }
 
 export async function updateDeviceInDb(deviceId: string, updates: Partial<Device>) {
+  console.log('[updateDeviceInDb] Called with:', { deviceId, updates });
+  
+  // Only process fields that exist in the database schema
+  const validUpdateFields = [
+    'assignedTo', 'serialNumber', 'issueDescription', 'customerId', 
+    'expectedReturnDate', 'estimatedHours', 'warrantyStart', 'warrantyEnd', 
+    'warrantyStatus', 'repairCount', 'lastReturnDate', 'brand', 'model', 'status'
+  ];
+  
+  // Filter updates to only include valid fields
+  const filteredUpdates: any = {};
+  Object.keys(updates).forEach(key => {
+    if (validUpdateFields.includes(key) && updates[key as keyof Device] !== undefined) {
+      filteredUpdates[key] = updates[key as keyof Device];
+    }
+  });
+  
+  console.log('[updateDeviceInDb] Filtered updates:', filteredUpdates);
+  
   // Map camelCase fields to snake_case for DB
-  const dbUpdates: any = { ...updates };
+  const dbUpdates: any = { ...filteredUpdates };
   if ('assignedTo' in dbUpdates) {
     dbUpdates.assigned_to = dbUpdates.assignedTo;
     delete dbUpdates.assignedTo;
@@ -257,60 +272,110 @@ export async function updateDeviceInDb(deviceId: string, updates: Partial<Device
     dbUpdates.expected_return_date = dbUpdates.expectedReturnDate;
     delete dbUpdates.expectedReturnDate;
   }
-  if ('unlockCode' in dbUpdates) {
-    dbUpdates.unlock_code = dbUpdates.unlockCode;
-    delete dbUpdates.unlockCode;
-  }
-  if ('repairCost' in dbUpdates) {
-    dbUpdates.repair_cost = dbUpdates.repairCost;
-    delete dbUpdates.repairCost;
-  }
-  if ('depositAmount' in dbUpdates) {
-    dbUpdates.deposit_amount = dbUpdates.depositAmount;
-    delete dbUpdates.depositAmount;
-  }
-  if ('diagnosisRequired' in dbUpdates) {
-    dbUpdates.diagnosis_required = dbUpdates.diagnosisRequired;
-    delete dbUpdates.diagnosisRequired;
-  }
-  if ('deviceNotes' in dbUpdates) {
-    dbUpdates.device_notes = dbUpdates.deviceNotes;
-    delete dbUpdates.deviceNotes;
-  }
-  if ('deviceCost' in dbUpdates) {
-    dbUpdates.device_cost = dbUpdates.deviceCost;
-    delete dbUpdates.deviceCost;
-  }
   if ('estimatedHours' in dbUpdates) {
     dbUpdates.estimated_hours = dbUpdates.estimatedHours;
     delete dbUpdates.estimatedHours;
   }
-  if ('deviceCondition' in dbUpdates) {
-    dbUpdates.device_condition = dbUpdates.deviceCondition;
-    delete dbUpdates.deviceCondition;
+  if ('warrantyStart' in dbUpdates) {
+    dbUpdates.warranty_start = dbUpdates.warrantyStart;
+    delete dbUpdates.warrantyStart;
+  }
+  if ('warrantyEnd' in dbUpdates) {
+    dbUpdates.warranty_end = dbUpdates.warrantyEnd;
+    delete dbUpdates.warrantyEnd;
+  }
+  if ('warrantyStatus' in dbUpdates) {
+    dbUpdates.warranty_status = dbUpdates.warrantyStatus;
+    delete dbUpdates.warrantyStatus;
+  }
+  if ('repairCount' in dbUpdates) {
+    dbUpdates.repair_count = dbUpdates.repairCount;
+    delete dbUpdates.repairCount;
+  }
+  if ('lastReturnDate' in dbUpdates) {
+    dbUpdates.last_return_date = dbUpdates.lastReturnDate;
+    delete dbUpdates.lastReturnDate;
   }
   
 
   
-  // Only allow fields that are valid columns in the devices table
+  // Only allow fields that are valid columns in the devices table (based on actual database schema)
   const validDeviceFields = [
-    'id', 'customer_id', 'brand', 'model', 'serial_number', 'issue_description', 'status', 'assigned_to', 'estimated_hours', 'expected_return_date', 'unlock_code', 'repair_cost', 'deposit_amount', 'diagnosis_required', 'device_notes', 'device_cost', 'device_condition', 'created_at', 'updated_at'
+    'id', 'customer_id', 'brand', 'model', 'serial_number', 'issue_description', 'status', 'assigned_to', 'estimated_hours', 'expected_return_date', 'warranty_start', 'warranty_end', 'warranty_status', 'repair_count', 'last_return_date', 'diagnostic_checklist', 'repair_checklist', 'created_at', 'updated_at'
   ];
   Object.keys(dbUpdates).forEach(key => {
     if (!validDeviceFields.includes(key)) {
+      console.warn(`[updateDeviceInDb] Removing invalid field: ${key}`);
       delete dbUpdates[key];
     }
   });
   
   console.log('[updateDeviceInDb] Sending update to DB:', dbUpdates);
+  console.log('[updateDeviceInDb] Device ID:', deviceId);
+  console.log('[updateDeviceInDb] Update fields count:', Object.keys(dbUpdates).length);
+  
+  // First check if the device exists and get current data
+  console.log('[updateDeviceInDb] Checking if device exists...');
+  const { data: existingDevice, error: checkError } = await supabase
+    .from('devices')
+    .select('*')
+    .eq('id', deviceId)
+    .single();
+    
+  if (checkError) {
+    console.error('[updateDeviceInDb] Device not found:', checkError);
+    console.error('[updateDeviceInDb] Check error details:', {
+      message: checkError.message,
+      details: checkError.details,
+      hint: checkError.hint,
+      code: checkError.code
+    });
+    throw new Error(`Device with ID ${deviceId} not found`);
+  }
+  
+  console.log('[updateDeviceInDb] ✅ Device exists:', {
+    id: existingDevice.id,
+    brand: existingDevice.brand,
+    model: existingDevice.model,
+    status: existingDevice.status,
+    customer_id: existingDevice.customer_id
+  });
+  
+  // Show what fields will be updated
+  console.log('[updateDeviceInDb] Fields being updated:');
+  Object.keys(dbUpdates).forEach(key => {
+    const oldValue = existingDevice[key];
+    const newValue = dbUpdates[key];
+    console.log(`  ${key}: "${oldValue}" → "${newValue}"`);
+  });
+  
+  console.log('[updateDeviceInDb] Executing database update...');
   const { data, error } = await supabase
     .from('devices')
     .update(dbUpdates)
     .eq('id', deviceId)
     .select();
-  if (error) throw error;
+    
+  if (error) {
+    console.error('[updateDeviceInDb] ❌ Database update failed:', error);
+    console.error('[updateDeviceInDb] Error details:', {
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      code: error.code
+    });
+    console.error('[updateDeviceInDb] Failed update data:', dbUpdates);
+    throw error;
+  }
   
-
+  console.log('[updateDeviceInDb] ✅ Database update successful!');
+  console.log('[updateDeviceInDb] Updated device data:', data && data[0] ? {
+    id: data[0].id,
+    brand: data[0].brand,
+    model: data[0].model,
+    status: data[0].status,
+    updated_at: data[0].updated_at
+  } : 'No data returned');
   
   return data && data[0] ? { ...data[0], assignedTo: data[0].assigned_to } : null;
 }
@@ -346,14 +411,12 @@ export async function fetchDevicesPage(page: number, pageSize: number = 20): Pro
           expected_return_date,
           created_at,
           updated_at,
-          unlock_code,
-          repair_cost,
-          deposit_amount,
-          diagnosis_required,
-          device_notes,
-          device_cost,
           estimated_hours,
-          device_condition,
+          warranty_start,
+          warranty_end,
+          warranty_status,
+          repair_count,
+          last_return_date,
           customers (id, name, phone, email),
           remarks:device_remarks(*),
           transitions:device_transitions(*),
@@ -378,14 +441,12 @@ export async function fetchDevicesPage(page: number, pageSize: number = 20): Pro
             status,
             assigned_to,
             expected_return_date,
-            unlock_code,
-            repair_cost,
-            deposit_amount,
-            diagnosis_required,
-            device_notes,
-            device_cost,
             estimated_hours,
-            device_condition,
+            warranty_start,
+            warranty_end,
+            warranty_status,
+            repair_count,
+            last_return_date,
             created_at,
             updated_at,
             remarks:device_remarks(*),
@@ -504,7 +565,7 @@ export async function getDevicesCount(): Promise<number> {
   if (navigator.onLine) {
     const { count, error } = await supabase
       .from('devices')
-      .select('*', { count: 'exact', head: true });
+      .select('id', { count: 'exact', head: true });
     
     if (error) throw error;
     return count || 0;

@@ -33,6 +33,11 @@ class RepairPaymentService {
     try {
       console.log('🔧 RepairPaymentService: Creating repair payment...', data);
       
+      // Validate customer ID
+      if (!data.customerId) {
+        throw new Error('Customer ID is required for repair payment');
+      }
+      
       // Get payment account details
       const paymentAccount = await financeAccountService.getFinanceAccountById(data.paymentAccountId);
       if (!paymentAccount) {

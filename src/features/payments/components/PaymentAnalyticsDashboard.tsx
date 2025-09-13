@@ -594,14 +594,14 @@ const PaymentAnalyticsDashboard: React.FC<PaymentAnalyticsProps> = ({ onExport }
             </div>
           </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           {analyticsData.methodAnalytics.map((method, index) => (
-            <div key={index} className="p-4 bg-gray-50 rounded-lg border hover:shadow-sm transition-shadow">
+            <div key={index} className="p-5 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border-2 border-gray-200 hover:shadow-lg hover:border-gray-300 transition-all duration-200 transform hover:scale-105">
               <div className="flex items-center gap-3 mb-3">
                 {getMethodIcon(method.method)}
                 <div>
-                  <div className="font-medium text-gray-900">{method.method}</div>
-                  <div className="text-sm text-gray-600">
+                  <div className="font-semibold text-gray-900 text-lg">{method.method}</div>
+                  <div className="text-sm text-gray-600 font-medium">
                     {method.totalTransactions} transactions
                   </div>
                 </div>

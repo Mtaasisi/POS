@@ -26,6 +26,12 @@ export class PaymentTrackingService {
       return null;
     }
 
+    // Validate customer data
+    if (!customerData.id) {
+      console.error('Customer ID is required for payment transaction');
+      return null;
+    }
+
     try {
       const { data, error } = await supabase
         .from('payment_transactions')

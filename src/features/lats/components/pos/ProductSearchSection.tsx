@@ -3,6 +3,8 @@ import { Search, RefreshCw, Package, Command, Barcode, Filter, X } from 'lucide-
 import GlassCard from '../../../../features/shared/components/ui/GlassCard';
 import VariantProductCard from './VariantProductCard';
 import { toast } from 'react-hot-toast';
+import { useAuth } from '../../../../context/AuthContext';
+import { rbacManager, type UserRole } from '../../lib/rbac';
 
 interface Product {
   id: string;
@@ -91,6 +93,14 @@ const ProductSearchSection: React.FC<ProductSearchSectionProps> = ({
   totalPages,
   productsPerPage
 }) => {
+  const { currentUser } = useAuth();
+  const userRole = currentUser?.role as UserRole;
+  const canAddProducts = rbacManager.can(userRole, 'products', 'create');
+  
+  // Session-based debug logging to prevent excessive console output
+  const [hasLoggedDebug, setHasLoggedDebug] = useState(false);
+  
+  // Search suggestions disabled - keeping state for potential future use
   const [searchSuggestions, setSearchSuggestions] = useState<Product[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
@@ -99,19 +109,8 @@ const ProductSearchSection: React.FC<ProductSearchSectionProps> = ({
     const query = e.target.value;
     setSearchQuery(query);
     
-    if (query.trim()) {
-      // Generate search suggestions
-      const suggestions = products.filter(product => 
-        product.name.toLowerCase().includes(query.toLowerCase()) ||
-        product.sku.toLowerCase().includes(query.toLowerCase()) ||
-        (product.category?.name && product.category.name.toLowerCase().includes(query.toLowerCase()))
-      ).slice(0, 5);
-      
-      setSearchSuggestions(suggestions);
-      setShowSuggestions(true);
-    } else {
-      setShowSuggestions(false);
-    }
+    // Disable search suggestions - just update the search query
+    setShowSuggestions(false);
   };
 
   // Handle search input key press
@@ -120,7 +119,6 @@ const ProductSearchSection: React.FC<ProductSearchSectionProps> = ({
       e.preventDefault();
       if (searchQuery.trim()) {
         onSearch(searchQuery.trim());
-        setShowSuggestions(false);
       }
     }
   };
@@ -139,31 +137,46 @@ const ProductSearchSection: React.FC<ProductSearchSectionProps> = ({
       // Regular search
       onSearch(query);
     }
-    setShowSuggestions(false);
   };
 
   // Filter products based on current filters
   const filteredProducts = products.filter(product => {
+    // Search query filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      const matchesSearch = 
+        product.name?.toLowerCase().includes(query) ||
+        product.sku?.toLowerCase().includes(query) ||
+        (product.category?.name && product.category.name.toLowerCase().includes(query));
+      
+      if (!matchesSearch) return false;
+    }
+    
     // Category filter
     if (selectedCategory && product.category?.name !== selectedCategory) return false;
     
     // Brand filter
     if (selectedBrand && product.brand !== selectedBrand) return false;
     
+    // Get product price and stock from variants or fallback to product level
+    const primaryVariant = product.variants?.[0];
+    const productPrice = primaryVariant?.sellingPrice || product.price || 0;
+    const productStock = primaryVariant?.quantity || product.stockQuantity || 0;
+    
     // Price range filter
-    if (priceRange.min && product.price < parseFloat(priceRange.min)) return false;
-    if (priceRange.max && product.price > parseFloat(priceRange.max)) return false;
+    if (priceRange.min && productPrice < parseFloat(priceRange.min)) return false;
+    if (priceRange.max && productPrice > parseFloat(priceRange.max)) return false;
     
     // Stock filter
     switch (stockFilter) {
       case 'in-stock':
-        if (product.stockQuantity <= 0) return false;
+        if (productStock <= 0) return false;
         break;
       case 'low-stock':
-        if (product.stockQuantity > 10 || product.stockQuantity <= 0) return false;
+        if (productStock > 10 || productStock <= 0) return false;
         break;
       case 'out-of-stock':
-        if (product.stockQuantity > 0) return false;
+        if (productStock > 0) return false;
         break;
     }
     
@@ -174,33 +187,75 @@ const ProductSearchSection: React.FC<ProductSearchSectionProps> = ({
   const sortedProducts = [...filteredProducts].sort((a, b) => {
     let comparison = 0;
     
+    // Get product price and stock from variants or fallback to product level
+    const aPrimaryVariant = a.variants?.[0];
+    const bPrimaryVariant = b.variants?.[0];
+    const aPrice = aPrimaryVariant?.sellingPrice || a.price || 0;
+    const bPrice = bPrimaryVariant?.sellingPrice || b.price || 0;
+    const aStock = aPrimaryVariant?.quantity || a.stockQuantity || 0;
+    const bStock = bPrimaryVariant?.quantity || b.stockQuantity || 0;
+    
     switch (sortBy) {
       case 'name':
         comparison = a.name.localeCompare(b.name);
         break;
       case 'price':
-        comparison = a.price - b.price;
+        comparison = aPrice - bPrice;
         break;
       case 'stock':
-        comparison = a.stockQuantity - b.stockQuantity;
+        comparison = aStock - bStock;
         break;
       case 'recent':
         // Assuming products have a createdAt field, using id as fallback
         comparison = a.id.localeCompare(b.id);
         break;
       case 'sales':
-        // Assuming products have a salesCount field, using stock as fallback
-        comparison = (b.stockQuantity || 0) - (a.stockQuantity || 0);
+        // Using stock as fallback for sales sorting
+        comparison = bStock - aStock;
         break;
     }
     
     return sortOrder === 'asc' ? comparison : -comparison;
   });
 
-  // Paginate products
-  const startIndex = (currentPage - 1) * productsPerPage;
-  const endIndex = startIndex + productsPerPage;
-  const paginatedProducts = sortedProducts.slice(startIndex, endIndex);
+  // Show all products for scrolling instead of pagination
+  const displayProducts = sortedProducts;
+
+  // Session-based debug logging to prevent excessive console output
+  useEffect(() => {
+    if (import.meta.env.MODE === 'development' && !hasLoggedDebug) {
+      console.log('🔍 ProductSearchSection Debug:', {
+    totalProducts: products.length,
+    filteredProducts: filteredProducts.length,
+    displayProducts: displayProducts.length,
+    searchQuery: searchQuery.trim(),
+    selectedCategory,
+    selectedBrand,
+    priceRange,
+    stockFilter,
+    categoriesReceived: categories,
+    categoriesCount: categories?.length || 0,
+    sampleProduct: products[0] ? {
+      id: products[0].id,
+      name: products[0].name,
+      sku: products[0].sku,
+      price: products[0].price,
+      stockQuantity: products[0].stockQuantity,
+      category: products[0].category?.name,
+      brand: products[0].brand,
+      hasVariants: !!products[0].variants,
+      variantsCount: products[0].variants?.length || 0,
+      primaryVariant: products[0].variants?.[0] ? {
+        id: products[0].variants[0].id,
+        sku: products[0].variants[0].sku,
+        sellingPrice: products[0].variants[0].sellingPrice,
+        quantity: products[0].variants[0].quantity
+      } : null
+    } : null
+      });
+      setHasLoggedDebug(true);
+    }
+  }, [products.length, filteredProducts.length, displayProducts.length, searchQuery, selectedCategory, selectedBrand, priceRange, stockFilter, hasLoggedDebug]);
 
   return (
     <div className="flex-1 overflow-hidden flex flex-col">
@@ -228,14 +283,16 @@ const ProductSearchSection: React.FC<ProductSearchSectionProps> = ({
             )}
             
             <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center gap-2">
-              <button
-                onClick={onAddExternalProduct}
-                className="p-3 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors duration-200 shadow-md hover:shadow-lg active:scale-95"
-                title="Add External Product"
-                style={{ minWidth: '44px', minHeight: '44px' }}
-              >
-                <Package className="w-5 h-5" />
-              </button>
+              {canAddProducts && (
+                <button
+                  onClick={onAddExternalProduct}
+                  className="p-3 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors duration-200 shadow-md hover:shadow-lg active:scale-95"
+                  title="Add External Product"
+                  style={{ minWidth: '44px', minHeight: '44px' }}
+                >
+                  <Package className="w-5 h-5" />
+                </button>
+              )}
               <button
                 onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
                 className="p-3 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg transition-colors duration-200"
@@ -257,40 +314,6 @@ const ProductSearchSection: React.FC<ProductSearchSectionProps> = ({
               </button>
             </div>
 
-            {/* Search Suggestions */}
-            {showSuggestions && searchSuggestions.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
-                {searchSuggestions.map((product) => (
-                  <div
-                    key={product.id}
-                    className="p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
-                    onClick={() => {
-                      setSearchQuery(product.name);
-                      setShowSuggestions(false);
-                      onSearch(product.name);
-                    }}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="text-2xl">{product.image}</div>
-                      <div className="flex-1">
-                        <div className="font-medium text-gray-900">{product.name}</div>
-                                        <div className="text-sm text-gray-500">
-                  {product.sku} • {product.category?.name || 'No Category'}
-                </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-semibold text-green-600">
-                          TZS {product.price.toLocaleString()}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          Stock: {product.stockQuantity}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
 
           {/* Advanced Filters */}
@@ -402,11 +425,11 @@ const ProductSearchSection: React.FC<ProductSearchSectionProps> = ({
           )}
         </div>
 
-        {/* Products Grid */}
-        <div className="flex-1 overflow-y-auto">
-          {paginatedProducts.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {paginatedProducts.map((product) => (
+        {/* Products Grid - Scrollable */}
+        <div className="flex-1 overflow-y-auto scrollbar-transparent">
+          {displayProducts.length > 0 ? (
+            <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-4">
+              {displayProducts.map((product) => (
                 <VariantProductCard
                   key={product.id}
                   product={product}
@@ -425,33 +448,12 @@ const ProductSearchSection: React.FC<ProductSearchSectionProps> = ({
           )}
         </div>
 
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex-shrink-0 mt-6 flex items-center justify-between">
-            <div className="text-sm text-gray-500">
-              Showing {startIndex + 1}-{Math.min(endIndex, sortedProducts.length)} of {sortedProducts.length} products
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                disabled={currentPage === 1}
-                className="px-3 py-2 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
-              >
-                Previous
-              </button>
-              <span className="px-3 py-2 text-sm">
-                Page {currentPage} of {totalPages}
-              </span>
-              <button
-                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                disabled={currentPage === totalPages}
-                className="px-3 py-2 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
-              >
-                Next
-              </button>
-            </div>
+        {/* Product Count Display */}
+        <div className="flex-shrink-0 mt-4 pt-4 border-t border-gray-200">
+          <div className="text-sm text-gray-500 text-center">
+            Showing {displayProducts.length} products
           </div>
-        )}
+        </div>
       </GlassCard>
     </div>
   );

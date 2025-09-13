@@ -41,6 +41,24 @@ const ProductImagesSection: React.FC<ProductImagesSectionProps> = ({
   // Generate a temporary product ID if none is provided
   const tempProductId = productId || `temp-product-${Date.now()}`;
 
+  // Don't render if currentUser is not available
+  if (!currentUser) {
+    return (
+      <div className="border-b border-gray-200 pb-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+            <Camera size={18} className="text-purple-600" />
+            Product Images
+          </h3>
+        </div>
+        <div className="text-center py-8 text-gray-500">
+          <Camera size={48} className="mx-auto mb-4 text-gray-300" />
+          <p>Loading user authentication...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="border-b border-gray-200 pb-4">
       {/* Header */}
@@ -70,7 +88,7 @@ const ProductImagesSection: React.FC<ProductImagesSectionProps> = ({
       {/* SimpleImageUpload Component - Handles everything */}
       <SimpleImageUpload
         productId={tempProductId}
-        userId={currentUser?.id}
+        userId={currentUser?.id || 'anonymous'}
         existingImages={images?.map((img) => {
           if (typeof img === 'string') {
             return {

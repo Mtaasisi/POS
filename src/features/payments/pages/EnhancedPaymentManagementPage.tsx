@@ -518,7 +518,7 @@ const EnhancedPaymentManagementPage: React.FC = () => {
 
   return (
     <PageErrorBoundary pageName="Enhanced Payment Management" showDetails={true}>
-      <div className="p-4 sm:p-6 max-w-full mx-auto space-y-6">
+      <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
           <div className="flex items-center gap-4">
@@ -569,9 +569,9 @@ const EnhancedPaymentManagementPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <div className="grid grid-cols-1 xl:grid-cols-6 gap-6">
           {/* Payment Navigation */}
-          <div className="lg:col-span-1">
+          <div className="xl:col-span-1">
             <GlassCard className="p-4">
               <h3 className="font-semibold text-gray-900 mb-4">Payment Categories</h3>
               <nav className="space-y-2">
@@ -675,7 +675,7 @@ const EnhancedPaymentManagementPage: React.FC = () => {
           </div>
 
           {/* Payment Content */}
-          <div className="lg:col-span-4">
+          <div className="xl:col-span-5">
             <GlassCard className="p-6">
               <div className="flex items-center gap-3 mb-6">
                 <div className={`text-${currentTab?.color}-500`}>

@@ -45,11 +45,17 @@ export class LiveInventoryService {
     // Check cache first
     const now = Date.now();
     if (this.cache.data && (now - this.cache.timestamp) < this.CACHE_DURATION) {
-      console.log('📋 [LiveInventoryService] Using cached metrics');
+      // Only log in development mode to reduce console noise
+      if (import.meta.env.MODE === 'development') {
+        console.log('📋 [LiveInventoryService] Using cached metrics');
+      }
       return this.cache.data;
     }
     try {
-      console.log('🔍 [LiveInventoryService] Fetching live inventory metrics...');
+      // Only log in development mode to reduce console noise
+      if (import.meta.env.MODE === 'development') {
+        console.log('🔍 [LiveInventoryService] Fetching live inventory metrics...');
+      }
       
       // Fetch all products with their variants for real-time calculation
       const { data: products, error: productsError } = await supabase
@@ -74,7 +80,10 @@ export class LiveInventoryService {
         throw productsError;
       }
 
-      console.log(`📦 [LiveInventoryService] Fetched ${products?.length || 0} products for live calculation`);
+      // Only log in development mode to reduce console noise
+      if (import.meta.env.MODE === 'development') {
+        console.log(`📦 [LiveInventoryService] Fetched ${products?.length || 0} products for live calculation`);
+      }
 
       // Calculate live metrics
       let totalValue = 0;
@@ -107,7 +116,7 @@ export class LiveInventoryService {
           const quantity = variant.quantity || 0;
           const variantValue = costPrice * quantity;
           
-          // Debug logging for each variant
+          // Debug logging for each variant (only in development mode)
           if (import.meta.env.MODE === 'development' && variantValue > 0) {
             console.log(`💰 [LiveInventoryService] ${product.name} - ${variant.name || 'Default'}: ${quantity} × ${costPrice} = ${variantValue}`);
           }
@@ -115,7 +124,7 @@ export class LiveInventoryService {
           return sum + variantValue;
         }, 0);
 
-        // Debug logging for product total if multiple variants
+        // Debug logging for product total if multiple variants (only in development mode)
         if (import.meta.env.MODE === 'development' && variants.length > 1) {
           console.log(`📊 [LiveInventoryService] ${product.name} - Total from ${variants.length} variants: ${productValue}`);
         }
@@ -128,7 +137,7 @@ export class LiveInventoryService {
           const quantity = variant.quantity || 0;
           const variantRetailValue = sellingPrice * quantity;
           
-          // Debug logging for each variant retail value
+          // Debug logging for each variant retail value (only in development mode)
           if (import.meta.env.MODE === 'development' && variantRetailValue > 0) {
             console.log(`💰 [LiveInventoryService] ${product.name} - ${variant.name || 'Default'} (Retail): ${quantity} × ${sellingPrice} = ${variantRetailValue}`);
           }
@@ -164,16 +173,19 @@ export class LiveInventoryService {
         lastUpdated: new Date().toISOString()
       };
 
-      console.log('✅ [LiveInventoryService] Live metrics calculated:', {
-        totalValue: metrics.totalValue,
-        retailValue: metrics.retailValue,
-        totalStock: metrics.totalStock,
-        totalProducts: metrics.totalProducts,
-        activeProducts: metrics.activeProducts,
-        lowStockItems: metrics.lowStockItems,
-        outOfStockItems: metrics.outOfStockItems,
-        reorderAlerts: metrics.reorderAlerts
-      });
+      // Only log in development mode to reduce console noise
+      if (import.meta.env.MODE === 'development') {
+        console.log('✅ [LiveInventoryService] Live metrics calculated:', {
+          totalValue: metrics.totalValue,
+          retailValue: metrics.retailValue,
+          totalStock: metrics.totalStock,
+          totalProducts: metrics.totalProducts,
+          activeProducts: metrics.activeProducts,
+          lowStockItems: metrics.lowStockItems,
+          outOfStockItems: metrics.outOfStockItems,
+          reorderAlerts: metrics.reorderAlerts
+        });
+      }
 
       // Cache the results
       this.cache.data = metrics;

@@ -5,11 +5,12 @@ import { useNavigationHistory } from '../../../hooks/useNavigationHistory';
 import { useDevices } from '../../../context/DevicesContext';
 import { useCustomers } from '../../../context/CustomersContext';
 import { usePayments } from '../../../context/PaymentsContext';
+import { usePaymentMethodsContext } from '../../../context/PaymentMethodsContext';
 import { QRCodeSVG } from 'qrcode.react';
 import GlassCard from '../../../features/shared/components/ui/GlassCard';
 import CountdownTimer from '../../../features/shared/components/ui/CountdownTimer';
 import StatusBadge from '../../../features/shared/components/ui/StatusBadge';
-import { ChevronDown, CheckCircle, XCircle, Smartphone, Barcode, Calendar, Loader2, Image as ImageIcon, FileText, File as FileIcon, CreditCard, DollarSign, AlertTriangle, Star, Award, Activity, Gift, MessageSquare, Clock, User, Upload, Trash2, ArrowLeft, Phone, Printer, Send, RefreshCw, ArrowRight, Key, Wrench, Hash, Settings, History, QrCode, Stethoscope } from 'lucide-react';
+import { ChevronDown, CheckCircle, XCircle, Smartphone, Barcode, Calendar, Loader2, Image as ImageIcon, FileText, File as FileIcon, CreditCard, DollarSign, AlertTriangle, Star, Award, Activity, Gift, MessageSquare, Clock, User, Upload, Trash2, ArrowLeft, Phone, Printer, Send, RefreshCw, ArrowRight, Key, Wrench, Hash, Settings, History, QrCode, Stethoscope, Timer, Play, Pause, Square, Tool, Zap, Target, CheckSquare } from 'lucide-react';
 
 import DeviceDetailHeader from '../components/DeviceDetailHeader';
 import StatusUpdateForm from '../components/forms/StatusUpdateForm';
@@ -28,8 +29,10 @@ import { logAuditAction } from '../../../lib/auditLogApi';
 import { toast } from 'react-hot-toast';
 import { supabase } from '../../../lib/supabaseClient';
 import { formatCurrency } from '../../../lib/customerApi';
+import { validateMobileMoneyReference, requiresReferenceNumber, getReferencePlaceholder, getReferenceHelpText } from '../../../utils/mobileMoneyValidation';
 import { formatRelativeTime } from '../../../lib/utils';
 import { auditService } from '../../../lib/auditService';
+import PaymentsPopupModal from '../../../components/PaymentsPopupModal';
 
 const DeviceDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -39,6 +42,7 @@ const DeviceDetailPage: React.FC = () => {
   const { getDeviceById, updateDeviceStatus, addRemark, addRating, devices, loading: devicesLoading } = useDevices();
   const { getCustomerById } = useCustomers();
   const { payments, refreshPayments } = usePayments();
+  const { paymentMethods, loading: paymentMethodsLoading } = usePaymentMethodsContext();
   const navigate = useNavigate();
   const { handleBackClick } = useNavigationHistory();
 
@@ -56,6 +60,18 @@ const DeviceDetailPage: React.FC = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showDiagnosticChecklist, setShowDiagnosticChecklist] = useState(false);
   const [showRepairChecklist, setShowRepairChecklist] = useState(false);
+  // Technician work timer state
+  const [workTimer, setWorkTimer] = useState<{
+    isRunning: boolean;
+    startTime: string | null;
+    elapsedTime: number;
+    sessions: Array<{ start: string; end?: string; duration?: number }>;
+  }>({
+    isRunning: false,
+    startTime: null,
+    elapsedTime: 0,
+    sessions: []
+  });
   // Loading state (mock, since data is synchronous in context, but for demo)
   const [loading, setLoading] = useState(true);
   
@@ -65,14 +81,16 @@ const DeviceDetailPage: React.FC = () => {
   // Payment modal state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'transfer'>('cash');
-  const [paymentType, setPaymentType] = useState<'payment' | 'deposit' | 'refund'>('payment');
-  const [recordingPayment, setRecordingPayment] = useState(false);
-  const [paymentError, setPaymentError] = useState<string | null>(null);
   const [showPaymentConfirmation, setShowPaymentConfirmation] = useState(false);
   const [lastPayment, setLastPayment] = useState<any>(null);
   const [selectedAttachmentsForDelete, setSelectedAttachmentsForDelete] = useState<string[]>([]);
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+  // Technician notes state
+  const [technicianNote, setTechnicianNote] = useState('');
+  const [addingNote, setAddingNote] = useState(false);
+  
+  // Status update loading state
+  const [statusUpdateLoading, setStatusUpdateLoading] = useState(false);
 
   // Minimal live countdown state
   const [now, setNow] = useState(new Date());
@@ -384,14 +402,21 @@ const DeviceDetailPage: React.FC = () => {
 
   // Technician permission check effect
   useEffect(() => {
-    if (id && currentUser && device) {
+    if (id && currentUser && device && !devicesLoading) {
       const isTechnician = currentUser.role === 'technician';
       const isAssignedTechnician = isTechnician && device.assignedTo === currentUser.id;
-      if (isTechnician && !isAssignedTechnician) {
+      
+      // Only redirect if we're sure the device is loaded and technician is not assigned
+      if (isTechnician && device.assignedTo && !isAssignedTechnician) {
+        console.log('🚫 Technician access denied - device assigned to different technician:', {
+          deviceId: device.id,
+          assignedTo: device.assignedTo,
+          currentUserId: currentUser.id
+        });
         handleBackClick();
       }
     }
-  }, [id, currentUser, device, handleBackClick]);
+  }, [id, currentUser, device, devicesLoading, handleBackClick]);
 
   // Device checklist effect - commented out until device_checklists table is created
   // useEffect(() => {
@@ -429,13 +454,133 @@ const DeviceDetailPage: React.FC = () => {
     }
   }, [id]);
 
+  // Fetch work timer data
+  const fetchWorkTimer = useCallback(async () => {
+    if (!safeDevice.id || !currentUser) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('device_work_sessions')
+        .select('*')
+        .eq('device_id', safeDevice.id)
+        .eq('technician_id', currentUser.id)
+        .order('start_time', { ascending: false });
+      
+      if (error) {
+        console.error('Error fetching work sessions:', error);
+        return;
+      }
+      
+      const sessions = (data || []).map(session => ({
+        start: session.start_time,
+        end: session.end_time,
+        duration: session.duration_minutes
+      }));
+      
+      setWorkTimer(prev => ({
+        ...prev,
+        sessions
+      }));
+    } catch (error) {
+      console.error('Error fetching work timer:', error);
+    }
+  }, [safeDevice.id, currentUser]);
+
   // Fetch all device activity effect
   useEffect(() => {
     if (id) {
       fetchAllDeviceActivity();
       fetchDeviceDetails();
+      fetchWorkTimer();
     }
-  }, [id, fetchAllDeviceActivity, fetchDeviceDetails]);
+  }, [id, fetchAllDeviceActivity, fetchDeviceDetails, fetchWorkTimer]);
+
+  // Work timer functions
+  const startWorkTimer = async () => {
+    if (!safeDevice.id || !currentUser) return;
+    
+    const startTime = new Date().toISOString();
+    setWorkTimer(prev => ({
+      ...prev,
+      isRunning: true,
+      startTime,
+      elapsedTime: 0
+    }));
+    
+    // Save to database
+    try {
+      const { error } = await supabase
+        .from('device_work_sessions')
+        .insert({
+          device_id: safeDevice.id,
+          technician_id: currentUser.id,
+          start_time: startTime,
+          status: 'active'
+        });
+      
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error starting work timer:', error);
+      toast.error('Failed to start work timer');
+    }
+  };
+
+  const stopWorkTimer = async () => {
+    if (!workTimer.startTime || !safeDevice.id || !currentUser) return;
+    
+    const endTime = new Date();
+    const startTime = new Date(workTimer.startTime);
+    const durationMs = endTime.getTime() - startTime.getTime();
+    const durationMinutes = Math.round(durationMs / (1000 * 60));
+    
+    setWorkTimer(prev => ({
+      ...prev,
+      isRunning: false,
+      startTime: null,
+      elapsedTime: 0,
+      sessions: [{
+        start: workTimer.startTime!,
+        end: endTime.toISOString(),
+        duration: durationMinutes
+      }, ...prev.sessions]
+    }));
+    
+    // Update database
+    try {
+      const { error } = await supabase
+        .from('device_work_sessions')
+        .update({
+          end_time: endTime.toISOString(),
+          duration_minutes: durationMinutes,
+          status: 'completed'
+        })
+        .eq('device_id', safeDevice.id)
+        .eq('technician_id', currentUser.id)
+        .eq('start_time', workTimer.startTime);
+      
+      if (error) throw error;
+      toast.success(`Work session recorded: ${formatDuration(durationMs)}`);
+    } catch (error) {
+      console.error('Error stopping work timer:', error);
+      toast.error('Failed to stop work timer');
+    }
+  };
+
+  // Timer effect
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (workTimer.isRunning && workTimer.startTime) {
+      interval = setInterval(() => {
+        const now = new Date().getTime();
+        const start = new Date(workTimer.startTime!).getTime();
+        setWorkTimer(prev => ({
+          ...prev,
+          elapsedTime: now - start
+        }));
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [workTimer.isRunning, workTimer.startTime]);
 
   // Fetch audit logs, points transactions, and SMS logs on mount
   useEffect(() => {
@@ -570,10 +715,23 @@ const DeviceDetailPage: React.FC = () => {
 
   // Check if device is not found
   if (!device && !devicesLoading) {
+    // Check if this is a technician trying to access a device not assigned to them
+    const isTechnician = currentUser?.role === 'technician';
+    
     return (
       <div className="p-8 text-center">
-        <div className="text-red-500 font-bold text-lg mb-4">Device Not Found</div>
-        <p className="text-gray-600 mb-4">The device with ID "{id}" could not be found.</p>
+        {isTechnician ? (
+          <>
+            <div className="text-red-500 font-bold text-lg mb-4">Access Restricted</div>
+            <p className="text-gray-600 mb-4">You can only view devices assigned to you.</p>
+            <p className="text-sm text-gray-500 mb-6">If you believe this is an error, please contact your administrator.</p>
+          </>
+        ) : (
+          <>
+            <div className="text-red-500 font-bold text-lg mb-4">Device Not Found</div>
+            <p className="text-gray-600 mb-4">The device with ID "{id}" could not be found.</p>
+          </>
+        )}
         <div className="space-y-2">
           <GlassButton
             variant="secondary"
@@ -582,13 +740,15 @@ const DeviceDetailPage: React.FC = () => {
           >
             Back to Devices
           </GlassButton>
-          <GlassButton
-            variant="primary"
-            onClick={() => window.location.reload()}
-            icon={<RefreshCw size={16} />}
-          >
-            Retry Loading
-          </GlassButton>
+          {!isTechnician && (
+            <GlassButton
+              variant="primary"
+              onClick={() => window.location.reload()}
+              icon={<RefreshCw size={16} />}
+            >
+              Retry Loading
+            </GlassButton>
+          )}
         </div>
       </div>
     );
@@ -738,18 +898,79 @@ const DeviceDetailPage: React.FC = () => {
   const isTechnician = currentUser.role === 'technician';
   const isAssignedTechnician = isTechnician && device?.assignedTo === currentUser.id;
   
-  const handleStatusUpdate = (newStatus: DeviceStatus, signature: string) => {
-    return updateDeviceStatus(id, newStatus, signature);
+  const handleStatusUpdate = async (newStatus: DeviceStatus, signature: string) => {
+    if (!id) return;
+    setStatusUpdateLoading(true);
+    try {
+      const success = await updateDeviceStatus(id, newStatus, signature);
+      if (success) {
+        toast.success(`Status updated to ${newStatus.replace('-', ' ')}`);
+        // Refresh device activity to show the new status
+        await fetchAllDeviceActivity();
+      } else {
+        toast.error('Failed to update status');
+      }
+    } catch (error) {
+      console.error('Error updating status:', error);
+      toast.error('Failed to update status');
+    } finally {
+      setStatusUpdateLoading(false);
+    }
   };
 
-  const handleChecklistStatusUpdate = (newStatus: DeviceStatus) => {
-    // For checklist components that don't need signature
-    updateDeviceStatus(id, newStatus, 'checklist-update');
+  const handleChecklistStatusUpdate = async (newStatus: DeviceStatus) => {
+    if (!id) return;
+    setStatusUpdateLoading(true);
+    try {
+      const success = await updateDeviceStatus(id, newStatus, 'checklist-update');
+      if (success) {
+        toast.success(`Status updated to ${newStatus.replace('-', ' ')}`);
+        // Refresh device activity to show the new status
+        await fetchAllDeviceActivity();
+        // Refresh device details to get updated diagnostic data
+        await fetchDeviceDetails();
+      } else {
+        toast.error('Failed to update status');
+      }
+    } catch (error) {
+      console.error('Error updating status:', error);
+      toast.error('Failed to update status');
+    } finally {
+      setStatusUpdateLoading(false);
+    }
   };
   
   const handleAddRemark = async (remark: string) => {
     await addRemark(id, remark);
     await fetchAllDeviceActivity();
+  };
+
+  // Add technician note
+  const handleAddTechnicianNote = async () => {
+    if (!technicianNote.trim() || !currentUser || addingNote) return;
+    
+    setAddingNote(true);
+    try {
+      const { error } = await supabase
+        .from('device_remarks')
+        .insert({
+          device_id: safeDevice.id,
+          remark: technicianNote,
+          created_by: currentUser.id,
+          remark_type: 'technician_note'
+        });
+      
+      if (error) throw error;
+      
+      setTechnicianNote('');
+      await fetchAllDeviceActivity();
+      toast.success('Note added successfully');
+    } catch (error: any) {
+      console.error('Error adding technician note:', error);
+      toast.error('Failed to add note');
+    } finally {
+      setAddingNote(false);
+    }
   };
   
   const handlePrintReceipt = () => {
@@ -847,76 +1068,74 @@ const DeviceDetailPage: React.FC = () => {
     }, 100);
   };
   
-  // Format date to readable format
-  const formatDate = (dateString: string, showTime: boolean = false) => {
-    const options: Intl.DateTimeFormatOptions = { 
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    };
-    const date = new Date(dateString);
-    const formattedDate = date.toLocaleDateString(undefined, options);
-    if (showTime) {
-      return `${formattedDate} ${date.toLocaleTimeString()}`;
-    }
-    return formattedDate;
-  };
   
-  // Find user by ID
-  const getUserById = (userId: string) => {
-    // In a real app this would come from a users store/context
-    const roles = {
-      '1': 'Admin',
-      '2': 'Customer Care',
-      '3': 'Technician'
-    };
-    return roles[userId as keyof typeof roles] || 'Unknown';
-  };
 
   // Helper to get device name
   const getDeviceName = (device: { brand: string; model: string }) => `${device.model}`;
 
-  // Add payment handler
-  const handleRecordPayment = async () => {
-    setRecordingPayment(true);
-    setPaymentError(null);
+  // Add payment handler for new modal with multiple payments support
+  const handlePaymentComplete = async (payments: any[], totalPaid: number) => {
     try {
-      if (!customer || !safeDevice) throw new Error('Missing customer or device');
-      if (!paymentAmount || isNaN(Number(paymentAmount)) || Number(paymentAmount) <= 0) {
-        setPaymentError('Enter a valid amount');
-        setRecordingPayment(false);
+      if (!customer) {
+        toast.error('Customer must be selected before processing payment');
         return;
       }
-      const payment = {
+      if (!safeDevice) throw new Error('Device information is missing');
+      
+      // Create payment records for each payment entry
+      const paymentRecords = payments.map(payment => ({
         id: crypto.randomUUID(),
         customer_id: customer.id,
-        amount: Number(paymentAmount),
-        method: paymentMethod,
+        amount: payment.amount,
+        method: payment.paymentMethod,
         device_id: safeDevice.id,
-        payment_date: new Date().toISOString(),
-        payment_type: paymentType,
+        payment_date: payment.timestamp,
+        payment_type: 'payment',
         status: 'completed',
         created_by: currentUser.id,
         created_at: new Date().toISOString(),
-      };
+        reference: payment.reference || undefined,
+        notes: payment.notes || undefined,
+        payment_account_id: payment.paymentAccountId,
+        // Add a transaction group ID to link multiple payments together
+        transaction_group_id: payments[0].id, // Use first payment ID as group ID
+        payment_sequence: payments.indexOf(payment) + 1,
+        total_transaction_amount: totalPaid
+      }));
+      
+      // Insert all payment records
       const { error } = await supabase
         .from('customer_payments')
-        .insert(payment);
+        .insert(paymentRecords);
       if (error) throw error;
-      setShowPaymentModal(false);
-      setPaymentAmount('');
-      setPaymentMethod('cash');
-      setLastPayment(payment);
+      
+      // Update finance account balances for each payment
+      for (const payment of payments) {
+        const { error: balanceError } = await supabase
+          .from('finance_accounts')
+          .update({ 
+            balance: supabase.raw(`balance + ${payment.amount}`),
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', payment.paymentAccountId);
+
+        if (balanceError) {
+          console.error('Error updating account balance:', balanceError);
+        }
+      }
+      
+      setLastPayment({
+        amount: totalPaid,
+        method: `${payments.length} payment(s)`,
+        payment_date: new Date().toISOString()
+      });
       setShowPaymentConfirmation(true);
-      // Refresh payments to show the new payment
+      // Refresh payments to show the new payments
       await refreshPayments();
-      toast.success('Payment recorded!');
+      
     } catch (err: any) {
-      setPaymentError(err.message || 'Failed to record payment');
-    } finally {
-      setRecordingPayment(false);
+      console.error('Payment processing error:', err);
+      throw err; // This will be caught by the modal and show error toast
     }
   };
 
@@ -1076,6 +1295,22 @@ const DeviceDetailPage: React.FC = () => {
     return userId.slice(0, 8) + '...';
   };
 
+  // Helper function to calculate repair progress based on status
+  const getRepairProgress = () => {
+    const statusProgress: { [key: string]: number } = {
+      'assigned': 0,
+      'diagnosis-started': 20,
+      'awaiting-parts': 30,
+      'in-repair': 60,
+      'reassembled-testing': 80,
+      'repair-complete': 90,
+      'returned-to-customer-care': 95,
+      'done': 100,
+      'failed': 0
+    };
+    return statusProgress[safeDevice.status] || 0;
+  };
+
 
   return (
     <>
@@ -1096,14 +1331,16 @@ const DeviceDetailPage: React.FC = () => {
             <GlassCard className="bg-gradient-to-br from-purple-500/10 to-purple-400/5">
               <h3 className="text-xl md:text-2xl font-bold text-purple-900 mb-6">Quick Actions</h3>
               <div className="grid grid-cols-1 gap-4">
-                <GlassButton
-                  variant="primary"
-                  icon={<Printer size={20} />}
-                  className="h-12 md:h-14 text-base md:text-lg w-full justify-center"
-                  onClick={handlePrintReceipt}
-                >
-                  Print Receipt
-                </GlassButton>
+                {currentUser.role !== 'technician' && (
+                  <GlassButton
+                    variant="primary"
+                    icon={<Printer size={20} />}
+                    className="h-12 md:h-14 text-base md:text-lg w-full justify-center"
+                    onClick={handlePrintReceipt}
+                  >
+                    Print Receipt
+                  </GlassButton>
+                )}
                 
                 {currentUser.role === 'customer-care' && (
                   <GlassButton
@@ -1116,62 +1353,85 @@ const DeviceDetailPage: React.FC = () => {
                   </GlassButton>
                 )}
                 
-                <GlassButton
-                  variant="secondary"
-                  icon={<Stethoscope size={20} />}
-                  className="h-12 md:h-14 text-base md:text-lg w-full justify-center"
-                  onClick={() => setShowDiagnosticChecklist(true)}
-                >
-                  Diagnostic
-                </GlassButton>
+                {(isAssignedTechnician || currentUser.role === 'admin') && (
+                  <GlassButton
+                    variant="secondary"
+                    icon={<Stethoscope size={20} />}
+                    className="h-12 md:h-14 text-base md:text-lg w-full justify-center"
+                    onClick={() => setShowDiagnosticChecklist(true)}
+                  >
+                    Diagnostic
+                  </GlassButton>
+                )}
                 
-                <GlassButton
-                  variant="secondary"
-                  icon={<Wrench size={20} />}
-                  className="h-12 md:h-14 text-base md:text-lg w-full justify-center"
-                  onClick={() => setShowRepairChecklist(true)}
-                >
-                  Repair Checklist
-                </GlassButton>
+                {(isAssignedTechnician || currentUser.role === 'admin') && (
+                  <GlassButton
+                    variant="secondary"
+                    icon={<Wrench size={20} />}
+                    className="h-12 md:h-14 text-base md:text-lg w-full justify-center"
+                    onClick={() => setShowRepairChecklist(true)}
+                  >
+                    Repair Checklist
+                  </GlassButton>
+                )}
+
+                {/* Work Timer for Technicians */}
+                {isAssignedTechnician && (
+                  <div className="space-y-3">
+                    <div className="bg-white/20 backdrop-blur-md rounded-lg p-4 border border-white/30">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <Timer className="h-5 w-5 text-blue-600" />
+                          <span className="font-medium text-gray-800">Work Timer</span>
+                        </div>
+                        <div className="text-lg font-mono font-bold text-blue-700">
+                          {workTimer.isRunning ? formatDuration(workTimer.elapsedTime) : '00:00:00'}
+                        </div>
+                      </div>
+                      
+                      <div className="flex gap-2">
+                        {!workTimer.isRunning ? (
+                          <GlassButton
+                            variant="primary"
+                            icon={<Play size={16} />}
+                            className="flex-1 h-10 text-sm"
+                            onClick={startWorkTimer}
+                          >
+                            Start Work
+                          </GlassButton>
+                        ) : (
+                          <GlassButton
+                            variant="secondary"
+                            icon={<Square size={16} />}
+                            className="flex-1 h-10 text-sm"
+                            onClick={stopWorkTimer}
+                          >
+                            Stop Work
+                          </GlassButton>
+                        )}
+                      </div>
+                      
+                      {workTimer.sessions.length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-white/20">
+                          <div className="text-xs text-gray-600 mb-2">Recent Sessions:</div>
+                          <div className="space-y-1">
+                            {workTimer.sessions.slice(0, 2).map((session, index) => (
+                              <div key={index} className="flex justify-between text-xs">
+                                <span>{new Date(session.start).toLocaleDateString()}</span>
+                                <span className="font-medium">
+                                  {session.duration ? `${session.duration}m` : 'In progress'}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </GlassCard>
 
-            {/* Device Status Card */}
-            <GlassCard className="bg-gradient-to-br from-indigo-500/10 to-indigo-400/5">
-              <h3 className="text-xl md:text-2xl font-bold text-indigo-900 mb-6">Device Status</h3>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm md:text-base text-gray-600">Current Status:</span>
-                  <StatusBadge status={safeDevice.status} />
-                </div>
-                
-                {safeDevice.expectedReturnDate && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm md:text-base text-gray-600">Expected Return:</span>
-                      <span className="text-sm md:text-base font-medium">
-                        {new Date(safeDevice.expectedReturnDate).toLocaleDateString()}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm md:text-base text-gray-600">Time Remaining:</span>
-                      <div className="text-sm md:text-base">
-                        {getMinimalCountdown(safeDevice.expectedReturnDate)}
-                      </div>
-                    </div>
-                  </div>
-                )}
-                
-                {safeDevice.assignedTo && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm md:text-base text-gray-600">Assigned To:</span>
-                    <span className="text-sm md:text-base font-medium">
-                      {getUserName(safeDevice.assignedTo)}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </GlassCard>
 
             {/* Device Barcode */}
             <DeviceBarcodeCard device={safeDevice} />
@@ -1180,64 +1440,91 @@ const DeviceDetailPage: React.FC = () => {
           {/* Middle Column - Customer & Details */}
           <div className="md:col-span-1 lg:col-span-1 space-y-6">
             
-            {/* Customer Information Section */}
-            {(customer || dbCustomer) && (
-              <GlassCard className="bg-gradient-to-br from-blue-500/10 to-blue-400/5">
-                <h3 className="text-xl md:text-2xl font-bold text-blue-900 mb-6">Customer Information</h3>
+
+            {/* Consolidated Device & Customer Information */}
+            <GlassCard className="bg-gradient-to-br from-blue-500/10 to-blue-400/5">
+              <h3 className="text-xl md:text-2xl font-bold text-blue-900 mb-6">Device & Customer Info</h3>
+              <div className="space-y-6">
+                
+                {/* Device Information */}
                 <div className="space-y-4">
-                  <div>
-                    <p className="text-sm md:text-base text-gray-500 mb-1">Name</p>
-                    <p className="text-gray-800 text-base md:text-lg font-medium">
-                      {dbCustomer?.name || customer?.name || 'N/A'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm md:text-base text-gray-500 mb-1">Phone</p>
-                    <p className="text-gray-800 text-base md:text-lg font-medium">
-                      {dbCustomer?.phone || customer?.phone || 'N/A'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm md:text-base text-gray-500 mb-1">City</p>
-                    <p className="text-gray-800 text-base md:text-lg font-medium">
-                      {dbCustomer?.city || customer?.city || 'N/A'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm md:text-base text-gray-500 mb-1">Loyalty Level</p>
-                    <p className="text-gray-800 text-base md:text-lg font-medium">
-                      {dbCustomer?.loyaltyLevel || customer?.loyaltyLevel || 'N/A'}
-                    </p>
+                  <h4 className="text-lg font-semibold text-gray-800 border-b border-gray-200 pb-2">Device Details</h4>
+                  <div className="grid grid-cols-1 gap-3">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-600">Model:</span>
+                      <span className="text-sm font-medium">{safeDevice.model || 'N/A'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-600">Serial:</span>
+                      <span className="text-sm font-medium">{safeDevice.serialNumber || 'N/A'}</span>
+                    </div>
+                    {safeDevice.unlockCode && (
+                      <div className="flex justify-between">
+                        <span className="text-sm text-gray-600">Unlock Code:</span>
+                        <span className="text-sm font-medium font-mono">{safeDevice.unlockCode}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-600">Status:</span>
+                      <StatusBadge status={safeDevice.status} />
+                    </div>
+                    {safeDevice.assignedTo && (
+                      <div className="flex justify-between">
+                        <span className="text-sm text-gray-600">Assigned To:</span>
+                        <span className="text-sm font-medium">{getUserName(safeDevice.assignedTo)}</span>
+                      </div>
+                    )}
+                    {safeDevice.expectedReturnDate && (
+                      <div className="flex justify-between">
+                        <span className="text-sm text-gray-600">Expected Return:</span>
+                        <span className="text-sm font-medium">
+                          {new Date(safeDevice.expectedReturnDate).toLocaleDateString()}
+                        </span>
+                      </div>
+                    )}
+                    {safeDevice.expectedReturnDate && (
+                      <div className="flex justify-between">
+                        <span className="text-sm text-gray-600">Time Remaining:</span>
+                        <div className="text-sm">{getMinimalCountdown(safeDevice.expectedReturnDate)}</div>
+                      </div>
+                    )}
                   </div>
                 </div>
-              </GlassCard>
-            )}
 
-            {/* Device Information */}
-            <GlassCard className="bg-gradient-to-br from-slate-500/10 to-slate-400/5">
-              <h3 className="text-xl md:text-2xl font-bold text-slate-900 mb-6">Device Details</h3>
-              <div className="space-y-4">
-
-                <div>
-                  <p className="text-sm md:text-base text-gray-500 mb-1">Model</p>
-                  <p className="text-gray-800 text-base md:text-lg font-medium">{safeDevice.model || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-sm md:text-base text-gray-500 mb-1">Serial Number</p>
-                  <p className="text-gray-800 text-base md:text-lg font-medium">{safeDevice.serialNumber || 'N/A'}</p>
-                </div>
-                {safeDevice.unlockCode && (
-                  <div>
-                    <p className="text-sm md:text-base text-gray-500 mb-1">Unlock Code</p>
-                    <p className="text-gray-800 text-base md:text-lg font-medium font-mono">
-                      {safeDevice.unlockCode}
-                    </p>
+                {/* Customer Information */}
+                {(customer || dbCustomer) && (
+                  <div className="space-y-4">
+                    <h4 className="text-lg font-semibold text-gray-800 border-b border-gray-200 pb-2">Customer Details</h4>
+                    <div className="grid grid-cols-1 gap-3">
+                      <div className="flex justify-between">
+                        <span className="text-sm text-gray-600">Name:</span>
+                        <span className="text-sm font-medium">{dbCustomer?.name || customer?.name || 'N/A'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-sm text-gray-600">Phone:</span>
+                        <span className="text-sm font-medium">{dbCustomer?.phone || customer?.phone || 'N/A'}</span>
+                      </div>
+                      {currentUser.role !== 'technician' && (
+                        <>
+                          <div className="flex justify-between">
+                            <span className="text-sm text-gray-600">City:</span>
+                            <span className="text-sm font-medium">{dbCustomer?.city || customer?.city || 'N/A'}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm text-gray-600">Loyalty Level:</span>
+                            <span className="text-sm font-medium">{dbCustomer?.loyaltyLevel || customer?.loyaltyLevel || 'N/A'}</span>
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
                 )}
+
+                {/* Issue Description */}
                 {safeDevice.issueDescription && (
-                  <div>
-                    <p className="text-sm md:text-base text-gray-500 mb-1">Issue Description</p>
-                    <p className="text-gray-800 text-base md:text-lg">
+                  <div className="space-y-2">
+                    <h4 className="text-lg font-semibold text-gray-800 border-b border-gray-200 pb-2">Issue Description</h4>
+                    <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">
                       {safeDevice.issueDescription}
                     </p>
                   </div>
@@ -1249,67 +1536,56 @@ const DeviceDetailPage: React.FC = () => {
           {/* Right Column - Payments & Actions */}
           <div className="md:col-span-2 lg:col-span-1 space-y-6">
             
-            {/* Payments Section - Tablet Optimized */}
+            {/* Payments Summary - Compact */}
             {(currentUser.role === 'admin' || currentUser.role === 'customer-care') && (
               <GlassCard className="bg-gradient-to-br from-green-500/10 to-green-400/5">
                 <h3 className="text-xl md:text-2xl font-bold text-green-900 mb-6">Payments</h3>
                 
                 {devicePayments.length === 0 ? (
-                  <div className="text-center py-8 md:py-12">
-                    <CreditCard className="w-16 h-16 md:w-20 md:h-20 text-gray-400 mx-auto mb-4" />
-                    <div className="text-gray-700 text-base md:text-lg">No payments recorded for this device.</div>
+                  <div className="text-center py-6">
+                    <CreditCard className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                    <div className="text-gray-700 text-sm">No payments recorded</div>
                   </div>
                 ) : (
-                  <div className="space-y-4 mb-6">
-                    {devicePayments.map((p: any) => (
-                      <div key={p.id} className="bg-white rounded-xl border border-green-200 p-4 md:p-6">
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="flex items-center gap-3">
-                            <CreditCard className="w-5 h-5 md:w-6 md:h-6 text-green-600" />
-                            <span className="font-bold text-green-700 text-xl md:text-2xl">
+                  <div className="space-y-3 mb-4">
+                    {devicePayments.slice(0, 2).map((p: any) => (
+                      <div key={p.id} className="bg-white rounded-lg border border-green-200 p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <CreditCard className="w-4 h-4 text-green-600" />
+                            <span className="font-bold text-green-700 text-lg">
                               {formatCurrency(p.amount)}
                             </span>
                           </div>
-                          <span className="text-sm md:text-base text-gray-500 capitalize bg-gray-100 px-3 py-1 rounded-full">
+                          <span className="text-xs text-gray-500 capitalize bg-gray-100 px-2 py-1 rounded">
                             {p.method}
                           </span>
                         </div>
-                        
-                        <div className="grid grid-cols-2 gap-4 text-sm md:text-base">
-                          <div>
-                            <span className="text-gray-500">Type:</span>
-                            <p className="font-medium capitalize">
-                              {p.payment_type === 'payment' ? 'Payment' : p.payment_type === 'deposit' ? 'Deposit' : 'Refund'}
-                            </p>
-                          </div>
-                          <div>
-                            <span className="text-gray-500">Status:</span>
-                            <p className="font-medium capitalize">{p.status}</p>
-                          </div>
-                        </div>
-                        
-                        <div className="mt-3 text-sm md:text-base text-gray-500">
+                        <div className="text-xs text-gray-500">
+                          {p.payment_type === 'payment' ? 'Payment' : p.payment_type === 'deposit' ? 'Deposit' : 'Refund'} • 
                           {p.payment_date ? formatRelativeTime(p.payment_date) : ''}
-                          {p.created_by && (
-                            <span className="ml-2 text-blue-700">by {getUserName(p.created_by)}</span>
-                          )}
                         </div>
                       </div>
                     ))}
+                    {devicePayments.length > 2 && (
+                      <div className="text-center text-sm text-gray-500">
+                        +{devicePayments.length - 2} more payments
+                      </div>
+                    )}
                   </div>
                 )}
                 
-                <div className="bg-green-50 rounded-xl p-4 md:p-6 space-y-3">
+                <div className="bg-green-50 rounded-lg p-4 space-y-2">
                   <div className="flex justify-between items-center">
-                    <span className="text-green-900 font-semibold text-base md:text-lg">Total Paid:</span>
-                    <span className="text-green-700 font-bold text-xl md:text-2xl">
+                    <span className="text-green-900 font-semibold text-sm">Total Paid:</span>
+                    <span className="text-green-700 font-bold text-lg">
                       {formatCurrency(totalPaid)}
                     </span>
                   </div>
                   {invoiceTotal > 0 && outstanding !== null && (
                     <div className="flex justify-between items-center">
-                      <span className="text-amber-900 font-semibold text-base md:text-lg">Outstanding:</span>
-                      <span className="text-amber-700 font-bold text-xl md:text-2xl">
+                      <span className="text-amber-900 font-semibold text-sm">Outstanding:</span>
+                      <span className="text-amber-700 font-bold text-lg">
                         {formatCurrency(outstanding)}
                       </span>
                     </div>
@@ -1319,23 +1595,29 @@ const DeviceDetailPage: React.FC = () => {
                 {currentUser.role === 'customer-care' || currentUser.role === 'admin' ? (
                   <GlassButton
                     variant="primary"
-                    icon={<CreditCard size={20} />}
-                    className="mt-6 h-12 md:h-14 w-full text-base md:text-lg justify-center"
-                    onClick={() => setShowPaymentModal(true)}
+                    icon={<CreditCard size={16} />}
+                    className="mt-4 h-10 w-full text-sm justify-center"
+                    onClick={() => {
+                      // Set a default amount if none is set
+                      if (!paymentAmount) {
+                        setPaymentAmount('0');
+                      }
+                      setShowPaymentModal(true);
+                    }}
                   >
                     Record Payment
                   </GlassButton>
                 ) : (
-                  <div className="mt-6">
+                  <div className="mt-4">
                     <GlassButton
                       variant="primary"
-                      icon={<CreditCard size={20} />}
-                      className="opacity-50 cursor-not-allowed h-12 md:h-14 w-full text-base md:text-lg justify-center"
+                      icon={<CreditCard size={16} />}
+                      className="opacity-50 cursor-not-allowed h-10 w-full text-sm justify-center"
                       disabled
                     >
                       Record Payment
                     </GlassButton>
-                    <div className="text-sm md:text-base text-gray-500 mt-3 text-center">
+                    <div className="text-xs text-gray-500 mt-2 text-center">
                       Only customer care can record payments.
                     </div>
                   </div>
@@ -1347,10 +1629,17 @@ const DeviceDetailPage: React.FC = () => {
             {(isAssignedTechnician || currentUser.role === 'admin') && (
               <GlassCard className="bg-gradient-to-br from-orange-500/10 to-orange-400/5">
                 <h3 className="text-xl md:text-2xl font-bold text-orange-900 mb-6">Update Status</h3>
-                <StatusUpdateForm
-                  device={safeDevice}
-                  onStatusUpdate={handleStatusUpdate}
-                />
+                {statusUpdateLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="animate-spin h-8 w-8 text-orange-600 mr-3" />
+                    <span className="text-orange-700 font-medium">Updating status...</span>
+                  </div>
+                ) : (
+                  <StatusUpdateForm
+                    device={safeDevice}
+                    onStatusUpdate={handleStatusUpdate}
+                  />
+                )}
               </GlassCard>
             )}
 
@@ -1365,64 +1654,229 @@ const DeviceDetailPage: React.FC = () => {
                 />
               </GlassCard>
             )}
+
+            {/* Technician Work Summary */}
+            {isAssignedTechnician && (
+              <GlassCard className="bg-gradient-to-br from-emerald-500/10 to-emerald-400/5">
+                <h3 className="text-xl md:text-2xl font-bold text-emerald-900 mb-6">Work Summary</h3>
+                <div className="space-y-4">
+                  {/* Work Statistics */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-white/20 backdrop-blur-md rounded-lg p-4 border border-white/30">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Clock className="h-4 w-4 text-emerald-600" />
+                        <span className="text-sm font-medium text-gray-700">Total Time</span>
+                      </div>
+                      <div className="text-lg font-bold text-emerald-700">
+                        {workTimer.sessions.reduce((total, session) => total + (session.duration || 0), 0)}m
+                      </div>
+                    </div>
+                    
+                    <div className="bg-white/20 backdrop-blur-md rounded-lg p-4 border border-white/30">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Target className="h-4 w-4 text-emerald-600" />
+                        <span className="text-sm font-medium text-gray-700">Sessions</span>
+                      </div>
+                      <div className="text-lg font-bold text-emerald-700">
+                        {workTimer.sessions.length}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Current Status Progress */}
+                  <div className="bg-white/20 backdrop-blur-md rounded-lg p-4 border border-white/30">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-sm font-medium text-gray-700">Repair Progress</span>
+                      <span className="text-sm text-gray-600">
+                        {getRepairProgress()}%
+                      </span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div 
+                        className="bg-emerald-600 h-2 rounded-full transition-all duration-300" 
+                        style={{ width: `${getRepairProgress()}%` }}
+                      ></div>
+                    </div>
+                  </div>
+
+                  {/* Quick Status Actions */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <GlassButton
+                      variant="secondary"
+                      icon={statusUpdateLoading ? <Loader2 size={16} className="animate-spin" /> : <CheckSquare size={16} />}
+                      className="h-10 text-sm"
+                      onClick={() => {
+                        if (safeDevice.status === 'in-repair') {
+                          handleStatusUpdate('reassembled-testing', 'auto-progress');
+                        }
+                      }}
+                      disabled={safeDevice.status !== 'in-repair' || statusUpdateLoading}
+                    >
+                      {statusUpdateLoading ? 'Updating...' : 'Testing'}
+                    </GlassButton>
+                    
+                    <GlassButton
+                      variant="primary"
+                      icon={statusUpdateLoading ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
+                      className="h-10 text-sm"
+                      onClick={() => {
+                        if (safeDevice.status === 'reassembled-testing') {
+                          handleStatusUpdate('repair-complete', 'auto-progress');
+                        }
+                      }}
+                      disabled={safeDevice.status !== 'reassembled-testing' || statusUpdateLoading}
+                    >
+                      {statusUpdateLoading ? 'Updating...' : 'Complete'}
+                    </GlassButton>
+                  </div>
+                </div>
+              </GlassCard>
+            )}
+
+            {/* Technician Notes */}
+            {isAssignedTechnician && (
+              <GlassCard className="bg-gradient-to-br from-amber-500/10 to-amber-400/5">
+                <h3 className="text-xl md:text-2xl font-bold text-amber-900 mb-6">Quick Notes</h3>
+                <div className="space-y-4">
+                  <div>
+                    <textarea
+                      value={technicianNote}
+                      onChange={(e) => setTechnicianNote(e.target.value)}
+                      placeholder="Add a quick note about your work..."
+                      className="w-full p-3 bg-white/30 backdrop-blur-md border border-white/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500/50 text-sm"
+                      rows={3}
+                    />
+                  </div>
+                  <GlassButton
+                    variant="primary"
+                    icon={<MessageSquare size={16} />}
+                    className="h-10 w-full text-sm"
+                    onClick={handleAddTechnicianNote}
+                    disabled={!technicianNote.trim() || addingNote}
+                  >
+                    {addingNote ? 'Adding...' : 'Add Note'}
+                  </GlassButton>
+                  
+                  {/* Recent Notes */}
+                  {allRemarks.filter(r => r.remark_type === 'technician_note').length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-white/20">
+                      <div className="text-sm font-medium text-gray-700 mb-2">Recent Notes:</div>
+                      <div className="space-y-2 max-h-32 overflow-y-auto">
+                        {allRemarks
+                          .filter(r => r.remark_type === 'technician_note')
+                          .slice(0, 3)
+                          .map((remark, index) => (
+                            <div key={index} className="bg-white/20 backdrop-blur-md rounded p-2 text-xs">
+                              <div className="text-gray-600 mb-1">
+                                {formatRelativeTime(remark.created_at)}
+                              </div>
+                              <div className="text-gray-800">{remark.remark}</div>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </GlassCard>
+            )}
           </div>
         </div>
 
         {/* Full Width Sections */}
         <div className="mt-8 space-y-8">
           
-          {/* Device Timeline & Activity - Full Width for tablets */}
-          <GlassCard className="bg-gradient-to-br from-gray-500/10 to-gray-400/5">
-            <h3 className="text-xl md:text-2xl font-bold text-gray-900 mb-6">Device Timeline</h3>
-            
-            {timelineLoading ? (
-              <div className="text-center py-8">
-                <Loader2 className="animate-spin h-8 w-8 mx-auto mb-4 text-blue-600" />
-                <p className="text-gray-600">Loading activity...</p>
+          {/* Technician Summary - Compact view for technicians */}
+          {currentUser.role === 'technician' && (
+            <GlassCard className="bg-gradient-to-br from-blue-500/10 to-blue-400/5">
+              <h3 className="text-xl md:text-2xl font-bold text-blue-900 mb-6">Repair Summary</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-white/20 backdrop-blur-md rounded-lg p-4 border border-white/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Clock className="h-4 w-4 text-blue-600" />
+                    <span className="text-sm font-medium text-gray-700">Time Spent</span>
+                  </div>
+                  <div className="text-lg font-bold text-blue-700">
+                    {workTimer.sessions.reduce((total, session) => total + (session.duration || 0), 0)}m
+                  </div>
+                </div>
+                
+                <div className="bg-white/20 backdrop-blur-md rounded-lg p-4 border border-white/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Target className="h-4 w-4 text-blue-600" />
+                    <span className="text-sm font-medium text-gray-700">Progress</span>
+                  </div>
+                  <div className="text-lg font-bold text-blue-700">
+                    {getRepairProgress()}%
+                  </div>
+                </div>
+                
+                <div className="bg-white/20 backdrop-blur-md rounded-lg p-4 border border-white/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    <CheckSquare className="h-4 w-4 text-blue-600" />
+                    <span className="text-sm font-medium text-gray-700">Status</span>
+                  </div>
+                  <div className="text-lg font-bold text-blue-700 capitalize">
+                    {safeDevice.status.replace('-', ' ')}
+                  </div>
+                </div>
               </div>
-            ) : (
-              <div className="space-y-4">
-                {/* Status Timeline */}
+            </GlassCard>
+          )}
+          
+          {/* Device Timeline & Activity - Full Width for tablets */}
+          {currentUser.role !== 'technician' && (
+            <GlassCard className="bg-gradient-to-br from-gray-500/10 to-gray-400/5">
+              <h3 className="text-xl md:text-2xl font-bold text-gray-900 mb-6">Device Timeline</h3>
+              
+              {timelineLoading ? (
+                <div className="text-center py-8">
+                  <Loader2 className="animate-spin h-8 w-8 mx-auto mb-4 text-blue-600" />
+                  <p className="text-gray-600">Loading activity...</p>
+                </div>
+              ) : (
                 <div className="space-y-4">
-                  {getTimelineEvents().length === 0 ? (
-                    <div className="text-center py-8">
-                      <History className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                      <p className="text-gray-600">No status changes recorded yet.</p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {getTimelineEvents().slice(0, 6).map((event, index) => (
-                        <div key={index} className="bg-white rounded-lg border border-gray-200 p-4">
-                          <div className="flex items-start gap-3">
-                            {event.icon}
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-sm font-medium text-gray-900">
-                                  {event.typeLabel}
-                                </span>
-                                <span className="text-xs text-gray-500">
-                                  {formatRelativeTime(event.timestamp)}
-                                </span>
-                              </div>
-                              <p className="text-sm text-gray-600 mb-2">{event.description}</p>
-                              {event.durationLabel && (
-                                <span className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
-                                  Duration: {event.durationLabel}
-                                </span>
-                              )}
-                              <div className="text-xs text-gray-500 mt-1">
-                                by {getUserName(event.user)}
+                  {/* Status Timeline */}
+                  <div className="space-y-4">
+                    {getTimelineEvents().length === 0 ? (
+                      <div className="text-center py-8">
+                        <History className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                        <p className="text-gray-600">No status changes recorded yet.</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {getTimelineEvents().slice(0, 6).map((event, index) => (
+                          <div key={index} className="bg-white rounded-lg border border-gray-200 p-4">
+                            <div className="flex items-start gap-3">
+                              {event.icon}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-sm font-medium text-gray-900">
+                                    {event.typeLabel}
+                                  </span>
+                                  <span className="text-xs text-gray-500">
+                                    {formatRelativeTime(event.timestamp)}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-gray-600 mb-2">{event.description}</p>
+                                {event.durationLabel && (
+                                  <span className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
+                                    Duration: {event.durationLabel}
+                                  </span>
+                                )}
+                                <div className="text-xs text-gray-500 mt-1">
+                                  by {getUserName(event.user)}
+                                </div>
                               </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
-          </GlassCard>
+              )}
+            </GlassCard>
+          )}
 
           {/* Attachments Section */}
           <GlassCard className="bg-gradient-to-br from-amber-500/10 to-amber-400/5">
@@ -1533,7 +1987,7 @@ const DeviceDetailPage: React.FC = () => {
           </GlassCard>
 
           {/* Warranty Information */}
-          {hasWarrantyData() && (
+          {hasWarrantyData() && currentUser.role !== 'technician' && (
             <GlassCard className="bg-gradient-to-br from-cyan-500/10 to-cyan-400/5">
               <h3 className="text-xl md:text-2xl font-bold text-cyan-900 mb-6">Warranty Information</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1562,7 +2016,7 @@ const DeviceDetailPage: React.FC = () => {
           )}
 
           {/* Device Repair History */}
-          {hasRepairHistory() && (
+          {hasRepairHistory() && currentUser.role !== 'technician' && (
             <GlassCard className="bg-gradient-to-br from-rose-500/10 to-rose-400/5">
               <h3 className="text-xl md:text-2xl font-bold text-rose-900 mb-6">Previous Repairs</h3>
               <div className="space-y-4">
@@ -1683,124 +2137,21 @@ const DeviceDetailPage: React.FC = () => {
         </Modal>
       )}
 
-      {/* Payment Modal - Tablet Optimized */}
-      <Modal 
-        isOpen={showPaymentModal} 
+      {/* New Payments Popup Modal */}
+      <PaymentsPopupModal
+        isOpen={showPaymentModal}
         onClose={() => {
           setShowPaymentModal(false);
           setPaymentAmount('');
-          setPaymentMethod('cash');
-          setPaymentType('payment');
-          setPaymentError(null);
-        }} 
-        title="Record Payment" 
-        maxWidth="700px"
-      >
-        <form
-          onSubmit={async e => {
-            e.preventDefault();
-            await handleRecordPayment();
-          }}
-          className="space-y-6"
-        >
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div>
-              <label className="block text-gray-700 mb-3 font-semibold text-base md:text-lg">Amount</label>
-              <input
-                type="number"
-                value={paymentAmount}
-                onChange={e => setPaymentAmount(e.target.value)}
-                step="0.01"
-                min="0"
-                className="w-full py-4 px-6 bg-white/30 backdrop-blur-md border border-white/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-base md:text-lg"
-                placeholder="0.00"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-gray-700 mb-3 font-semibold text-base md:text-lg">Payment Method</label>
-              <select
-                value={paymentMethod}
-                onChange={e => setPaymentMethod(e.target.value as 'cash' | 'card' | 'transfer')}
-                className="w-full py-4 px-6 bg-white/30 backdrop-blur-md border border-white/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-base md:text-lg"
-              >
-                <option value="cash">Cash</option>
-                <option value="card">Card</option>
-                <option value="transfer">Transfer</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-gray-700 mb-3 font-semibold text-base md:text-lg">Payment Type</label>
-              <select
-                value={paymentType}
-                onChange={e => setPaymentType(e.target.value as 'payment' | 'deposit' | 'refund')}
-                className="w-full py-4 px-6 bg-white/30 backdrop-blur-md border border-white/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-base md:text-lg"
-              >
-                <option value="payment">Payment</option>
-                <option value="deposit">Deposit</option>
-                <option value="refund">Refund</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="bg-gray-50 rounded-lg p-4 md:p-6">
-            <h4 className="font-semibold text-base md:text-lg text-gray-800 mb-3">Payment Summary</h4>
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Customer:</span>
-                <span className="font-medium">{dbCustomer?.name || customer?.name || 'N/A'}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Device:</span>
-                <span className="font-medium">{safeDevice.brand} {safeDevice.model}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Type:</span>
-                <span className="font-medium capitalize">{paymentType}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Amount:</span>
-                <span className="font-bold text-lg">{paymentAmount ? formatCurrency(Number(paymentAmount)) : '0.00'}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Method:</span>
-                <span className="font-medium capitalize">{paymentMethod}</span>
-              </div>
-            </div>
-          </div>
-
-          {paymentError && (
-            <div className="p-4 rounded-lg bg-red-50 text-red-700 border border-red-200 text-base md:text-lg">
-              {paymentError}
-            </div>
-          )}
-
-          <div className="flex gap-4 justify-end mt-6">
-            <GlassButton 
-              type="button" 
-              variant="secondary" 
-              onClick={() => {
-                setShowPaymentModal(false);
-                setPaymentAmount('');
-                setPaymentMethod('cash');
-                setPaymentType('payment');
-                setPaymentError(null);
-              }}
-              className="h-12 md:h-14 px-6 md:px-8 text-base md:text-lg"
-            >
-              Cancel
-            </GlassButton>
-            <GlassButton 
-              type="submit" 
-              variant="primary" 
-              disabled={recordingPayment}
-              className="h-12 md:h-14 px-6 md:px-8 text-base md:text-lg"
-            >
-              {recordingPayment ? 'Recording...' : 'Record Payment'}
-            </GlassButton>
-          </div>
-        </form>
-      </Modal>
+        }}
+        amount={paymentAmount ? Number(paymentAmount) : 0}
+        customerId={customer?.id}
+        customerName={customer?.name}
+        description={`Payment for ${getDeviceName(safeDevice)} repair`}
+        onPaymentComplete={handlePaymentComplete}
+        title="Record Payment"
+        showCustomerInfo={true}
+      />
 
       {/* Payment Confirmation Modal */}
       <Modal 

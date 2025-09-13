@@ -39,7 +39,7 @@ export class AnalyticsService {
       // Get total variants count
       const { count: totalVariants, error: variantsError } = await supabase
         .from('lats_product_variants')
-        .select('*', { count: 'exact', head: true });
+        .select('id', { count: 'exact', head: true });
 
       if (variantsError) throw variantsError;
       console.log('📊 Total variants found:', totalVariants);
@@ -122,13 +122,13 @@ export class AnalyticsService {
       // Get counts for categories, brands, suppliers
       const { count: categoriesCount } = await supabase
         .from('lats_categories')
-        .select('*', { count: 'exact', head: true });
+        .select('id', { count: 'exact', head: true });
 
 
 
       const { count: suppliersCount } = await supabase
         .from('lats_suppliers')
-        .select('*', { count: 'exact', head: true });
+        .select('id', { count: 'exact', head: true });
 
       const result = {
         totalVariants: totalVariants || 0,

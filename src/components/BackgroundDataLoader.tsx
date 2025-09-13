@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { useInventoryStore } from '../features/lats/stores/useInventoryStore';
-import { useCustomers } from '../context/CustomersContext';
+import { CustomersContext } from '../context/CustomersContext';
 import { Package, CheckCircle, Users, Smartphone, Settings } from 'lucide-react';
 import { useCyclingLoadingMessage } from '../hooks/useCyclingLoadingMessage';
 
@@ -10,7 +10,10 @@ const BackgroundDataLoader: React.FC = () => {
   const [progress, setProgress] = useState(0);
   
   const { products, categories, suppliers, isLoading: storeLoading } = useInventoryStore();
-  const { customers } = useCustomers();
+  
+  // Use useContext instead of useCustomers hook to avoid the provider requirement
+  const customersContext = useContext(CustomersContext);
+  const customers = customersContext?.customers || [];
   
   // Cycling loading messages
   const { currentMessage } = useCyclingLoadingMessage({

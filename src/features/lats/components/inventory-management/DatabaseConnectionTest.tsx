@@ -229,7 +229,7 @@ const DatabaseConnectionTest: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {storeShelves.slice(0, 6).map((shelf) => (
               <div key={shelf.id} className="bg-white p-3 rounded border">
-                <div className="font-medium text-gray-800">{shelf.name}</div>
+                <div className="font-medium text-gray-800">{shelf.code}</div>
                 <div className="text-sm text-gray-600">Code: {shelf.code}</div>
                 <div className="text-sm text-gray-600">Type: {shelf.shelf_type}</div>
               </div>

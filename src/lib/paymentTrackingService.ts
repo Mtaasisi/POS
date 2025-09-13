@@ -98,9 +98,10 @@ class PaymentTrackingService {
   private connectionStatus: 'connected' | 'disconnected' | 'unknown' = 'unknown';
   private lastConnectionCheck = 0;
   private readonly CONNECTION_CHECK_INTERVAL = 30000; // 30 seconds (increased from 10s)
+  private globalFetchLock = false; // Global lock to prevent multiple simultaneous fetches
+  private readonly GLOBAL_FETCH_TIMEOUT = 30000; // 30 seconds timeout for global fetch
   private debounceTimers = new Map<string, NodeJS.Timeout>(); // Debounce timers for each cache key
   private readonly DEBOUNCE_DELAY = 1000; // 1 second debounce (increased from 500ms)
-  private globalFetchLock = false; // Global lock to prevent multiple simultaneous fetches
 
   // Clear cache
   private clearCache() {
@@ -287,6 +288,37 @@ class PaymentTrackingService {
   }
 
   // Fetch all payment transactions from multiple sources
+  // Debounced fetch method to prevent rapid successive calls
+  async debouncedFetchPaymentTransactions(
+    startDate?: string,
+    endDate?: string,
+    status?: string,
+    method?: string
+  ): Promise<PaymentTransaction[]> {
+    const cacheKey = `payments_${startDate || 'all'}_${endDate || 'all'}_${status || 'all'}_${method || 'all'}`;
+    
+    // Clear existing debounce timer for this cache key
+    if (this.debounceTimers.has(cacheKey)) {
+      clearTimeout(this.debounceTimers.get(cacheKey)!);
+    }
+    
+    // Return a promise that resolves after debounce delay
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(async () => {
+        this.debounceTimers.delete(cacheKey);
+        try {
+          const result = await this.fetchPaymentTransactions(startDate, endDate, status, method);
+          resolve(result);
+        } catch (error) {
+          reject(error);
+        }
+      }, this.DEBOUNCE_DELAY);
+      
+      this.debounceTimers.set(cacheKey, timer);
+    });
+  }
+
+  // Main fetch method with caching and locking
   async fetchPaymentTransactions(
     startDate?: string,
     endDate?: string,
@@ -307,11 +339,20 @@ class PaymentTrackingService {
       // Global lock to prevent multiple simultaneous fetches
       if (this.globalFetchLock) {
         console.log('⏳ PaymentTrackingService: Global fetch in progress, waiting...');
-        // Wait for global fetch to complete and return cached data
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Wait for global fetch to complete with timeout
+        let waitTime = 0;
+        const maxWaitTime = 10000; // 10 seconds max wait
+        while (this.globalFetchLock && waitTime < maxWaitTime) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+          waitTime += 200;
+        }
         const freshCachedData = this.getCachedData(cacheKey);
         if (freshCachedData) {
           return freshCachedData;
+        }
+        // If still locked after timeout, proceed but warn
+        if (this.globalFetchLock) {
+          console.warn('⚠️ PaymentTrackingService: Global fetch timeout reached, proceeding anyway');
         }
       }
 
@@ -330,8 +371,14 @@ class PaymentTrackingService {
         return this.fetchLock.get(cacheKey)!;
       }
 
-      // Set global lock
+      // Set global lock with timeout
       this.globalFetchLock = true;
+      const globalLockTimeout = setTimeout(() => {
+        if (this.globalFetchLock) {
+          console.warn('⚠️ PaymentTrackingService: Global fetch lock timeout reached, force releasing lock');
+          this.globalFetchLock = false;
+        }
+      }, this.GLOBAL_FETCH_TIMEOUT);
 
       // Create new fetch promise and store it in the lock map
       const fetchPromise = this.retryOperation(
@@ -346,7 +393,8 @@ class PaymentTrackingService {
         this.setCachedData(cacheKey, result);
         return result;
       } finally {
-        // Clean up the locks
+        // Clean up the locks and timeout
+        clearTimeout(globalLockTimeout);
         this.fetchLock.delete(cacheKey);
         this.globalFetchLock = false;
       }
@@ -444,8 +492,8 @@ class PaymentTrackingService {
             customerEmail: sale.customer_email,
             customerAddress: sale.customer_address,
             amount: sale.total_amount || 0,
-            method: this.mapPaymentMethod(sale.payment_method),
-            paymentMethod: this.mapPaymentMethod(sale.payment_method),
+            method: sale.payment_method?.type === 'multiple' ? 'Multiple' : this.mapPaymentMethod(sale.payment_method),
+            paymentMethod: sale.payment_method?.type === 'multiple' ? 'Multiple' : this.mapPaymentMethod(sale.payment_method),
             reference: sale.sale_number || `REF-${sale.id.slice(0, 8).toUpperCase()}`,
             status: this.mapSaleStatus(sale.status),
             date: sale.created_at,
@@ -460,7 +508,10 @@ class PaymentTrackingService {
             createdBy: sale.created_by,
             createdAt: sale.created_at,
             failureReason: sale.failure_reason,
-            metadata: sale.metadata || {}
+            metadata: {
+              ...sale.metadata,
+              paymentMethod: sale.payment_method // Include the full payment method structure
+            }
             // soldItems will be fetched on-demand when viewing transaction details
           }));
           allPayments.push(...transformedPOSSales);

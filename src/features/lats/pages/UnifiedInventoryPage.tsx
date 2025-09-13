@@ -21,6 +21,7 @@ import { toast } from 'react-hot-toast';
 
 // Import forms and components
 import StockAdjustModal from '../components/inventory/StockAdjustModal';
+import EnhancedStockAdjustModal from '../components/inventory/EnhancedStockAdjustModal';
 import CategoryFormModal from '../components/inventory/CategoryFormModal';
 
 import SupplierForm from '../components/inventory/SupplierForm';
@@ -43,6 +44,7 @@ import { latsEventBus } from '../lib/data/eventBus';
 import { runDatabaseDiagnostics, logDiagnosticResult } from '../lib/databaseDiagnostics';
 import { useCyclingLoadingMessage } from '../../../hooks/useCyclingLoadingMessage';
 import { LiveInventoryService, LiveInventoryMetrics } from '../lib/liveInventoryService';
+import { Category, Supplier, StockMovement, Product } from '../types/inventory';
 
 
 // Loading Progress Indicator Component
@@ -141,12 +143,7 @@ const UnifiedInventoryPage: React.FC = () => {
     adjustStock
   } = useInventoryStore();
 
-  // Minimal debug logging for products state
-  useEffect(() => {
-    if (import.meta.env.MODE === 'development' && products?.length === 0 && !isLoading) {
-      console.log('⚠️ [UnifiedInventoryPage] No products loaded');
-    }
-  }, [products, isLoading]);
+  // Minimal debug logging for products state - moved after filteredProducts definition
 
   // Database connection status
   const [dbStatus, setDbStatus] = useState<'connected' | 'connecting' | 'error'>('connecting');
@@ -188,6 +185,7 @@ const UnifiedInventoryPage: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState('all');
 
   const [selectedStatus, setSelectedStatus] = useState('all');
+  const [selectedBrand, setSelectedBrand] = useState('all');
   const [showLowStockOnly, setShowLowStockOnly] = useState(false);
   const [showFeaturedOnly, setShowFeaturedOnly] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
@@ -562,6 +560,20 @@ const UnifiedInventoryPage: React.FC = () => {
 
     return filtered;
   }, [products, searchQuery, selectedCategory, selectedStatus, showLowStockOnly, showFeaturedOnly, sortBy, activeTab, categories]);
+
+  // Minimal debug logging for products state
+  useEffect(() => {
+    if (import.meta.env.MODE === 'development') {
+      console.log('🔍 [UnifiedInventoryPage] Products state changed:', {
+        productsCount: products?.length || 0,
+        isLoading,
+        filteredProductsCount: filteredProducts?.length || 0,
+        searchQuery,
+        selectedCategory,
+        selectedStatus
+      });
+    }
+  }, [products, isLoading, filteredProducts, searchQuery, selectedCategory, selectedStatus]);
 
   // Format money
   const formatMoney = (amount: number) => {
@@ -1193,7 +1205,8 @@ const UnifiedInventoryPage: React.FC = () => {
             setSearchQuery={setSearchQuery}
             selectedCategory={selectedCategory}
             setSelectedCategory={setSelectedCategory}
-
+            selectedBrand={selectedBrand}
+            setSelectedBrand={setSelectedBrand}
             selectedStatus={selectedStatus}
             setSelectedStatus={setSelectedStatus}
             showLowStockOnly={showLowStockOnly}
@@ -1207,6 +1220,7 @@ const UnifiedInventoryPage: React.FC = () => {
             selectedProducts={selectedProducts}
             setSelectedProducts={setSelectedProducts}
             categories={categories}
+            brands={[]}
             formatMoney={formatMoney}
             getStatusColor={getStatusColor}
             handleStockAdjustment={handleStockAdjustment}
@@ -1261,30 +1275,27 @@ const UnifiedInventoryPage: React.FC = () => {
           }}
         />
 
-        {/* Stock Adjustment Modal */}
+        {/* Enhanced Stock Adjustment Modal */}
         {showStockAdjustModal && selectedProductForHistory && (
-          <StockAdjustModal
-            variant={products.find(p => p.id === selectedProductForHistory)?.variants?.[0]}
+          <EnhancedStockAdjustModal
+            product={products.find(p => p.id === selectedProductForHistory)}
             isOpen={showStockAdjustModal}
             onClose={() => {
               setShowStockAdjustModal(false);
               setSelectedProductForHistory(null);
             }}
             onSubmit={async (data) => {
-              const product = products.find(p => p.id === selectedProductForHistory);
-              if (product && product.variants?.[0]) {
-                const variant = product.variants[0];
-                let quantity = data.quantity;
-                
-                // Calculate the actual quantity change based on adjustment type
-                if (data.adjustmentType === 'out') {
-                  quantity = -quantity; // Negative for stock out
-                } else if (data.adjustmentType === 'set') {
-                  quantity = quantity - variant.quantity; // Difference for set
-                }
-                
-                await handleStockAdjustment(product.id, variant.id, quantity, data.reason);
+              const { variant, ...adjustmentData } = data;
+              let quantity = adjustmentData.quantity;
+              
+              // Calculate the actual quantity change based on adjustment type
+              if (adjustmentData.adjustmentType === 'out') {
+                quantity = -quantity; // Negative for stock out
+              } else if (adjustmentData.adjustmentType === 'set') {
+                quantity = quantity - variant.quantity; // Difference for set
               }
+              
+              await handleStockAdjustment(selectedProductForHistory, variant.id, quantity, adjustmentData.reason);
             }}
             loading={isLoading}
           />

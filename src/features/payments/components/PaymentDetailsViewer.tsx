@@ -8,6 +8,7 @@ import {
   Building, Calendar, FileText, Printer, Download,
   AlertCircle, RefreshCw, Eye, EyeOff
 } from 'lucide-react';
+import PaymentMethodIcon from '../../../components/PaymentMethodIcon';
 import { toast } from 'react-hot-toast';
 import { 
   paymentTrackingService,
@@ -119,16 +120,7 @@ const PaymentDetailsViewer: React.FC<PaymentDetailsViewerProps> = ({
 
   // Get payment method icon
   const getPaymentMethodIcon = (method: string) => {
-    const methodLower = method.toLowerCase();
-    if (methodLower.includes('mpesa') || methodLower.includes('mobile')) {
-      return <Smartphone className="w-5 h-5 text-green-600" />;
-    } else if (methodLower.includes('card')) {
-      return <CreditCard className="w-5 h-5 text-blue-600" />;
-    } else if (methodLower.includes('bank') || methodLower.includes('transfer')) {
-      return <Building className="w-5 h-5 text-purple-600" />;
-    } else {
-      return <DollarSign className="w-5 h-5 text-green-600" />;
-    }
+    return <PaymentMethodIcon type={method.toLowerCase().replace(/\s+/g, '_')} name={method} size="sm" />;
   };
 
   // Handle payment actions
@@ -303,12 +295,66 @@ ${soldItems.map(item => `- ${item.name} x${item.quantity} = ${formatMoney(item.t
         <div className="p-6 bg-gradient-to-br from-purple-50 to-violet-100 rounded-xl border border-purple-200">
           <div className="flex items-center gap-3 mb-3">
             {getPaymentMethodIcon(transaction.method)}
-            <span className="text-sm font-medium text-purple-700">Payment Method</span>
+            <span className="text-sm font-medium text-purple-700">
+              {transaction.metadata?.paymentMethod?.type === 'multiple' ? 'Payment Methods' : 'Payment Method'}
+            </span>
           </div>
-          <div className="text-xl font-bold text-purple-900">{transaction.method}</div>
-          <div className="text-sm text-purple-600">Payment processed</div>
+          <div className="text-xl font-bold text-purple-900">
+            {transaction.metadata?.paymentMethod?.type === 'multiple' 
+              ? `${transaction.metadata.paymentMethod.details?.payments?.length || 0} Methods`
+              : transaction.method
+            }
+          </div>
+          <div className="text-sm text-purple-600">
+            {transaction.metadata?.paymentMethod?.type === 'multiple' ? 'Multiple payments' : 'Payment processed'}
+          </div>
         </div>
       </div>
+
+      {/* Payment Breakdown Section - Show detailed multiple payment information */}
+      {transaction.metadata?.paymentMethod?.type === 'multiple' && transaction.metadata.paymentMethod.details?.payments && (
+        <div className="bg-gradient-to-br from-blue-50 to-indigo-100 rounded-xl border border-blue-200 p-6">
+          <h3 className="text-lg font-semibold text-blue-900 mb-4 flex items-center gap-2">
+            <CreditCard className="w-5 h-5" />
+            Payment Breakdown
+          </h3>
+          <div className="space-y-3">
+            {transaction.metadata.paymentMethod.details.payments.map((payment: any, index: number) => (
+              <div key={index} className="bg-white rounded-lg border border-blue-200 p-4 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                    {getPaymentMethodIcon(payment.method)}
+                  </div>
+                  <div>
+                    <div className="font-semibold text-gray-900 capitalize">{payment.method}</div>
+                    <div className="text-sm text-gray-600">
+                      {payment.accountId && `Account: ${payment.accountId.slice(0, 8)}...`}
+                      {payment.reference && ` • Ref: ${payment.reference}`}
+                    </div>
+                    {payment.notes && (
+                      <div className="text-xs text-gray-500 mt-1">{payment.notes}</div>
+                    )}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-lg font-bold text-blue-900">{formatMoney(payment.amount)}</div>
+                  <div className="text-xs text-gray-500">
+                    {payment.timestamp && new Date(payment.timestamp).toLocaleString()}
+                  </div>
+                </div>
+              </div>
+            ))}
+            <div className="border-t border-blue-200 pt-3 mt-4">
+              <div className="flex justify-between items-center">
+                <span className="text-lg font-semibold text-blue-900">Total Paid:</span>
+                <span className="text-xl font-bold text-blue-900">
+                  {formatMoney(transaction.metadata.paymentMethod.details.totalPaid || transaction.amount)}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Transaction Details */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

@@ -91,7 +91,7 @@ export async function fetchCustomersPaginated(page: number = 1, pageSize: number
     const { data, error, count } = await supabase
       .from('customers')
       .select(`
-        id, name, email, phone, gender, city, joined_date, loyalty_level, color_tag, referred_by, total_spent, points, last_visit, is_active, birth_month, birth_day, referral_source, total_returns, profile_image, created_at, updated_at, created_by, last_purchase_date, total_purchases, birthday, whatsapp, whatsapp_opt_out, initial_notes, notes, referrals, customer_tag
+        id, name, email, phone, created_at
       `, { count: 'exact' })
       .range(offset, offset + pageSize - 1)
       .order('created_at', { ascending: false });
@@ -104,6 +104,8 @@ export async function fetchCustomersPaginated(page: number = 1, pageSize: number
     if (data) {
       const processedCustomers = data.map(customer => ({
         ...customer,
+        // Map database fields to application interface
+        joined_date: customer.created_at,
         colorTag: normalizeColorTag(customer.color_tag || 'new'),
         customerNotes: [],
         customerPayments: [],
@@ -142,7 +144,36 @@ export async function loadCustomerDetails(customerId: string) {
     const { data, error } = await supabase
       .from('customers')
       .select(`
-        id, name, email, phone, gender, city, joined_date, loyalty_level, color_tag, referred_by, total_spent, points, last_visit, is_active, birth_month, birth_day, referral_source, total_returns, profile_image, created_at, updated_at, created_by, last_purchase_date, total_purchases, birthday, whatsapp, whatsapp_opt_out, initial_notes, notes, referrals, customer_tag
+        id,
+        name,
+        phone,
+        email,
+        gender,
+        city,
+        color_tag,
+        loyalty_level,
+        points,
+        total_spent,
+        last_visit,
+        is_active,
+        referral_source,
+        birth_month,
+        birth_day,
+        total_returns,
+        profile_image,
+        whatsapp,
+        whatsapp_opt_out,
+        initial_notes,
+        notes,
+        referrals,
+        customer_tag,
+        created_at,
+        updated_at,
+        created_by,
+        last_purchase_date,
+        total_purchases,
+        birthday,
+        referred_by
       `)
       .eq('id', customerId)
       .single();
@@ -154,8 +185,46 @@ export async function loadCustomerDetails(customerId: string) {
     
     if (data) {
       const processedCustomer = {
-        ...data,
+        id: data.id,
+        name: data.name,
+        phone: data.phone,
+        email: data.email,
+        gender: data.gender || 'other',
+        city: data.city || '',
         colorTag: normalizeColorTag(data.color_tag || 'new'),
+        loyaltyLevel: data.loyalty_level || 'bronze',
+        points: data.points || 0,
+        totalSpent: data.total_spent || 0,
+        lastVisit: data.last_visit || data.created_at,
+        isActive: data.is_active !== false, // Default to true if null
+        referralSource: data.referral_source,
+        birthMonth: data.birth_month,
+        birthDay: data.birth_day,
+        totalReturns: data.total_returns || 0,
+        profileImage: data.profile_image,
+        whatsapp: data.whatsapp,
+        whatsappOptOut: data.whatsapp_opt_out || false,
+        initialNotes: data.initial_notes,
+        notes: data.notes ? (typeof data.notes === 'string' ? 
+          (() => {
+            try { return JSON.parse(data.notes); } 
+            catch { return []; }
+          })() : data.notes) : [],
+        referrals: data.referrals ? (typeof data.referrals === 'string' ? 
+          (() => {
+            try { return JSON.parse(data.referrals); } 
+            catch { return []; }
+          })() : data.referrals) : [],
+        customerTag: data.customer_tag,
+        joinedDate: data.created_at,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+        createdBy: data.created_by,
+        lastPurchaseDate: data.last_purchase_date,
+        totalPurchases: data.total_purchases || 0,
+        birthday: data.birthday,
+        referredBy: data.referred_by,
+        // Additional fields for interface compatibility
         customerNotes: [],
         customerPayments: [],
         devices: [],

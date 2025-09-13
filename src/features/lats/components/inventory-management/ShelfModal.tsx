@@ -92,10 +92,6 @@ const ShelfModal: React.FC<ShelfModalProps> = ({
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
-    if (!formData.name.trim()) {
-      newErrors.name = 'Shelf name is required';
-    }
-
     if (!formData.code.trim()) {
       newErrors.code = 'Shelf code is required';
     }
@@ -208,18 +204,18 @@ const ShelfModal: React.FC<ShelfModalProps> = ({
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <GlassInput
-                      label="Shelf Name *"
-                      value={formData.name}
-                      onChange={(e) => handleInputChange('name', e.target.value)}
-                      error={errors.name}
-                      placeholder="e.g., Position A1"
-                    />
-                    <GlassInput
                       label="Shelf Code *"
                       value={formData.code}
                       onChange={(e) => handleInputChange('code', e.target.value)}
                       error={errors.code}
-                      placeholder="e.g., 04A1"
+                      placeholder="e.g., 01A1"
+                    />
+                    <GlassInput
+                      label="Shelf Name (Optional)"
+                      value={formData.name}
+                      onChange={(e) => handleInputChange('name', e.target.value)}
+                      error={errors.name}
+                      placeholder="e.g., Main Storage Shelf"
                     />
                   </div>
                   <GlassInput

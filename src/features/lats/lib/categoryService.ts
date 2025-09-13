@@ -57,18 +57,6 @@ class CategoryService {
     const startTime = performance.now();
 
     try {
-      // Add network request monitoring for debugging
-      const originalFetch = window.fetch;
-      window.fetch = function(...args) {
-        const url = args[0];
-        if (typeof url === 'string' && url.includes('lats_categories')) {
-          console.log('🌐 [CategoryService] Network request detected:', url);
-          console.log('🌐 [CategoryService] Request method:', args[1]?.method || 'GET');
-          console.log('🌐 [CategoryService] Request stack:', new Error().stack);
-        }
-        return originalFetch.apply(this, args);
-      };
-
       // Ensure we use proper Supabase syntax - no custom parameters
       const query = supabase
         .from('lats_categories')
@@ -76,13 +64,8 @@ class CategoryService {
         .order('name');
 
       console.log('🔍 [CategoryService] Executing categories query with proper syntax');
-      console.log('🔍 [CategoryService] Query object:', query);
-      console.log('🔍 [CategoryService] Stack trace:', new Error().stack);
       
       const { data, error } = await query;
-
-      // Restore original fetch
-      window.fetch = originalFetch;
 
       if (error) {
         console.error('❌ Categories fetch error:', error);

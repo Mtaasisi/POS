@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Package, Hash, FileText, Check, DollarSign } from 'lucide-react';
-import CategoryInput from '@/features/shared/components/ui/CategoryInput';
+import CategoryInput from '../../../shared/components/ui/CategoryInput';
 import AIDescriptionGenerator from './AIDescriptionGenerator';
 import { 
   formatSpecificationValue, 
@@ -15,6 +15,7 @@ interface ProductInformationFormProps {
     sku: string;
     categoryId: string;
     condition: string;
+    specification?: string;
   };
   setFormData: React.Dispatch<React.SetStateAction<any>>;
   categories: any[];
@@ -23,6 +24,8 @@ interface ProductInformationFormProps {
   nameExists: boolean;
   onNameCheck: (name: string) => void;
   onSpecificationsClick: () => void;
+  useVariants?: boolean;
+  onGenerateSKU?: () => string;
 }
 
 const ProductInformationForm: React.FC<ProductInformationFormProps> = ({
@@ -33,7 +36,9 @@ const ProductInformationForm: React.FC<ProductInformationFormProps> = ({
   isCheckingName,
   nameExists,
   onNameCheck,
-  onSpecificationsClick
+  onSpecificationsClick,
+  useVariants = false,
+  onGenerateSKU
 }) => {
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
   
@@ -100,7 +105,7 @@ const ProductInformationForm: React.FC<ProductInformationFormProps> = ({
                 type="text"
                 value={formData.sku}
                 onChange={(e) => setFormData(prev => ({ ...prev, sku: e.target.value }))}
-                className={`w-full py-3 pl-12 pr-4 bg-white/30 backdrop-blur-md border-2 rounded-lg focus:outline-none transition-colors ${
+                className={`w-full py-3 pl-12 pr-20 bg-white/30 backdrop-blur-md border-2 rounded-lg focus:outline-none transition-colors ${
                   currentErrors.sku 
                     ? 'border-red-500 focus:border-red-600' 
                     : 'border-gray-300 focus:border-blue-500'
@@ -109,6 +114,16 @@ const ProductInformationForm: React.FC<ProductInformationFormProps> = ({
                 required
               />
               <Hash className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+              {onGenerateSKU && (
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, sku: onGenerateSKU() }))}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors"
+                  title="Generate new SKU"
+                >
+                  Auto
+                </button>
+              )}
             </div>
             {currentErrors.sku && (
               <p className="mt-1 text-sm text-red-600">{currentErrors.sku}</p>
@@ -255,87 +270,89 @@ const ProductInformationForm: React.FC<ProductInformationFormProps> = ({
           </div>
         </div>
 
-        {/* Specification */}
-        <div>
-          <label 
-            className={`block mb-2 font-medium ${currentErrors.specification ? 'text-red-600' : 'text-gray-700'}`}
-          >
-            Specification (optional)
-          </label>
-          <button
-            type="button"
-            onClick={() => onSpecificationsClick()}
-            className="group w-full bg-gradient-to-r from-white/50 to-white/30 backdrop-blur-md border-2 border-gray-300 rounded-xl hover:border-blue-500 hover:shadow-lg hover:scale-[1.02] transition-all duration-300 p-5"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="relative">
-                  <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center group-hover:from-blue-600 group-hover:to-blue-700 transition-all duration-300 shadow-md group-hover:shadow-lg">
-                    <FileText className="w-6 h-6 text-white" />
-                  </div>
-                  {formData.specification && formData.specification.length > 0 && (
-                    <div className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center shadow-md">
-                      <Check className="w-3 h-3 text-white" />
+        {/* Specification - Only show when not using variants */}
+        {!useVariants && (
+          <div>
+            <label 
+              className={`block mb-2 font-medium ${currentErrors.specification ? 'text-red-600' : 'text-gray-700'}`}
+            >
+              Specification (optional)
+            </label>
+            <button
+              type="button"
+              onClick={() => onSpecificationsClick()}
+              className="group w-full bg-gradient-to-r from-white/50 to-white/30 backdrop-blur-md border-2 border-gray-300 rounded-xl hover:border-blue-500 hover:shadow-lg hover:scale-[1.02] transition-all duration-300 p-5"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="relative">
+                    <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center group-hover:from-blue-600 group-hover:to-blue-700 transition-all duration-300 shadow-md group-hover:shadow-lg">
+                      <FileText className="w-6 h-6 text-white" />
                     </div>
-                  )}
-                </div>
-                
-                <div className="text-left flex-1">
-                  <h4 className="text-base font-bold text-gray-900 group-hover:text-blue-900 transition-colors duration-300">
-                    Product Specifications
-                  </h4>
-                  {formData.specification && formData.specification.length > 0 ? (
-                    <div className="mt-2">
-                      <div className="grid grid-cols-2 gap-2 max-h-16 overflow-y-auto">
+                    {formData.specification && formData.specification.length > 0 && (
+                      <div className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center shadow-md">
+                        <Check className="w-3 h-3 text-white" />
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="text-left flex-1">
+                    <h4 className="text-base font-bold text-gray-900 group-hover:text-blue-900 transition-colors duration-300">
+                      Product Specifications
+                    </h4>
+                    {formData.specification && formData.specification.length > 0 ? (
+                      <div className="mt-2">
+                        <div className="grid grid-cols-2 gap-2 max-h-16 overflow-y-auto">
+                          {(() => {
+                            const specs = parseSpecification(formData.specification);
+                            return Object.entries(specs).slice(0, 4).map(([key, value]) => (
+                              <div key={key} className="bg-blue-50 border border-blue-200 rounded-lg px-2 py-1">
+                                <div className="text-xs font-medium text-blue-800 truncate">{key.replace(/_/g, ' ')}</div>
+                                <div className="text-xs text-blue-600 truncate">{formatSpecificationValue(key, value)}</div>
+                              </div>
+                            ));
+                          })()}
+                        </div>
                         {(() => {
                           const specs = parseSpecification(formData.specification);
-                          return Object.entries(specs).slice(0, 4).map(([key, value]) => (
-                            <div key={key} className="bg-blue-50 border border-blue-200 rounded-lg px-2 py-1">
-                              <div className="text-xs font-medium text-blue-800 truncate">{key.replace(/_/g, ' ')}</div>
-                              <div className="text-xs text-blue-600 truncate">{formatSpecificationValue(key, value)}</div>
+                          return Object.keys(specs).length > 4 && (
+                            <div className="text-xs text-blue-600 mt-1">
+                              +{Object.keys(specs).length - 4} more specifications
                             </div>
-                          ));
+                          );
                         })()}
                       </div>
-                      {(() => {
-                        const specs = parseSpecification(formData.specification);
-                        return Object.keys(specs).length > 4 && (
-                          <div className="text-xs text-blue-600 mt-1">
-                            +{Object.keys(specs).length - 4} more specifications
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-gray-600 mt-1">
-                      Add detailed product specifications
-                    </p>
-                  )}
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-3">
-                {formData.specification && formData.specification.length > 0 && (
-                  <div className="px-3 py-1 bg-gradient-to-r from-green-500 to-green-600 text-white text-sm font-bold rounded-full shadow-md">
-                    {getSpecificationCount(formData.specification)}
+                    ) : (
+                      <p className="text-sm text-gray-600 mt-1">
+                        Add detailed product specifications
+                      </p>
+                    )}
                   </div>
-                )}
+                </div>
                 
-                <div className="w-8 h-8 bg-gray-100 group-hover:bg-blue-100 rounded-lg flex items-center justify-center transition-all duration-300">
-                  <svg className="w-4 h-4 text-gray-500 group-hover:text-blue-600 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                  </svg>
+                <div className="flex items-center gap-3">
+                  {formData.specification && formData.specification.length > 0 && (
+                    <div className="px-3 py-1 bg-gradient-to-r from-green-500 to-green-600 text-white text-sm font-bold rounded-full shadow-md">
+                      {getSpecificationCount(formData.specification)}
+                    </div>
+                  )}
+                  
+                  <div className="w-8 h-8 bg-gray-100 group-hover:bg-blue-100 rounded-lg flex items-center justify-center transition-all duration-300">
+                    <svg className="w-4 h-4 text-gray-500 group-hover:text-blue-600 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                    </svg>
+                  </div>
                 </div>
               </div>
-            </div>
-          </button>
-          {currentErrors.specification && (
-            <p className="mt-2 text-sm text-red-600 flex items-center gap-1">
-              <span className="w-1 h-1 bg-red-500 rounded-full"></span>
-              {currentErrors.specification}
-            </p>
-          )}
-        </div>
+            </button>
+            {currentErrors.specification && (
+              <p className="mt-2 text-sm text-red-600 flex items-center gap-1">
+                <span className="w-1 h-1 bg-red-500 rounded-full"></span>
+                {currentErrors.specification}
+              </p>
+            )}
+          </div>
+        )}
       </form>
     </div>
   );

@@ -21,6 +21,7 @@ import VariantSelectionPage from '../../pages/VariantSelectionPage';
 import { SimpleImageDisplay } from '../../../../components/SimpleImageDisplay';
 import { ProductImage } from '../../../../lib/robustImageService';
 import { ImagePopupModal } from '../../../../components/ImagePopupModal';
+import ProductInfoModal from './ProductInfoModal';
 import { useGeneralSettingsUI } from '../../../../hooks/useGeneralSettingsUI';
 import { getSpecificationIcon, getSpecificationTooltip, getShelfDisplay, getShelfIcon, formatSpecificationValue } from '../../lib/specificationUtils';
 
@@ -72,6 +73,7 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
   const [selectedVariant, setSelectedVariant] = useState<ProductSearchVariant | null>(null);
   const [showVariantModal, setShowVariantModal] = useState(false);
   const [isImagePopupOpen, setIsImagePopupOpen] = useState(false);
+  const [isProductInfoOpen, setIsProductInfoOpen] = useState(false);
   const [showAllSpecifications, setShowAllSpecifications] = useState(false);
 
   // Reset error state on mount/remount (helps with React refresh)
@@ -322,9 +324,7 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
                 className="w-10 h-10 cursor-pointer hover:opacity-90 transition-opacity"
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (productImages.length > 0) {
-                    setIsImagePopupOpen(true);
-                  }
+                  setIsProductInfoOpen(true);
                 }}
               />
             </div>
@@ -337,39 +337,7 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
               </div>
               <p className="text-xs text-gray-500 font-mono">{primaryVariant?.sku || 'N/A'}</p>
               
-              {/* Compact Specifications Display */}
-              {primaryVariant && primaryVariant.attributes && Object.keys(primaryVariant.attributes).length > 0 && (
-                <div className="mt-1">
-                  <div className="flex flex-wrap gap-1">
-                    {Object.entries(primaryVariant.attributes).slice(0, 2).map(([key, value]) => {
-                      // Get color based on specification type
-                      const getSpecColor = (specKey: string) => {
-                        const spec = specKey.toLowerCase();
-                        if (spec.includes('ram')) return 'bg-green-100 text-green-700';
-                        if (spec.includes('storage') || spec.includes('memory')) return 'bg-blue-100 text-blue-700';
-                        if (spec.includes('processor') || spec.includes('cpu')) return 'bg-purple-100 text-purple-700';
-                        if (spec.includes('screen') || spec.includes('display')) return 'bg-orange-100 text-orange-700';
-                        if (spec.includes('battery')) return 'bg-teal-100 text-teal-700';
-                        if (spec.includes('camera')) return 'bg-pink-100 text-pink-700';
-                        if (spec.includes('color')) return 'bg-red-100 text-red-700';
-                        if (spec.includes('size')) return 'bg-gray-100 text-gray-700';
-                        return 'bg-indigo-100 text-indigo-700';
-                      };
-                      
-                      return (
-                        <span key={key} className={`px-1 py-0.5 rounded text-xs font-medium ${getSpecColor(key)}`}>
-                          {key.replace(/_/g, ' ')}: {value}
-                        </span>
-                      );
-                    })}
-                    {Object.keys(primaryVariant.attributes).length > 2 && (
-                      <span className="px-1 py-0.5 rounded bg-gray-100 text-gray-600 text-xs font-medium">
-                        +{Object.keys(primaryVariant.attributes).length - 2}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
+              {/* Compact Specifications Display - Hidden */}
             </div>
 
             {/* Price */}
@@ -434,9 +402,7 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
                     className="w-full h-full rounded-xl cursor-pointer hover:opacity-90 transition-opacity"
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (productImages.length > 0) {
-                        setIsImagePopupOpen(true);
-                      }
+                      setIsProductInfoOpen(true);
                     }}
                   />
                 
@@ -465,125 +431,8 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
 
           </div>
 
-          {/* Primary Variant Specifications - Only show if specifications exist */}
-          {primaryVariant && primaryVariant.attributes && Object.keys(primaryVariant.attributes).length > 0 && (() => {
-            // Handle nested specification structure
-            let specifications = primaryVariant.attributes;
-            
-            // If attributes has a 'specification' key that contains a JSON string, parse it
-            if (primaryVariant.attributes.specification && typeof primaryVariant.attributes.specification === 'string') {
-              try {
-                specifications = JSON.parse(primaryVariant.attributes.specification);
-              } catch (error) {
-                console.error('Failed to parse specification JSON:', error);
-                specifications = {};
-              }
-            }
-            
-            // If specifications is empty or not an object, don't render
-            if (!specifications || typeof specifications !== 'object' || Object.keys(specifications).length === 0) {
-              return null;
-            }
-            
-            return (
-              <div className="mt-4 pt-4 border-t border-gray-100">
-                <div className="grid grid-cols-2 gap-2">
-                  {/* Individual Specifications */}
-                  {Object.entries(specifications).slice(0, showAllSpecifications ? undefined : 2).map(([key, value]) => {
-                    const IconComponent = getSpecificationIcon(key);
-                    const tooltip = getSpecificationTooltip(key);
-                    const formattedValue = formatSpecificationValue(key, value);
-                    
-                    // Enhanced color scheme with better contrast
-                    const getSpecColor = (specKey: string) => {
-                      const spec = specKey.toLowerCase();
-                      if (spec.includes('ram')) return 'bg-emerald-50 text-emerald-800 border-emerald-200';
-                      if (spec.includes('storage') || spec.includes('memory')) return 'bg-blue-50 text-blue-800 border-blue-200';
-                      if (spec.includes('processor') || spec.includes('cpu')) return 'bg-purple-50 text-purple-800 border-purple-200';
-                      if (spec.includes('screen') || spec.includes('display')) return 'bg-orange-50 text-orange-800 border-orange-200';
-                      if (spec.includes('battery')) return 'bg-teal-50 text-teal-800 border-teal-200';
-                      if (spec.includes('camera')) return 'bg-pink-50 text-pink-800 border-pink-200';
-                      if (spec.includes('color')) return 'bg-red-50 text-red-800 border-red-200';
-                      if (spec.includes('weight') || spec.includes('size')) return 'bg-gray-50 text-gray-800 border-gray-200';
-                      if (spec.includes('charger') || spec.includes('port')) return 'bg-cyan-50 text-cyan-800 border-cyan-200';
-                      return 'bg-slate-50 text-slate-800 border-slate-200';
-                    };
-                    
-                    return (
-                      <div 
-                        key={key} 
-                        className={`p-3 rounded-lg border ${getSpecColor(key)} hover:shadow-sm transition-all duration-200 cursor-help`}
-                        title={tooltip}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            {IconComponent && <IconComponent className="w-4 h-4 flex-shrink-0" />}
-                            <div>
-                              <div className="text-sm font-medium capitalize text-gray-700">
-                                {key.replace(/([A-Z])/g, ' $1').trim()}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="text-sm font-semibold">
-                            {formattedValue}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  
-                  {/* Show more/less button in the same grid */}
-                  {Object.keys(specifications).length > 2 && (
-                    <div className="col-span-2">
-                      <button
-                        onClick={() => setShowAllSpecifications(!showAllSpecifications)}
-                        className="w-full p-3 rounded-lg border border-gray-200 bg-gray-50 text-gray-600 text-sm font-medium hover:bg-gray-100 transition-colors flex items-center justify-center gap-2"
-                      >
-                        {showAllSpecifications ? (
-                          <>
-                            <ChevronUp className="w-4 h-4" />
-                            Show Less Specifications
-                          </>
-                        ) : (
-                          <>
-                            <ChevronDown className="w-4 h-4" />
-                            Show {Object.keys(specifications).length - 2} More Specifications
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })()}
+          {/* Primary Variant Specifications - Hidden */}
 
-          {/* Shelf Information - Only show if shelf information exists */}
-          {(product.shelfName || product.shelfCode || product.storeLocationName) && (
-            <div className="mt-4 pt-4 border-t border-gray-100">
-              <div className="flex items-center gap-2">
-                {(() => {
-                  const ShelfIcon = getShelfIcon({
-                    isRefrigerated: product.isRefrigerated,
-                    requiresLadder: product.requiresLadder
-                  });
-                  return <ShelfIcon className="w-4 h-4 text-gray-500" />;
-                })()}
-                <span className="text-sm text-gray-600">
-                  {getShelfDisplay({
-                    shelfName: product.shelfName,
-                    shelfCode: product.shelfCode,
-                    storeLocationName: product.storeLocationName,
-                    storeLocationCity: product.storeLocationCity,
-                    storageRoomName: product.storageRoomName,
-                    storageRoomCode: product.storageRoomCode,
-                    isRefrigerated: product.isRefrigerated,
-                    requiresLadder: product.requiresLadder
-                  })}
-                </span>
-              </div>
-            </div>
-          )}
 
           {/* Additional Info */}
           <div className="mt-4 pt-4 border-t border-gray-100">
@@ -645,15 +494,13 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
         document.body
       )}
 
-      {/* Image Popup Modal */}
-      {productImages.length > 0 && (
-        <ImagePopupModal
-          images={productImages}
-          productName={product.name}
-          isOpen={isImagePopupOpen}
-          onClose={() => setIsImagePopupOpen(false)}
-        />
-      )}
+      {/* Product Info Modal */}
+      <ProductInfoModal
+        isOpen={isProductInfoOpen}
+        onClose={() => setIsProductInfoOpen(false)}
+        product={product}
+        onAddToCart={onAddToCart}
+      />
     </>
   );
 };

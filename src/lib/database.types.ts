@@ -156,6 +156,8 @@ export interface Database {
           warranty_status: string | null
           repair_count: number
           last_return_date: string | null
+          diagnostic_checklist: any | null
+          repair_checklist: any | null
           created_at: string
           updated_at: string
         }
@@ -175,6 +177,8 @@ export interface Database {
           warranty_status?: string | null
           repair_count?: number
           last_return_date?: string | null
+          diagnostic_checklist?: any | null
+          repair_checklist?: any | null
           created_at?: string
           updated_at?: string
         }
@@ -194,6 +198,8 @@ export interface Database {
           warranty_status?: string | null
           repair_count?: number
           last_return_date?: string | null
+          diagnostic_checklist?: any | null
+          repair_checklist?: any | null
           created_at?: string
           updated_at?: string
         }
@@ -523,6 +529,105 @@ export interface Database {
           sent_by?: string
           campaign_type?: string
           status?: 'pending' | 'completed' | 'partial' | 'failed'
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      sms_triggers: {
+        Row: {
+          id: string
+          name: string
+          trigger_type: 'assigned' | 'diagnosis-started' | 'awaiting-parts' | 'in-repair' | 'reassembled-testing' | 'repair-complete' | 'returned-to-customer-care' | 'done' | 'failed'
+          template_id: string | null
+          is_active: boolean
+          condition: any | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          trigger_type: 'assigned' | 'diagnosis-started' | 'awaiting-parts' | 'in-repair' | 'reassembled-testing' | 'repair-complete' | 'returned-to-customer-care' | 'done' | 'failed'
+          template_id?: string | null
+          is_active?: boolean
+          condition?: any | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          trigger_type?: 'assigned' | 'diagnosis-started' | 'awaiting-parts' | 'in-repair' | 'reassembled-testing' | 'repair-complete' | 'returned-to-customer-care' | 'done' | 'failed'
+          template_id?: string | null
+          is_active?: boolean
+          condition?: any | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      sms_trigger_logs: {
+        Row: {
+          id: string
+          trigger_id: string
+          device_id: string
+          customer_id: string
+          status: string
+          template_id: string | null
+          recipient: string
+          result: 'pending' | 'sent' | 'failed' | 'delivered'
+          error: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          trigger_id: string
+          device_id: string
+          customer_id: string
+          status: string
+          template_id?: string | null
+          recipient: string
+          result?: 'pending' | 'sent' | 'failed' | 'delivered'
+          error?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          trigger_id?: string
+          device_id?: string
+          customer_id?: string
+          status?: string
+          template_id?: string | null
+          recipient?: string
+          result?: 'pending' | 'sent' | 'failed' | 'delivered'
+          error?: string | null
+          created_at?: string
+        }
+      }
+      sms_templates: {
+        Row: {
+          id: string
+          name: string
+          content: string
+          variables: any
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          content: string
+          variables?: any
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          content?: string
+          variables?: any
+          is_active?: boolean
           created_at?: string
           updated_at?: string
         }

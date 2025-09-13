@@ -177,7 +177,7 @@ class EmailService {
 
   // Get target customers based on audience type
   private async getTargetCustomers(audience: string): Promise<any[]> {
-    let query = supabase.from('customers').select('*');
+    let query = supabase.from('customers').select('id, name, email, phone, created_at');
 
     switch (audience) {
       case 'vip':

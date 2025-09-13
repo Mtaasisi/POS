@@ -137,6 +137,12 @@ export class UnifiedImageService {
    */
   static async getProductImages(productId: string): Promise<ProductImage[]> {
     try {
+      // Validate productId format
+      if (!productId || typeof productId !== 'string') {
+        console.warn('Invalid productId provided to getProductImages:', productId);
+        return [];
+      }
+
       // Handle temporary products (don't query database)
       if (productId.startsWith('temp-product-') || productId.startsWith('test-product-') || productId.startsWith('temp-sparepart-')) {
         console.log('📝 Getting images for temporary product:', productId);
@@ -150,7 +156,11 @@ export class UnifiedImageService {
         .eq('product_id', productId)
         .order('is_primary', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        // Log the error but don't throw to prevent app crashes
+        console.error('Failed to get product images:', error);
+        return [];
+      }
 
       return data.map(row => ({
         id: row.id,

@@ -26,6 +26,7 @@ import CustomerDataUpdatePage from './features/customers/pages/CustomerDataUpdat
 import AppLayout from './layout/AppLayout';
 import { ErrorBoundary } from './features/shared/components/ErrorBoundary';
 import DynamicImportErrorBoundary from './features/shared/components/DynamicImportErrorBoundary';
+import UrlValidatedRoute from './components/UrlValidatedRoute';
 const SettingsPage = lazy(() => import('./features/settings/pages/UnifiedSettingsPage'));
 const AdminSettingsPage = lazy(() => import('./features/admin/pages/AdminSettingsPage'));
 import AdminManagementPage from './features/admin/pages/AdminManagementPage';
@@ -573,13 +574,27 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
           <Route path="/lats/products" element={<Navigate to="/lats/unified-inventory" replace />} />
           
           {/* Keep product detail route for individual product views */}
-          <Route path="/lats/products/:id" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><ProductDetailPage /></RoleProtectedRoute>} />
+          <Route path="/lats/products/:id" element={
+            <UrlValidatedRoute enableImageUrlValidation={true} enableUrlLogging={false}>
+              <RoleProtectedRoute allowedRoles={['admin', 'customer-care']}>
+                <ProductDetailPage />
+              </RoleProtectedRoute>
+            </UrlValidatedRoute>
+          } />
           
           {/* Add Product Route */}
           <Route path="/lats/add-product" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><AddProductPage /></Suspense></RoleProtectedRoute>} />
           
           {/* Edit Product Route */}
-          <Route path="/lats/products/:productId/edit" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><EditProductPage /></Suspense></RoleProtectedRoute>} />
+          <Route path="/lats/products/:productId/edit" element={
+            <UrlValidatedRoute enableImageUrlValidation={true} enableUrlLogging={false}>
+              <RoleProtectedRoute allowedRoles={['admin', 'customer-care']}>
+                <Suspense fallback={<PageLoadingSpinner />}>
+                  <EditProductPage />
+                </Suspense>
+              </RoleProtectedRoute>
+            </UrlValidatedRoute>
+          } />
 
           <Route path="/lats/sales-reports" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><SalesReportsPage /></Suspense></RoleProtectedRoute>} />
           <Route path="/lats/loyalty" element={<RoleProtectedRoute allowedRoles={['admin', 'customer-care']}><Suspense fallback={<PageLoadingSpinner />}><CustomerLoyaltyPage /></Suspense></RoleProtectedRoute>} />

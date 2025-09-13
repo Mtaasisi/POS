@@ -72,6 +72,23 @@ export const supabase = createClient<Database>(config.url, config.key, {
   },
 });
 
+// Add query interceptor to fix malformed queries
+if (isBrowser) {
+  const originalFetch = window.fetch;
+  window.fetch = async (input, init) => {
+    // Check if this is a Supabase request
+    if (typeof input === 'string' && input.includes('supabase.co/rest/v1/')) {
+      // Fix malformed queries with 'string-' prefix
+      if (input.includes('id=eq.string-')) {
+        const fixedUrl = input.replace(/id=eq\.string-/g, 'id=eq.');
+        console.warn('🔧 Fixed malformed Supabase query:', { original: input, fixed: fixedUrl });
+        return originalFetch(fixedUrl, init);
+      }
+    }
+    return originalFetch(input, init);
+  };
+}
+
 // Add a connection test function
 export const testSupabaseConnection = async () => {
   try {

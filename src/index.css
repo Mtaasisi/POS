@@ -1,9 +1,20 @@
 @import './styles/touch-friendly.css';
 @import './styles/general-settings.css';
+@import './styles/mobile.css';
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Transparent Scrollbar Styles */
+.scrollbar-transparent {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* Internet Explorer 10+ */
+}
+
+.scrollbar-transparent::-webkit-scrollbar {
+  display: none; /* WebKit */
+}
 
 /* Custom CSS Variables */
 :root {

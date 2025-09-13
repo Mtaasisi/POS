@@ -12,7 +12,6 @@ import { formatCurrency } from '../../../lib/customerApi';
 import DeviceCard from '../../devices/components/DeviceCard';
 import { smsService } from '../../../services/smsService';
 import PointsManagementModal from '../../finance/components/PointsManagementModal';
-import CustomerAnalytics from '../components/CustomerAnalytics';
 
 import { fetchAllDevices } from '../../../lib/deviceApi';
 import { usePayments } from '../../../context/PaymentsContext';
@@ -75,131 +74,11 @@ const CustomerDetailPage: React.FC = () => {
   const [customerAnalytics, setCustomerAnalytics] = useState<any>(null);
   const [loadingEnhancedData, setLoadingEnhancedData] = useState(false);
 
-  // App-wide revenue data state
-  const [appRevenueData, setAppRevenueData] = useState<any>(null);
-  const [loadingAppRevenue, setLoadingAppRevenue] = useState(false);
 
   const { currentUser } = useAuth();
 
 
 
-  // App-wide revenue fetching functions
-  const fetchAppRevenueData = async () => {
-    setLoadingAppRevenue(true);
-    try {
-      // Fetch all POS sales
-      const { data: allPosSales, error: posError } = await supabase
-        .from('lats_sales')
-        .select('total_amount, created_at, status')
-        .eq('status', 'completed')
-        .order('created_at', { ascending: false });
-
-      // Fetch all device payments (repair payments)
-      const { data: allDevicePayments, error: deviceError } = await supabase
-        .from('customer_payments')
-        .select('amount, payment_date, status, payment_type, device_id')
-        .eq('status', 'completed')
-        .order('payment_date', { ascending: false });
-
-      // Fetch all devices with basic data (no revenue fields since they don't exist in schema)
-      const { data: allDevices, error: devicesError } = await supabase
-        .from('devices')
-        .select(`
-          id,
-          customer_id,
-          brand,
-          model,
-          serial_number,
-          status,
-          created_at,
-          updated_at,
-          expected_return_date
-        `)
-        .order('created_at', { ascending: false });
-
-      // Fetch all spare parts usage
-      const { data: allSpareUsage, error: spareError } = await supabase
-        .from('lats_spare_part_usage')
-        .select(`
-          quantity,
-          used_at,
-          lats_spare_parts(selling_price)
-        `)
-        .order('used_at', { ascending: false });
-
-      if (!posError && !deviceError && !devicesError && !spareError) {
-        // Calculate total app revenue
-        const totalPosRevenue = allPosSales?.reduce((sum, sale) => sum + (sale.total_amount || 0), 0) || 0;
-        
-        // Device revenue is only from customer_payments table since devices table doesn't have cost fields
-        const totalDevicePayments = allDevicePayments?.reduce((sum, payment) => sum + (payment.amount || 0), 0) || 0;
-        
-        // Calculate device revenue breakdown by payment type
-        const totalDeposits = allDevicePayments?.filter(payment => payment.payment_type === 'deposit')
-          .reduce((sum, payment) => sum + (payment.amount || 0), 0) || 0;
-        const totalRepairPayments = allDevicePayments?.filter(payment => payment.payment_type === 'payment')
-          .reduce((sum, payment) => sum + (payment.amount || 0), 0) || 0;
-        const totalRefunds = allDevicePayments?.filter(payment => payment.payment_type === 'refund')
-          .reduce((sum, payment) => sum + (payment.amount || 0), 0) || 0;
-        
-        const totalDeviceRevenue = totalDevicePayments;
-        
-        const totalSpareRevenue = allSpareUsage?.reduce((sum, usage) => 
-          sum + ((usage.lats_spare_parts?.selling_price || 0) * (usage.quantity || 1)), 0) || 0;
-        
-        const totalAppRevenue = totalPosRevenue + totalDeviceRevenue + totalSpareRevenue;
-
-        // Calculate monthly revenue (last 30 days)
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        
-        const monthlyPosRevenue = allPosSales?.filter(sale => 
-          new Date(sale.created_at) >= thirtyDaysAgo
-        ).reduce((sum, sale) => sum + (sale.total_amount || 0), 0) || 0;
-        
-        const monthlyDevicePayments = allDevicePayments?.filter(payment => 
-          new Date(payment.payment_date) >= thirtyDaysAgo
-        ).reduce((sum, payment) => sum + (payment.amount || 0), 0) || 0;
-        
-        const monthlySpareRevenue = allSpareUsage?.filter(usage => 
-          new Date(usage.used_at) >= thirtyDaysAgo
-        ).reduce((sum, usage) => 
-          sum + ((usage.lats_spare_parts?.selling_price || 0) * (usage.quantity || 1)), 0) || 0;
-        
-        const monthlyAppRevenue = monthlyPosRevenue + monthlyDevicePayments + monthlySpareRevenue;
-
-        // Calculate revenue breakdown
-        const revenueBreakdown = {
-          pos: { total: totalPosRevenue, monthly: monthlyPosRevenue, percentage: totalAppRevenue > 0 ? (totalPosRevenue / totalAppRevenue) * 100 : 0 },
-          device: { 
-            total: totalDeviceRevenue, 
-            monthly: monthlyDevicePayments, 
-            percentage: totalAppRevenue > 0 ? (totalDeviceRevenue / totalAppRevenue) * 100 : 0,
-            breakdown: {
-              payments: totalRepairPayments,
-              deposits: totalDeposits,
-              refunds: totalRefunds,
-              totalPayments: totalDevicePayments
-            }
-          },
-          spare: { total: totalSpareRevenue, monthly: monthlySpareRevenue, percentage: totalAppRevenue > 0 ? (totalSpareRevenue / totalAppRevenue) * 100 : 0 }
-        };
-
-        setAppRevenueData({
-          total: totalAppRevenue,
-          monthly: monthlyAppRevenue,
-          breakdown: revenueBreakdown,
-          totalTransactions: (allPosSales?.length || 0) + (allDevicePayments?.length || 0),
-          monthlyTransactions: (allPosSales?.filter(sale => new Date(sale.created_at) >= thirtyDaysAgo).length || 0) + 
-                              (allDevicePayments?.filter(payment => new Date(payment.payment_date) >= thirtyDaysAgo).length || 0)
-        });
-      }
-    } catch (error) {
-      console.error('Error fetching app revenue data:', error);
-    } finally {
-      setLoadingAppRevenue(false);
-    }
-  };
 
   // Enhanced data fetching functions
   const fetchEnhancedCustomerData = async (customerId: string) => {
@@ -307,9 +186,8 @@ const CustomerDetailPage: React.FC = () => {
     const lastPurchaseDate = posSales.length > 0 ? new Date(posSales[0].created_at) : null;
     const daysSinceLastPurchase = lastPurchaseDate ? Math.floor((Date.now() - lastPurchaseDate.getTime()) / (1000 * 60 * 60 * 24)) : null;
     
-    // Calculate customer's contribution to app revenue
-    const customerContributionPercentage = appRevenueData?.total ? (totalSpent / appRevenueData.total) * 100 : 0;
-    const customerRanking = appRevenueData?.total ? 'Top Customer' : 'Regular Customer'; // This could be enhanced with actual ranking logic
+    // Calculate customer ranking based on spending
+    const customerRanking = totalSpent > 100000 ? 'Top Customer' : totalSpent > 50000 ? 'VIP Customer' : 'Regular Customer';
     
     return {
       totalSpent,
@@ -328,7 +206,6 @@ const CustomerDetailPage: React.FC = () => {
       lastPurchaseDate,
       daysSinceLastPurchase,
       purchaseFrequency: posSales.length > 0 ? posSales.length / Math.max(1, Math.floor((Date.now() - new Date(customer?.joinedDate || Date.now()).getTime()) / (1000 * 60 * 60 * 24 * 30))) : 0,
-      customerContributionPercentage,
       customerRanking
     };
   };
@@ -373,11 +250,8 @@ const CustomerDetailPage: React.FC = () => {
           setPayments(customerData.payments || []);
           await markCustomerAsRead(customerData.id); // Mark as read when data is loaded
           
-          // Fetch enhanced customer data and app revenue data
-          await Promise.all([
-            fetchEnhancedCustomerData(customerData.id),
-            fetchAppRevenueData()
-          ]);
+          // Fetch enhanced customer data
+          await fetchEnhancedCustomerData(customerData.id);
         } else {
           console.log('📱 Offline - using cached data...');
           // Fallback to cached data
@@ -664,137 +538,126 @@ const CustomerDetailPage: React.FC = () => {
         </div>
       )}
 
-      {/* Customer Info Card - Redesigned */}
-      <GlassCard className="mb-6">
-        <div className="flex flex-col lg:flex-row gap-6">
-          {/* Left Section - Customer Profile */}
-          <div className="flex-1">
-            <div className="flex items-start gap-4 mb-6">
-              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 flex items-center justify-center border-2 border-white/30">
-                <Users className="w-10 h-10 text-blue-600" />
-              </div>
-              <div className="flex-1">
-                <h2 className="text-3xl font-bold text-gray-900 mb-2">{customer.name}</h2>
-                <div className="flex flex-wrap items-center gap-3 mb-3">
-                  <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium ${customer.colorTag === 'vip' ? 'bg-emerald-500/20 text-emerald-700 border border-emerald-500/30' : customer.colorTag === 'complainer' ? 'bg-rose-500/20 text-rose-700 border border-rose-500/30' : customer.colorTag === 'purchased' ? 'bg-blue-500/20 text-blue-700 border border-blue-500/30' : customer.colorTag === 'new' ? 'bg-purple-500/20 text-purple-700 border border-purple-500/30' : 'bg-gray-500/20 text-gray-700 border border-gray-500/30'}`}>
-                    <Tag size={14} />
-                    <span className="capitalize">{customer.colorTag}</span>
-                  </span>
-                  <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium bg-amber-500/20 text-amber-700 border border-amber-500/30">
-                    <Star size={14} />
-                    <span className="capitalize">{customer.loyaltyLevel}</span>
-                  </span>
-                  <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium bg-emerald-500/20 text-emerald-700 border border-emerald-500/30">
-                    <Gift size={14} />
-                    <span>{points} pts</span>
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <Calendar size={16} />
-                  <span>Customer since {customer.joinedDate ? new Date(customer.joinedDate).getFullYear() : 'N/A'}</span>
-                  <span>•</span>
-                  <span>Last visit: {customer.lastVisit ? new Date(customer.lastVisit).toLocaleDateString() : 'N/A'}</span>
-                  {isCheckedInToday && (
-                    <span className="ml-2 px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">Checked in today</span>
-                  )}
-                </div>
-              </div>
+      {/* Customer Info Card - Compact */}
+      <GlassCard className="mb-4">
+        {/* Compact Header */}
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 flex items-center justify-center border-2 border-white/30 flex-shrink-0">
+            <Users className="w-6 h-6 text-blue-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-xl font-bold text-gray-900 truncate">{customer.name}</h2>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${customer.colorTag === 'vip' ? 'bg-emerald-500/20 text-emerald-700' : customer.colorTag === 'complainer' ? 'bg-rose-500/20 text-rose-700' : customer.colorTag === 'purchased' ? 'bg-blue-500/20 text-blue-700' : customer.colorTag === 'new' ? 'bg-purple-500/20 text-purple-700' : 'bg-gray-500/20 text-gray-700'}`}>
+                <Tag size={10} />
+                {customer.colorTag}
+              </span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-700">
+                <Star size={10} />
+                {customer.loyaltyLevel}
+              </span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/20 text-emerald-700">
+                <Gift size={10} />
+                {points} pts
+              </span>
+              <span className="text-gray-500">•</span>
+              <span>Since {customer.joinedDate ? new Date(customer.joinedDate).getFullYear() : 'N/A'}</span>
+              {isCheckedInToday && (
+                <span className="px-1.5 py-0.5 bg-green-100 text-green-700 rounded-full text-xs">Today</span>
+              )}
             </div>
+          </div>
+        </div>
 
-            {/* Contact Information */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-              <div className="space-y-3">
-                <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Contact Information</h4>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between p-2 bg-white/20 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <Phone size={16} className="text-blue-500" />
-                      <span className="font-medium">{customer.phone}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => window.open(`tel:${customer.phone}`)}
-                        className="p-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-full transition-colors"
-                        title="Call Customer"
-                      >
-                        <Phone size={14} />
-                      </button>
-                      <button
-                        onClick={() => setShowSmsModal(true)}
-                        className="p-1.5 bg-green-500 hover:bg-green-600 text-white rounded-full transition-colors"
-                        title="Send SMS"
-                      >
-                        <MessageSquare size={14} />
-                      </button>
-                    </div>
+        {/* Compact Content Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          {/* Contact Info */}
+          <div className="md:col-span-2">
+            <div className="bg-white/10 rounded-lg p-3">
+              <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-1">
+                <Phone size={12} className="text-blue-500" />
+                Contact
+              </h4>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between p-2 bg-white/20 rounded">
+                  <div className="flex items-center gap-2">
+                    <Phone size={12} className="text-blue-500" />
+                    <span className="text-sm font-medium text-gray-900">{customer.phone}</span>
                   </div>
-                  {/* Email hidden for privacy */}
-                  <div className="flex items-center justify-between p-2 bg-white/20 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <div className="w-4 h-4 bg-green-500 rounded flex items-center justify-center">
-                        <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0020.885 3.488"/>
-                        </svg>
-                      </div>
-  
-                    </div>
-
-                  </div>
-                  <div className="flex items-center gap-3 p-2 bg-white/20 rounded-lg">
-                    <MapPin size={16} className="text-purple-500" />
-                    <span>{customer.city}</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => window.open(`tel:${customer.phone}`)}
+                      className="p-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded transition-colors"
+                      title="Call"
+                    >
+                      <Phone size={10} />
+                    </button>
+                    <button
+                      onClick={() => setShowSmsModal(true)}
+                      className="p-1.5 bg-green-500 hover:bg-green-600 text-white rounded transition-colors"
+                      title="SMS"
+                    >
+                      <MessageSquare size={10} />
+                    </button>
                   </div>
                 </div>
-              </div>
-
-              <div className="space-y-3">
-                <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Personal Details</h4>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-3 p-2 bg-white/20 rounded-lg">
-                    <Users size={16} className="text-indigo-500" />
-                    <span className="capitalize">{customer.gender || 'Not provided'}</span>
-                  </div>
-                  <div className="flex items-center gap-3 p-2 bg-white/20 rounded-lg">
-                    <Calendar size={16} className="text-pink-500" />
-                    <span>{customer.birthMonth && customer.birthDay ? `${customer.birthMonth} ${customer.birthDay}` : 'Not provided'}</span>
-                    {(customer.birthMonth || customer.birthDay) && (
-                      <span className="ml-auto px-2 py-1 bg-pink-100 text-pink-700 rounded-full text-xs">Birthday</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3 p-2 bg-white/20 rounded-lg">
-                    <Tag size={16} className="text-orange-500" />
-                    <span>{customer.referralSource || 'Not provided'}</span>
-                    {customer.referralSource && (
-                      <span className="ml-auto px-2 py-1 bg-orange-100 text-orange-700 rounded-full text-xs">Referral</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3 p-2 bg-white/20 rounded-lg">
-                    <Users size={16} className="text-emerald-500" />
-                    <span>{referrals} referrals</span>
-                  </div>
+                <div className="flex items-center gap-2 p-2 bg-white/20 rounded">
+                  <MapPin size={12} className="text-purple-500" />
+                  <span className="text-xs text-gray-700">{customer.city || 'No location'}</span>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Right Section - Quick Actions */}
-          <div className="lg:w-80">
-            <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-xl p-4 border border-white/20">
-              <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Quick Actions</h4>
-              <div className="space-y-3">
+          {/* Personal Details */}
+          <div className="md:col-span-1">
+            <div className="bg-white/10 rounded-lg p-3">
+              <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-1">
+                <Users size={12} className="text-indigo-500" />
+                Personal
+              </h4>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2 p-1.5 bg-white/20 rounded">
+                  <Users size={10} className="text-indigo-500" />
+                  <span className="text-xs text-gray-700 capitalize">{customer.gender || 'N/A'}</span>
+                </div>
+                <div className="flex items-center gap-2 p-1.5 bg-white/20 rounded">
+                  <Calendar size={10} className="text-pink-500" />
+                  <span className="text-xs text-gray-700">
+                    {customer.birthMonth && customer.birthDay ? `${customer.birthMonth} ${customer.birthDay}` : 'N/A'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 p-1.5 bg-white/20 rounded">
+                  <Tag size={10} className="text-orange-500" />
+                  <span className="text-xs text-gray-700 truncate">{customer.referralSource || 'N/A'}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Actions */}
+          <div className="md:col-span-1">
+            <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-lg p-3 border border-white/20">
+              <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-1">
+                <Wrench size={12} className="text-blue-500" />
+                Actions
+              </h4>
+              <div className="space-y-2">
                 <GlassButton
-                  className="w-full justify-start bg-fuchsia-600 hover:bg-fuchsia-700 text-white"
+                  className="w-full justify-start bg-fuchsia-600 hover:bg-fuchsia-700 text-white text-xs"
                   size="sm"
                   onClick={() => setShowEditModal(true)}
                 >
-                  Edit Profile
+                  <Users size={12} />
+                  Edit
                 </GlassButton>
                 <GlassButton
-                  className="w-full justify-start bg-amber-600 hover:bg-amber-700 text-white"
+                  className="w-full justify-start bg-amber-600 hover:bg-amber-700 text-white text-xs"
                   size="sm"
                   onClick={() => setShowPointsModal(true)}
                 >
-                  Manage Points
+                  <Gift size={12} />
+                  Points
                 </GlassButton>
                 <GlassButton 
                   variant="secondary" 
@@ -817,72 +680,18 @@ const CustomerDetailPage: React.FC = () => {
                       setCheckinLoading(false);
                     }
                   }}
-                  className="w-full justify-start mt-2"
+                  className="w-full justify-start text-xs"
                   disabled={isCheckedInToday}
                 >
-                  Manual Check-in
+                  <CheckCircle size={12} />
+                  {isCheckedInToday ? 'Checked' : 'Check-in'}
                 </GlassButton>
               </div>
             </div>
           </div>
         </div>
-            </GlassCard>
+      </GlassCard>
 
-      {/* Enhanced Customer Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <GlassCard className="bg-gradient-to-br from-pink-50 to-pink-100">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-pink-600">Birthday</p>
-              <p className="text-2xl font-bold text-pink-900">
-                {customer.birthMonth && customer.birthDay ? `${customer.birthMonth} ${customer.birthDay}` : 'Not Set'}
-              </p>
-            </div>
-            <div className="p-3 bg-pink-50/20 rounded-full">
-              <Calendar className="w-6 h-6 text-pink-600" />
-            </div>
-          </div>
-        </GlassCard>
-
-        <GlassCard className="bg-gradient-to-br from-purple-50 to-purple-100">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-purple-600">Referral Source</p>
-              <p className="text-lg font-bold text-purple-900">
-                {customer.referralSource || 'Not Set'}
-              </p>
-            </div>
-            <div className="p-3 bg-purple-50/20 rounded-full">
-              <Tag className="w-6 h-6 text-purple-600" />
-            </div>
-          </div>
-        </GlassCard>
-
-        <GlassCard className="bg-gradient-to-br from-green-50 to-green-100">
-          <div className="flex items-center justify-between">
-            <div>
-
-            </div>
-            <div className="p-3 bg-green-50/20 rounded-full">
-              <MessageSquare className="w-6 h-6 text-green-600" />
-            </div>
-          </div>
-        </GlassCard>
-
-        <GlassCard className="bg-gradient-to-br from-orange-50 to-orange-100">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-orange-600">Total Returns</p>
-              <p className="text-2xl font-bold text-orange-900">
-                {customer.totalReturns || 0}
-              </p>
-            </div>
-            <div className="p-3 bg-orange-50/20 rounded-full">
-              <Users className="w-6 h-6 text-orange-600" />
-            </div>
-          </div>
-        </GlassCard>
-      </div>
 
       {/* Enhanced Customer Analytics */}
       {loadingEnhancedData && (
@@ -975,189 +784,7 @@ const CustomerDetailPage: React.FC = () => {
         </div>
       )}
 
-      {/* App Revenue Overview */}
-      {loadingAppRevenue && (
-        <div className="flex items-center justify-center p-8">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-2"></div>
-            <p className="text-sm text-gray-600">Loading app revenue data...</p>
-          </div>
-        </div>
-      )}
-      
-      {appRevenueData && !loadingAppRevenue && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <GlassCard className="bg-gradient-to-br from-indigo-50 to-indigo-100">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-indigo-600">Total App Revenue</p>
-                <p className="text-2xl font-bold text-indigo-900">
-                  {formatCurrency(appRevenueData.total)}
-                </p>
-                <p className="text-xs text-indigo-700 mt-1">
-                  {appRevenueData.totalTransactions} total transactions
-                </p>
-              </div>
-              <div className="p-3 bg-indigo-50/20 rounded-full">
-                <TrendingUp className="w-6 h-6 text-indigo-600" />
-              </div>
-            </div>
-          </GlassCard>
 
-          <GlassCard className="bg-gradient-to-br from-teal-50 to-teal-100">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-teal-600">Monthly Revenue</p>
-                <p className="text-2xl font-bold text-teal-900">
-                  {formatCurrency(appRevenueData.monthly)}
-                </p>
-                <p className="text-xs text-teal-700 mt-1">
-                  {appRevenueData.monthlyTransactions} transactions this month
-                </p>
-              </div>
-              <div className="p-3 bg-teal-50/20 rounded-full">
-                <BarChart2 className="w-6 h-6 text-teal-600" />
-              </div>
-            </div>
-          </GlassCard>
-
-          <GlassCard className="bg-gradient-to-br from-rose-50 to-rose-100">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-rose-600">Customer Contribution</p>
-                <p className="text-2xl font-bold text-rose-900">
-                  {(() => {
-                  const formatted = customerAnalytics?.customerContributionPercentage?.toFixed(2) || '0';
-                  return formatted.replace(/\.00$/, '').replace(/\.0$/, '');
-                })()}%
-                </p>
-                <p className="text-xs text-rose-700 mt-1">
-                  {formatCurrency(customerAnalytics?.totalSpent || 0)} of total revenue
-                </p>
-              </div>
-              <div className="p-3 bg-rose-50/20 rounded-full">
-                <Users className="w-6 h-6 text-rose-600" />
-              </div>
-            </div>
-          </GlassCard>
-
-          <GlassCard className="bg-gradient-to-br from-violet-50 to-violet-100">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-violet-600">Revenue Breakdown</p>
-                <p className="text-lg font-bold text-violet-900">
-                  POS: {appRevenueData.breakdown.pos.percentage.toFixed(1)}%
-                </p>
-                <p className="text-xs text-violet-700 mt-1">
-                  Device: {appRevenueData.breakdown.device.percentage.toFixed(1)}% | Parts: {appRevenueData.breakdown.spare.percentage.toFixed(1)}%
-                </p>
-              </div>
-              <div className="p-3 bg-violet-50/20 rounded-full">
-                <PieChart className="w-6 h-6 text-violet-600" />
-              </div>
-            </div>
-          </GlassCard>
-        </div>
-      )}
-
-      {/* Detailed Revenue Breakdown */}
-      {appRevenueData && !loadingAppRevenue && (
-        <GlassCard className="mb-6">
-          <h3 className="text-lg font-bold text-gray-900 mb-4">Revenue Breakdown Analysis</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="space-y-4">
-              <h4 className="font-semibold text-gray-800">POS Sales</h4>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Total Revenue:</span>
-                  <span className="font-medium">{formatCurrency(appRevenueData.breakdown.pos.total)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Monthly Revenue:</span>
-                  <span className="font-medium">{formatCurrency(appRevenueData.breakdown.pos.monthly)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Percentage:</span>
-                  <span className="font-medium">{appRevenueData.breakdown.pos.percentage.toFixed(1)}%</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <h4 className="font-semibold text-gray-800">Device Revenue</h4>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Total Revenue:</span>
-                  <span className="font-medium">{formatCurrency(appRevenueData.breakdown.device.total)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Monthly Revenue:</span>
-                  <span className="font-medium">{formatCurrency(appRevenueData.breakdown.device.monthly)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Percentage:</span>
-                  <span className="font-medium">{appRevenueData.breakdown.device.percentage.toFixed(1)}%</span>
-                </div>
-                <div className="border-t pt-2 mt-2">
-                  <div className="text-xs text-gray-500 mb-1">Breakdown:</div>
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-xs">
-                      <span>• Repair Payments:</span>
-                      <span>{formatCurrency(appRevenueData.breakdown.device.breakdown.payments)}</span>
-                    </div>
-                    <div className="flex justify-between text-xs">
-                      <span>• Device Costs:</span>
-                      <span>{formatCurrency(appRevenueData.breakdown.device.breakdown.deviceCosts)}</span>
-                    </div>
-                    <div className="flex justify-between text-xs">
-                      <span>• Deposits:</span>
-                      <span>{formatCurrency(appRevenueData.breakdown.device.breakdown.deposits)}</span>
-                    </div>
-                    <div className="flex justify-between text-xs">
-                      <span>• Repair Costs:</span>
-                      <span>{formatCurrency(appRevenueData.breakdown.device.breakdown.repairCosts)}</span>
-                    </div>
-                    <div className="flex justify-between text-xs">
-                      <span>• Actual Costs:</span>
-                      <span>{formatCurrency(appRevenueData.breakdown.device.breakdown.actualCosts)}</span>
-                    </div>
-                    <div className="flex justify-between text-xs">
-                      <span>• Labor Costs:</span>
-                      <span>{formatCurrency(appRevenueData.breakdown.device.breakdown.laborCosts)}</span>
-                    </div>
-                    <div className="flex justify-between text-xs">
-                      <span>• Parts Costs:</span>
-                      <span>{formatCurrency(appRevenueData.breakdown.device.breakdown.partsCosts)}</span>
-                    </div>
-                    <div className="flex justify-between text-xs">
-                      <span>• Balance Amounts:</span>
-                      <span>{formatCurrency(appRevenueData.breakdown.device.breakdown.balanceAmounts)}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <h4 className="font-semibold text-gray-800">Spare Parts</h4>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Total Revenue:</span>
-                  <span className="font-medium">{formatCurrency(appRevenueData.breakdown.spare.total)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Monthly Revenue:</span>
-                  <span className="font-medium">{formatCurrency(appRevenueData.breakdown.spare.monthly)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Percentage:</span>
-                  <span className="font-medium">{appRevenueData.breakdown.spare.percentage.toFixed(1)}%</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </GlassCard>
-      )}
 
       {/* Customer Insights Summary */}
       {customerAnalytics && !loadingEnhancedData && (
@@ -1203,12 +830,7 @@ const CustomerDetailPage: React.FC = () => {
                 <div>• Device revenue: {formatCurrency(customerAnalytics.totalDeviceSpent)}</div>
                 <div>• Spare parts: {formatCurrency(customerAnalytics.totalSpareSpent)}</div>
                 <div>• Current points: {customer.points} pts</div>
-                {appRevenueData && (
-                  <>
-                    <div>• App contribution: {customerAnalytics.customerContributionPercentage.toFixed(2)}%</div>
-                    <div>• Customer ranking: {customerAnalytics.customerRanking}</div>
-                  </>
-                )}
+                <div>• Customer ranking: {customerAnalytics.customerRanking}</div>
               </div>
             </div>
 
@@ -1228,19 +850,6 @@ const CustomerDetailPage: React.FC = () => {
         </GlassCard>
       )}
 
-      {/* Customer Analytics - moved to top */}
-      <CustomerAnalytics customer={customer} devices={devices} payments={payments.map(p => ({
-          id: p.id,
-          customer_id: customer.id,
-          amount: p.amount,
-          method: p.method,
-          device_id: p.deviceId,
-          payment_date: p.date,
-          payment_type: p.type,
-          status: p.status,
-          created_by: p.createdBy,
-          created_at: p.createdAt
-        }))} />
 
       {/* Notes and Additional Actions */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -359,7 +359,7 @@ class SupabaseDataProvider implements LatsDataProvider {
       // Get total count first
       const { count, error: countError } = await supabase
         .from('lats_suppliers')
-        .select('*', { count: 'exact', head: true });
+        .select('id', { count: 'exact', head: true });
 
       if (countError) {
         console.error('❌ Count error:', countError);
@@ -625,7 +625,7 @@ class SupabaseDataProvider implements LatsDataProvider {
               total_quantity, total_value, condition, store_shelf_id, internal_notes, 
               created_at, updated_at, attributes,
               lats_product_variants(id, sku, selling_price, cost_price, quantity, 
-                min_quantity, max_quantity, attributes, is_active, created_at, updated_at),
+                min_quantity, attributes, is_active, created_at, updated_at),
               lats_suppliers!supplier_id(id, name, contact_person, email, phone, address, website, notes, created_at, updated_at),
               lats_store_shelves!store_shelf_id(
                 id,
@@ -689,7 +689,6 @@ class SupabaseDataProvider implements LatsDataProvider {
                 costPrice: variant.cost_price || 0,
                 quantity: variant.quantity || 0,
                 minQuantity: variant.min_quantity || 0,
-                maxQuantity: variant.max_quantity || 0,
                 attributes: variant.attributes || {},
                 isActive: variant.is_active ?? true,
                 createdAt: variant.created_at,
@@ -3510,6 +3509,15 @@ class SupabaseDataProvider implements LatsDataProvider {
 
   async processSale(data: ProcessSaleData): Promise<ApiResponse<Sale | InsufficientStockError>> {
     try {
+      // Validate customer information
+      if (!data.customerId && !data.customerName) {
+        return {
+          ok: false,
+          message: 'Customer information is required for sale processing',
+          code: 'MISSING_CUSTOMER'
+        };
+      }
+
       // Check stock availability
       for (const item of data.items) {
         const { data: variant, error } = await supabase

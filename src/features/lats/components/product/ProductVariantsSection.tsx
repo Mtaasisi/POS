@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Layers, Plus, Trash2, Package, QrCode, DollarSign, Move, Check } from 'lucide-react';
+import { specificationCategories, getSpecificationsByCategory } from '../../../../data/specificationCategories';
 
 interface ProductVariant {
   name: string;
@@ -15,7 +16,7 @@ interface ProductVariantsSectionProps {
   variants: ProductVariant[];
   setVariants: React.Dispatch<React.SetStateAction<ProductVariant[]>>;
   useVariants: boolean;
-  setUseVariants: React.Dispatch<React.SetStateAction<boolean>>;
+  setUseVariants: (enabled: boolean) => void;
   showVariants: boolean;
   setShowVariants: React.Dispatch<React.SetStateAction<boolean>>;
   isReorderingVariants: boolean;
@@ -43,14 +44,18 @@ const ProductVariantsSection: React.FC<ProductVariantsSectionProps> = ({
   const [variantPriceFocus, setVariantPriceFocus] = useState<Record<string, boolean>>({});
 
   const addVariant = () => {
+    // Get the last variant to duplicate its specifications
+    const lastVariant = variants.length > 0 ? variants[variants.length - 1] : null;
+    
     const newVariant: ProductVariant = {
       name: `Variant ${variants.length + 1}`,
       sku: generateVariantSKU(variants.length + 1),
-      costPrice: 0,
-      price: 0,
-      stockQuantity: 0,
-      minStockLevel: 2, // Set default min stock level to 2 pcs
-      attributes: {}
+      costPrice: lastVariant?.costPrice || 0,
+      price: lastVariant?.price || 0,
+      stockQuantity: lastVariant?.stockQuantity || 0,
+      minStockLevel: lastVariant?.minStockLevel || 2, // Set default min stock level to 2 pcs
+      // Duplicate the previous variant's attributes/specifications
+      attributes: lastVariant?.attributes ? { ...lastVariant.attributes } : {}
     };
     setVariants(prev => [...prev, newVariant]);
   };
@@ -288,18 +293,8 @@ const ProductVariantsSection: React.FC<ProductVariantsSectionProps> = ({
             role="switch"
             aria-checked={useVariants}
             onClick={() => {
-              setUseVariants(prev => {
-                const next = !prev;
-                if (next) {
-                  if (variants.length === 0) {
-                    addVariant();
-                  }
-                  setShowVariants(true);
-                } else {
-                  setShowVariants(false);
-                }
-                return next;
-              });
+              const next = !useVariants;
+              setUseVariants(next);
             }}
             className={`relative inline-flex h-6 w-11 items-center rounded-full ${
               useVariants ? 'bg-blue-600' : 'bg-gray-300'
@@ -317,16 +312,6 @@ const ProductVariantsSection: React.FC<ProductVariantsSectionProps> = ({
       
       {useVariants && showVariants && (
         <div className="space-y-4">
-          {/* Add Variant Button */}
-          <button
-            type="button"
-            onClick={addVariant}
-            className="w-full p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all flex items-center justify-center gap-2 text-gray-600 hover:text-blue-600"
-          >
-            <Plus size={20} />
-            Add New Variant
-          </button>
-
           {/* Variants List */}
           <div className="space-y-3">
             {variants.map((variant, index) => (
@@ -617,6 +602,16 @@ const ProductVariantsSection: React.FC<ProductVariantsSectionProps> = ({
               </div>
             ))}
           </div>
+
+          {/* Add Variant Button */}
+          <button
+            type="button"
+            onClick={addVariant}
+            className="w-full p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all flex items-center justify-center gap-2 text-gray-600 hover:text-blue-600"
+          >
+            <Plus size={20} />
+            Add New Variant
+          </button>
         </div>
       )}
       

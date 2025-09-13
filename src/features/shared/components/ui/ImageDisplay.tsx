@@ -1,5 +1,6 @@
 import React from 'react';
 import { sanitizeImageUrl, isUrlTooLong, getFallbackImageUrl, emergencyUrlCleanup } from './placeholderUtils';
+import { ImageUrlSanitizer } from '../../../lib/imageUrlSanitizer';
 
 interface ImageDisplayProps {
   imageUrl?: string;
@@ -29,38 +30,18 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
 
   // Sanitize and set the initial URL with emergency cleanup
   React.useEffect(() => {
-    // Emergency cleanup for extremely long URLs
-    if (imageUrl && imageUrl.length > 2000) {
-      console.error('Emergency cleanup in ImageDisplay: URL extremely long, using fallback');
-      setCurrentUrl(getFallbackImageUrl('product', alt));
-      setImageError(false);
-      setThumbnailError(false);
-      setIsLoading(false);
-      return;
+    // Use the new ImageUrlSanitizer for comprehensive URL validation
+    const sanitizedResult = ImageUrlSanitizer.sanitizeImageUrl(imageUrl || '', alt);
+    
+    if (sanitizedResult.isSanitized) {
+      console.warn('🚨 ImageDisplay: URL sanitized to prevent 431 error:', {
+        method: sanitizedResult.method,
+        originalLength: sanitizedResult.originalLength,
+        sanitizedLength: sanitizedResult.sanitizedLength
+      });
     }
-
-    // Check if URL is too long for HTTP headers
-    if (isUrlTooLong(imageUrl, 1500)) {
-      console.warn('Image URL too long, using fallback to prevent header size issues');
-      setCurrentUrl(getFallbackImageUrl('product', alt));
-      setImageError(false);
-      setThumbnailError(false);
-      setIsLoading(false);
-      return;
-    }
-
-    // Check if it's a data URL that might be too large
-    if (imageUrl && imageUrl.startsWith('data:') && imageUrl.length > 8000) {
-      console.warn('Data URL too large, using fallback to prevent performance issues');
-      setCurrentUrl(getFallbackImageUrl('product', alt));
-      setImageError(false);
-      setThumbnailError(false);
-      setIsLoading(false);
-      return;
-    }
-
-    const sanitizedUrl = emergencyUrlCleanup(sanitizeImageUrl(imageUrl));
-    setCurrentUrl(sanitizedUrl);
+    
+    setCurrentUrl(sanitizedResult.url);
     setImageError(false);
     setThumbnailError(false);
     setIsLoading(true);

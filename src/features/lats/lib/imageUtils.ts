@@ -3,6 +3,7 @@
  */
 
 import { supabase } from '../../../lib/supabaseClient';
+import { ImageUrlSanitizer } from '../../../lib/imageUrlSanitizer';
 
 /**
  * Generate a simple SVG placeholder image as a data URL
@@ -49,26 +50,20 @@ function isUrlTooLong(url: string, maxLength: number = 1500): boolean {
 
 /**
  * Process image URLs to prevent header size issues
- * Reduced threshold to prevent HTTP 431 errors
+ * Uses ImageUrlSanitizer to prevent HTTP 431 errors
  */
 export function processImageUrl(url: string, alt?: string): string {
-  if (!url || typeof url !== 'string') {
-    return getFallbackImageUrl('product', alt);
+  const sanitizedResult = ImageUrlSanitizer.sanitizeImageUrl(url, alt);
+  
+  if (sanitizedResult.isSanitized) {
+    console.warn('🚨 processImageUrl: URL sanitized to prevent 431 error:', {
+      method: sanitizedResult.method,
+      originalLength: sanitizedResult.originalLength,
+      sanitizedLength: sanitizedResult.sanitizedLength
+    });
   }
-
-  // Check if URL is too long for HTTP headers (reduced threshold)
-  if (isUrlTooLong(url, 1500)) {
-    console.warn('Image URL too long, using fallback to prevent header size issues');
-    return getFallbackImageUrl('product', alt);
-  }
-
-  // Check if it's a data URL that might be too large (reduced threshold)
-  if (isDataUrl(url) && url.length > 8000) {
-    console.warn('Data URL too large, using fallback to prevent performance issues');
-    return getFallbackImageUrl('product', alt);
-  }
-
-  return url;
+  
+  return sanitizedResult.url;
 }
 
 /**

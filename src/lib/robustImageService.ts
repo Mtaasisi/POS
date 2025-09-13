@@ -41,6 +41,9 @@ export class RobustImageService {
 
   // In-memory cache for better performance
   private static imageCache = new Map<string, { data: ProductImage[]; timestamp: number }>();
+  
+  // Temporary image storage for temporary products
+  private static tempImageStorage = new Map<string, ProductImage[]>();
 
   /**
    * Upload image with smart optimization
@@ -58,35 +61,52 @@ export class RobustImageService {
         return { success: false, error: validation.error };
       }
 
-      // 2. Check limits
+      // 2. Check authentication
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        console.error('❌ Authentication failed:', authError);
+        return { success: false, error: 'User not authenticated' };
+      }
+
+      // 3. Check limits
       const existingImages = await this.getProductImages(productId);
       if (existingImages.length >= this.MAX_FILES_PER_PRODUCT) {
         return { success: false, error: `Maximum ${this.MAX_FILES_PER_PRODUCT} images allowed per product` };
       }
 
-      // 3. Generate optimized filename
+      // 4. Generate optimized filename
       const fileName = this.generateFileName(file, productId);
 
-      // 4. Smart upload based on environment
+      // 5. Smart upload based on environment
       let imageUrl: string;
       let thumbnailUrl: string;
 
-      // Always upload to storage for proper file storage
-      try {
-        const uploadResult = await this.uploadToStorage(file, fileName);
-        imageUrl = uploadResult.url;
-        thumbnailUrl = uploadResult.thumbnailUrl;
-        console.log('✅ Uploaded to Supabase Storage:', imageUrl);
-      } catch (storageError) {
-        console.warn('Storage failed, using base64 fallback:', storageError);
-        // Fallback to base64 only if storage completely fails
+      // Handle temporary products differently
+      if (productId.startsWith('temp-product-') || productId.startsWith('test-product-') || productId.startsWith('temp-sparepart-')) {
+        console.log('📝 Creating temporary image for product:', productId);
+        // For temporary products, use base64 encoding
         const compressedImage = await this.compressImage(file);
         imageUrl = compressedImage;
         thumbnailUrl = await this.createThumbnail(file, 200);
-        console.log('⚠️ Using base64 fallback due to storage error');
+        console.log('✅ Created temporary image');
+      } else {
+        // For real products, try storage first
+        try {
+          const uploadResult = await this.uploadToStorage(file, fileName);
+          imageUrl = uploadResult.url;
+          thumbnailUrl = uploadResult.thumbnailUrl;
+          console.log('✅ Uploaded to Supabase Storage:', imageUrl);
+        } catch (storageError) {
+          console.warn('Storage failed, using base64 fallback:', storageError);
+          // Fallback to base64 only if storage completely fails
+          const compressedImage = await this.compressImage(file);
+          imageUrl = compressedImage;
+          thumbnailUrl = await this.createThumbnail(file, 200);
+          console.log('⚠️ Using base64 fallback due to storage error');
+        }
       }
 
-      // 5. Save to database
+      // 6. Save to database (or create temporary record)
       const uploadedImage = await this.saveImageRecord({
         productId,
         imageUrl,
@@ -98,7 +118,7 @@ export class RobustImageService {
         mimeType: file.type
       });
 
-      // 6. Clear cache for this product
+      // 7. Clear cache for this product
       this.clearProductCache(productId);
 
       return { success: true, image: uploadedImage };
@@ -117,7 +137,20 @@ export class RobustImageService {
    */
   static async getProductImages(productId: string): Promise<ProductImage[]> {
     try {
-      // Check cache first
+      // Validate productId format
+      if (!productId || typeof productId !== 'string') {
+        console.warn('Invalid productId provided to getProductImages:', productId);
+        return [];
+      }
+
+      // Handle temporary products
+      if (productId.startsWith('temp-product-') || productId.startsWith('test-product-') || productId.startsWith('temp-sparepart-')) {
+        const tempImages = this.tempImageStorage.get(productId) || [];
+        console.log('📝 Retrieved temporary images for product:', productId, 'count:', tempImages.length);
+        return tempImages;
+      }
+
+      // Check cache first for real products
       const cacheKey = `product_${productId}`;
       const cached = this.imageCache.get(cacheKey);
       
@@ -127,11 +160,6 @@ export class RobustImageService {
         return cached.data;
       }
 
-      // Handle temporary products
-      if (productId.startsWith('temp-product-') || productId.startsWith('test-product-') || productId.startsWith('temp-sparepart-')) {
-        return [];
-      }
-
       // Query database
       const { data, error } = await supabase
         .from('product_images')
@@ -139,7 +167,11 @@ export class RobustImageService {
         .eq('product_id', productId)
         .order('is_primary', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        // Log the error but don't throw to prevent app crashes
+        console.error('Failed to get product images:', error);
+        return [];
+      }
 
       const images = data.map(row => ({
         id: row.id,
@@ -167,11 +199,28 @@ export class RobustImageService {
   /**
    * Delete image with cleanup
    */
-  static async deleteImage(imageId: string): Promise<{ success: boolean; error?: string }> {
+  static async deleteImage(imageId: string, productId?: string): Promise<{ success: boolean; error?: string }> {
     try {
       // Handle temporary images
       if (imageId.startsWith('temp-')) {
+        console.log('📝 Deleting temporary image:', imageId);
+        
+        // If we have a productId, remove from temporary storage
+        if (productId && (productId.startsWith('temp-product-') || productId.startsWith('test-product-') || productId.startsWith('temp-sparepart-'))) {
+          const tempImages = this.tempImageStorage.get(productId) || [];
+          const updatedImages = tempImages.filter(img => img.id !== imageId);
+          this.tempImageStorage.set(productId, updatedImages);
+          console.log('📝 Removed temporary image from storage');
+        }
+        
         return { success: true };
+      }
+
+      // Check authentication
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        console.error('❌ Authentication failed for delete:', authError);
+        return { success: false, error: 'User not authenticated' };
       }
 
       // Get image info
@@ -181,7 +230,15 @@ export class RobustImageService {
         .eq('id', imageId)
         .single();
 
-      if (fetchError) throw fetchError;
+      if (fetchError) {
+        console.error('❌ Failed to fetch image for deletion:', fetchError);
+        return { success: false, error: 'Image not found' };
+      }
+
+      if (!image) {
+        console.error('❌ Image not found:', imageId);
+        return { success: false, error: 'Image not found' };
+      }
 
       // Delete from database
       const { error: deleteError } = await supabase
@@ -189,19 +246,29 @@ export class RobustImageService {
         .delete()
         .eq('id', imageId);
 
-      if (deleteError) throw deleteError;
+      if (deleteError) {
+        console.error('❌ Failed to delete image from database:', deleteError);
+        return { success: false, error: 'Failed to delete image from database' };
+      }
 
-      // Delete from storage (production only)
-      if (!import.meta.env.DEV && image.image_url && !image.image_url.startsWith('data:')) {
-        await this.deleteFromStorage(image.image_url);
+      // Delete from storage (only if it's a real storage URL, not base64)
+      if (image.image_url && !image.image_url.startsWith('data:') && !image.image_url.startsWith('blob:')) {
+        try {
+          await this.deleteFromStorage(image.image_url);
+          console.log('✅ Deleted image from storage');
+        } catch (storageError) {
+          console.warn('⚠️ Failed to delete from storage (non-critical):', storageError);
+          // Don't fail the entire operation if storage deletion fails
+        }
       }
 
       // Clear cache
       this.clearProductCache(image.product_id);
 
+      console.log('✅ Image deleted successfully:', imageId);
       return { success: true };
     } catch (error) {
-      console.error('Delete failed:', error);
+      console.error('❌ Delete failed:', error);
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Delete failed' 
@@ -446,7 +513,7 @@ export class RobustImageService {
     // Handle temporary products - don't save to database
     if (data.productId.startsWith('temp-product-') || data.productId.startsWith('test-product-') || data.productId.startsWith('temp-sparepart-')) {
       console.log('📝 Creating temporary image record for product:', data.productId);
-      return {
+      const tempImage: ProductImage = {
         id: `temp-${Date.now()}-${crypto.randomUUID().replace(/-/g, '').substring(0, 8)}`,
         url: data.imageUrl,
         thumbnailUrl: data.thumbnailUrl,
@@ -456,6 +523,12 @@ export class RobustImageService {
         uploadedAt: new Date().toISOString(),
         mimeType: data.mimeType
       };
+      
+      // Store in temporary storage
+      const existingImages = this.tempImageStorage.get(data.productId) || [];
+      this.tempImageStorage.set(data.productId, [...existingImages, tempImage]);
+      
+      return tempImage;
     }
 
     // For real products, check if image already exists before inserting

@@ -7,7 +7,7 @@ import { PageErrorBoundary } from '../../../features/shared/components/PageError
 import PageHeader from '../components/ui/PageHeader';
 import { 
   Package, Crown, Users, MapPin, Settings, Plus, Edit, Trash2, 
-  Building, Tag, Truck, Store, Database, Shield, Bell, BarChart3
+  Building, Tag, Truck, Store, Database, Shield, Bell, BarChart3, Layers
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
@@ -17,8 +17,9 @@ import SuppliersTab from '../components/inventory-management/SuppliersTab';
 import StoreLocationsTab from '../components/inventory-management/StoreLocationsTab';
 import StorageRoomManagementPage from './StorageRoomManagementPage';
 import SystemSettingsTab from '../components/inventory-management/SystemSettingsTab';
+import SpecificationsTab from '../components/inventory-management/SpecificationsTab';
 
-type TabType = 'categories' | 'suppliers' | 'store-locations' | 'storage-room' | 'system-settings';
+type TabType = 'categories' | 'suppliers' | 'store-locations' | 'storage-room' | 'specifications' | 'system-settings';
 
 interface TabConfig {
   id: TabType;
@@ -58,6 +59,13 @@ const TAB_CONFIGS: TabConfig[] = [
     description: 'Manage storage rooms and capacity'
   },
   {
+    id: 'specifications',
+    label: 'Specifications',
+    icon: Layers,
+    color: 'blue',
+    description: 'Manage product specifications and attributes'
+  },
+  {
     id: 'system-settings',
     label: 'System Settings',
     icon: Settings,
@@ -70,7 +78,7 @@ const InventoryManagementPage: React.FC = () => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<TabType>('brands');
+  const [activeTab, setActiveTab] = useState<TabType>('categories');
   const [isLoading, setIsLoading] = useState(false);
 
   // Check user permissions and handle URL parameters
@@ -109,6 +117,8 @@ const InventoryManagementPage: React.FC = () => {
         return <StoreLocationsTab />;
       case 'storage-room':
         return <StorageRoomManagementPage />;
+      case 'specifications':
+        return <SpecificationsTab />;
       case 'system-settings':
         return <SystemSettingsTab />;
       default:

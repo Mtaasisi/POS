@@ -767,7 +767,7 @@ export class POSSettingsAPI {
         console.log(`📊 Getting total record count...`);
         const { count, error: countError } = await supabase
           .from(tableName)
-          .select('*', { count: 'exact', head: true });
+          .select('id', { count: 'exact', head: true });
         
         if (countError) {
           console.error(`❌ Error getting count:`, countError);
@@ -833,7 +833,7 @@ export class POSSettingsAPI {
         console.log(`📊 Getting total record count...`);
         const { count, error: countError } = await supabase
           .from(tableName)
-          .select('*', { count: 'exact', head: true });
+          .select('id', { count: 'exact', head: true });
         
         if (countError) {
           console.error(`❌ Error getting count:`, countError);

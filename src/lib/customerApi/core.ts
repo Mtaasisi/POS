@@ -191,7 +191,7 @@ async function performFetchAllCustomers() {
         retryRequest(async () => {
           const result = await checkSupabase()
             .from('customers')
-            .select('*', { count: 'exact', head: true });
+            .select('id', { count: 'exact', head: true });
           
           if (result.error) {
             throw result.error;
@@ -231,7 +231,36 @@ async function performFetchAllCustomers() {
               const result = await checkSupabase()
                 .from('customers')
                 .select(`
-                  id, name, email, phone, gender, city, joined_date, loyalty_level, color_tag, referred_by, total_spent, points, last_visit, is_active, birth_month, birth_day, referral_source, total_returns, profile_image, created_at, updated_at, created_by, last_purchase_date, total_purchases, birthday, whatsapp, whatsapp_opt_out, initial_notes, notes, referrals, customer_tag
+                  id,
+                  name,
+                  phone,
+                  email,
+                  gender,
+                  city,
+                  color_tag,
+                  loyalty_level,
+                  points,
+                  total_spent,
+                  last_visit,
+                  is_active,
+                  referral_source,
+                  birth_month,
+                  birth_day,
+                  total_returns,
+                  profile_image,
+                  whatsapp,
+                  whatsapp_opt_out,
+                  initial_notes,
+                  notes,
+                  referrals,
+                  customer_tag,
+                  created_at,
+                  updated_at,
+                  created_by,
+                  last_purchase_date,
+                  total_purchases,
+                  birthday,
+                  referred_by
                 `)
                 .range(from, to)
                 .order('created_at', { ascending: false });
@@ -260,7 +289,7 @@ async function performFetchAllCustomers() {
                 phone: customer.phone,
                 gender: customer.gender,
                 city: customer.city,
-                joinedDate: customer.joined_date,
+                joinedDate: customer.created_at,
                 loyaltyLevel: customer.loyalty_level,
                 colorTag: normalizeColorTag(customer.color_tag || 'new'),
                 referredBy: customer.referred_by,
@@ -371,10 +400,32 @@ async function performFetchAllCustomersSimple() {
               name,
               phone,
               email,
+              gender,
+              city,
               color_tag,
+              loyalty_level,
               points,
+              total_spent,
+              last_visit,
+              is_active,
+              referral_source,
+              birth_month,
+              birth_day,
+              total_returns,
+              profile_image,
+              whatsapp,
+              whatsapp_opt_out,
+              initial_notes,
+              notes,
+              referrals,
+              customer_tag,
               created_at,
-              updated_at
+              updated_at,
+              created_by,
+              last_purchase_date,
+              total_purchases,
+              birthday,
+              referred_by
             `)
             .order('created_at', { ascending: false });
           
@@ -393,16 +444,56 @@ async function performFetchAllCustomersSimple() {
       
       if (data) {
         // Process and normalize the data
-        const processedCustomers = data.map(customer => ({
-          id: customer.id,
-          name: customer.name,
-          phone: customer.phone,
-          email: customer.email,
-          colorTag: normalizeColorTag(customer.color_tag || 'new'),
-          points: customer.points,
-          createdAt: customer.created_at,
-          updatedAt: customer.updated_at
-        }));
+        const processedCustomers = data.map(customer => {
+          // Map snake_case database fields to camelCase interface fields
+          const mappedCustomer = {
+            id: customer.id,
+            name: customer.name,
+            phone: customer.phone,
+            email: customer.email,
+            gender: customer.gender || 'other',
+            city: customer.city || '',
+            colorTag: normalizeColorTag(customer.color_tag || 'new'),
+            loyaltyLevel: customer.loyalty_level || 'bronze',
+            points: customer.points || 0,
+            totalSpent: customer.total_spent || 0,
+            lastVisit: customer.last_visit || customer.created_at,
+            isActive: customer.is_active !== false, // Default to true if null
+            referralSource: customer.referral_source,
+            birthMonth: customer.birth_month,
+            birthDay: customer.birth_day,
+            totalReturns: customer.total_returns || 0,
+            profileImage: customer.profile_image,
+            whatsapp: customer.whatsapp,
+            whatsappOptOut: customer.whatsapp_opt_out || false,
+            initialNotes: customer.initial_notes,
+            notes: customer.notes ? (typeof customer.notes === 'string' ? 
+              (() => {
+                try { return JSON.parse(customer.notes); } 
+                catch { return []; }
+              })() : customer.notes) : [],
+            referrals: customer.referrals ? (typeof customer.referrals === 'string' ? 
+              (() => {
+                try { return JSON.parse(customer.referrals); } 
+                catch { return []; }
+              })() : customer.referrals) : [],
+            customerTag: customer.customer_tag,
+            joinedDate: customer.created_at,
+            createdAt: customer.created_at,
+            updatedAt: customer.updated_at,
+            createdBy: customer.created_by,
+            lastPurchaseDate: customer.last_purchase_date,
+            totalPurchases: customer.total_purchases || 0,
+            birthday: customer.birthday,
+            referredBy: customer.referred_by,
+            // Additional fields for interface compatibility
+            customerNotes: [],
+            customerPayments: [],
+            devices: [],
+            promoHistory: []
+          };
+          return mappedCustomer;
+        });
         
         console.log(`✅ Successfully fetched ${processedCustomers.length} customers (simple)`);
         return processedCustomers;
@@ -429,7 +520,36 @@ export async function fetchCustomerById(customerId: string) {
     const { data, error } = await checkSupabase()
       .from('customers')
       .select(`
-        id, name, email, phone, gender, city, joined_date, loyalty_level, color_tag, referred_by, total_spent, points, last_visit, is_active, birth_month, birth_day, referral_source, total_returns, profile_image, created_at, updated_at, created_by, last_purchase_date, total_purchases, birthday, whatsapp, whatsapp_opt_out, initial_notes, notes, referrals, customer_tag
+        id,
+        name,
+        phone,
+        email,
+        gender,
+        city,
+        color_tag,
+        loyalty_level,
+        points,
+        total_spent,
+        last_visit,
+        is_active,
+        referral_source,
+        birth_month,
+        birth_day,
+        total_returns,
+        profile_image,
+        whatsapp,
+        whatsapp_opt_out,
+        initial_notes,
+        notes,
+        referrals,
+        customer_tag,
+        created_at,
+        updated_at,
+        created_by,
+        last_purchase_date,
+        total_purchases,
+        birthday,
+        referred_by
       `)
       .eq('id', customerId)
       .single();
@@ -442,8 +562,46 @@ export async function fetchCustomerById(customerId: string) {
     if (data) {
       // Process and normalize the data
       const processedCustomer = {
-        ...data,
+        id: data.id,
+        name: data.name,
+        phone: data.phone,
+        email: data.email,
+        gender: data.gender || 'other',
+        city: data.city || '',
         colorTag: normalizeColorTag(data.color_tag || 'new'),
+        loyaltyLevel: data.loyalty_level || 'bronze',
+        points: data.points || 0,
+        totalSpent: data.total_spent || 0,
+        lastVisit: data.last_visit || data.created_at,
+        isActive: data.is_active !== false, // Default to true if null
+        referralSource: data.referral_source,
+        birthMonth: data.birth_month,
+        birthDay: data.birth_day,
+        totalReturns: data.total_returns || 0,
+        profileImage: data.profile_image,
+        whatsapp: data.whatsapp,
+        whatsappOptOut: data.whatsapp_opt_out || false,
+        initialNotes: data.initial_notes,
+        notes: data.notes ? (typeof data.notes === 'string' ? 
+          (() => {
+            try { return JSON.parse(data.notes); } 
+            catch { return []; }
+          })() : data.notes) : [],
+        referrals: data.referrals ? (typeof data.referrals === 'string' ? 
+          (() => {
+            try { return JSON.parse(data.referrals); } 
+            catch { return []; }
+          })() : data.referrals) : [],
+        customerTag: data.customer_tag,
+        joinedDate: data.created_at,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+        createdBy: data.created_by,
+        lastPurchaseDate: data.last_purchase_date,
+        totalPurchases: data.total_purchases || 0,
+        birthday: data.birthday,
+        referredBy: data.referred_by,
+        // Additional fields for interface compatibility
         customerNotes: [],
         customerPayments: [],
         devices: [],
@@ -471,7 +629,7 @@ export async function addCustomerToDb(customer: Omit<Customer, 'promoHistory' | 
       colorTag: 'color_tag',
       isActive: 'is_active',
       lastVisit: 'last_visit',
-      joinedDate: 'joined_date',
+      joinedDate: 'created_at',
       loyaltyLevel: 'loyalty_level',
       totalSpent: 'total_spent',
       referredBy: 'referred_by',
@@ -492,9 +650,17 @@ export async function addCustomerToDb(customer: Omit<Customer, 'promoHistory' | 
       isLoyaltyMember: 'is_loyalty_member'
     };
     
+    // Fields that should not be inserted into the database (TypeScript-only fields)
+    const excludeFields = ['devices', 'promoHistory', 'payments', 'notes', 'referrals'];
+    
     // Map customer fields to database fields
     const dbCustomer: any = {};
     Object.entries(customer).forEach(([key, value]) => {
+      // Skip fields that don't exist in the database
+      if (excludeFields.includes(key)) {
+        return;
+      }
+      
       if (value !== undefined && value !== null) {
         const dbFieldName = fieldMapping[key] || key;
         dbCustomer[dbFieldName] = value;
@@ -535,7 +701,7 @@ export async function updateCustomerInDb(customerId: string, updates: Partial<Cu
       colorTag: 'color_tag',
       isActive: 'is_active',
       lastVisit: 'last_visit',
-      joinedDate: 'joined_date',
+      joinedDate: 'created_at',
       loyaltyLevel: 'loyalty_level',
       totalSpent: 'total_spent',
       referredBy: 'referred_by',
@@ -577,11 +743,11 @@ export async function updateCustomerInDb(customerId: string, updates: Partial<Cu
     
     // Validate that we're not trying to update invalid fields
     const validFields = [
-      'id', 'name', 'email', 'phone', 'gender', 'city', 'joined_date', 'loyalty_level', 
-      'color_tag', 'referred_by', 'total_spent', 'points', 'last_visit', 'last_purchase_date', 
-      'total_purchases', 'birthday', 'is_active', 'referral_source', 'birth_month', 'birth_day', 
-      'total_returns', 'profile_image', 'created_at', 'updated_at', 'created_by', 'whatsapp', 
-      'whatsapp_opt_out', 'initial_notes', 'notes', 'referrals', 'customer_tag'
+      'id', 'name', 'email', 'phone', 'gender', 'city', 'loyalty_level', 
+      'color_tag', 'referred_by', 'total_spent', 'points', 'last_visit', 'is_active', 
+      'referral_source', 'birth_month', 'birth_day', 'total_returns', 'profile_image', 
+      'created_at', 'updated_at', 'created_by', 'whatsapp', 'initial_notes', 'notes', 
+      'referrals', 'customer_tag'
     ];
     
     // Filter out any invalid fields and handle data type conversions

@@ -91,11 +91,6 @@ export const SimpleImageDisplay: React.FC<SimpleImageDisplayProps> = ({
         style={{ display: isLoading ? 'none' : 'block' }}
       />
 
-      {/* Primary Badge (for larger sizes) */}
-      {showPrimaryBadge && primaryImage.isPrimary && size !== 'sm' && (
-        <div className="absolute top-1 right-1 bg-blue-500 text-white rounded-full w-3 h-3 flex items-center justify-center">
-        </div>
-      )}
     </div>
   );
 };

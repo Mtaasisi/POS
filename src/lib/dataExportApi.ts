@@ -35,7 +35,7 @@ const generateSQLInserts = (tableName: string, data: any[]): string => {
  */
 export const exportCustomerDataAsSQL = async (options: ExportOptions = {}): Promise<Blob> => {
   try {
-    let query = supabase.from('customers').select('*');
+    let query = supabase.from('customers').select('id, name, email, phone, created_at');
     
     if (options.dateRange) {
       query = query.gte('created_at', options.dateRange.start)
@@ -129,7 +129,7 @@ ${generateSQLInserts('customer_payments', data || [])}`;
 export const exportAllDataAsSQL = async (options: ExportOptions = {}): Promise<Blob> => {
   try {
     const [customers, devices, payments] = await Promise.all([
-      supabase.from('customers').select('*').limit(50000), // Fetch up to 50,000 customers instead of default 1000
+      supabase.from('customers').select('id, name, email, phone, created_at').limit(50000), // Fetch up to 50,000 customers instead of default 1000
       supabase.from('devices').select('*'),
       supabase.from('customer_payments').select('*')
     ]);
@@ -421,7 +421,7 @@ CREATE TABLE IF NOT EXISTS ${tableName} (
  */
 export const exportCustomerData = async (options: ExportOptions = {}): Promise<Blob> => {
   try {
-    let query = supabase.from('customers').select('*');
+    let query = supabase.from('customers').select('id, name, email, phone, created_at');
     
     if (options.dateRange) {
       query = query.gte('created_at', options.dateRange.start)

@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShoppingCart, User, XCircle, Phone, Crown, Search, Plus } from 'lucide-react';
+import { ShoppingCart, User, XCircle, Phone, Crown, Search, Plus, Percent, DollarSign, Edit3 } from 'lucide-react';
 import GlassCard from '../../../../features/shared/components/ui/GlassCard';
 import VariantCartItem from './VariantCartItem';
 
@@ -33,6 +33,8 @@ interface POSCartSectionProps {
   onRemoveCartItem: (itemId: string) => void;
   onApplyDiscount: (discountType: 'percentage' | 'fixed', value: number) => void;
   onProcessPayment: () => void;
+  onShowDiscountModal: () => void;
+  onClearDiscount: () => void;
   dynamicPricingEnabled?: boolean;
   totalAmount: number;
   discountAmount: number;
@@ -49,6 +51,8 @@ const POSCartSection: React.FC<POSCartSectionProps> = ({
   onRemoveCartItem,
   onApplyDiscount,
   onProcessPayment,
+  onShowDiscountModal,
+  onClearDiscount,
   dynamicPricingEnabled = false,
   totalAmount,
   discountAmount,
@@ -179,12 +183,50 @@ const POSCartSection: React.FC<POSCartSectionProps> = ({
                 <span className="text-gray-600">Subtotal:</span>
                 <span className="font-medium">TZS {totalAmount.toLocaleString()}</span>
               </div>
-              {discountAmount > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Discount:</span>
-                  <span className="font-medium text-green-600">-TZS {discountAmount.toLocaleString()}</span>
-                </div>
-              )}
+              
+              {/* Discount Section */}
+              <div className="space-y-2">
+                {discountAmount > 0 ? (
+                  <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1 bg-green-100 rounded">
+                        <Percent className="w-4 h-4 text-green-600" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-green-800">Discount Applied</div>
+                        <div className="text-xs text-green-600">-TZS {discountAmount.toLocaleString()}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={onShowDiscountModal}
+                        className="p-1 text-green-600 hover:text-green-700 hover:bg-green-100 rounded transition-colors"
+                        title="Edit Discount"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={onClearDiscount}
+                        className="p-1 text-red-600 hover:text-red-700 hover:bg-red-100 rounded transition-colors"
+                        title="Remove Discount"
+                      >
+                        <XCircle className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={onShowDiscountModal}
+                    className="w-full flex items-center justify-center gap-2 p-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-purple-400 hover:text-purple-600 hover:bg-purple-50 transition-all duration-200 group"
+                  >
+                    <div className="p-1 bg-gray-100 group-hover:bg-purple-100 rounded transition-colors">
+                      <Percent className="w-4 h-4" />
+                    </div>
+                    <span className="text-sm font-medium">Add Discount</span>
+                  </button>
+                )}
+              </div>
+              
               <div className="flex justify-between text-lg font-bold border-t border-gray-200 pt-2">
                 <span>Total:</span>
                 <span className="text-green-600">TZS {finalAmount.toLocaleString()}</span>

@@ -1,20 +1,25 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { z } from 'zod';
 import { useParams, useNavigate } from 'react-router-dom';
 import GlassCard from '../../shared/components/ui/GlassCard';
 import GlassButton from '../../shared/components/ui/GlassButton';
 import { BackButton } from '../../shared/components/ui/BackButton';
 import { toast } from 'react-hot-toast';
-import { Save, ArrowLeft, MapPin, Store, X, Plus, Check, Layers, Palette, HardDrive, Zap, Cpu, Monitor, Battery, Camera, Ruler, FileText, Hand, Unplug, RotateCcw, Lightbulb, Fingerprint, ScanFace, Droplets, Wind, BatteryCharging, FastForward, PhoneCall, Expand, Radio, Navigation, Headphones, PenTool, Shield, Lock, Vibrate, Usb, Cable, Speaker, Mic } from 'lucide-react';
+import { Save, ArrowLeft, MapPin, Store, X, Plus, Check, Layers, Palette, HardDrive, Zap, Cpu, Monitor, Battery, Camera, Ruler, FileText, Clock, Hand, Unplug, RotateCcw, Lightbulb, Fingerprint, ScanFace, Droplets, Wind, BatteryCharging, FastForward, PhoneCall, Expand, Radio, Navigation, Headphones, PenTool, Shield, Lock, Vibrate, Usb, Cable, Speaker, Mic } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useAuth } from '../../../context/AuthContext';
 import { retryWithBackoff } from '../../../lib/supabaseClient';
 
 import { getActiveCategories, Category } from '../../../lib/categoryApi';
+import { specificationCategories, getSpecificationsByCategory, getSpecificationsByType, getTypeDisplayName, SpecificationItem } from '../../../data/specificationCategories';
 
-import { validateProductData } from '../lib/databaseDiagnostics';
 import { StoreLocation } from '../../settings/types/storeLocation';
 import { storeLocationApi } from '../../settings/utils/storeLocationApi';
+import { generateSKU } from '../lib/skuUtils';
+import { duplicateProduct, generateProductReport, exportProductData } from '../lib/productUtils';
+import { validateAndCreateDefaultVariant } from '../lib/variantUtils';
+
+import { validateProductData } from '../lib/databaseDiagnostics';
 
 // Extracted components
 import ProductInformationForm from '../components/product/ProductInformationForm';
@@ -128,12 +133,14 @@ const EditProductPageContent: React.FC = () => {
   const [storeLocations, setStoreLocations] = useState<StoreLocation[]>([]);
   const [currentErrors, setCurrentErrors] = useState<Record<string, string>>({});
 
+  // Generate a temporary product ID for image uploads
+  const [tempProductId] = useState(`temp-product-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`);
+
   // Initial form data
   const [formData, setFormData] = useState({
     name: '',
     sku: '',
     categoryId: null,
-
 
     condition: '',
     description: '',
@@ -141,7 +148,7 @@ const EditProductPageContent: React.FC = () => {
     price: 0,
     costPrice: 0,
     stockQuantity: 0,
-    minStockLevel: 0,
+    minStockLevel: 2, // Set default min stock level to 2 pcs like AddProductPage
     storageRoomId: '',
     shelfId: '',
     images: [] as ProductImage[],
@@ -165,17 +172,91 @@ const EditProductPageContent: React.FC = () => {
   const [currentVariantIndex, setCurrentVariantIndex] = useState<number | null>(null);
   const [showCustomInput, setShowCustomInput] = useState<number | null>(null);
   const [customAttributeInput, setCustomAttributeInput] = useState('');
+  const [selectedSpecCategory, setSelectedSpecCategory] = useState<string>('laptop');
 
   // Product specifications modal state
   const [showProductSpecificationsModal, setShowProductSpecificationsModal] = useState(false);
   const [showProductCustomInput, setShowProductCustomInput] = useState(false);
   const [productCustomAttributeInput, setProductCustomAttributeInput] = useState('');
+  const [selectedProductSpecCategory, setSelectedProductSpecCategory] = useState<string>('laptop');
 
   // Name checking
   const [isCheckingName, setIsCheckingName] = useState(false);
   const [nameExists, setNameExists] = useState(false);
 
   const { currentUser } = useAuth();
+
+  // Generate auto SKU using utility function
+  const generateAutoSKU = () => {
+    return generateSKU();
+  };
+
+  // Update specification value for a variant
+  const updateVariantSpecification = (variantIndex: number, specKey: string, value: string | boolean) => {
+    const variant = variants[variantIndex];
+    const newAttributes = { ...variant.attributes, [specKey]: value };
+    updateVariant(variantIndex, 'attributes', newAttributes);
+  };
+
+  // Update product specification value
+  const updateProductSpecification = (specKey: string, value: string | boolean) => {
+    const currentSpecs = formData.specification ? JSON.parse(formData.specification) : {};
+    const newSpecs = { ...currentSpecs, [specKey]: value };
+    setFormData(prev => ({ ...prev, specification: JSON.stringify(newSpecs) }));
+  };
+
+  // Toggle feature specification (Yes/No)
+  const toggleFeatureSpecification = (featureKey: string) => {
+    const currentSpecs = formData.specification ? JSON.parse(formData.specification) : {};
+    const currentValue = currentSpecs[featureKey];
+    const isEnabled = currentValue === 'Yes' || currentValue === 'true' || currentValue === true;
+    
+    const newValue = isEnabled ? 'No' : 'Yes';
+    const newSpecs = { ...currentSpecs, [featureKey]: newValue };
+    setFormData(prev => ({ ...prev, specification: JSON.stringify(newSpecs) }));
+  };
+
+  // Function to create a variant from current form data
+  const createVariantFromFormData = (): ProductVariant => {
+    return {
+      name: 'Variant 1',
+      sku: `${formData.sku}-V01`,
+      costPrice: formData.costPrice,
+      price: formData.price,
+      stockQuantity: formData.stockQuantity,
+      minStockLevel: formData.minStockLevel,
+      specification: formData.specification,
+      attributes: {
+        specification: formData.specification || null
+      }
+    };
+  };
+
+  // Handle variants toggle - automatically create variant from form data
+  const handleUseVariantsToggle = (enabled: boolean) => {
+    setUseVariants(enabled);
+    
+    if (enabled && variants.length === 0) {
+      // Create a variant from current form data
+      const autoVariant = createVariantFromFormData();
+      setVariants([autoVariant]);
+      setShowVariants(true);
+    } else if (!enabled) {
+      // Clear variants when disabling
+      setVariants([]);
+      setShowVariants(false);
+    }
+  };
+
+  // Update the first variant when form data changes (if variants are enabled)
+  useEffect(() => {
+    if (useVariants && variants.length > 0) {
+      const updatedVariant = createVariantFromFormData();
+      setVariants(prev => prev.map((variant, index) => 
+        index === 0 ? { ...variant, ...updatedVariant } : variant
+      ));
+    }
+  }, [formData.costPrice, formData.price, formData.stockQuantity, formData.minStockLevel, formData.specification, useVariants]);
 
   // Load data on component mount
   useEffect(() => {
@@ -255,16 +336,35 @@ const EditProductPageContent: React.FC = () => {
     if (!productId) return;
     
     try {
-      const { data: product, error } = await supabase!
+      // First try to get product with images
+      let { data: product, error } = await supabase!
         .from('lats_products')
         .select(`
           *,
-          variants:lats_product_variants(*)
+          variants:lats_product_variants(*),
+          images:product_images(*)
         `)
         .eq('id', productId)
         .single();
 
-      if (error) throw error;
+      // If the query fails (possibly due to product_images table not existing), try without images
+      if (error && error.message.includes('product_images')) {
+        console.warn('⚠️ product_images table not accessible, fetching product without images:', error.message);
+        const { data: productWithoutImages, error: productError } = await supabase!
+          .from('lats_products')
+          .select(`
+            *,
+            variants:lats_product_variants(*)
+          `)
+          .eq('id', productId)
+          .single();
+        
+        if (productError) throw productError;
+        product = productWithoutImages;
+        error = null;
+      } else if (error) {
+        throw error;
+      }
       
       if (product) {
 
@@ -302,7 +402,22 @@ const EditProductPageContent: React.FC = () => {
           minStockLevel: product.min_stock_level || 0,
           storageRoomId: product.storage_room_id || '',
           shelfId: product.store_shelf_id || '',
-          images: product.images || [],
+          images: (() => {
+            // Handle images from product_images table (array of objects)
+            if (Array.isArray(product.images) && product.images.length > 0 && typeof product.images[0] === 'object') {
+              return product.images;
+            }
+            // Handle images from lats_products.images column (array of strings)
+            if (Array.isArray(product.images) && product.images.length > 0 && typeof product.images[0] === 'string') {
+              return product.images.map((url: string, index: number) => ({
+                id: `fallback-${index}`,
+                url: url,
+                fileName: `image-${index + 1}`,
+                isPrimary: index === 0
+              }));
+            }
+            return [];
+          })(),
           metadata: product.attributes || {},
           variants: []
         });
@@ -325,14 +440,17 @@ const EditProductPageContent: React.FC = () => {
         );
         
         setOriginallyHadVariants(hadVariantsOriginally);
-        console.log('🔍 Product variant analysis:', {
-          productId: product.id,
-          variantCount: product.variants?.length || 0,
-          hadVariantsOriginally,
-          hasVariantsFlag: product.has_variants,
-          metadataUseVariants: product.metadata?.useVariants,
-          originalAttributes: product.attributes
-        });
+        // Only log in development mode to reduce console noise
+        if (import.meta.env.MODE === 'development') {
+          console.log('🔍 Product variant analysis:', {
+            productId: product.id,
+            variantCount: product.variants?.length || 0,
+            hadVariantsOriginally,
+            hasVariantsFlag: product.has_variants,
+            metadataUseVariants: product.metadata?.useVariants,
+            originalAttributes: product.attributes
+          });
+        }
         
         // Load variants if they exist
         if (product.variants && product.variants.length > 0) {
@@ -376,6 +494,17 @@ const EditProductPageContent: React.FC = () => {
         return Object.keys(img).length === 0 || img.image_url || img.url;
       });
       
+      // Create a dynamic schema based on whether variants are used
+      const dynamicSchema = useVariants 
+        ? productFormSchema.omit({ 
+            price: true, 
+            costPrice: true, 
+            stockQuantity: true, 
+            minStockLevel: true,
+            specification: true
+          })
+        : productFormSchema;
+      
       const dataToValidate = {
         ...formData,
         images: validImages,
@@ -384,10 +513,35 @@ const EditProductPageContent: React.FC = () => {
       
       console.log('Validating form data:', dataToValidate);
       
-      productFormSchema.parse(dataToValidate);
+      dynamicSchema.parse(dataToValidate);
+
+      // Additional validation for variants when using variants
+      if (useVariants) {
+        if (variants.length === 0) {
+          errors.variants = 'At least one variant is required when using variants';
+        } else {
+          variants.forEach((variant, index) => {
+            if (!variant.name || variant.name.trim() === '') {
+              errors[`variant_${index}_name`] = 'Variant name is required';
+            }
+            if (variant.price < 0) {
+              errors[`variant_${index}_price`] = 'Variant price must be 0 or greater';
+            }
+            if (variant.costPrice < 0) {
+              errors[`variant_${index}_costPrice`] = 'Variant cost price must be 0 or greater';
+            }
+            if (variant.stockQuantity < 0) {
+              errors[`variant_${index}_stockQuantity`] = 'Variant stock quantity must be 0 or greater';
+            }
+            if (variant.minStockLevel < 0) {
+              errors[`variant_${index}_minStockLevel`] = 'Variant min stock level must be 0 or greater';
+            }
+          });
+        }
+      }
       
-      setCurrentErrors({});
-      return true;
+      setCurrentErrors(errors);
+      return Object.keys(errors).length === 0;
     } catch (error) {
       if (error instanceof z.ZodError) {
         console.log('Validation errors:', error.issues);
@@ -519,6 +673,65 @@ const EditProductPageContent: React.FC = () => {
         console.log('✅ Basic update succeeded');
       }
 
+      // Save images to product_images table if we have images
+      if (formData.images && formData.images.length > 0 && updatedProduct) {
+        console.log('Saving images to product_images table:', formData.images);
+        
+        // First delete existing images for this product
+        const { error: deleteImagesError } = await supabase!
+          .from('product_images')
+          .delete()
+          .eq('product_id', productId);
+
+        if (deleteImagesError) {
+          console.error('Error deleting existing images:', deleteImagesError);
+        }
+        
+        const imageData = formData.images.map((image, index) => ({
+          product_id: updatedProduct.id,
+          image_url: image.url || image.image_url || '',
+          thumbnail_url: image.thumbnailUrl || image.thumbnail_url || image.url || image.image_url || '',
+          file_name: image.fileName || image.file_name || `image_${index + 1}`,
+          file_size: image.fileSize || image.file_size || 0,
+          is_primary: image.isPrimary || image.is_primary || index === 0, // First image is primary
+          uploaded_by: currentUser?.id
+        }));
+
+        const { error: imageError } = await retryWithBackoff(async () => {
+          return await supabase!
+            .from('product_images')
+            .insert(imageData);
+        });
+
+        if (imageError) {
+          console.error('Error saving images:', imageError);
+          toast.error('Product updated but failed to save images');
+        } else {
+          console.log('Images saved successfully to product_images table');
+        }
+
+        // If any images were uploaded with temporary product IDs, update them
+        const tempImages = formData.images.filter(img => 
+          img.id && img.id.startsWith('temp-') && 
+          (img.url || img.image_url) && 
+          !(img.url || img.image_url).startsWith('blob:')
+        );
+
+        if (tempImages.length > 0) {
+          console.log('Updating temporary image records for product:', updatedProduct.id);
+          
+          // For temporary images that were uploaded to storage, we need to update their database records
+          // This is handled by the image upload services when they detect a real product ID
+          try {
+            // The RobustImageService should handle updating temporary image records
+            // when it detects that the product ID has changed from temp to real
+            console.log('Temporary images will be updated by the image service');
+          } catch (updateError) {
+            console.error('Error updating temporary image records:', updateError);
+          }
+        }
+      }
+
       // If using variants, update them
       if (useVariants && variants.length > 0 && updatedProduct) {
         // First delete existing variants
@@ -617,20 +830,9 @@ const EditProductPageContent: React.FC = () => {
   };
 
   // Add attribute to product
-  const addAttributeToProduct = (attributeName: string) => {
+  const addAttributeToProduct = (attributeName: string, defaultValue: string = '') => {
     const currentSpecs = formData.specification ? JSON.parse(formData.specification) : {};
-    const newSpecs = { ...currentSpecs, [attributeName]: '' };
-    setFormData(prev => ({ ...prev, specification: JSON.stringify(newSpecs) }));
-  };
-
-  // Toggle feature specification (Yes/No)
-  const toggleFeatureSpecification = (featureKey: string) => {
-    const currentSpecs = formData.specification ? JSON.parse(formData.specification) : {};
-    const currentValue = currentSpecs[featureKey];
-    const isEnabled = currentValue === 'Yes' || currentValue === 'true' || currentValue === true;
-    
-    const newValue = isEnabled ? 'No' : 'Yes';
-    const newSpecs = { ...currentSpecs, [featureKey]: newValue };
+    const newSpecs = { ...currentSpecs, [attributeName]: defaultValue };
     setFormData(prev => ({ ...prev, specification: JSON.stringify(newSpecs) }));
   };
 
@@ -684,22 +886,27 @@ const EditProductPageContent: React.FC = () => {
               nameExists={nameExists}
               onNameCheck={checkProductName}
               onSpecificationsClick={handleProductSpecificationsClick}
+              useVariants={useVariants}
+              onGenerateSKU={generateAutoSKU}
             />
 
 
 
-            {/* Pricing and Stock Form */}
-            <PricingAndStockForm
-              formData={formData}
-              setFormData={setFormData}
-              currentErrors={currentErrors}
-            />
+            {/* Pricing and Stock Form - Only show when not using variants */}
+            {!useVariants && (
+              <PricingAndStockForm
+                formData={formData}
+                setFormData={setFormData}
+                currentErrors={currentErrors}
+              />
+            )}
 
             {/* Product Images Section */}
             <ProductImagesSection
               images={formData.images}
               setImages={(images: ProductImage[]) => setFormData(prev => ({ ...prev, images }))}
               currentUser={currentUser}
+              productId={tempProductId}
             />
 
             {/* Product Variants Section */}
@@ -707,7 +914,7 @@ const EditProductPageContent: React.FC = () => {
               variants={variants}
               setVariants={setVariants}
               useVariants={useVariants}
-              setUseVariants={setUseVariants}
+              setUseVariants={handleUseVariantsToggle}
               showVariants={showVariants}
               setShowVariants={setShowVariants}
               isReorderingVariants={isReorderingVariants}
@@ -752,189 +959,265 @@ const EditProductPageContent: React.FC = () => {
         </GlassCard>
       </div>
 
-      {/* Variant Specifications Modal */}
+            {/* Variant Specifications Modal */}
       {showVariantSpecificationsModal && currentVariantIndex !== null && (
         <div 
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black/20 flex items-center justify-center z-50 p-2"
           role="dialog"
           aria-modal="true"
           aria-labelledby="variant-specifications-modal-title"
-          style={{ backdropFilter: 'blur(4px)' }}
         >
-          <div className="bg-white rounded-2xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden mx-auto">
+          <div className="bg-white rounded-xl shadow-lg max-w-4xl w-full max-h-[85vh] overflow-hidden mx-auto">
             {/* Header */}
-            <div className="bg-white border-b border-gray-200 p-6 rounded-t-2xl">
+            <div className="bg-blue-600 p-4 text-white">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Layers className="w-6 h-6 text-blue-600" />
+                <div className="flex items-center gap-2">
+                  <Layers className="w-5 h-5" />
                   <div>
-                    <h2 id="variant-specifications-modal-title" className="text-xl font-semibold text-gray-900">
-                      Variant Specifications
+                    <h2 id="variant-specifications-modal-title" className="text-lg font-semibold">
+                      Variant Specs
                     </h2>
-                    <p className="text-gray-600 text-sm mt-1">
+                    <p className="text-blue-100 text-xs">
                       {variants[currentVariantIndex]?.name || `Variant ${currentVariantIndex + 1}`}
                     </p>
                   </div>
                 </div>
                 <button
                   onClick={() => setShowVariantSpecificationsModal(false)}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                  className="p-1 hover:bg-white/20 rounded transition-colors"
                   aria-label="Close modal"
                 >
-                  <X size={20} />
+                  <X size={18} />
                 </button>
               </div>
             </div>
 
+            {/* Category Tabs */}
+            <div className="bg-gray-50 border-b border-gray-200 px-4 py-2">
+              <div className="flex gap-1 overflow-x-auto">
+                {specificationCategories.map((category) => {
+                  const IconComponent = category.icon;
+                  const isSelected = selectedSpecCategory === category.id;
+                  return (
+                    <button
+                      key={category.id}
+                      onClick={() => setSelectedSpecCategory(category.id)}
+                      className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
+                        isSelected
+                          ? `bg-${category.color}-500 text-white`
+                          : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
+                      }`}
+                    >
+                      <IconComponent size={14} />
+                      {category.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Content */}
-            <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
-              <div className="space-y-6">
-                {/* Quick Add Section */}
+            <div className="p-4 overflow-y-auto max-h-[calc(85vh-140px)]">
+              <div className="space-y-4">
+                {/* Specifications Grid - Grouped by Type */}
                 <div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center gap-2">
-                    <Plus size={20} className="text-blue-600" />
-                    Add Specifications
+                  <h3 className="text-sm font-medium text-gray-900 mb-3 flex items-center gap-2">
+                    <Plus size={16} className="text-blue-600" />
+                    {specificationCategories.find(cat => cat.id === selectedSpecCategory)?.name}
                   </h3>
                   
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                    {[
-                      { name: 'Color', icon: Palette },
-                      { name: 'Storage', icon: HardDrive },
-                      { name: 'RAM', icon: Zap },
-                      { name: 'Processor', icon: Cpu },
-                      { name: 'Screen Size', icon: Monitor },
-                      { name: 'Battery', icon: Battery },
-                      { name: 'Camera', icon: Camera },
-                      { name: 'Size', icon: Ruler }
-                    ].map((spec) => (
-                      <button 
-                        key={spec.name}
-                        type="button" 
-                        onClick={() => addAttributeToVariant(currentVariantIndex, spec.name.toLowerCase().replace(/\s+/g, '_'))} 
-                        className="flex items-center gap-3 p-3 bg-white border border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors"
-                      >
-                        <spec.icon className="w-5 h-5 text-gray-600" />
-                        <span className="text-sm font-medium text-gray-700">{spec.name}</span>
-                      </button>
-                    ))}
+                  {Object.entries(getSpecificationsByType(selectedSpecCategory)).map(([type, specs]) => {
+                    if (specs.length === 0) return null;
                     
+                    return (
+                      <div key={type} className="mb-4">
+                        <h4 className="text-xs font-medium text-gray-700 mb-2 flex items-center gap-2">
+                          <span className="px-2 py-1 bg-gray-100 rounded text-xs">
+                            {getTypeDisplayName(type)}
+                          </span>
+                          <span className="text-xs text-gray-500">({specs.length})</span>
+                        </h4>
+                        
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                          {specs.map((spec) => {
+                            const IconComponent = spec.icon;
+                            const currentValue = variants[currentVariantIndex]?.attributes?.[spec.key] || '';
+                            const isBoolean = spec.type === 'boolean';
+                            
+                            return (
+                              <div key={spec.key} className="bg-white border border-gray-200 rounded-lg p-3">
+                                <label className="block text-xs font-medium text-gray-700 mb-2 flex items-center gap-1">
+                                  <IconComponent size={12} className="text-gray-500" />
+                                  {spec.name}
+                                  {spec.unit && <span className="text-xs text-gray-500">({spec.unit})</span>}
+                                </label>
+                                
+                                {isBoolean ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => updateVariantSpecification(currentVariantIndex, spec.key, !currentValue)}
+                                    className={`w-full p-2 border rounded-lg transition-colors ${
+                                      currentValue
+                                        ? 'bg-green-50 border-green-300 text-green-800'
+                                        : 'bg-white border-gray-300 text-gray-600 hover:border-blue-500 hover:bg-blue-50'
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-center">
+                                      <Check size={14} className={currentValue ? 'text-green-600' : 'text-gray-400'} />
+                                    </div>
+                                  </button>
+                                ) : spec.type === 'select' && spec.options ? (
+                                  <select
+                                    value={currentValue as string}
+                                    onChange={(e) => updateVariantSpecification(currentVariantIndex, spec.key, e.target.value)}
+                                    className="w-full py-1.5 px-2 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-xs"
+                                  >
+                                    <option value="">Select</option>
+                                    {spec.options.map((option) => (
+                                      <option key={option} value={option}>{option}</option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <div className="relative">
+                                    <input
+                                      type={spec.type === 'number' ? 'number' : 'text'}
+                                      value={currentValue as string}
+                                      onChange={(e) => updateVariantSpecification(currentVariantIndex, spec.key, e.target.value)}
+                                      placeholder={spec.placeholder || `Enter ${spec.name.toLowerCase()}`}
+                                      className="w-full py-1.5 px-2 pr-6 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-xs"
+                                      autoComplete="off"
+                                      autoCorrect="off"
+                                      spellCheck={false}
+                                    />
+                                    {currentValue && (
+                                      <button
+                                        type="button"
+                                        onClick={() => updateVariantSpecification(currentVariantIndex, spec.key, '')}
+                                        className="absolute right-1 top-1.5 text-red-500 hover:text-red-700"
+                                        title="Clear value"
+                                      >
+                                        <X size={12} />
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Custom Specification */}
+                <div className="border-t border-gray-200 pt-4">
+                  <h3 className="text-sm font-medium text-gray-900 mb-3 flex items-center gap-2">
+                    <Plus size={16} className="text-gray-600" />
+                    Custom
+                  </h3>
+                  
+                  {showCustomInput === currentVariantIndex ? (
+                    <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={customAttributeInput}
+                          onChange={(e) => setCustomAttributeInput(e.target.value)}
+                          placeholder="Enter custom spec name..."
+                          className="flex-1 py-1.5 px-2 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-xs"
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter' && customAttributeInput.trim()) {
+                              handleCustomAttributeSubmit(currentVariantIndex);
+                            }
+                          }}
+                          autoFocus
+                          autoComplete="off"
+                          autoCorrect="off"
+                          spellCheck={false}
+                        />
+                        <button 
+                          type="button" 
+                          onClick={() => handleCustomAttributeSubmit(currentVariantIndex)} 
+                          className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-xs font-medium"
+                        >
+                          Add
+                        </button>
+                        <button 
+                          type="button" 
+                          onClick={cancelCustomAttribute} 
+                          className="px-3 py-1.5 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors text-xs font-medium"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
                     <button 
                       type="button" 
                       onClick={() => { setShowCustomInput(currentVariantIndex); setCustomAttributeInput(''); }} 
-                      className="flex items-center gap-3 p-3 bg-white border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors"
+                      className="flex items-center gap-2 p-2 bg-white border border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors w-full"
                     >
-                      <Plus className="w-5 h-5 text-gray-600" />
-                      <span className="text-sm font-medium text-gray-700">Custom</span>
+                      <Plus className="w-4 h-4 text-gray-600" />
+                      <span className="text-xs font-medium text-gray-700">Add Custom</span>
                     </button>
-                  </div>
+                  )}
                 </div>
 
-                {/* Custom Attribute Input */}
-                {showCustomInput === currentVariantIndex && (
-                  <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="text"
-                        value={customAttributeInput}
-                        onChange={(e) => setCustomAttributeInput(e.target.value)}
-                        placeholder="Enter custom specification name..."
-                        className="flex-1 py-2 px-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                        onKeyPress={(e) => {
-                          if (e.key === 'Enter' && customAttributeInput.trim()) {
-                            handleCustomAttributeSubmit(currentVariantIndex);
-                          }
-                        }}
-                        autoFocus
-                        autoComplete="off"
-                        autoCorrect="off"
-                        spellCheck={false}
-                      />
-                      <button 
-                        type="button" 
-                        onClick={() => handleCustomAttributeSubmit(currentVariantIndex)} 
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-                      >
-                        Add
-                      </button>
-                      <button 
-                        type="button" 
-                        onClick={cancelCustomAttribute} 
-                        className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm font-medium"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Specifications List */}
-                {variants[currentVariantIndex]?.attributes && Object.keys(variants[currentVariantIndex].attributes).length > 0 ? (
-                  <div>
-                    <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center gap-2">
-                      <Check size={20} className="text-green-600" />
-                      Current Specifications
-                      <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                {/* Current Specifications Summary */}
+                {variants[currentVariantIndex]?.attributes && Object.keys(variants[currentVariantIndex].attributes).length > 0 && (
+                  <div className="border-t border-gray-200 pt-4">
+                    <h3 className="text-sm font-medium text-gray-900 mb-3 flex items-center gap-2">
+                      <Check size={16} className="text-green-600" />
+                      Current
+                      <span className="px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-xs font-medium">
                         {Object.keys(variants[currentVariantIndex].attributes).length}
                       </span>
                     </h3>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
                       {Object.entries(variants[currentVariantIndex].attributes).map(([key, value]) => (
-                        <div key={key} className="relative">
-                          <label className="block text-sm font-medium text-gray-700 mb-2 capitalize">
-                            {key.replace(/_/g, ' ')}
-                          </label>
-                          <input
-                            type="text"
-                            value={value as string}
-                            onChange={(e) => {
-                              const newAttributes = { ...variants[currentVariantIndex].attributes, [key]: e.target.value };
-                              updateVariant(currentVariantIndex, 'attributes', newAttributes);
-                            }}
-                            className="w-full py-2 px-3 pr-8 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                            placeholder={key.replace(/_/g, ' ')}
-                            autoComplete="off"
-                            autoCorrect="off"
-                            spellCheck={false}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => removeAttributeFromVariant(currentVariantIndex, key)}
-                            className="absolute right-2 top-8 text-red-500 hover:text-red-700"
-                            title="Remove specification"
-                          >
-                            <X size={16} />
-                          </button>
+                        <div key={key} className="bg-green-50 border border-green-200 rounded-lg p-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs font-medium text-green-800 capitalize truncate">
+                                {key.replace(/_/g, ' ')}
+                              </div>
+                              <div className="text-xs text-green-600 truncate">
+                                {String(value) || 'Not set'}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeAttributeFromVariant(currentVariantIndex, key)}
+                              className="ml-1 text-red-500 hover:text-red-700 flex-shrink-0"
+                              title="Remove specification"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <Layers className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">No Specifications Added</h3>
-                    <p className="text-gray-500 text-sm">
-                      Click the buttons above to add specifications for this variant.
-                    </p>
                   </div>
                 )}
               </div>
             </div>
 
             {/* Footer */}
-            <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 rounded-b-2xl">
+            <div className="bg-gray-50 px-4 py-3 border-t border-gray-200">
               <div className="flex justify-between items-center">
-                <div className="text-sm text-gray-600">
+                <div className="text-xs text-gray-600">
                   {variants[currentVariantIndex]?.attributes && Object.keys(variants[currentVariantIndex].attributes).length > 0 
-                    ? `${Object.keys(variants[currentVariantIndex].attributes).length} specification${Object.keys(variants[currentVariantIndex].attributes).length !== 1 ? 's' : ''} added`
-                    : 'No specifications added yet'
+                    ? `${Object.keys(variants[currentVariantIndex].attributes).length} spec${Object.keys(variants[currentVariantIndex].attributes).length !== 1 ? 's' : ''} added`
+                    : 'No specs added yet'
                   }
                 </div>
-                <div className="flex gap-3">
+                <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={() => setShowVariantSpecificationsModal(false)}
-                    className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors text-sm font-medium"
+                    className="px-3 py-1.5 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors text-xs font-medium"
                   >
                     Cancel
                   </button>
@@ -944,7 +1227,7 @@ const EditProductPageContent: React.FC = () => {
                       setShowVariantSpecificationsModal(false);
                       toast.success('Variant specifications saved successfully!');
                     }}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                    className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-xs font-medium"
                   >
                     Save
                   </button>
@@ -958,263 +1241,254 @@ const EditProductPageContent: React.FC = () => {
       {/* Product Specifications Modal */}
       {showProductSpecificationsModal && (
         <div 
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black/20 flex items-center justify-center z-50 p-2"
           role="dialog"
           aria-modal="true"
           aria-labelledby="product-specifications-modal-title"
-          style={{ backdropFilter: 'blur(4px)' }}
         >
-          <div className="bg-white rounded-2xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden mx-auto">
+          <div className="bg-white rounded-xl shadow-lg max-w-4xl w-full max-h-[85vh] overflow-hidden mx-auto">
             {/* Header */}
-            <div className="bg-white border-b border-gray-200 p-6 rounded-t-2xl">
+            <div className="bg-blue-600 p-4 text-white">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <FileText className="w-6 h-6 text-blue-600" />
+                <div className="flex items-center gap-2">
+                  <FileText className="w-5 h-5" />
                   <div>
-                    <h2 id="product-specifications-modal-title" className="text-xl font-semibold text-gray-900">
-                      Product Specifications
+                    <h2 id="product-specifications-modal-title" className="text-lg font-semibold">
+                      Product Specs
                     </h2>
-                    <p className="text-gray-600 text-sm mt-1">
-                      Add and manage product specifications
+                    <p className="text-blue-100 text-xs">
+                      Add product specifications
                     </p>
                   </div>
                 </div>
                 <button
                   onClick={() => setShowProductSpecificationsModal(false)}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                  className="p-1 hover:bg-white/20 rounded transition-colors"
                   aria-label="Close modal"
                 >
-                  <X size={20} />
+                  <X size={18} />
                 </button>
               </div>
             </div>
 
+            {/* Category Tabs */}
+            <div className="bg-gray-50 border-b border-gray-200 px-4 py-2">
+              <div className="flex gap-1 overflow-x-auto">
+                {specificationCategories.map((category) => {
+                  const IconComponent = category.icon;
+                  const isSelected = selectedProductSpecCategory === category.id;
+                  return (
+                    <button
+                      key={category.id}
+                      onClick={() => setSelectedProductSpecCategory(category.id)}
+                      className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
+                        isSelected
+                          ? `bg-${category.color}-500 text-white`
+                          : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
+                      }`}
+                    >
+                      <IconComponent size={14} />
+                      {category.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Content */}
-            <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
-              <div className="space-y-6">
-                {/* Quick Add Section */}
+            <div className="p-4 overflow-y-auto max-h-[calc(85vh-140px)]">
+              <div className="space-y-4">
+                {/* Specifications Grid - Grouped by Type */}
                 <div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center gap-2">
-                    <Plus size={20} className="text-blue-600" />
-                    Add Specifications
+                  <h3 className="text-sm font-medium text-gray-900 mb-3 flex items-center gap-2">
+                    <Plus size={16} className="text-blue-600" />
+                    {specificationCategories.find(cat => cat.id === selectedProductSpecCategory)?.name}
                   </h3>
                   
-                  {/* Basic Specifications */}
-                  <div className="mb-6">
-                    <h4 className="text-sm font-medium text-gray-700 mb-3">Basic Specifications</h4>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                      {[
-                        { name: 'Color', icon: Palette },
-                        { name: 'Storage', icon: HardDrive },
-                        { name: 'RAM', icon: Zap },
-                        { name: 'Processor', icon: Cpu },
-                        { name: 'Screen Size', icon: Monitor },
-                        { name: 'Battery', icon: Battery },
-                        { name: 'Camera', icon: Camera },
-                        { name: 'Size', icon: Ruler }
-                      ].map((spec) => (
-                        <button 
-                          key={spec.name}
-                          type="button" 
-                          onClick={() => addAttributeToProduct(spec.name.toLowerCase().replace(/\s+/g, '_'))} 
-                          className="flex items-center gap-3 p-3 bg-white border border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors"
-                        >
-                          <spec.icon className="w-5 h-5 text-gray-600" />
-                          <span className="text-sm font-medium text-gray-700">{spec.name}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Feature Specifications (Yes/No) */}
-                  <div className="mb-6">
-                    <h4 className="text-sm font-medium text-gray-700 mb-3">Device Features (Click to toggle Yes/No)</h4>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-                      {[
-                        // Display Features
-                        { name: 'Touch Screen', key: 'touch', icon: Hand },
-                        { name: 'OLED Display', key: 'oled_display', icon: Monitor },
-                        { name: 'HDR Support', key: 'hdr_support', icon: Monitor },
-                        { name: 'High Refresh Rate', key: 'high_refresh_rate', icon: RotateCcw },
+                  {Object.entries(getSpecificationsByType(selectedProductSpecCategory)).map(([type, specs]) => {
+                    if (specs.length === 0) return null;
+                    
+                    return (
+                      <div key={type} className="mb-4">
+                        <h4 className="text-xs font-medium text-gray-700 mb-2 flex items-center gap-2">
+                          <span className="px-2 py-1 bg-gray-100 rounded text-xs">
+                            {getTypeDisplayName(type)}
+                          </span>
+                          <span className="text-xs text-gray-500">({specs.length})</span>
+                        </h4>
                         
-                        // Input Features  
-                        { name: 'Detachable Keyboard', key: 'detachable', icon: Unplug },
-                        { name: 'Convertible (2-in-1)', key: 'convertible', icon: RotateCcw },
-                        { name: 'Backlit Keyboard', key: 'backlit_keyboard', icon: Lightbulb },
-                        { name: 'Stylus Support', key: 'stylus_support', icon: PenTool },
-                        { name: 'Haptic Feedback', key: 'haptic_feedback', icon: Vibrate },
-                        
-                        // Security Features
-                        { name: 'Fingerprint Scanner', key: 'fingerprint_scanner', icon: Fingerprint },
-                        { name: 'Face Recognition', key: 'face_id', icon: ScanFace },
-                        { name: 'Security Chip', key: 'security_chip', icon: Shield },
-                        { name: 'Encryption', key: 'encryption', icon: Lock },
-                        
-                        // Durability Features
-                        { name: 'Waterproof', key: 'waterproof', icon: Droplets },
-                        { name: 'Dust Resistant', key: 'dust_resistant', icon: Wind },
-                        { name: 'Drop Resistant', key: 'drop_resistant', icon: Shield },
-                        { name: 'Scratch Resistant', key: 'scratch_resistant', icon: Shield },
-                        
-                        // Charging & Battery
-                        { name: 'Wireless Charging', key: 'wireless_charging', icon: BatteryCharging },
-                        { name: 'Fast Charging', key: 'fast_charging', icon: FastForward },
-                        { name: 'Reverse Charging', key: 'reverse_charging', icon: BatteryCharging },
-                        { name: 'Removable Battery', key: 'removable_battery', icon: Battery },
-                        
-                        // Connectivity
-                        { name: 'Dual SIM', key: 'dual_sim', icon: PhoneCall },
-                        { name: 'eSIM Support', key: 'esim_support', icon: PhoneCall },
-                        { name: 'NFC', key: 'nfc', icon: Radio },
-                        { name: 'GPS', key: 'gps', icon: Navigation },
-                        { name: '5G Support', key: '5g_support', icon: Radio },
-                        { name: 'Wi-Fi 6', key: 'wifi_6', icon: Radio },
-                        
-                        // Audio Features
-                        { name: 'Headphone Jack', key: 'headphone_jack', icon: Headphones },
-                        { name: 'Stereo Speakers', key: 'stereo_speakers', icon: Speaker },
-                        { name: 'Noise Cancellation', key: 'noise_cancellation', icon: Mic },
-                        
-                        // Storage & Expansion
-                        { name: 'Expandable Storage', key: 'expandable_storage', icon: Expand },
-                        { name: 'Cloud Storage', key: 'cloud_storage', icon: Expand },
-                        
-                        // Ports & Connectors
-                        { name: 'USB-C Port', key: 'usb_c_port', icon: Usb },
-                        { name: 'Thunderbolt', key: 'thunderbolt', icon: Cable },
-                        { name: 'HDMI Port', key: 'hdmi_port', icon: Cable },
-                        { name: 'SD Card Slot', key: 'sd_card_slot', icon: Expand }
-                      ].map((feature) => {
-                        const currentSpecs = formData.specification ? JSON.parse(formData.specification) : {};
-                        const isEnabled = currentSpecs[feature.key] === 'Yes' || currentSpecs[feature.key] === 'true' || currentSpecs[feature.key] === true;
-                        
-                        return (
-                          <button 
-                            key={feature.key}
-                            type="button" 
-                            onClick={() => toggleFeatureSpecification(feature.key)}
-                            className={`flex items-center gap-2 p-3 border rounded-lg transition-all duration-200 ${
-                              isEnabled 
-                                ? 'bg-green-50 border-green-300 text-green-800 shadow-sm' 
-                                : 'bg-white border-gray-300 text-gray-700 hover:border-blue-500 hover:bg-blue-50'
-                            }`}
-                          >
-                            <feature.icon className="w-4 h-4 flex-shrink-0" />
-                            <div className="flex-1 text-left min-w-0">
-                              <div className="text-sm font-medium truncate">{feature.name}</div>
-                              <div className={`text-xs ${isEnabled ? 'text-green-600' : 'text-gray-500'}`}>
-                                {isEnabled ? '✓ Enabled' : 'Click to enable'}
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                          {specs.map((spec) => {
+                            const IconComponent = spec.icon;
+                            const currentSpecs = formData.specification ? JSON.parse(formData.specification) : {};
+                            const currentValue = currentSpecs[spec.key] || '';
+                            const isBoolean = spec.type === 'boolean';
+                            
+                            return (
+                              <div key={spec.key} className="bg-white border border-gray-200 rounded-lg p-3">
+                                <label className="block text-xs font-medium text-gray-700 mb-2 flex items-center gap-1">
+                                  <IconComponent size={12} className="text-gray-500" />
+                                  {spec.name}
+                                  {spec.unit && <span className="text-xs text-gray-500">({spec.unit})</span>}
+                                </label>
+                                
+                                {isBoolean ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => updateProductSpecification(spec.key, !currentValue)}
+                                    className={`w-full p-2 border rounded-lg transition-colors ${
+                                      currentValue
+                                        ? 'bg-green-50 border-green-300 text-green-800'
+                                        : 'bg-white border-gray-300 text-gray-600 hover:border-blue-500 hover:bg-blue-50'
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-center">
+                                      <Check size={14} className={currentValue ? 'text-green-600' : 'text-gray-400'} />
+                                    </div>
+                                  </button>
+                                ) : spec.type === 'select' && spec.options ? (
+                                  <select
+                                    value={currentValue as string}
+                                    onChange={(e) => updateProductSpecification(spec.key, e.target.value)}
+                                    className="w-full py-1.5 px-2 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-xs"
+                                  >
+                                    <option value="">Select</option>
+                                    {spec.options.map((option) => (
+                                      <option key={option} value={option}>{option}</option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <div className="relative">
+                                    <input
+                                      type={spec.type === 'number' ? 'number' : 'text'}
+                                      value={currentValue as string}
+                                      onChange={(e) => updateProductSpecification(spec.key, e.target.value)}
+                                      placeholder={spec.placeholder || `Enter ${spec.name.toLowerCase()}`}
+                                      className="w-full py-1.5 px-2 pr-6 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-xs"
+                                      autoComplete="off"
+                                      autoCorrect="off"
+                                      spellCheck={false}
+                                    />
+                                    {currentValue && (
+                                      <button
+                                        type="button"
+                                        onClick={() => updateProductSpecification(spec.key, '')}
+                                        className="absolute right-1 top-1.5 text-red-500 hover:text-red-700"
+                                        title="Clear value"
+                                      >
+                                        <X size={12} />
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
                               </div>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
 
-                  {/* Custom Specification */}
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-700 mb-3">Custom Specification</h4>
+                {/* Custom Specification */}
+                <div className="border-t border-gray-200 pt-4">
+                  <h3 className="text-sm font-medium text-gray-900 mb-3 flex items-center gap-2">
+                    <Plus size={16} className="text-gray-600" />
+                    Custom
+                  </h3>
+                  
+                  {showProductCustomInput ? (
+                    <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={productCustomAttributeInput}
+                          onChange={(e) => setProductCustomAttributeInput(e.target.value)}
+                          placeholder="Enter custom spec name..."
+                          className="flex-1 py-1.5 px-2 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-xs"
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter' && productCustomAttributeInput.trim()) {
+                              handleProductCustomAttributeSubmit();
+                            }
+                          }}
+                          autoFocus
+                          autoComplete="off"
+                          autoCorrect="off"
+                          spellCheck={false}
+                        />
+                        <button 
+                          type="button" 
+                          onClick={handleProductCustomAttributeSubmit} 
+                          className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-xs font-medium"
+                        >
+                          Add
+                        </button>
+                        <button 
+                          type="button" 
+                          onClick={cancelProductCustomAttribute} 
+                          className="px-3 py-1.5 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors text-xs font-medium"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
                     <button 
                       type="button" 
                       onClick={() => { setShowProductCustomInput(true); setProductCustomAttributeInput(''); }} 
-                      className="flex items-center gap-3 p-3 bg-white border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors w-full"
+                      className="flex items-center gap-2 p-2 bg-white border border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors w-full"
                     >
-                      <Plus className="w-5 h-5 text-gray-600" />
-                      <span className="text-sm font-medium text-gray-700">Add Custom Specification</span>
+                      <Plus className="w-4 h-4 text-gray-600" />
+                      <span className="text-xs font-medium text-gray-700">Add Custom</span>
                     </button>
-                  </div>
+                  )}
                 </div>
 
-                {/* Custom Attribute Input */}
-                {showProductCustomInput && (
-                  <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="text"
-                        value={productCustomAttributeInput}
-                        onChange={(e) => setProductCustomAttributeInput(e.target.value)}
-                        placeholder="Enter custom specification name..."
-                        className="flex-1 py-2 px-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                        onKeyPress={(e) => {
-                          if (e.key === 'Enter' && productCustomAttributeInput.trim()) {
-                            handleProductCustomAttributeSubmit();
-                          }
-                        }}
-                        autoFocus
-                        autoComplete="off"
-                        autoCorrect="off"
-                        spellCheck={false}
-                      />
-                      <button 
-                        type="button" 
-                        onClick={handleProductCustomAttributeSubmit} 
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-                      >
-                        Add
-                      </button>
-                      <button 
-                        type="button" 
-                        onClick={cancelProductCustomAttribute} 
-                        className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm font-medium"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Specifications List */}
+                {/* Current Specifications Summary */}
                 {(() => {
                   const currentSpecs = formData.specification ? JSON.parse(formData.specification) : {};
                   const hasSpecs = Object.keys(currentSpecs).length > 0;
                   
                   return hasSpecs ? (
-                    <div>
-                      <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center gap-2">
-                        <Check size={20} className="text-green-600" />
-                        Current Specifications
-                        <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                    <div className="border-t border-gray-200 pt-4">
+                      <h3 className="text-sm font-medium text-gray-900 mb-3 flex items-center gap-2">
+                        <Check size={16} className="text-green-600" />
+                        Current
+                        <span className="px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-xs font-medium">
                           {Object.keys(currentSpecs).length}
                         </span>
                       </h3>
                       
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
                         {Object.entries(currentSpecs).map(([key, value]) => (
-                          <div key={key} className="relative">
-                            <label className="block text-sm font-medium text-gray-700 mb-2 capitalize">
-                              {key.replace(/_/g, ' ')}
-                            </label>
-                            <input
-                              type="text"
-                              value={value as string}
-                              onChange={(e) => {
-                                const newSpecs = { ...currentSpecs, [key]: e.target.value };
-                                setFormData(prev => ({ ...prev, specification: JSON.stringify(newSpecs) }));
-                              }}
-                              className="w-full py-2 px-3 pr-8 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                              placeholder={key.replace(/_/g, ' ')}
-                              autoComplete="off"
-                              autoCorrect="off"
-                              spellCheck={false}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => removeAttributeFromProduct(key)}
-                              className="absolute right-2 top-8 text-red-500 hover:text-red-700"
-                              title="Remove specification"
-                            >
-                              <X size={16} />
-                            </button>
+                          <div key={key} className="bg-green-50 border border-green-200 rounded-lg p-2">
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1 min-w-0">
+                                <div className="text-xs font-medium text-green-800 capitalize truncate">
+                                  {key.replace(/_/g, ' ')}
+                                </div>
+                                <div className="text-xs text-green-600 truncate">
+                                  {String(value) || 'Not set'}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => removeAttributeFromProduct(key)}
+                                className="ml-1 text-red-500 hover:text-red-700 flex-shrink-0"
+                                title="Remove specification"
+                              >
+                                <X size={12} />
+                              </button>
+                            </div>
                           </div>
                         ))}
                       </div>
                     </div>
                   ) : (
-                    <div className="text-center py-8">
-                      <FileText className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">No Specifications Added</h3>
-                      <p className="text-gray-500 text-sm">
+                    <div className="text-center py-6">
+                      <FileText className="w-8 h-8 text-gray-300 mx-auto mb-3" />
+                      <h3 className="text-sm font-medium text-gray-900 mb-1">No Specifications Added</h3>
+                      <p className="text-gray-500 text-xs">
                         Click the buttons above to add specifications for this product.
                       </p>
                     </div>
@@ -1224,21 +1498,21 @@ const EditProductPageContent: React.FC = () => {
             </div>
 
             {/* Footer */}
-            <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 rounded-b-2xl">
+            <div className="bg-gray-50 px-4 py-3 border-t border-gray-200">
               <div className="flex justify-between items-center">
-                <div className="text-sm text-gray-600">
+                <div className="text-xs text-gray-600">
                   {(() => {
                     const currentSpecs = formData.specification ? JSON.parse(formData.specification) : {};
                     return Object.keys(currentSpecs).length > 0 
-                      ? `${Object.keys(currentSpecs).length} specification${Object.keys(currentSpecs).length !== 1 ? 's' : ''} added`
-                      : 'No specifications added yet';
+                      ? `${Object.keys(currentSpecs).length} spec${Object.keys(currentSpecs).length !== 1 ? 's' : ''} added`
+                      : 'No specs added yet';
                   })()}
                 </div>
-                <div className="flex gap-3">
+                <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={() => setShowProductSpecificationsModal(false)}
-                    className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors text-sm font-medium"
+                    className="px-3 py-1.5 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors text-xs font-medium"
                   >
                     Cancel
                   </button>
@@ -1248,7 +1522,7 @@ const EditProductPageContent: React.FC = () => {
                       setShowProductSpecificationsModal(false);
                       toast.success('Product specifications saved successfully!');
                     }}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                    className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-xs font-medium"
                   >
                     Save
                   </button>

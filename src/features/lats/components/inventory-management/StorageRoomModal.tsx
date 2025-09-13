@@ -72,7 +72,7 @@ const generateShelfPositions = (
           continue;
         }
         
-        const positionName = quantity > 1 ? `Position ${rowLetter}${actualCol}-${qty}` : `Position ${rowLetter}${actualCol}`;
+        const positionName = quantity > 1 ? `${roomCode}${rowLetter}${actualCol}-${qty}` : `${roomCode}${rowLetter}${actualCol}`;
         
         positions.push({
           store_location_id: storeLocationId,

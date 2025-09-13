@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Device, DeviceStatus, User } from '../../../../types';
 import GlassButton from '../../../shared/components/ui/GlassButton';
-import { CheckCircle, Send, PenTool, ShieldCheck, PackageCheck, UserCheck, Hammer, Wrench, CreditCard, XCircle, AlertTriangle } from 'lucide-react';
+import { CheckCircle, Send, PenTool, ShieldCheck, PackageCheck, UserCheck, Hammer, Wrench, CreditCard, XCircle, AlertTriangle, Loader2 } from 'lucide-react';
 import { supabase } from '../../../../lib/supabaseClient';
 import Modal from '../../../shared/components/ui/Modal';
 import { formatCurrency } from '../../../../lib/customerApi';
 import { toast } from 'react-hot-toast';
+import { usePaymentMethodsContext } from '../../../../context/PaymentMethodsContext';
 
 interface StatusUpdateFormProps {
   device: Device;
@@ -24,6 +25,7 @@ const StatusUpdateForm: React.FC<StatusUpdateFormProps> = ({
   onAddRating,
   outstanding
 }) => {
+  const { paymentMethods, loading: paymentMethodsLoading } = usePaymentMethodsContext();
 
   const [selectedStatus, setSelectedStatus] = useState<DeviceStatus | null>(null);
   const [failResult, setFailResult] = useState<string | null>(null);
@@ -259,7 +261,12 @@ const StatusUpdateForm: React.FC<StatusUpdateFormProps> = ({
     setPaymentError(null);
     let payment;
     try {
-      if (!device.customerId || !device.id) throw new Error('Missing customer or device');
+      if (!device.customerId) {
+        setPaymentError('Customer must be selected before recording payment');
+        setRecordingPayment(false);
+        return;
+      }
+      if (!device.id) throw new Error('Device ID is missing');
       if (!paymentAmount || isNaN(Number(paymentAmount)) || Number(paymentAmount) <= 0) {
         setPaymentError('Enter a valid amount');
         setRecordingPayment(false);
@@ -581,15 +588,32 @@ const StatusUpdateForm: React.FC<StatusUpdateFormProps> = ({
           </div>
           <div className="mb-3">
             <label className="block text-sm font-medium text-gray-700 mb-1">Method</label>
-            <select
-              value={paymentMethod}
-              onChange={e => setPaymentMethod(e.target.value as any)}
-              className="w-full rounded-lg border border-white/30 bg-white/30 p-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400/30 transition-all duration-300"
-            >
-              <option value="cash">Cash</option>
-              <option value="card">Card</option>
-              <option value="transfer">Transfer</option>
-            </select>
+            {paymentMethodsLoading ? (
+              <div className="w-full rounded-lg border border-white/30 bg-white/30 p-3 flex items-center justify-center">
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                <span className="text-gray-600 text-sm">Loading payment methods...</span>
+              </div>
+            ) : (
+              <select
+                value={paymentMethod}
+                onChange={e => setPaymentMethod(e.target.value as any)}
+                className="w-full rounded-lg border border-white/30 bg-white/30 p-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400/30 transition-all duration-300"
+              >
+                {paymentMethods.length > 0 ? (
+                  paymentMethods.map((method) => (
+                    <option key={method.id} value={method.name.toLowerCase().replace(/\s+/g, '_')}>
+                      {method.payment_icon} {method.name}
+                    </option>
+                  ))
+                ) : (
+                  <>
+                    <option value="cash">💵 Cash</option>
+                    <option value="card">💳 Card</option>
+                    <option value="transfer">🏦 Transfer</option>
+                  </>
+                )}
+              </select>
+            )}
           </div>
           {paymentError && <div className="text-red-500 text-sm mb-2">{paymentError}</div>}
           <div className="flex gap-3 justify-end mt-2">

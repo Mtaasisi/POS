@@ -180,6 +180,14 @@ const CustomersPage = () => {
               }
             },
             (result) => {
+              // Check if the search was cancelled
+              if (result.cancelled) {
+                console.log('🚫 Search was cancelled, not updating results');
+                setIsBackgroundSearching(false);
+                setCurrentSearchJobId(null);
+                return;
+              }
+              
               setCustomers(result.customers);
               setTotalCount(result.totalCount);
               setTotalPages(result.totalPages);
@@ -257,7 +265,7 @@ const CustomersPage = () => {
         // Get total devices count
         const { count: totalCount, error: totalError } = await supabase
           .from('devices')
-          .select('*', { count: 'exact', head: true });
+          .select('id', { count: 'exact', head: true });
 
         if (totalError) {
           console.error('Error fetching total devices count:', totalError);
@@ -268,7 +276,7 @@ const CustomersPage = () => {
         // Get devices in repair count
         const { count: repairCount, error: repairError } = await supabase
           .from('devices')
-          .select('*', { count: 'exact', head: true })
+          .select('id', { count: 'exact', head: true })
           .in('status', ['in-repair', 'diagnosis-started']);
 
         if (repairError) {

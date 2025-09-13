@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { usePaymentAccounts } from '../../../../hooks/usePaymentAccounts';
 import { FinanceAccount } from '../../../../lib/financeAccountService';
+import PaymentMethodIcon from '../../../../components/PaymentMethodIcon';
 
 interface PaymentAccountSelectorProps {
   value?: string;
@@ -51,17 +52,13 @@ export const PaymentAccountSelector: React.FC<PaymentAccountSelectorProps> = ({
   }, [type, paymentAccounts, getPOSPaymentAccounts, getFinancePaymentAccounts]);
 
   const getIconForAccount = (account: FinanceAccount) => {
-    const iconMap: Record<string, string> = {
-      'bank': '🏦',
-      'cash': '💰',
-      'mobile_money': '📱',
-      'credit_card': '💳',
-      'savings': '🏦',
-      'investment': '📈',
-      'other': '💳'
-    };
-    
-    return iconMap[account.type] || '💳';
+    return (
+      <PaymentMethodIcon 
+        type={account.type} 
+        name={account.name} 
+        size="sm" 
+      />
+    );
   };
 
   const getColorForAccount = (account: FinanceAccount) => {
@@ -98,7 +95,13 @@ export const PaymentAccountSelector: React.FC<PaymentAccountSelectorProps> = ({
         <option value="">{placeholder}</option>
         {filteredAccounts.map((account) => (
           <option key={account.id} value={account.id}>
-            {showIcons && getIconForAccount(account)} {account.name}
+            {showIcons && (() => {
+              const iconMap: Record<string, string> = {
+                'bank': '🏦', 'cash': '💰', 'mobile_money': '📱', 'credit_card': '💳',
+                'savings': '🏦', 'investment': '📈', 'other': '💳'
+              };
+              return iconMap[account.type] || '💳';
+            })()} {account.name}
             {showDescriptions && ` - ${account.type} (${account.balance})`}
           </option>
         ))}
@@ -151,17 +154,13 @@ export const PaymentAccountCardSelector: React.FC<PaymentAccountCardSelectorProp
   }, [type, paymentAccounts, getPOSPaymentAccounts, getFinancePaymentAccounts]);
 
   const getIconForAccount = (account: FinanceAccount) => {
-    const iconMap: Record<string, string> = {
-      'bank': '🏦',
-      'cash': '💰',
-      'mobile_money': '📱',
-      'credit_card': '💳',
-      'savings': '🏦',
-      'investment': '📈',
-      'other': '💳'
-    };
-    
-    return iconMap[account.type] || '💳';
+    return (
+      <PaymentMethodIcon 
+        type={account.type} 
+        name={account.name} 
+        size="sm" 
+      />
+    );
   };
 
   const getColorForAccount = (account: FinanceAccount) => {
@@ -180,7 +179,7 @@ export const PaymentAccountCardSelector: React.FC<PaymentAccountCardSelectorProp
 
   if (loading) {
     return (
-      <div className={`grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 ${className}`}>
+      <div className={`grid grid-cols-2 gap-4 ${className}`}>
         {[...Array(8)].map((_, i) => (
           <div key={i} className="animate-pulse">
             <div className="h-20 bg-gray-200 rounded-lg"></div>
@@ -191,7 +190,7 @@ export const PaymentAccountCardSelector: React.FC<PaymentAccountCardSelectorProp
   }
 
   return (
-    <div className={`grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 ${className}`}>
+    <div className={`grid grid-cols-2 gap-4 ${className}`}>
       {filteredAccounts.map((account) => (
         <button
           key={account.id}
@@ -199,10 +198,10 @@ export const PaymentAccountCardSelector: React.FC<PaymentAccountCardSelectorProp
           onClick={() => !disabled && onChange(account.id)}
           disabled={disabled}
           className={`
-            p-4 rounded-lg border-2 transition-all duration-200 text-left
+            p-4 rounded-xl border-2 transition-all duration-200 text-left transform hover:scale-105
             ${value === account.id 
-              ? 'border-blue-500 bg-blue-50 shadow-md' 
-              : 'border-gray-200 hover:border-gray-300 bg-white hover:bg-gray-50'
+              ? 'border-blue-500 bg-gradient-to-br from-blue-50 to-blue-100 shadow-xl ring-4 ring-blue-200/50' 
+              : 'border-gray-200 hover:border-gray-400 bg-white hover:bg-gray-50 hover:shadow-lg'
             }
             ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
           `}
@@ -214,13 +213,13 @@ export const PaymentAccountCardSelector: React.FC<PaymentAccountCardSelectorProp
           <div className="flex items-center space-x-3">
             <div className="text-2xl">{getIconForAccount(account)}</div>
             <div className="flex-1 min-w-0">
-              <div className="font-medium text-gray-900 truncate">{account.name}</div>
+              <div className={`font-semibold truncate ${value === account.id ? 'text-blue-900' : 'text-gray-900'}`}>{account.name}</div>
               {showDescriptions && (
-                <div className="text-sm text-gray-500 truncate">
+                <div className={`text-sm truncate ${value === account.id ? 'text-blue-700' : 'text-gray-500'}`}>
                   {account.type} • ${(() => {
-                  const formatted = account.balance.toFixed(2);
-                  return formatted.replace(/\.00$/, '').replace(/\.0$/, '');
-                })()}
+                    const formatted = account.balance.toFixed(2);
+                    return formatted.replace(/\.00$/, '').replace(/\.0$/, '');
+                  })()}
                 </div>
               )}
             </div>
@@ -274,17 +273,13 @@ export const PaymentAccountDisplay: React.FC<PaymentAccountDisplayProps> = ({
   }, [paymentAccountId, getPaymentAccountById]);
 
   const getIconForAccount = (account: FinanceAccount) => {
-    const iconMap: Record<string, string> = {
-      'bank': '🏦',
-      'cash': '💰',
-      'mobile_money': '📱',
-      'credit_card': '💳',
-      'savings': '🏦',
-      'investment': '📈',
-      'other': '💳'
-    };
-    
-    return iconMap[account.type] || '💳';
+    return (
+      <PaymentMethodIcon 
+        type={account.type} 
+        name={account.name} 
+        size="sm" 
+      />
+    );
   };
 
   if (loading) {

@@ -191,7 +191,7 @@ const StorageRoomManagementPage: React.FC = () => {
   };
 
   const handleDeleteShelf = async (shelf: StoreShelf) => {
-    if (!confirm(`Are you sure you want to delete shelf "${shelf.name}"?`)) {
+    if (!confirm(`Are you sure you want to delete shelf "${shelf.code}"?`)) {
       return;
     }
 
@@ -296,8 +296,8 @@ const StorageRoomManagementPage: React.FC = () => {
   const filterShelves = (shelves: StoreShelf[]) => {
     if (!shelfSearchQuery) return shelves;
     return shelves.filter(shelf =>
-      shelf.name.toLowerCase().includes(shelfSearchQuery.toLowerCase()) ||
-      shelf.code.toLowerCase().includes(shelfSearchQuery.toLowerCase())
+      shelf.code.toLowerCase().includes(shelfSearchQuery.toLowerCase()) ||
+      (shelf.name && shelf.name.toLowerCase().includes(shelfSearchQuery.toLowerCase()))
     );
   };
 
@@ -306,7 +306,7 @@ const StorageRoomManagementPage: React.FC = () => {
     
     const csvData = roomShelves.map(shelf => ({
       Code: shelf.code,
-      Name: shelf.name,
+      Name: shelf.name || '',
       Row: shelf.row_number,
       Column: shelf.column_number,
       Type: shelf.shelf_type,
@@ -733,7 +733,7 @@ const StorageRoomManagementPage: React.FC = () => {
                               <div className={viewMode === 'list' ? 'flex items-center gap-3' : 'space-y-2'}>
                                 <div className={viewMode === 'list' ? '' : 'text-center'}>
                                   <div className="font-mono font-bold text-gray-900">{shelf.code}</div>
-                                  <div className="text-xs text-gray-600">{shelf.name}</div>
+                                  <div className="text-xs text-gray-600">{shelf.code}</div>
                                 </div>
                                 
                                 {viewMode === 'list' && (

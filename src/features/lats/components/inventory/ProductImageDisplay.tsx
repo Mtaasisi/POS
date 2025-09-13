@@ -52,8 +52,8 @@ const ProductImageDisplay: React.FC<ProductImageDisplayProps> = ({
     if (!showFallback) return null;
     
     return (
-      <div className={`${shouldUseFullSize ? '' : sizeClasses[size]} bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg flex items-center justify-center ${className}`}>
-        <Package className={`${shouldUseFullSize ? 'w-8 h-8' : iconSizes[size]} text-blue-600`} />
+      <div className={`${shouldUseFullSize ? '' : sizeClasses[size]} bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg flex items-center justify-center ${className}`}>
+        <Package className={`${shouldUseFullSize ? 'w-8 h-8' : iconSizes[size]} text-gray-400`} />
       </div>
     );
   }

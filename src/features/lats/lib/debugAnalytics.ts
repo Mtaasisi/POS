@@ -92,14 +92,14 @@ export class DebugAnalytics {
       // Check categories
       const { count: categoriesCount } = await supabase
         .from('lats_categories')
-        .select('*', { count: 'exact', head: true });
+        .select('id', { count: 'exact', head: true });
 
 
 
       // Check suppliers
       const { count: suppliersCount } = await supabase
         .from('lats_suppliers')
-        .select('*', { count: 'exact', head: true });
+        .select('id', { count: 'exact', head: true });
 
       console.log('📊 Summary:');
       console.log(`   Products: ${products?.length || 0}`);

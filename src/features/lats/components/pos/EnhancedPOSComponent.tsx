@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ShoppingCart, DollarSign, CreditCard, Receipt, Trash2, Package, Search, Bug, X, User, UserPlus, Percent } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import PaymentMethodIcon from '../../../components/PaymentMethodIcon';
 import { useInventoryStore } from '../../stores/useInventoryStore';
 import { usePOSStore } from '../../stores/usePOSStore';
 import GlassCard from '../ui/GlassCard';
@@ -299,6 +300,11 @@ const EnhancedPOSComponent: React.FC = () => {
     const insufficientStockItems = cartItems.filter(item => item.quantity > item.availableQuantity);
     if (insufficientStockItems.length > 0) {
       toast.error(`Insufficient stock for some items. Please check quantities.`);
+      return;
+    }
+
+    if (!selectedCustomer && !customerName) {
+      toast.error('Please select a customer or enter customer name');
       return;
     }
 
@@ -733,24 +739,23 @@ const EnhancedPOSComponent: React.FC = () => {
               </label>
               <div className="grid grid-cols-2 gap-2">
                 {[
-                  { id: 'cash', label: 'Cash', icon: DollarSign },
-                  { id: 'card', label: 'Card', icon: CreditCard },
-                  { id: 'mpesa', label: 'M-Pesa', icon: Receipt },
-                  { id: 'bank', label: 'Bank Transfer', icon: Receipt }
+                  { id: 'cash', label: 'Cash', type: 'cash' },
+                  { id: 'card', label: 'Card', type: 'credit_card' },
+                  { id: 'mpesa', label: 'M-Pesa', type: 'mobile_money' },
+                  { id: 'bank', label: 'Bank Transfer', type: 'bank_transfer' }
                 ].map((method) => {
-                  const Icon = method.icon;
                   return (
                     <button
                       key={method.id}
                       onClick={() => setSelectedPaymentMethod(method.id)}
-                      className={`p-3 border rounded-lg flex items-center gap-2 transition-colors ${
+                      className={`p-4 border-2 rounded-xl flex items-center gap-3 transition-all duration-200 transform hover:scale-105 ${
                         selectedPaymentMethod === method.id
-                          ? 'border-blue-500 bg-blue-50 text-blue-700'
-                          : 'border-gray-300 hover:border-gray-400'
+                          ? 'border-blue-500 bg-gradient-to-br from-blue-50 to-blue-100 text-blue-800 shadow-lg ring-2 ring-blue-200'
+                          : 'border-gray-300 hover:border-gray-400 hover:shadow-md'
                       }`}
                     >
-                      <Icon className="w-4 h-4" />
-                      <span className="text-sm font-medium">{method.label}</span>
+                      <PaymentMethodIcon type={method.type} name={method.label} size="sm" />
+                      <span className={`text-sm font-semibold ${selectedPaymentMethod === method.id ? 'text-blue-800' : 'text-gray-700'}`}>{method.label}</span>
                     </button>
                   );
                 })}

@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Upload, Star, X, Check, AlertTriangle, Plus, Clipboard } from 'lucide-react';
 import { RobustImageService, ProductImage } from '../lib/robustImageService';
+import { useClipboardImage } from '../hooks/useClipboardImage';
 import { toast } from 'react-hot-toast';
 
 interface SimpleImageUploadProps {
@@ -26,9 +27,11 @@ export const SimpleImageUpload: React.FC<SimpleImageUploadProps> = ({
   const [whiteBackground, setWhiteBackground] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
-  const [hasClipboardImage, setHasClipboardImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadAreaRef = useRef<HTMLDivElement>(null);
+  
+  // Global clipboard detection
+  const { hasClipboardImage, pasteFromClipboard, isCheckingClipboard } = useClipboardImage();
   
   // Local storage for temporary products
   const [tempImages, setTempImages] = useState<Map<string, ProductImage[]>>(new Map());
@@ -48,29 +51,7 @@ export const SimpleImageUpload: React.FC<SimpleImageUploadProps> = ({
     }
   }, [productId, existingImages.length]);
 
-  // Check clipboard for images when focused
-  const checkClipboard = async () => {
-    try {
-      const permission = await navigator.permissions.query({ name: 'clipboard-read' as PermissionName });
-      if (permission.state === 'granted' || permission.state === 'prompt') {
-        const clipboardItems = await navigator.clipboard.read();
-        for (const clipboardItem of clipboardItems) {
-          for (const type of clipboardItem.types) {
-            if (type.startsWith('image/')) {
-              setHasClipboardImage(true);
-              return;
-            }
-          }
-        }
-      }
-    } catch (error) {
-      // Fallback: try to detect paste event
-      console.log('Clipboard API not available, using fallback');
-    }
-    setHasClipboardImage(false);
-  };
-
-  // Handle paste events only when focused
+  // Handle paste events when focused (for Ctrl+V)
   React.useEffect(() => {
     const handlePaste = async (event: ClipboardEvent) => {
       if (!isFocused || uploading || !productId || !userId) return;
@@ -93,13 +74,11 @@ export const SimpleImageUpload: React.FC<SimpleImageUploadProps> = ({
       if (imageFiles.length > 0) {
         event.preventDefault();
         await handleFiles(imageFiles);
-        setHasClipboardImage(false); // Reset after paste
       }
     };
 
     if (isFocused) {
       document.addEventListener('paste', handlePaste);
-      checkClipboard(); // Check clipboard when focused
     }
 
     return () => {
@@ -107,25 +86,17 @@ export const SimpleImageUpload: React.FC<SimpleImageUploadProps> = ({
     };
   }, [isFocused, uploading, productId, userId, images.length, maxFiles]);
 
-  // Handle paste button click
+  // Handle paste button click using global clipboard detection
   const handlePasteClick = async () => {
+    if (!productId || !userId || uploading || userId === 'anonymous') return;
+
     try {
-      const clipboardItems = await navigator.clipboard.read();
-      const imageFiles: File[] = [];
-
-      for (const clipboardItem of clipboardItems) {
-        for (const type of clipboardItem.types) {
-          if (type.startsWith('image/')) {
-            const blob = await clipboardItem.getType(type);
-            const file = new File([blob], `pasted-image-${Date.now()}.${type.split('/')[1]}`, { type });
-            imageFiles.push(file);
-          }
-        }
-      }
-
+      const imageFiles = await pasteFromClipboard();
+      
       if (imageFiles.length > 0) {
         await handleFiles(imageFiles);
-        setHasClipboardImage(false);
+      } else {
+        toast.error('No images found in clipboard');
       }
     } catch (error) {
       console.error('Failed to paste from clipboard:', error);
@@ -154,7 +125,12 @@ export const SimpleImageUpload: React.FC<SimpleImageUploadProps> = ({
   };
 
   const handleFiles = async (files: File[]) => {
-    if (uploading || !productId || !userId) return;
+    if (uploading || !productId || !userId || userId === 'anonymous') {
+      if (userId === 'anonymous') {
+        toast.error('Please log in to upload images');
+      }
+      return;
+    }
 
     if (images.length + files.length > maxFiles) {
       toast.error(`Maximum ${maxFiles} images allowed`);
@@ -236,7 +212,7 @@ export const SimpleImageUpload: React.FC<SimpleImageUploadProps> = ({
 
     setDeleting(imageId);
     try {
-      const result = await RobustImageService.deleteImage(imageId);
+      const result = await RobustImageService.deleteImage(imageId, productId);
       if (result.success) {
         // Handle temporary products differently
         if (productId && typeof productId === 'string' && (productId.startsWith('temp-product-') || productId.startsWith('test-product-') || productId.startsWith('temp-sparepart-'))) {
@@ -312,7 +288,6 @@ export const SimpleImageUpload: React.FC<SimpleImageUploadProps> = ({
               // Only blur if focus is not moving to a child element
               if (!uploadAreaRef.current?.contains(e.relatedTarget as Node)) {
                 setIsFocused(false);
-                setHasClipboardImage(false);
               }
             }}
             onDragOver={handleDragOver}
@@ -352,7 +327,9 @@ export const SimpleImageUpload: React.FC<SimpleImageUploadProps> = ({
                         ? 'Release to upload your images'
                         : isFocused 
                           ? `Click to select images, drag and drop, or paste from clipboard (Ctrl+V). Maximum ${maxFiles} images allowed.`
-                          : `Click here to select images or drag and drop. Click to enable paste from clipboard. Maximum ${maxFiles} images allowed.`
+                          : hasClipboardImage
+                            ? `Click here to select images, drag and drop, or use the Paste button. Maximum ${maxFiles} images allowed.`
+                            : `Click here to select images or drag and drop. Maximum ${maxFiles} images allowed.`
                     }
                   </p>
                 </div>
@@ -464,8 +441,8 @@ export const SimpleImageUpload: React.FC<SimpleImageUploadProps> = ({
               </div>
             )}
 
-            {/* Paste Button - shown when focused and clipboard has image */}
-            {isFocused && hasClipboardImage && !uploading && (
+            {/* Paste Button - shown when clipboard has image (regardless of focus) */}
+            {hasClipboardImage && !uploading && (
               <div className="absolute top-3 right-3">
                 <button
                   onClick={(e) => {

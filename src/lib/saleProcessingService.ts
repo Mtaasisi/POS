@@ -27,6 +27,8 @@ export interface SaleData {
   subtotal: number;
   tax: number;
   discount: number;
+  discountType?: 'fixed' | 'percentage';
+  discountValue?: number;
   total: number;
   paymentMethod: {
     type: string;
@@ -53,6 +55,11 @@ class SaleProcessingService {
     try {
       console.log('🔄 Processing sale...', { itemCount: saleData.items.length, total: saleData.total });
       console.log('🔍 Sale data received:', JSON.stringify(saleData, null, 2));
+
+      // Validate customer information
+      if (!saleData.customerId && !saleData.customerName) {
+        return { success: false, error: 'Customer information is required for sale processing' };
+      }
 
       // 1. Combined stock validation and cost calculation (ultra-optimized)
       const { stockValidation, itemsWithCosts } = await this.validateStockAndCalculateCosts(saleData.items);
@@ -297,6 +304,10 @@ class SaleProcessingService {
         .insert([{
           sale_number: saleNumber,
           customer_id: saleData.customerId || null,
+          subtotal: saleData.subtotal,
+          discount_amount: saleData.discount,
+          discount_type: saleData.discountType || 'fixed',
+          discount_value: saleData.discountValue || saleData.discount,
           total_amount: saleData.total,
           payment_method: saleData.paymentMethod.type,
           status: saleData.paymentStatus,

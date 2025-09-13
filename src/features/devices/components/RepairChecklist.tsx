@@ -158,29 +158,109 @@ const RepairChecklist: React.FC<RepairChecklistProps> = ({
   };
 
   useEffect(() => {
-    if (isOpen && device) {
-      // Try to load existing checklist from device
-      if (device.repair_checklist && device.repair_checklist.items) {
-        setChecklist(device.repair_checklist.items);
-        setNotes(device.repair_checklist.notes || {});
-      } else {
-        // Create new standard checklist
-        const standardChecklist = getStandardChecklist(device.status);
-        setChecklist(standardChecklist);
-        setNotes({});
+    const initializeRepairChecklist = async () => {
+      if (isOpen && device) {
+        console.log('[RepairChecklist] Initializing repair checklist for device:', {
+          deviceId: device.id,
+          brand: device.brand,
+          model: device.model,
+          status: device.status,
+          hasExistingChecklist: !!(device.repair_checklist && device.repair_checklist.items),
+          repairChecklistData: device.repair_checklist
+        });
+
+        // Refresh device data to ensure we have the latest repair information
+        console.log('[RepairChecklist] Refreshing device data to get latest repair information...');
+        try {
+          const { data: freshDevice, error: refreshError } = await supabase
+            .from('devices')
+            .select('*')
+            .eq('id', device.id)
+            .single();
+
+          if (refreshError) {
+            console.error('[RepairChecklist] Failed to refresh device data:', refreshError);
+          } else {
+            console.log('[RepairChecklist] Fresh device data loaded:', {
+              hasRepairChecklist: !!(freshDevice.repair_checklist && freshDevice.repair_checklist.items),
+              repairChecklistData: freshDevice.repair_checklist
+            });
+            // Update the device reference with fresh data
+            Object.assign(device, freshDevice);
+          }
+        } catch (error) {
+          console.error('[RepairChecklist] Error refreshing device data:', error);
+        }
+
+        // Try to load existing checklist from device
+        if (device.repair_checklist && device.repair_checklist.items && device.repair_checklist.items.length > 0) {
+          console.log('[RepairChecklist] Found existing repair checklist, loading saved progress:', device.repair_checklist);
+          setChecklist(device.repair_checklist.items);
+          setNotes(device.repair_checklist.notes || {});
+          
+          // Set current step to the first incomplete item
+          const firstIncompleteIndex = device.repair_checklist.items.findIndex((item: any) => !item.completed);
+          if (firstIncompleteIndex >= 0) {
+            setCurrentStep(firstIncompleteIndex);
+            console.log('[RepairChecklist] Set current step to first incomplete item:', firstIncompleteIndex);
+          } else {
+            setCurrentStep(device.repair_checklist.items.length - 1);
+            console.log('[RepairChecklist] All items completed, set to last step');
+          }
+        } else {
+          console.log('[RepairChecklist] No existing repair checklist, creating new standard checklist');
+          // Create new standard checklist
+          const standardChecklist = getStandardChecklist(device.status);
+          setChecklist(standardChecklist);
+          setNotes({});
+          setCurrentStep(0);
+        }
       }
-      setCurrentStep(0);
-    }
+    };
+
+    initializeRepairChecklist();
   }, [isOpen, device]);
 
   const toggleItem = async (itemId: string) => {
-    setChecklist(prev => 
-      prev.map(item => 
-        item.id === itemId 
-          ? { ...item, completed: !item.completed }
-          : item
-      )
+    console.log('[RepairChecklist] Toggling item:', itemId);
+    
+    const updatedChecklist = checklist.map(item => 
+      item.id === itemId 
+        ? { ...item, completed: !item.completed }
+        : item
     );
+    
+    setChecklist(updatedChecklist);
+    console.log('[RepairChecklist] Updated checklist:', updatedChecklist);
+
+    // Auto-save individual item change
+    try {
+      const repairData = {
+        repair_checklist: {
+          items: updatedChecklist,
+          notes: notes,
+          last_updated: new Date().toISOString()
+        }
+      };
+
+      console.log('[RepairChecklist] Auto-saving repair data:', repairData);
+
+      const { error } = await supabase
+        .from('devices')
+        .update(repairData)
+        .eq('id', device.id);
+
+      if (error) {
+        console.error('[RepairChecklist] Auto-save failed:', error);
+        toast.error('Failed to save changes');
+      } else {
+        console.log('[RepairChecklist] ✅ Auto-save successful for item:', itemId);
+        toast.success('Changes saved automatically');
+      }
+    } catch (error) {
+      console.error('[RepairChecklist] Auto-save error:', error);
+      toast.error('Failed to save changes');
+    }
 
     // Auto-advance to next step
     const currentItemIndex = checklist.findIndex(item => item.id === itemId);
@@ -189,8 +269,39 @@ const RepairChecklist: React.FC<RepairChecklistProps> = ({
     }
   };
 
-  const updateNotes = (itemId: string, note: string) => {
-    setNotes(prev => ({ ...prev, [itemId]: note }));
+  const updateNotes = async (itemId: string, note: string) => {
+    console.log('[RepairChecklist] Updating notes for item:', itemId, 'note:', note);
+    
+    const updatedNotes = { ...notes, [itemId]: note };
+    setNotes(updatedNotes);
+
+    // Auto-save notes change
+    try {
+      const repairData = {
+        repair_checklist: {
+          items: checklist,
+          notes: updatedNotes,
+          last_updated: new Date().toISOString()
+        }
+      };
+
+      console.log('[RepairChecklist] Auto-saving notes:', repairData);
+
+      const { error } = await supabase
+        .from('devices')
+        .update(repairData)
+        .eq('id', device.id);
+
+      if (error) {
+        console.error('[RepairChecklist] Auto-save notes failed:', error);
+        toast.error('Failed to save notes');
+      } else {
+        console.log('[RepairChecklist] ✅ Auto-save notes successful for item:', itemId);
+      }
+    } catch (error) {
+      console.error('[RepairChecklist] Auto-save notes error:', error);
+      toast.error('Failed to save notes');
+    }
   };
 
   const getStatusFromChecklist = (): DeviceStatus | null => {
@@ -211,32 +322,76 @@ const RepairChecklist: React.FC<RepairChecklistProps> = ({
   };
 
   const handleSaveChecklist = async () => {
+    console.log('[RepairChecklist] Starting repair checklist save...');
     setLoading(true);
+    
     try {
-      // Save checklist progress to device
-      const { error } = await supabase
-        .from('devices')
-        .update({ 
-          repair_checklist: {
-            items: checklist,
-            notes: notes,
-            last_updated: new Date().toISOString()
-          }
-        })
-        .eq('id', device.id);
+      const repairData = {
+        repair_checklist: {
+          items: checklist,
+          notes: notes,
+          last_updated: new Date().toISOString()
+        }
+      };
 
-      if (error) throw error;
+      console.log('[RepairChecklist] Repair checklist data:', repairData);
+      console.log('[RepairChecklist] Device ID:', device.id);
+      console.log('[RepairChecklist] Current device status:', device.status);
+
+      // Save checklist progress to device
+      const { data, error } = await supabase
+        .from('devices')
+        .update(repairData)
+        .eq('id', device.id)
+        .select();
+
+      if (error) {
+        console.error('[RepairChecklist] ❌ Database update failed:', error);
+        console.error('[RepairChecklist] Error details:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+        throw error;
+      }
+
+      console.log('[RepairChecklist] ✅ Database update successful:', data);
 
       // Update device status if checklist suggests a change
       const newStatus = getStatusFromChecklist();
+      console.log('[RepairChecklist] Status update logic:', {
+        currentStatus: device.status,
+        newStatus: newStatus,
+        willUpdate: newStatus && newStatus !== device.status
+      });
+
       if (newStatus && newStatus !== device.status) {
-        onStatusUpdate(newStatus);
+        console.log('[RepairChecklist] Updating device status to:', newStatus);
+        
+        // Update status in database
+        const { error: statusError } = await supabase
+          .from('devices')
+          .update({ 
+            status: newStatus,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', device.id);
+
+        if (statusError) {
+          console.error('[RepairChecklist] Status update failed:', statusError);
+          toast.error('Failed to update device status');
+        } else {
+          console.log('[RepairChecklist] ✅ Device status updated successfully');
+          onStatusUpdate(newStatus);
+        }
       }
 
+      console.log('[RepairChecklist] ✅ Repair checklist save completed successfully');
       toast.success('Repair checklist saved successfully');
       onClose();
     } catch (error) {
-      console.error('Error saving checklist:', error);
+      console.error('[RepairChecklist] ❌ Error saving checklist:', error);
       toast.error('Failed to save checklist');
     } finally {
       setLoading(false);

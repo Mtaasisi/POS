@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../../context/AuthContext';
 import { useNavigationHistory } from '../../../../hooks/useNavigationHistory';
+import { rbacManager, type UserRole } from '../../lib/rbac';
 import {
   Search,
   ShoppingCart,
@@ -29,6 +30,7 @@ import {
   Clock,
 } from 'lucide-react';
 import SearchDropdown from '../../../shared/components/SearchDropdown';
+import { toast } from 'react-hot-toast';
 
 interface POSTopBarProps {
   cartItemsCount: number;
@@ -76,6 +78,12 @@ const POSTopBar: React.FC<POSTopBarProps> = ({
   const [showNotifications, setShowNotifications] = useState(false);
   
   const { handleBackClick, previousPage } = useNavigationHistory();
+
+  // Permission checks for current user
+  const userRole = currentUser?.role as UserRole;
+  const canAccessInventory = rbacManager.can(userRole, 'inventory', 'view');
+  const canViewReports = rbacManager.can(userRole, 'reports', 'view');
+  const canAccessSettings = rbacManager.can(userRole, 'settings', 'view');
   
   const userMenuRef = useRef<HTMLDivElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
@@ -120,21 +128,28 @@ const POSTopBar: React.FC<POSTopBarProps> = ({
     navigate('/login');
   };
 
+  // Helper function to handle restricted feature access
+  const handleRestrictedAccess = (featureName: string) => {
+    toast.error(`You don't have permission to access ${featureName}. Contact your administrator.`);
+  };
+
 
 
   const getQuickActions = () => {
     const actions = [];
     
+    // Customer care and admin can add customers and scan barcodes
     if (currentUser.role === 'admin' || currentUser.role === 'customer-care') {
       actions.push(
         { label: 'Add Customer', icon: <Users size={16} />, action: onAddCustomer },
-        { label: 'Add Product', icon: <Package size={16} />, action: onAddProduct },
         { label: 'Scan Barcode', icon: <Scan size={16} />, action: onScanBarcode }
       );
     }
     
+    // Only admin can add products and view sales/receipts
     if (currentUser.role === 'admin') {
       actions.push(
+        { label: 'Add Product', icon: <Package size={16} />, action: onAddProduct },
         { label: 'View Sales', icon: <TrendingUp size={16} />, action: onViewSales },
         { label: 'View Receipts', icon: <Receipt size={16} />, action: onViewReceipts }
       );
@@ -201,20 +216,22 @@ const POSTopBar: React.FC<POSTopBarProps> = ({
           {/* LATS Navigation Icons */}
           <div className="hidden lg:flex items-center gap-1">
 
-            
-            <div className="relative group">
-              <button 
-                onClick={() => navigate('/lats/unified-inventory')}
-                className="p-3 rounded-lg bg-white/30 hover:bg-white/50 transition-all duration-300 backdrop-blur-sm border border-white/30 shadow-sm hover:scale-110"
-                title="Unified Inventory Management"
-              >
-                <Warehouse size={18} className="text-gray-700" />
-              </button>
-              <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-white/95 backdrop-blur-sm border border-gray-200/50 text-gray-700 text-xs font-medium rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-50">
-                Unified Inventory Management
-                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-white/95"></div>
+            {/* Unified Inventory - Only show if user has inventory access */}
+            {canAccessInventory && (
+              <div className="relative group">
+                <button 
+                  onClick={() => navigate('/lats/unified-inventory')}
+                  className="p-3 rounded-lg bg-white/30 hover:bg-white/50 transition-all duration-300 backdrop-blur-sm border border-white/30 shadow-sm hover:scale-110"
+                  title="Unified Inventory Management"
+                >
+                  <Warehouse size={18} className="text-gray-700" />
+                </button>
+                <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-white/95 backdrop-blur-sm border border-gray-200/50 text-gray-700 text-xs font-medium rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-50">
+                  Unified Inventory Management
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-white/95"></div>
+                </div>
               </div>
-            </div>
+            )}
             
             <div className="relative group">
               <button 
@@ -230,19 +247,22 @@ const POSTopBar: React.FC<POSTopBarProps> = ({
               </div>
             </div>
             
-            <div className="relative group">
-              <button 
-                onClick={() => navigate('/lats/sales-reports')}
-                className="p-3 rounded-lg bg-white/30 hover:bg-white/50 transition-all duration-300 backdrop-blur-sm border border-white/30 shadow-sm hover:scale-110"
-                title="Sales Reports"
-              >
-                <BarChart3 size={18} className="text-gray-700" />
-              </button>
-              <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-white/95 backdrop-blur-sm border border-gray-200/50 text-gray-700 text-xs font-medium rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-50">
-                Sales Reports
-                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-white/95"></div>
+            {/* Sales Reports - Only show if user has reports access */}
+            {canViewReports && (
+              <div className="relative group">
+                <button 
+                  onClick={() => navigate('/lats/sales-reports')}
+                  className="p-3 rounded-lg bg-white/30 hover:bg-white/50 transition-all duration-300 backdrop-blur-sm border border-white/30 shadow-sm hover:scale-110"
+                  title="Sales Reports"
+                >
+                  <BarChart3 size={18} className="text-gray-700" />
+                </button>
+                <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-white/95 backdrop-blur-sm border border-gray-200/50 text-gray-700 text-xs font-medium rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-50">
+                  Sales Reports
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-white/95"></div>
+                </div>
               </div>
-            </div>
+            )}
             
             <div className="relative group">
               <button 
@@ -398,16 +418,18 @@ const POSTopBar: React.FC<POSTopBarProps> = ({
                     </div>
                     
                     <div className="space-y-1">
-                      <button
-                        onClick={() => {
-                          navigate('/settings');
-                          setShowUserMenu(false);
-                        }}
-                        className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 transition-colors"
-                      >
-                        <Settings size={16} className="text-gray-500" />
-                        <span className="text-sm text-gray-700">Settings</span>
-                      </button>
+                      {canAccessSettings && (
+                        <button
+                          onClick={() => {
+                            navigate('/settings');
+                            setShowUserMenu(false);
+                          }}
+                          className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                        >
+                          <Settings size={16} className="text-gray-500" />
+                          <span className="text-sm text-gray-700">Settings</span>
+                        </button>
+                      )}
                       
                       <button
                         onClick={handleLogout}

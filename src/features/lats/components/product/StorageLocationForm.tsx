@@ -92,7 +92,7 @@ const StorageLocationForm: React.FC<StorageLocationFormProps> = ({
     const shelf = allShelves[formData.storageRoomId]?.find(s => s.id === formData.shelfId);
     
     if (room && shelf) {
-      return `${room.name} - ${shelf.name}`;
+      return `${room.code} - ${shelf.code}`;
     }
     
     return 'Select storage location';
@@ -190,14 +190,15 @@ const StorageLocationForm: React.FC<StorageLocationFormProps> = ({
     // Filter by search term
     if (searchTerm) {
       shelves = shelves.filter(shelf => 
-        shelf.name.toLowerCase().includes(searchTerm.toLowerCase())
+        shelf.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (shelf.name && shelf.name.toLowerCase().includes(searchTerm.toLowerCase()))
       );
     }
     
     // Filter by selected letter
     if (selectedLetter) {
       shelves = shelves.filter(shelf => 
-        shelf.name.toUpperCase().includes(selectedLetter)
+        shelf.code.toUpperCase().includes(selectedLetter)
       );
     }
     
@@ -209,7 +210,7 @@ const StorageLocationForm: React.FC<StorageLocationFormProps> = ({
     const letters = new Set<string>();
     
     shelves.forEach(shelf => {
-      const upperName = shelf.name.toUpperCase();
+      const upperName = shelf.code.toUpperCase();
       for (let i = 0; i < upperName.length; i++) {
         const char = upperName[i];
         if (char >= 'A' && char <= 'Z') {
@@ -373,8 +374,8 @@ const StorageLocationForm: React.FC<StorageLocationFormProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4">
                   {getFilteredShelves().map((shelf, index) => {
                     const isSelected = formData.storageRoomId === selectedRoomId && formData.shelfId === shelf.id;
-                    const shelfColor = getShelfColor(shelf.name.charAt(0).toUpperCase());
-                    const foundLetter = shelf.name.toUpperCase().match(/[A-Z]/)?.[0];
+                    const shelfColor = getShelfColor(shelf.code.charAt(0).toUpperCase());
+                    const foundLetter = shelf.code.toUpperCase().match(/[A-Z]/)?.[0];
                     
                     // Letter-based background colors - Strong vibrant colors
                     const getLetterBackgroundColor = (letter: string) => {
@@ -458,7 +459,7 @@ const StorageLocationForm: React.FC<StorageLocationFormProps> = ({
                                 <div className={`text-lg font-black tracking-tight transition-all duration-500 ${
                                   isSelected ? shelfColor.text : 'text-white'
                                 }`}>
-                                  {shelf.name}
+                                  {shelf.code}
                                 </div>
                                 <div className={`text-xs font-medium transition-all duration-500 ${
                                   isSelected ? `${shelfColor.text} opacity-80` : 'text-white opacity-80'

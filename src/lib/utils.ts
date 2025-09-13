@@ -77,10 +77,7 @@ export const toCamelCase = (obj: any): any => {
   
   const camelCaseObj: any = {};
   for (const [key, value] of Object.entries(obj)) {
-    // Keep assigned_to as snake_case for consistency
-    if (key === 'assigned_to') {
-      camelCaseObj[key] = toCamelCase(value);
-    } else if (key === 'diagnosis_required') {
+    if (key === 'diagnosis_required') {
       camelCaseObj['diagnosisRequired'] = typeof value === 'boolean' ? value : value == null ? null : Boolean(value);
     } else {
       const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());

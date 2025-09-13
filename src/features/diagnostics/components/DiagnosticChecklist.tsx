@@ -3,6 +3,7 @@ import { CheckCircle, XCircle, AlertTriangle, Camera, Battery, Monitor, Wifi, Sp
 import { DeviceStatus, Device } from '../../../types';
 import { supabase } from '../../../lib/supabaseClient';
 import { toast } from 'react-hot-toast';
+import { getDiagnosticTemplateForDevice, createDiagnosticCheck } from '../../../lib/diagnosticsApi';
 
 interface DiagnosticChecklistProps {
   device: Device;
@@ -36,7 +37,41 @@ const DiagnosticChecklist: React.FC<DiagnosticChecklistProps> = ({
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [adminNotes, setAdminNotes] = useState('');
 
-  // Standard diagnostic checklist for office devices
+  // Icon mapping for diagnostic items
+  const getIconForItem = (itemId: string): React.ReactNode => {
+    const iconMap: { [key: string]: React.ReactNode } = {
+      'power-test': <Battery className="h-5 w-5" />,
+      'display-test': <Monitor className="h-5 w-5" />,
+      'camera-test': <Camera className="h-5 w-5" />,
+      'audio-test': <Speaker className="h-5 w-5" />,
+      'storage-test': <HardDrive className="h-5 w-5" />,
+      'performance-test': <Cpu className="h-5 w-5" />,
+      'wifi-test': <Wifi className="h-5 w-5" />,
+      'software-test': <CheckSquare className="h-5 w-5" />,
+      'keyboard-test': <Square className="h-5 w-5" />,
+      'touchpad-test': <Square className="h-5 w-5" />,
+      'touch-test': <Monitor className="h-5 w-5" />,
+      'sim-test': <Square className="h-5 w-5" />
+    };
+    return iconMap[itemId] || <CheckSquare className="h-5 w-5" />;
+  };
+
+  // Convert database template items to DiagnosticItem format
+  const convertTemplateToDiagnosticItems = (templateItems: any[]): DiagnosticItem[] => {
+    return templateItems.map(item => ({
+      id: item.id,
+      title: item.title,
+      description: item.description,
+      category: item.category || 'hardware',
+      icon: getIconForItem(item.id),
+      required: item.required !== false, // Default to true if not specified
+      status: 'pending' as const,
+      notes: '',
+      adminNotes: ''
+    }));
+  };
+
+  // Fallback diagnostic checklist for office devices (kept as backup)
   const getDiagnosticChecklist = (deviceType: string): DiagnosticItem[] => {
     const baseDiagnostics: DiagnosticItem[] = [
       // Hardware Tests
@@ -165,41 +200,207 @@ const DiagnosticChecklist: React.FC<DiagnosticChecklistProps> = ({
   };
 
   useEffect(() => {
-    if (isOpen && device) {
-      // Try to load existing diagnostic from device
-      if (device.diagnostic_checklist && device.diagnostic_checklist.items) {
-        setDiagnosticItems(device.diagnostic_checklist.items);
-        setNotes(device.diagnostic_checklist.notes || {});
-        setAdminNotes(device.diagnostic_checklist.adminNotes || '');
-      } else {
-        // Create new diagnostic checklist
-        const newDiagnostics = getDiagnosticChecklist(device.model);
-        setDiagnosticItems(newDiagnostics);
-        setNotes({});
-        setAdminNotes('');
+    const initializeDiagnosticChecklist = async () => {
+      if (isOpen && device) {
+        console.log('[DiagnosticChecklist] Initializing diagnostic checklist for device:', {
+          deviceId: device.id,
+          brand: device.brand,
+          model: device.model,
+          status: device.status,
+          hasExistingChecklist: !!(device.diagnostic_checklist && device.diagnostic_checklist.items),
+          diagnosticChecklistData: device.diagnostic_checklist
+        });
+
+        // Refresh device data to ensure we have the latest diagnostic information
+        console.log('[DiagnosticChecklist] Refreshing device data to get latest diagnostic information...');
+        try {
+          const { data: freshDevice, error: refreshError } = await supabase
+            .from('devices')
+            .select('*')
+            .eq('id', device.id)
+            .single();
+
+          if (refreshError) {
+            console.error('[DiagnosticChecklist] Failed to refresh device data:', refreshError);
+          } else {
+            console.log('[DiagnosticChecklist] Fresh device data loaded:', {
+              hasDiagnosticChecklist: !!(freshDevice.diagnostic_checklist && freshDevice.diagnostic_checklist.items),
+              diagnosticChecklistData: freshDevice.diagnostic_checklist
+            });
+            // Update the device reference with fresh data
+            Object.assign(device, freshDevice);
+          }
+        } catch (error) {
+          console.error('[DiagnosticChecklist] Error refreshing device data:', error);
+        }
+
+        // Always fetch template first, then merge with existing data if available
+        console.log('[DiagnosticChecklist] Fetching diagnostic template from database for model:', device.model);
+        
+        let templateDiagnostics: DiagnosticItem[] = [];
+        
+        try {
+          const template = await getDiagnosticTemplateForDevice(device.model);
+          
+          if (template && template.checklist_items) {
+            console.log('[DiagnosticChecklist] Found template in database:', template);
+            templateDiagnostics = convertTemplateToDiagnosticItems(template.checklist_items);
+            console.log('[DiagnosticChecklist] Converted template to diagnostic items:', templateDiagnostics);
+          } else {
+            // Fallback to local generation if no template found
+            console.log('[DiagnosticChecklist] No template found in database, using fallback generation');
+            templateDiagnostics = getDiagnosticChecklist(device.model);
+            console.log('[DiagnosticChecklist] Generated fallback diagnostic items:', templateDiagnostics);
+          }
+        } catch (error) {
+          console.error('[DiagnosticChecklist] Error fetching template from database:', error);
+          // Fallback to local generation on error
+          console.log('[DiagnosticChecklist] Using fallback generation due to error');
+          templateDiagnostics = getDiagnosticChecklist(device.model);
+          console.log('[DiagnosticChecklist] Generated fallback diagnostic items:', templateDiagnostics);
+        }
+
+        // Check if there's existing diagnostic data to merge
+        if (device.diagnostic_checklist && device.diagnostic_checklist.items && device.diagnostic_checklist.items.length > 0) {
+          console.log('[DiagnosticChecklist] Found existing diagnostic data, merging with template:', device.diagnostic_checklist);
+          
+          // Merge existing results with template structure
+          const mergedDiagnostics = templateDiagnostics.map(templateItem => {
+            const existingItem = device.diagnostic_checklist.items.find((item: any) => item.id === templateItem.id);
+            if (existingItem) {
+              console.log('[DiagnosticChecklist] Merging existing item:', existingItem.id, 'with status:', existingItem.status);
+              return {
+                ...templateItem,
+                status: existingItem.status || 'pending',
+                notes: existingItem.notes || '',
+                adminNotes: existingItem.adminNotes || ''
+              };
+            }
+            return templateItem;
+          });
+          
+          console.log('[DiagnosticChecklist] Merged diagnostic items:', mergedDiagnostics);
+          setDiagnosticItems(mergedDiagnostics);
+          setNotes(device.diagnostic_checklist.notes || {});
+          setAdminNotes(device.diagnostic_checklist.adminNotes || '');
+          
+          // Set current step to the first pending item
+          const firstPendingIndex = mergedDiagnostics.findIndex(item => item.status === 'pending');
+          if (firstPendingIndex >= 0) {
+            setCurrentStep(firstPendingIndex);
+            console.log('[DiagnosticChecklist] Set current step to first pending item:', firstPendingIndex);
+          } else {
+            setCurrentStep(mergedDiagnostics.length - 1);
+            console.log('[DiagnosticChecklist] All items completed, set to last step');
+          }
+        } else {
+          console.log('[DiagnosticChecklist] No existing diagnostic data, using fresh template');
+          setDiagnosticItems(templateDiagnostics);
+          setNotes({});
+          setAdminNotes('');
+          setCurrentStep(0);
+        }
       }
-      setCurrentStep(0);
-    }
+    };
+
+    initializeDiagnosticChecklist();
   }, [isOpen, device]);
 
-  const updateDiagnosticStatus = (itemId: string, status: 'pass' | 'fail') => {
-    setDiagnosticItems(prev =>
-      prev.map(item =>
-        item.id === itemId
-          ? { ...item, status }
-          : item
-      )
+  const updateDiagnosticStatus = async (itemId: string, status: 'pass' | 'fail') => {
+    console.log('[DiagnosticChecklist] Updating diagnostic item status:', { itemId, status });
+    
+    const updatedItems = diagnosticItems.map(item =>
+      item.id === itemId
+        ? { ...item, status }
+        : item
     );
+    
+    setDiagnosticItems(updatedItems);
+    console.log('[DiagnosticChecklist] Updated diagnostic items:', updatedItems);
+
+    // Auto-save individual item change
+    try {
+      const summary = getDiagnosticSummaryFromItems(updatedItems);
+      const overallStatus = getOverallStatusFromItems(updatedItems);
+      
+      const diagnosticData = {
+        diagnostic_checklist: {
+          items: updatedItems,
+          notes: notes,
+          adminNotes: adminNotes,
+          summary: summary,
+          overallStatus: overallStatus,
+          last_updated: new Date().toISOString()
+        }
+      };
+
+      console.log('[DiagnosticChecklist] Auto-saving diagnostic data:', diagnosticData);
+
+      const { error } = await supabase
+        .from('devices')
+        .update(diagnosticData)
+        .eq('id', device.id);
+
+      if (error) {
+        console.error('[DiagnosticChecklist] Auto-save failed:', error);
+        toast.error('Failed to save changes');
+      } else {
+        console.log('[DiagnosticChecklist] ✅ Auto-save successful for item:', itemId);
+        toast.success('Changes saved automatically');
+      }
+    } catch (error) {
+      console.error('[DiagnosticChecklist] Auto-save error:', error);
+      toast.error('Failed to save changes');
+    }
 
     // Auto-advance to next step
     const currentItemIndex = diagnosticItems.findIndex(item => item.id === itemId);
     if (currentItemIndex < diagnosticItems.length - 1) {
-      setCurrentStep(currentItemIndex + 1);
+      const nextStep = currentItemIndex + 1;
+      console.log('[DiagnosticChecklist] Auto-advancing to next step:', nextStep);
+      setCurrentStep(nextStep);
     }
   };
 
-  const updateNotes = (itemId: string, note: string) => {
-    setNotes(prev => ({ ...prev, [itemId]: note }));
+  const updateNotes = async (itemId: string, note: string) => {
+    console.log('[DiagnosticChecklist] Updating notes for item:', itemId, 'note:', note);
+    
+    const updatedNotes = { ...notes, [itemId]: note };
+    setNotes(updatedNotes);
+
+    // Auto-save notes change
+    try {
+      const summary = getDiagnosticSummary();
+      const overallStatus = getOverallStatus();
+      
+      const diagnosticData = {
+        diagnostic_checklist: {
+          items: diagnosticItems,
+          notes: updatedNotes,
+          adminNotes: adminNotes,
+          summary: summary,
+          overallStatus: overallStatus,
+          last_updated: new Date().toISOString()
+        }
+      };
+
+      console.log('[DiagnosticChecklist] Auto-saving notes:', diagnosticData);
+
+      const { error } = await supabase
+        .from('devices')
+        .update(diagnosticData)
+        .eq('id', device.id);
+
+      if (error) {
+        console.error('[DiagnosticChecklist] Auto-save notes failed:', error);
+        toast.error('Failed to save notes');
+      } else {
+        console.log('[DiagnosticChecklist] ✅ Auto-save notes successful for item:', itemId);
+      }
+    } catch (error) {
+      console.error('[DiagnosticChecklist] Auto-save notes error:', error);
+      toast.error('Failed to save notes');
+    }
   };
 
   const getDiagnosticSummary = () => {
@@ -211,6 +412,15 @@ const DiagnosticChecklist: React.FC<DiagnosticChecklistProps> = ({
     return { total, passed, failed, pending };
   };
 
+  const getDiagnosticSummaryFromItems = (items: DiagnosticItem[]) => {
+    const total = items.length;
+    const passed = items.filter(item => item.status === 'pass').length;
+    const failed = items.filter(item => item.status === 'fail').length;
+    const pending = items.filter(item => item.status === 'pending').length;
+
+    return { total, passed, failed, pending };
+  };
+
   const getOverallStatus = () => {
     const { failed, pending } = getDiagnosticSummary();
     if (pending > 0) return 'in-progress';
@@ -218,28 +428,82 @@ const DiagnosticChecklist: React.FC<DiagnosticChecklistProps> = ({
     return 'all-passed';
   };
 
+  const getOverallStatusFromItems = (items: DiagnosticItem[]) => {
+    const { failed, pending } = getDiagnosticSummaryFromItems(items);
+    if (pending > 0) return 'in-progress';
+    if (failed > 0) return 'issues-found';
+    return 'all-passed';
+  };
+
   const handleSaveDiagnostic = async () => {
+    console.log('[DiagnosticChecklist] Starting diagnostic save...');
     setLoading(true);
+    
     try {
       const summary = getDiagnosticSummary();
       const overallStatus = getOverallStatus();
 
-      // Save diagnostic results to device
-      const { error } = await supabase
-        .from('devices')
-        .update({
-          diagnostic_checklist: {
-            items: diagnosticItems,
-            notes: notes,
-            adminNotes: adminNotes,
-            summary: summary,
-            overallStatus: overallStatus,
-            last_updated: new Date().toISOString()
-          }
-        })
-        .eq('id', device.id);
+      console.log('[DiagnosticChecklist] Diagnostic summary:', summary);
+      console.log('[DiagnosticChecklist] Overall status:', overallStatus);
+      console.log('[DiagnosticChecklist] Device ID:', device.id);
+      console.log('[DiagnosticChecklist] Current device status:', device.status);
 
-      if (error) throw error;
+      const diagnosticData = {
+        diagnostic_checklist: {
+          items: diagnosticItems,
+          notes: notes,
+          adminNotes: adminNotes,
+          summary: summary,
+          overallStatus: overallStatus,
+          last_updated: new Date().toISOString()
+        }
+      };
+
+      console.log('[DiagnosticChecklist] Saving diagnostic data:', diagnosticData);
+
+      // Save diagnostic results to device
+      const { data, error } = await supabase
+        .from('devices')
+        .update(diagnosticData)
+        .eq('id', device.id)
+        .select();
+
+      if (error) {
+        console.error('[DiagnosticChecklist] ❌ Database update failed:', error);
+        console.error('[DiagnosticChecklist] Error details:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+        throw error;
+      }
+
+      console.log('[DiagnosticChecklist] ✅ Database update successful:', data);
+
+      // Also save individual diagnostic check records to diagnostic_checks table
+      console.log('[DiagnosticChecklist] Saving individual diagnostic check records...');
+      
+      for (const item of diagnosticItems) {
+        if (item.status !== 'pending') {
+          try {
+            const checkData = {
+              test_item: item.title,
+              result: item.status === 'pass' ? 'passed' : 'failed',
+              remarks: notes[item.id] || null,
+              image_url: null
+            };
+            
+            console.log('[DiagnosticChecklist] Creating diagnostic check for item:', item.id, checkData);
+            await createDiagnosticCheck(device.id, checkData);
+          } catch (error) {
+            console.error('[DiagnosticChecklist] Error creating diagnostic check for item:', item.id, error);
+            // Continue with other items even if one fails
+          }
+        }
+      }
+      
+      console.log('[DiagnosticChecklist] ✅ Individual diagnostic check records saved');
 
       // Update device status based on diagnostic results
       let newStatus: DeviceStatus = device.status;
@@ -251,14 +515,41 @@ const DiagnosticChecklist: React.FC<DiagnosticChecklistProps> = ({
         newStatus = 'diagnosis-started';
       }
 
+      console.log('[DiagnosticChecklist] Status update logic:', {
+        currentStatus: device.status,
+        newStatus: newStatus,
+        willUpdate: newStatus !== device.status
+      });
+
+      // Update status in database if it changed
       if (newStatus !== device.status) {
-        onStatusUpdate(newStatus);
+        console.log('[DiagnosticChecklist] Updating device status to:', newStatus);
+        
+        const { error: statusError } = await supabase
+          .from('devices')
+          .update({ 
+            status: newStatus,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', device.id);
+
+        if (statusError) {
+          console.error('[DiagnosticChecklist] Status update failed:', statusError);
+          toast.error('Failed to update device status');
+        } else {
+          console.log('[DiagnosticChecklist] ✅ Device status updated successfully');
+        }
       }
 
+      // Always call onStatusUpdate to refresh device data
+      console.log('[DiagnosticChecklist] Calling onStatusUpdate to refresh device data');
+      onStatusUpdate(newStatus);
+
+      console.log('[DiagnosticChecklist] ✅ Diagnostic save completed successfully');
       toast.success('Diagnostic results saved successfully');
       onClose();
     } catch (error) {
-      console.error('Error saving diagnostic:', error);
+      console.error('[DiagnosticChecklist] ❌ Error saving diagnostic:', error);
       toast.error('Failed to save diagnostic results');
     } finally {
       setLoading(false);
@@ -266,52 +557,110 @@ const DiagnosticChecklist: React.FC<DiagnosticChecklistProps> = ({
   };
 
   const handleSubmitToAdmin = async () => {
+    console.log('[DiagnosticChecklist] Starting admin submission...');
     setLoading(true);
+    
     try {
       const summary = getDiagnosticSummary();
       const overallStatus = getOverallStatus();
 
+      console.log('[DiagnosticChecklist] Admin submission data:', {
+        summary,
+        overallStatus,
+        deviceId: device.id,
+        currentStatus: device.status
+      });
+
+      const adminSubmissionData = {
+        diagnostic_checklist: {
+          items: diagnosticItems,
+          notes: notes,
+          adminNotes: adminNotes,
+          summary: summary,
+          overallStatus: overallStatus,
+          submittedToAdmin: true,
+          submittedAt: new Date().toISOString(),
+          last_updated: new Date().toISOString()
+        },
+        status: 'awaiting-admin-review'
+      };
+
+      console.log('[DiagnosticChecklist] Saving admin submission data:', adminSubmissionData);
+
       // Save diagnostic with admin submission
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('devices')
-        .update({
-          diagnostic_checklist: {
-            items: diagnosticItems,
-            notes: notes,
-            adminNotes: adminNotes,
-            summary: summary,
-            overallStatus: overallStatus,
-            submittedToAdmin: true,
-            submittedAt: new Date().toISOString(),
-            last_updated: new Date().toISOString()
-          },
-          status: 'awaiting-admin-review'
-        })
-        .eq('id', device.id);
+        .update(adminSubmissionData)
+        .eq('id', device.id)
+        .select();
 
-      if (error) throw error;
-
-      // Create admin notification
-      const { error: notificationError } = await supabase
-        .from('admin_notifications')
-        .insert({
-          device_id: device.id,
-          type: 'diagnostic_report',
-          title: `Diagnostic Report: ${device.brand} ${device.model}`,
-          message: `Diagnostic completed with ${summary.failed} issues found. Requires admin review.`,
-          status: 'unread',
-          created_at: new Date().toISOString()
+      if (error) {
+        console.error('[DiagnosticChecklist] ❌ Admin submission failed:', error);
+        console.error('[DiagnosticChecklist] Error details:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
         });
-
-      if (notificationError) {
-        console.warn('Failed to create admin notification:', notificationError);
+        throw error;
       }
 
+      console.log('[DiagnosticChecklist] ✅ Admin submission successful:', data);
+
+      // Also save individual diagnostic check records to diagnostic_checks table
+      console.log('[DiagnosticChecklist] Saving individual diagnostic check records for admin submission...');
+      
+      for (const item of diagnosticItems) {
+        if (item.status !== 'pending') {
+          try {
+            const checkData = {
+              test_item: item.title,
+              result: item.status === 'pass' ? 'passed' : 'failed',
+              remarks: notes[item.id] || null,
+              image_url: null
+            };
+            
+            console.log('[DiagnosticChecklist] Creating diagnostic check for item:', item.id, checkData);
+            await createDiagnosticCheck(device.id, checkData);
+          } catch (error) {
+            console.error('[DiagnosticChecklist] Error creating diagnostic check for item:', item.id, error);
+            // Continue with other items even if one fails
+          }
+        }
+      }
+      
+      console.log('[DiagnosticChecklist] ✅ Individual diagnostic check records saved for admin submission');
+
+      // Create admin notification
+      const notificationData = {
+        device_id: device.id,
+        type: 'diagnostic_report',
+        title: `Diagnostic Report: ${device.brand} ${device.model}`,
+        message: `Diagnostic completed with ${summary.failed} issues found. Requires admin review.`,
+        status: 'unread',
+        created_at: new Date().toISOString()
+      };
+
+      console.log('[DiagnosticChecklist] Creating admin notification:', notificationData);
+
+      const { error: notificationError } = await supabase
+        .from('admin_notifications')
+        .insert(notificationData);
+
+      if (notificationError) {
+        console.warn('[DiagnosticChecklist] ⚠️ Failed to create admin notification:', notificationError);
+      } else {
+        console.log('[DiagnosticChecklist] ✅ Admin notification created successfully');
+      }
+
+      console.log('[DiagnosticChecklist] Updating device status to awaiting-admin-review and refreshing device data');
       onStatusUpdate('awaiting-admin-review');
+      
+      console.log('[DiagnosticChecklist] ✅ Admin submission completed successfully');
       toast.success('Diagnostic report submitted to admin');
       onClose();
     } catch (error) {
-      console.error('Error submitting to admin:', error);
+      console.error('[DiagnosticChecklist] ❌ Error submitting to admin:', error);
       toast.error('Failed to submit to admin');
     } finally {
       setLoading(false);

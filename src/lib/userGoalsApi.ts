@@ -291,7 +291,7 @@ export async function getUserGoalProgress(userId: string, goalType: UserDailyGoa
           // Count customers created today (since we don't track created_by, we'll count all new customers today)
           const { count: newCustomersCount } = await supabase
             .from('customers')
-            .select('*', { count: 'exact', head: true })
+            .select('id', { count: 'exact', head: true })
             .gte('created_at', `${today}T00:00:00`)
             .lt('created_at', `${today}T23:59:59`);
           current = newCustomersCount || 0;
@@ -306,7 +306,7 @@ export async function getUserGoalProgress(userId: string, goalType: UserDailyGoa
           }
           const { count: devicesCount } = await supabase
             .from('devices')
-            .select('*', { count: 'exact', head: true })
+            .select('id', { count: 'exact', head: true })
             .eq('assigned_to', userId)
             .gte('created_at', `${today}T00:00:00`)
             .lt('created_at', `${today}T23:59:59`);
@@ -317,7 +317,7 @@ export async function getUserGoalProgress(userId: string, goalType: UserDailyGoa
           // Count customer check-ins today by this user
           const { count: checkinsCount } = await supabase
             .from('customer_checkins')
-            .select('*', { count: 'exact', head: true })
+            .select('id', { count: 'exact', head: true })
             .eq('staff_id', userId)
             .eq('checked_in_date', today);
           current = checkinsCount || 0;
@@ -332,7 +332,7 @@ export async function getUserGoalProgress(userId: string, goalType: UserDailyGoa
           }
           const { count: repairsCount } = await supabase
             .from('devices')
-            .select('*', { count: 'exact', head: true })
+            .select('id', { count: 'exact', head: true })
             .eq('assigned_to', userId)
             .eq('status', 'done')
             .gte('updated_at', `${today}T00:00:00`)

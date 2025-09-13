@@ -19,6 +19,11 @@ import {
   PaymentMethodSummary,
   DailySummary
 } from '../../../lib/paymentTrackingService';
+import { financialService, FinancialAnalytics } from '../../../lib/financialService';
+import { paymentService, PaymentAnalytics, PaymentInsights } from '../services/PaymentService';
+import { paymentProviderService, PaymentProvider } from '../../../lib/paymentProviderService';
+import { enhancedPaymentService } from '../../../lib/enhancedPaymentService';
+import { financeAccountService } from '../../../lib/financeAccountService';
 
 interface PaymentTrackingDashboardProps {
   onViewDetails?: (payment: PaymentTransaction) => void;
@@ -54,17 +59,38 @@ const PaymentTrackingDashboard: React.FC<PaymentTrackingDashboardProps> = ({
   const [methodSummary, setMethodSummary] = useState<PaymentMethodSummary[]>([]);
   const [dailySummary, setDailySummary] = useState<DailySummary[]>([]);
   
+  // Enhanced comprehensive data states
+  const [financialAnalytics, setFinancialAnalytics] = useState<FinancialAnalytics | null>(null);
+  const [paymentAnalytics, setPaymentAnalytics] = useState<PaymentAnalytics | null>(null);
+  const [paymentInsights, setPaymentInsights] = useState<PaymentInsights | null>(null);
+  const [paymentProviders, setPaymentProviders] = useState<PaymentProvider[]>([]);
+  const [financeAccounts, setFinanceAccounts] = useState<any[]>([]);
+  const [enhancedTransactions, setEnhancedTransactions] = useState<any[]>([]);
+  
   // Payment details modal state
   const [selectedTransactionId, setSelectedTransactionId] = useState<string | null>(null);
   const [showPaymentDetails, setShowPaymentDetails] = useState(false);
 
-  // Fetch payment data with better error handling
+  // Fetch comprehensive payment data from all available sources
   const fetchPaymentData = useCallback(async () => {
-    console.log('🔄 PaymentTracking: Fetching payment data...');
+    console.log('🔄 PaymentTracking: Fetching comprehensive payment data from all sources...');
     setIsLoading(true);
     try {
-      const [paymentsData, metricsData, methodSummaryData, dailySummaryData] = await Promise.allSettled([
-        paymentTrackingService.fetchPaymentTransactions(
+      // Fetch data from all available services in parallel
+      const [
+        paymentsData, 
+        metricsData, 
+        methodSummaryData, 
+        dailySummaryData,
+        financialAnalyticsData,
+        paymentAnalyticsData,
+        paymentInsightsData,
+        paymentProvidersData,
+        financeAccountsData,
+        enhancedTransactionsData
+      ] = await Promise.allSettled([
+        // Core payment tracking data (using debounced version to prevent concurrent requests)
+        paymentTrackingService.debouncedFetchPaymentTransactions(
           selectedDate || undefined, 
           selectedDate || undefined, 
           statusFilter !== 'all' ? statusFilter : undefined, 
@@ -72,12 +98,21 @@ const PaymentTrackingDashboard: React.FC<PaymentTrackingDashboardProps> = ({
         ),
         paymentTrackingService.calculatePaymentMetrics(selectedDate || undefined, selectedDate || undefined),
         paymentTrackingService.getPaymentMethodSummary(selectedDate || undefined, selectedDate || undefined),
-        paymentTrackingService.getDailySummary(7)
+        paymentTrackingService.getDailySummary(7),
+        
+        // Enhanced financial analytics
+        financialService.getComprehensiveFinancialData(),
+        paymentService.getPaymentAnalytics(selectedDate || undefined, selectedDate || undefined),
+        paymentService.getPaymentInsights(),
+        paymentProviderService.getPaymentProviders(),
+        financeAccountService.getActiveFinanceAccounts(),
+        enhancedPaymentService.getPaymentTransactionsForAccount('all', 1000, 0)
       ]);
 
-      // Handle each result individually
+      // Handle each result individually with comprehensive error handling
       if (paymentsData.status === 'fulfilled') {
         setPayments(paymentsData.value);
+        console.log(`✅ Fetched ${paymentsData.value.length} payment transactions`);
       } else {
         console.error('Failed to fetch payments:', paymentsData.reason);
         // Keep existing payments data if fetch fails
@@ -85,6 +120,7 @@ const PaymentTrackingDashboard: React.FC<PaymentTrackingDashboardProps> = ({
 
       if (metricsData.status === 'fulfilled') {
         setMetrics(metricsData.value);
+        console.log('✅ Fetched payment metrics');
       } else {
         console.error('Failed to fetch metrics:', metricsData.reason);
         // Keep existing metrics if fetch fails
@@ -92,6 +128,7 @@ const PaymentTrackingDashboard: React.FC<PaymentTrackingDashboardProps> = ({
 
       if (methodSummaryData.status === 'fulfilled') {
         setMethodSummary(methodSummaryData.value);
+        console.log('✅ Fetched payment method summary');
       } else {
         console.error('Failed to fetch method summary:', methodSummaryData.reason);
         // Keep existing method summary if fetch fails
@@ -99,18 +136,71 @@ const PaymentTrackingDashboard: React.FC<PaymentTrackingDashboardProps> = ({
 
       if (dailySummaryData.status === 'fulfilled') {
         setDailySummary(dailySummaryData.value);
+        console.log('✅ Fetched daily summary');
       } else {
         console.error('Failed to fetch daily summary:', dailySummaryData.reason);
         // Keep existing daily summary if fetch fails
       }
 
-      // Only show error toast if all requests failed
-      const allFailed = [paymentsData, metricsData, methodSummaryData, dailySummaryData].every(
-        result => result.status === 'rejected'
-      );
-      
-      if (allFailed) {
-        toast.error('Failed to load payment data. Check your connection.');
+      // Handle enhanced financial analytics
+      if (financialAnalyticsData.status === 'fulfilled') {
+        setFinancialAnalytics(financialAnalyticsData.value);
+        console.log('✅ Fetched comprehensive financial analytics');
+      } else {
+        console.error('Failed to fetch financial analytics:', financialAnalyticsData.reason);
+      }
+
+      // Handle payment analytics
+      if (paymentAnalyticsData.status === 'fulfilled') {
+        setPaymentAnalytics(paymentAnalyticsData.value);
+        console.log('✅ Fetched payment analytics');
+      } else {
+        console.error('Failed to fetch payment analytics:', paymentAnalyticsData.reason);
+      }
+
+      // Handle payment insights
+      if (paymentInsightsData.status === 'fulfilled') {
+        setPaymentInsights(paymentInsightsData.value);
+        console.log('✅ Fetched payment insights');
+      } else {
+        console.error('Failed to fetch payment insights:', paymentInsightsData.reason);
+      }
+
+      // Handle payment providers
+      if (paymentProvidersData.status === 'fulfilled') {
+        setPaymentProviders(paymentProvidersData.value);
+        console.log(`✅ Fetched ${paymentProvidersData.value.length} payment providers`);
+      } else {
+        console.error('Failed to fetch payment providers:', paymentProvidersData.reason);
+      }
+
+      // Handle finance accounts
+      if (financeAccountsData.status === 'fulfilled') {
+        setFinanceAccounts(financeAccountsData.value);
+        console.log(`✅ Fetched ${financeAccountsData.value.length} finance accounts`);
+      } else {
+        console.error('Failed to fetch finance accounts:', financeAccountsData.reason);
+      }
+
+      // Handle enhanced transactions
+      if (enhancedTransactionsData.status === 'fulfilled') {
+        setEnhancedTransactions(enhancedTransactionsData.value);
+        console.log(`✅ Fetched ${enhancedTransactionsData.value.length} enhanced transactions`);
+      } else {
+        console.error('Failed to fetch enhanced transactions:', enhancedTransactionsData.reason);
+      }
+
+      // Show success message if most requests succeeded
+      const successCount = [
+        paymentsData, metricsData, methodSummaryData, dailySummaryData,
+        financialAnalyticsData, paymentAnalyticsData, paymentInsightsData,
+        paymentProvidersData, financeAccountsData, enhancedTransactionsData
+      ].filter(result => result.status === 'fulfilled').length;
+
+      if (successCount >= 4) {
+        console.log(`✅ Successfully loaded ${successCount}/10 data sources`);
+      } else {
+        toast.error('Some payment data failed to load. Check your connection.');
       }
     } catch (error) {
       console.error('Error fetching payment data:', error);
@@ -130,7 +220,15 @@ const PaymentTrackingDashboard: React.FC<PaymentTrackingDashboardProps> = ({
     }
   }, [fetchPaymentData, autoRefresh]);
 
-  // Real-time subscriptions with better error handling
+  // Debounced fetch function for real-time updates
+  const debouncedFetch = useCallback(() => {
+    clearTimeout(reconnectTimeout);
+    reconnectTimeout = setTimeout(() => {
+      fetchPaymentData();
+    }, 2000); // 2 second debounce
+  }, [fetchPaymentData]);
+
+  // Real-time subscriptions with comprehensive table coverage
   useEffect(() => {
     if (!autoRefresh) return;
 
@@ -139,7 +237,7 @@ const PaymentTrackingDashboard: React.FC<PaymentTrackingDashboardProps> = ({
 
     let reconnectAttempts = 0;
     const maxReconnectAttempts = 2; // Reduced to 2 attempts
-    const baseReconnectDelay = 10000; // Increased to 10 seconds
+    const baseReconnectDelay = 10000; // Increased to 10 seconds for stability
     let isSubscribed = false;
     let isConnecting = false;
     let lastConnectionAttempt = 0;
@@ -163,22 +261,46 @@ const PaymentTrackingDashboard: React.FC<PaymentTrackingDashboardProps> = ({
         }
 
         paymentsSubscription = supabase
-          .channel('payment-tracking-updates')
+          .channel('comprehensive-payment-tracking-updates')
+          // Core payment tables
           .on('postgres_changes', { event: '*', schema: 'public', table: 'customer_payments' }, (payload) => {
-            console.log('🔔 Payment update received:', payload);
-            // Debounce the fetch to prevent excessive calls
-            clearTimeout(reconnectTimeout);
-            reconnectTimeout = setTimeout(() => {
-              fetchPaymentData();
-            }, 3000); // Increased debounce time to 3 seconds
+            console.log('🔔 Customer payment update received:', payload);
+            debouncedFetch();
           })
           .on('postgres_changes', { event: '*', schema: 'public', table: 'lats_sales' }, (payload) => {
-            console.log('🔔 Sale update received:', payload);
-            // Debounce the fetch to prevent excessive calls
-            clearTimeout(reconnectTimeout);
-            reconnectTimeout = setTimeout(() => {
-              fetchPaymentData();
-            }, 3000); // Increased debounce time to 3 seconds
+            console.log('🔔 POS sale update received:', payload);
+            debouncedFetch();
+          })
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'lats_sale_items' }, (payload) => {
+            console.log('🔔 Sale item update received:', payload);
+            debouncedFetch();
+          })
+          // Financial and account tables
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_accounts' }, (payload) => {
+            console.log('🔔 Finance account update received:', payload);
+            debouncedFetch();
+          })
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_transactions' }, (payload) => {
+            console.log('🔔 Finance transaction update received:', payload);
+            debouncedFetch();
+          })
+          // Customer and device tables
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, (payload) => {
+            console.log('🔔 Customer update received:', payload);
+            debouncedFetch();
+          })
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'devices' }, (payload) => {
+            console.log('🔔 Device update received:', payload);
+            debouncedFetch();
+          })
+          // Audit and compliance tables
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_audit_log' }, (payload) => {
+            console.log('🔔 Payment audit log update received:', payload);
+            debouncedFetch();
+          })
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_reconciliation' }, (payload) => {
+            console.log('🔔 Payment reconciliation update received:', payload);
+            debouncedFetch();
           })
           .subscribe((status) => {
             console.log('📡 Subscription status:', status);
@@ -313,6 +435,43 @@ const PaymentTrackingDashboard: React.FC<PaymentTrackingDashboardProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Comprehensive Data Sources Status */}
+      <div className="mb-6">
+        <GlassCard className="p-4">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Data Sources Status</h3>
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+              <span className="text-sm text-gray-600">Live Updates</span>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-blue-600">{payments.length}</div>
+              <div className="text-xs text-gray-600">Transactions</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-green-600">{paymentProviders.length}</div>
+              <div className="text-xs text-gray-600">Providers</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-purple-600">{financeAccounts.length}</div>
+              <div className="text-xs text-gray-600">Accounts</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-orange-600">{enhancedTransactions.length}</div>
+              <div className="text-xs text-gray-600">Enhanced</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-indigo-600">
+                {financialAnalytics ? '✓' : '✗'}
+              </div>
+              <div className="text-xs text-gray-600">Analytics</div>
+            </div>
+          </div>
+        </GlassCard>
+      </div>
+
       {/* Enhanced Metrics Dashboard */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <GlassCard className="p-4 hover:shadow-lg transition-shadow">
@@ -376,6 +535,127 @@ const PaymentTrackingDashboard: React.FC<PaymentTrackingDashboardProps> = ({
           </div>
         </GlassCard>
       </div>
+
+      {/* Comprehensive Analytics Section */}
+      {(financialAnalytics || paymentAnalytics || paymentInsights) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Financial Analytics */}
+          {financialAnalytics && (
+            <GlassCard className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Financial Analytics</h3>
+                <BarChart3 className="w-5 h-5 text-blue-600" />
+              </div>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="text-center p-3 bg-blue-50 rounded-lg">
+                    <div className="text-2xl font-bold text-blue-600">
+                      {formatMoney(financialAnalytics.summary.totalRevenue)}
+                    </div>
+                    <div className="text-xs text-gray-600">Total Revenue</div>
+                  </div>
+                  <div className="text-center p-3 bg-green-50 rounded-lg">
+                    <div className="text-2xl font-bold text-green-600">
+                      {formatMoney(financialAnalytics.summary.totalExpenses)}
+                    </div>
+                    <div className="text-xs text-gray-600">Total Expenses</div>
+                  </div>
+                </div>
+                <div className="text-center p-3 bg-purple-50 rounded-lg">
+                  <div className="text-2xl font-bold text-purple-600">
+                    {formatMoney(financialAnalytics.summary.netProfit)}
+                  </div>
+                  <div className="text-xs text-gray-600">Net Profit</div>
+                </div>
+                <div className="text-sm text-gray-600">
+                  <div>Revenue Growth: {financialAnalytics.summary.revenueGrowth?.toFixed(1) || '0.0'}%</div>
+                  <div>Expense Growth: {financialAnalytics.summary.expenseGrowth?.toFixed(1) || '0.0'}%</div>
+                  <div>Profit Growth: {financialAnalytics.summary.profitGrowth?.toFixed(1) || '0.0'}%</div>
+                </div>
+              </div>
+            </GlassCard>
+          )}
+
+          {/* Payment Insights */}
+          {paymentInsights && (
+            <GlassCard className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Payment Insights</h3>
+                <Activity className="w-5 h-5 text-green-600" />
+              </div>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="text-center p-3 bg-green-50 rounded-lg">
+                    <div className="text-2xl font-bold text-green-600">
+                      {paymentInsights.topPaymentMethod}
+                    </div>
+                    <div className="text-xs text-gray-600">Top Method</div>
+                  </div>
+                  <div className="text-center p-3 bg-blue-50 rounded-lg">
+                    <div className="text-2xl font-bold text-blue-600">
+                      {formatMoney(paymentInsights.averageTransactionValue)}
+                    </div>
+                    <div className="text-xs text-gray-600">Avg Transaction</div>
+                  </div>
+                </div>
+                <div className="text-center p-3 bg-orange-50 rounded-lg">
+                  <div className="text-2xl font-bold text-orange-600">
+                    {paymentInsights.peakHour}
+                  </div>
+                  <div className="text-xs text-gray-600">Peak Hour</div>
+                </div>
+                <div className="text-sm text-gray-600">
+                  <div>Success Rate: {paymentInsights.successRate?.toFixed(1) || '0.0'}%</div>
+                  <div>Failure Rate: {paymentInsights.failureRate?.toFixed(1) || '0.0'}%</div>
+                  <div>Refund Rate: {paymentInsights.refundRate?.toFixed(1) || '0.0'}%</div>
+                </div>
+              </div>
+            </GlassCard>
+          )}
+        </div>
+      )}
+
+      {/* Payment Providers Performance */}
+      {paymentProviders.length > 0 && (
+        <GlassCard className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Payment Providers Performance</h3>
+            <Settings className="w-5 h-5 text-indigo-600" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {paymentProviders.map((provider) => (
+              <div key={provider.id} className="p-4 border border-gray-200 rounded-lg hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-semibold text-gray-900">{provider.name}</h4>
+                  <span className={`px-2 py-1 text-xs rounded-full ${
+                    provider.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                  }`}>
+                    {provider.status}
+                  </span>
+                </div>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Success Rate:</span>
+                    <span className="font-medium">{provider.performance.successRate?.toFixed(1) || '0.0'}%</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Response Time:</span>
+                    <span className="font-medium">{provider.performance.averageResponseTime}s</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Transactions:</span>
+                    <span className="font-medium">{provider.performance.totalTransactions}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Uptime:</span>
+                    <span className="font-medium">{provider.performance.uptime?.toFixed(1) || '0.0'}%</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </GlassCard>
+      )}
 
       {/* Enhanced Filters */}
       <GlassCard className="p-4">
@@ -552,7 +832,18 @@ const PaymentTrackingDashboard: React.FC<PaymentTrackingDashboardProps> = ({
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3">
                 <div>
                   <div className="text-sm text-gray-600">Method</div>
-                  <div className="font-medium text-gray-900">{payment.method}</div>
+                  <div className="font-medium text-gray-900">
+                    {payment.method === 'Multiple' ? (
+                      <div className="flex items-center gap-1">
+                        <span className="text-blue-600 font-semibold">Multiple</span>
+                        <span className="text-xs text-gray-500">
+                          ({payment.metadata?.paymentMethod?.details?.payments?.length || 0} methods)
+                        </span>
+                      </div>
+                    ) : (
+                      payment.method
+                    )}
+                  </div>
                 </div>
                 <div>
                   <div className="text-sm text-gray-600">Reference</div>
@@ -572,6 +863,26 @@ const PaymentTrackingDashboard: React.FC<PaymentTrackingDashboardProps> = ({
                 <div>Cashier: {payment.cashier}</div>
                 <div>{new Date(payment.date).toLocaleString()}</div>
               </div>
+
+              {/* Show multiple payment preview if applicable */}
+              {payment.method === 'Multiple' && payment.metadata?.paymentMethod?.details?.payments && (
+                <div className="mb-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="text-sm font-medium text-blue-900 mb-2">Payment Methods:</div>
+                  <div className="flex flex-wrap gap-2">
+                    {payment.metadata.paymentMethod.details.payments.slice(0, 3).map((p: any, idx: number) => (
+                      <div key={idx} className="flex items-center gap-1 bg-white px-2 py-1 rounded border text-xs">
+                        <span className="font-medium text-gray-700">{p.method}</span>
+                        <span className="text-gray-500">({formatMoney(p.amount)})</span>
+                      </div>
+                    ))}
+                    {payment.metadata.paymentMethod.details.payments.length > 3 && (
+                      <div className="flex items-center gap-1 bg-white px-2 py-1 rounded border text-xs">
+                        <span className="text-gray-500">+{payment.metadata.paymentMethod.details.payments.length - 3} more</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <div className="flex gap-2">
                 {payment.status === 'pending' && (

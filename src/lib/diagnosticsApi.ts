@@ -370,6 +370,41 @@ export const getDiagnosticTemplate = async (deviceType: string): Promise<Diagnos
   }
 };
 
+export const getDiagnosticTemplateForDevice = async (deviceModel: string): Promise<DiagnosticTemplate | null> => {
+  try {
+    console.log('[DiagnosticTemplate] Getting template for device model:', deviceModel);
+    
+    // Determine device type based on model
+    const modelLower = deviceModel.toLowerCase();
+    let deviceType = 'general';
+    
+    if (modelLower.includes('laptop') || modelLower.includes('notebook') || modelLower.includes('macbook')) {
+      deviceType = 'laptop';
+    } else if (modelLower.includes('phone') || modelLower.includes('mobile') || modelLower.includes('iphone') || modelLower.includes('android')) {
+      deviceType = 'phone';
+    } else if (modelLower.includes('tablet') || modelLower.includes('ipad')) {
+      deviceType = 'mobile';
+    }
+    
+    console.log('[DiagnosticTemplate] Determined device type:', deviceType);
+    
+    // Try to get specific template first
+    let template = await getDiagnosticTemplate(deviceType);
+    
+    // Fallback to general template if specific template not found
+    if (!template && deviceType !== 'general') {
+      console.log('[DiagnosticTemplate] Specific template not found, falling back to general template');
+      template = await getDiagnosticTemplate('general');
+    }
+    
+    console.log('[DiagnosticTemplate] Retrieved template:', template ? 'Found' : 'Not found');
+    return template;
+  } catch (error: any) {
+    console.error('Error getting diagnostic template for device:', error);
+    return null;
+  }
+};
+
 export const createDiagnosticTemplate = async (template: Omit<DiagnosticTemplate, 'id' | 'created_at'>): Promise<DiagnosticTemplate | null> => {
   try {
     const { data, error } = await supabase

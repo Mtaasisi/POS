@@ -69,22 +69,13 @@ const allowedDeviceFields = [
   'assigned_to',
   'estimated_hours',
   'expected_return_date',
+  'warranty_start',
+  'warranty_end',
+  'warranty_status',
+  'repair_count',
+  'last_return_date',
   'created_at',
   'updated_at',
-  'device_type',
-  'priority_level',
-  'issue_type',
-  'repair_cost',
-  'labor_cost',
-  'parts_cost',
-  'deposit_amount',
-  'payment_status',
-  'symptoms',
-  'possible_causes',
-  'additional_notes',
-  'issue_confirmed',
-  'physical_check',
-  'diagnosis_required',
 ];
 
 function sanitizeDevicePayload(payload: any) {
@@ -201,13 +192,13 @@ export const deviceServices = {
 
   // Update device
   async updateDevice(id: string, updates: Database['public']['Tables']['devices']['Update']) {
-    // Debug logging removed for production
+    console.log('[deviceServices.updateDevice] Called with:', { id, updates });
     
     const snakeCaseUpdates = Object.fromEntries(
       Object.entries(updates).map(([key, value]) => [toSnakeCase(key), value])
     );
     
-    // Debug logging removed for production
+    console.log('[deviceServices.updateDevice] Snake case updates:', snakeCaseUpdates);
     
     // Update device directly (removed SQL function call since it doesn't exist)
     const { data, error } = await supabase
@@ -217,7 +208,18 @@ export const deviceServices = {
       .select()
       .single();
     
-    if (error) throw error;
+    if (error) {
+      console.error('[deviceServices.updateDevice] ❌ Update failed:', error);
+      console.error('[deviceServices.updateDevice] Error details:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      });
+      throw error;
+    }
+    
+    console.log('[deviceServices.updateDevice] ✅ Update successful:', data);
     // Notification: Device status change
     if (updates.status) {
       await supabase.from('device_notifications').insert({
@@ -557,6 +559,11 @@ export const deviceServices = {
     created_by?: string;
   }) {
     try {
+      // Validate customer ID
+      if (!paymentData.customer_id) {
+        throw new Error('Customer ID is required for payment record');
+      }
+
       const { data, error } = await supabase
         .from('customer_payments')
         .insert([paymentData])

@@ -144,7 +144,7 @@ const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         'lats_pos_receipt_settings',
         'lats_pos_advanced_settings',
         'lats_purchase_orders',
-        'stock_movements',
+        'lats_stock_movements',
         'user_daily_goals',
         
         // Financial Tables (important for business)

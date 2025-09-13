@@ -246,10 +246,11 @@ const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
       const day = match[1];
       const monthAbbr = match[2];
       
-      // Month abbreviation mapping
+      // Month abbreviation mapping with common typos
       const monthMap: { [key: string]: string } = {
         'jan': 'January',
         'feb': 'February',
+        'fe': 'February', // Handle corrupted "Feb" -> "Fe"
         'mar': 'March',
         'apr': 'April',
         'may': 'May',
@@ -264,7 +265,9 @@ const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
       
       const fullMonth = monthMap[monthAbbr];
       if (fullMonth) {
-        return { month: fullMonth, day };
+        // Convert month name to number for database storage
+        const monthNumber = new Date(`${fullMonth} 1, 2000`).getMonth() + 1;
+        return { month: monthNumber.toString(), day };
       }
     }
     
@@ -279,6 +282,7 @@ const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
       const monthMap: { [key: string]: string } = {
         'jan': 'January',
         'feb': 'February',
+        'fe': 'February', // Handle corrupted "Feb" -> "Fe"
         'mar': 'March',
         'apr': 'April',
         'may': 'May',
@@ -293,7 +297,9 @@ const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
       
       const fullMonth = monthMap[monthAbbr];
       if (fullMonth) {
-        return { month: fullMonth, day };
+        // Convert month name to number for database storage
+        const monthNumber = new Date(`${fullMonth} 1, 2000`).getMonth() + 1;
+        return { month: monthNumber.toString(), day };
       }
     }
     

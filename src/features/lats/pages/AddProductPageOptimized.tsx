@@ -7,13 +7,13 @@ import { BackButton } from '../../shared/components/ui/BackButton';
 import LATSBreadcrumb from '../components/ui/LATSBreadcrumb';
 import { toast } from 'react-hot-toast';
 import { Save, Plus, ArrowLeft, Settings, MapPin, Store } from 'lucide-react';
-import { useInventoryStore } from '../stores/useInventoryStore';
 import { supabase } from '../../../lib/supabaseClient';
 import { useAuth } from '../../../context/AuthContext';
 import { retryWithBackoff } from '../../../lib/supabaseClient';
 
-import { Category } from '../../../lib/categoryApi';
+import { getActiveCategories, Category } from '../../../lib/categoryApi';
 import { getActiveSuppliers, Supplier } from '../../../lib/supplierApi';
+import { generateSKU } from '../lib/skuUtils';
 
 // Extracted components
 import ProductInformationForm from '../components/product/ProductInformationForm';
@@ -76,12 +76,17 @@ type ProductImage = z.infer<typeof ProductImageSchema>;
 
 const AddProductPageOptimized: React.FC = () => {
   const navigate = useNavigate();
-  const { categories, loadCategories } = useInventoryStore();
+  const [categories, setCategories] = useState<Category[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [currentErrors, setCurrentErrors] = useState<Record<string, string>>({});
+
+  // Generate auto SKU using utility function
+  const generateAutoSKU = () => {
+    return generateSKU();
+  };
 
   // Initial form data
   const [formData, setFormData] = useState({
@@ -127,24 +132,23 @@ const AddProductPageOptimized: React.FC = () => {
 
   // Load data on component mount
   useEffect(() => {
-      const loadData = async () => {
-    try {
-      const [suppliersData] = await Promise.all([
-        getActiveSuppliers()
-      ]);
+    const loadData = async () => {
+      try {
+        const [categoriesData, suppliersData] = await Promise.all([
+          getActiveCategories(),
+          getActiveSuppliers()
+        ]);
 
-      // Load ALL categories using inventory store
-      await loadCategories();
-
-      setSuppliers(suppliersData || []);
-    } catch (error) {
-      console.error('Error loading data:', error);
-      toast.error('Failed to load form data');
-    }
-  };
+        setCategories(categoriesData || []);
+        setSuppliers(suppliersData || []);
+      } catch (error) {
+        console.error('Error loading data:', error);
+        toast.error('Failed to load form data');
+      }
+    };
 
     loadData();
-  }, [loadCategories]);
+  }, []);
 
   // Check if product name exists
   const checkProductName = async (name: string) => {
@@ -299,6 +303,7 @@ const AddProductPageOptimized: React.FC = () => {
               isCheckingName={isCheckingName}
               nameExists={nameExists}
               onNameCheck={checkProductName}
+              onGenerateSKU={generateAutoSKU}
             />
 
             {/* Pricing and Stock Form */}

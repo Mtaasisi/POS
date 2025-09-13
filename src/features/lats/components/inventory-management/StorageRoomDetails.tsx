@@ -807,7 +807,7 @@ const StorageRoomDetails: React.FC = () => {
                         {group.shelves.map(shelf => (
                           <div key={shelf.id} className="p-2 bg-gray-50 rounded border text-center">
                             <div className="font-mono text-xs">{shelf.code}</div>
-                            <div className="text-[10px] text-gray-500">{shelf.name}</div>
+                            <div className="text-[10px] text-gray-500">{shelf.code}</div>
                           </div>
                         ))}
                       </div>

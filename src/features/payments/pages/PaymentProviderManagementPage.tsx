@@ -16,6 +16,8 @@ import { toast } from 'react-hot-toast';
 import { supabase } from '../../../lib/supabaseClient';
 import { usePaymentMethodsContext } from '../../../context/PaymentMethodsContext';
 import { paymentProviderService } from '../../../lib/paymentProviderService';
+import PaymentLogoUploader from '../../../components/PaymentLogoUploader';
+import PaymentLogoUploaderBase64 from '../../../components/PaymentLogoUploaderBase64';
 
 interface PaymentProvider {
   id: string;
@@ -27,6 +29,7 @@ interface PaymentProvider {
   webhookUrl?: string;
   baseUrl?: string;
   supportedMethods: string[];
+  paymentIcon?: string; // Support for custom payment logos
   fees: {
     percentage: number;
     fixed: number;
@@ -175,6 +178,7 @@ const PaymentProviderManagementPage: React.FC = () => {
             webhook_url: formData.webhookUrl,
             base_url: formData.baseUrl,
             supported_methods: formData.supportedMethods,
+            payment_icon: formData.paymentIcon,
             fee_percentage: formData.fees.percentage,
             fee_fixed: formData.fees.fixed,
             currency: formData.fees.currency,
@@ -202,6 +206,7 @@ const PaymentProviderManagementPage: React.FC = () => {
             webhook_url: formData.webhookUrl,
             base_url: formData.baseUrl,
             supported_methods: formData.supportedMethods,
+            payment_icon: formData.paymentIcon,
             fee_percentage: formData.fees.percentage,
             fee_fixed: formData.fees.fixed,
             currency: formData.fees.currency,
@@ -555,6 +560,15 @@ const PaymentProviderManagementPage: React.FC = () => {
                       onChange={(value) => handleInputChange('type', value)}
                     />
                   </div>
+                </div>
+
+                {/* Payment Logo */}
+                <div>
+                  <PaymentLogoUploaderBase64
+                    currentIcon={formData.paymentIcon}
+                    onIconChange={(iconUrl) => handleInputChange('paymentIcon', iconUrl)}
+                    paymentMethodName={formData.name || 'Payment Method'}
+                  />
                 </div>
 
                 {/* API Configuration */}

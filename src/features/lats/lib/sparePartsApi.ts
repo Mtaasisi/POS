@@ -419,7 +419,7 @@ export const getSparePartStats = async (): Promise<SparePartStats> => {
     // Get total spare parts
     const { count: totalSpareParts } = await supabase
       .from('lats_spare_parts')
-      .select('*', { count: 'exact', head: true });
+      .select('id', { count: 'exact', head: true });
 
     // Get total value
     const { data: valueData } = await supabase
@@ -431,14 +431,14 @@ export const getSparePartStats = async (): Promise<SparePartStats> => {
     // Get low stock count
     const { count: lowStockCount } = await supabase
       .from('lats_spare_parts')
-      .select('*', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true })
       .lte('quantity', supabase.raw('min_quantity'))
       .gt('quantity', 0);
 
     // Get out of stock count
     const { count: outOfStockCount } = await supabase
       .from('lats_spare_parts')
-      .select('*', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true })
       .eq('quantity', 0);
 
     // Get unique categories count

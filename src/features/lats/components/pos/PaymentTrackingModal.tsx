@@ -548,7 +548,7 @@ const PaymentTrackingModal: React.FC<PaymentTrackingModalProps> = ({ isOpen, onC
     try {
       // Fetch all payment data
       const [paymentsData, metricsData, methodSummaryData, dailySummaryData, reconciliationData] = await Promise.all([
-        paymentTrackingService.fetchPaymentTransactions(selectedDate || undefined, selectedDate || undefined, selectedStatus !== 'all' ? selectedStatus : undefined, selectedMethod !== 'all' ? selectedMethod : undefined),
+        paymentTrackingService.debouncedFetchPaymentTransactions(selectedDate || undefined, selectedDate || undefined, selectedStatus !== 'all' ? selectedStatus : undefined, selectedMethod !== 'all' ? selectedMethod : undefined),
         paymentTrackingService.calculatePaymentMetrics(selectedDate || undefined, selectedDate || undefined),
         paymentTrackingService.getPaymentMethodSummary(selectedDate || undefined, selectedDate || undefined),
         paymentTrackingService.getDailySummary(7),

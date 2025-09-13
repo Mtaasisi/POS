@@ -607,7 +607,9 @@ export const getShelfDisplay = (shelfInfo: {
 }): string => {
   const parts: string[] = [];
   
-  if (shelfInfo.shelfName) {
+  if (shelfInfo.shelfCode) {
+    parts.push(shelfInfo.shelfCode);
+  } else if (shelfInfo.shelfName) {
     parts.push(shelfInfo.shelfName);
   }
   

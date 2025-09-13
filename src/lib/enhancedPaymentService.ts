@@ -2,20 +2,22 @@ import { supabase } from './supabaseClient';
 
 export interface PaymentTransaction {
   id: string;
-  account_id: string;
-  payment_method_id?: string;
+  order_id: string;
+  provider: string;
   amount: number;
-  transaction_type: 'payment' | 'deposit' | 'withdrawal' | 'transfer' | 'refund';
+  currency: string;
   status: 'pending' | 'completed' | 'failed' | 'cancelled';
-  reference_number?: string;
-  description?: string;
   customer_id?: string;
-  order_id?: string;
-  source_type: 'pos_sale' | 'device_payment' | 'manual_entry';
-  receipt_url?: string;
-  created_by?: string;
+  customer_name?: string;
+  customer_email?: string;
+  customer_phone?: string;
+  reference?: string;
+  metadata?: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+  completed_at?: string;
+  sale_id?: string;
+  pos_session_id?: string;
 }
 
 export interface PaymentMethod {
@@ -176,18 +178,30 @@ class EnhancedPaymentService {
     description?: string
   ): Promise<PaymentTransaction | null> {
     try {
+      // Validate customer ID for payment transactions
+      if ((transactionType === 'payment' || sourceType === 'pos_sale' || sourceType === 'device_payment') && !customerId) {
+        console.error('Customer ID is required for payment transactions');
+        return null;
+      }
+
+      // Generate a unique order_id if not provided
+      const finalOrderId = orderId || `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
       const { data, error } = await supabase
         .from('payment_transactions')
         .insert([{
-          account_id: accountId,
-          payment_method_id: paymentMethodId,
+          order_id: finalOrderId,
+          provider: paymentMethodId || 'manual',
           amount,
-          transaction_type: transactionType,
+          currency: 'TZS',
           status: 'completed',
-          description,
-          customer_id: customerId,
-          order_id: orderId,
-          source_type: sourceType
+          customer_id: customerId || '00000000-0000-0000-0000-000000000000',
+          reference: description,
+          metadata: {
+            transaction_type: transactionType,
+            source_type: sourceType,
+            account_id: accountId
+          }
         }])
         .select()
         .single();
@@ -200,24 +214,25 @@ class EnhancedPaymentService {
     }
   }
 
-  // Get payment transactions for account
+  // Get payment transactions (all transactions since payment_transactions table doesn't have account_id)
   async getPaymentTransactionsForAccount(
     accountId: string,
     limit: number = 50,
     offset: number = 0
   ): Promise<PaymentTransaction[]> {
     try {
+      // Note: payment_transactions table doesn't have account_id column
+      // This method gets all transactions regardless of accountId parameter
       const { data, error } = await supabase
         .from('payment_transactions')
         .select('*')
-        .eq('account_id', accountId)
         .order('created_at', { ascending: false })
         .range(offset, offset + limit - 1);
 
       if (error) throw error;
       return data || [];
     } catch (error) {
-      console.error('Error fetching payment transactions for account:', error);
+      console.error('Error fetching payment transactions:', error);
       return [];
     }
   }

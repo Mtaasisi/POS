@@ -47,7 +47,6 @@ import {
   Minus,
   Upload,
   X,
-  Bug,
   Palette,
   HardDrive,
   Cpu,
@@ -99,8 +98,6 @@ const ProductDetailPage: React.FC = () => {
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   const [showImageModal, setShowImageModal] = useState(false);
   const [selectedImage, setSelectedImage] = useState<ProductImage | null>(null);
-  const [showDebug, setShowDebug] = useState(false);
-  const [debugInfo, setDebugInfo] = useState<any>(null);
   
   // Form state for editing
   const [isEditing, setIsEditing] = useState(false);
@@ -161,43 +158,11 @@ const ProductDetailPage: React.FC = () => {
         const productData = data as Product;
         setProduct(productData);
         
-        // DEBUG: Log detailed product information
-        console.log('🔍 [ProductDetailPage] DEBUG - Product data loaded:', {
-          id: productData.id,
-          name: productData.name,
-          sku: productData.sku,
-          category: productData.category,
-          supplier: productData.supplier,
-          totalQuantity: productData.totalQuantity,
-          variants: productData.variants,
-          images: productData.images,
-          attributes: productData.attributes,
-          metadata: productData.metadata
-        });
-        
-        // DEBUG: Check for missing information
-        const missingInfo = [];
-        if (!productData.supplier) missingInfo.push('supplier');
-        if (!productData.category) missingInfo.push('category');
-        if (!productData.variants || productData.variants.length === 0) missingInfo.push('variants');
-        if (!productData.images || productData.images.length === 0) missingInfo.push('images');
-        if (productData.totalQuantity === 0) missingInfo.push('stock quantity');
-        
-        if (missingInfo.length > 0) {
-          console.warn('⚠️ [ProductDetailPage] DEBUG - Missing information:', missingInfo);
-        } else {
-          console.log('✅ [ProductDetailPage] DEBUG - All information present');
-        }
         
         // Load images
         const productImages = await RobustImageService.getProductImages(actualId);
         setImages(productImages);
         
-        // DEBUG: Log image loading results
-        console.log('🖼️ [ProductDetailPage] DEBUG - Images loaded:', {
-          count: productImages.length,
-          images: productImages.map(img => ({ url: img.image_url, is_primary: img.is_primary }))
-        });
         
         // Calculate analytics
         const totalStock = calculateTotalStock(productData.variants);
@@ -216,24 +181,12 @@ const ProductDetailPage: React.FC = () => {
           stockStatus
         });
         
-        // DEBUG: Log analytics
-        console.log('📊 [ProductDetailPage] DEBUG - Analytics calculated:', {
-          totalStock,
-          totalCostValue,
-          totalRetailValue,
-          potentialProfit,
-          profitMargin,
-          stockStatus
-        });
         
-        console.log('✅ Product data loaded successfully:', productData);
       } else {
-        console.error('❌ Failed to load product data:', message);
         setError(message || 'Failed to load product data');
         toast.error(`Failed to load product: ${message}`);
       }
     } catch (error) {
-      console.error('❌ Exception loading product data:', error);
       setError('Failed to load product data');
       toast.error('Failed to load product data');
     } finally {
@@ -260,7 +213,6 @@ const ProductDetailPage: React.FC = () => {
     const handleProductDataUpdate = (event: CustomEvent) => {
       const { updatedProducts } = event.detail;
       if (actualId && updatedProducts.includes(actualId)) {
-        console.log('🔄 Product data updated, refreshing product details...');
         refreshProductData();
       }
     };
@@ -305,7 +257,6 @@ const ProductDetailPage: React.FC = () => {
         toast.error(`Failed to delete product: ${message}`);
       }
     } catch (error) {
-      console.error('❌ Error deleting product:', error);
       toast.error('Failed to delete product');
     } finally {
       setShowDeleteConfirmation(false);
@@ -358,7 +309,6 @@ const ProductDetailPage: React.FC = () => {
       
       setNameExists(data && data.length > 0);
     } catch (error) {
-      console.error('Error checking product name:', error);
     } finally {
       setIsCheckingName(false);
     }
@@ -476,15 +426,84 @@ const ProductDetailPage: React.FC = () => {
           </div>
         </GlassCard>
 
+        {/* Analytics Overview - Prominent Position */}
+        <GlassCard className="p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <BarChart3 size={18} className="text-green-600" />
+            Analytics Overview
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Package size={16} className="text-blue-600" />
+                <span className="text-sm font-medium text-blue-700">Total Stock</span>
+              </div>
+              <p className="text-2xl font-bold text-blue-900">{analytics.totalStock}</p>
+              <p className="text-sm text-blue-600">units</p>
+            </div>
+            
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <DollarSign size={16} className="text-green-600" />
+                <span className="text-sm font-medium text-green-700">Cost Value</span>
+              </div>
+              <p className="text-2xl font-bold text-green-900">{format.money(analytics.totalCostValue)}</p>
+              <p className="text-sm text-green-600">total cost</p>
+            </div>
+            
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <TrendingUp size={16} className="text-purple-600" />
+                <span className="text-sm font-medium text-purple-700">Retail Value</span>
+              </div>
+              <p className="text-2xl font-bold text-purple-900">{format.money(analytics.totalRetailValue)}</p>
+              <p className="text-sm text-purple-600">potential sales</p>
+            </div>
+            
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Zap size={16} className="text-orange-600" />
+                <span className="text-sm font-medium text-orange-700">Profit Margin</span>
+              </div>
+              <p className="text-2xl font-bold text-orange-900">{analytics.profitMargin.toFixed(1)}%</p>
+              <p className="text-sm text-orange-600">potential profit</p>
+            </div>
+          </div>
+          
+          {/* Stock Status */}
+          <div className="p-4 bg-gray-50 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className={`w-3 h-3 rounded-full ${
+                  analytics.stockStatus === 'low' ? 'bg-orange-500' :
+                  analytics.stockStatus === 'out-of-stock' ? 'bg-red-500' :
+                  analytics.stockStatus === 'high' ? 'bg-green-500' : 'bg-blue-500'
+                }`}></div>
+                <span className="text-sm font-medium text-gray-700">Stock Status</span>
+              </div>
+              <GlassBadge 
+                variant={
+                  analytics.stockStatus === 'low' ? 'warning' :
+                  analytics.stockStatus === 'out-of-stock' ? 'error' :
+                  analytics.stockStatus === 'high' ? 'success' : 'info'
+                }
+                size="sm"
+              >
+                {getStockStatusText(analytics.stockStatus)}
+              </GlassBadge>
+            </div>
+          </div>
+        </GlassCard>
+
         {/* Main Content Area */}
-        <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main Content */}
-          <div className="xl:col-span-3 space-y-6">
+          <div className="lg:col-span-2 space-y-6">
             {/* Basic Information */}
             <GlassCard className="p-6">
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                  <Package size={16} className="text-blue-600" />
+                  <Package size={18} className="text-blue-600" />
                   Basic Information
                 </h3>
                 <GlassButton
@@ -504,9 +523,6 @@ const ProductDetailPage: React.FC = () => {
                 <div>
                   <label className="block text-sm font-medium text-gray-600 mb-1">SKU</label>
                   <p className="text-gray-900 font-medium text-base">{product.sku || 'N/A'}</p>
-                </div>
-                <div>
-                  
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-600 mb-1">Status</label>
@@ -533,75 +549,6 @@ const ProductDetailPage: React.FC = () => {
                     <p className="text-gray-900 text-base">{product.internalNotes}</p>
                   </div>
                 )}
-              </div>
-            </GlassCard>
-
-            {/* Analytics Dashboard */}
-            <GlassCard className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                <BarChart3 size={16} className="text-green-600" />
-                Analytics Overview
-              </h3>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Package size={14} className="text-blue-600" />
-                    <span className="text-sm font-medium text-blue-700">Total Stock</span>
-                  </div>
-                  <p className="text-xl font-bold text-blue-900">{analytics.totalStock}</p>
-                  <p className="text-sm text-blue-600">units</p>
-                </div>
-                
-                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                  <div className="flex items-center gap-2 mb-1">
-                    <DollarSign size={14} className="text-green-600" />
-                    <span className="text-sm font-medium text-green-700">Cost Value</span>
-                  </div>
-                  <p className="text-xl font-bold text-green-900">{format.money(analytics.totalCostValue)}</p>
-                  <p className="text-sm text-green-600">total cost</p>
-                </div>
-                
-                <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
-                  <div className="flex items-center gap-2 mb-1">
-                    <TrendingUp size={14} className="text-purple-600" />
-                    <span className="text-sm font-medium text-purple-700">Retail Value</span>
-                  </div>
-                  <p className="text-xl font-bold text-purple-900">{format.money(analytics.totalRetailValue)}</p>
-                  <p className="text-sm text-purple-600">potential sales</p>
-                </div>
-                
-                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Zap size={14} className="text-orange-600" />
-                    <span className="text-sm font-medium text-orange-700">Profit Margin</span>
-                  </div>
-                  <p className="text-xl font-bold text-orange-900">{analytics.profitMargin.toFixed(1)}%</p>
-                  <p className="text-sm text-orange-600">potential profit</p>
-                </div>
-              </div>
-              
-              {/* Stock Status */}
-              <div className="mt-3 p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-3 h-3 rounded-full ${
-                      analytics.stockStatus === 'low' ? 'bg-orange-500' :
-                      analytics.stockStatus === 'out-of-stock' ? 'bg-red-500' :
-                      analytics.stockStatus === 'high' ? 'bg-green-500' : 'bg-blue-500'
-                    }`}></div>
-                    <span className="text-sm font-medium text-gray-700">Stock Status</span>
-                  </div>
-                  <GlassBadge 
-                    variant={
-                      analytics.stockStatus === 'low' ? 'warning' :
-                      analytics.stockStatus === 'out-of-stock' ? 'error' :
-                      analytics.stockStatus === 'high' ? 'success' : 'info'
-                    }
-                    size="sm"
-                  >
-                    {getStockStatusText(analytics.stockStatus)}
-                  </GlassBadge>
-                </div>
               </div>
             </GlassCard>
 
@@ -634,43 +581,43 @@ const ProductDetailPage: React.FC = () => {
               
               {/* Enhanced Variants Table */}
               <div className="overflow-x-auto">
-                <table className="w-full text-base">
+                <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-200">
-                      <th className="text-left py-3 px-3 font-medium text-gray-700">Variant</th>
-                      <th className="text-left py-3 px-3 font-medium text-gray-700">SKU</th>
-                      <th className="text-left py-3 px-3 font-medium text-gray-700">Price</th>
-                      <th className="text-left py-3 px-3 font-medium text-gray-700">Cost</th>
-                      <th className="text-left py-3 px-3 font-medium text-gray-700">Stock</th>
-                      <th className="text-left py-3 px-3 font-medium text-gray-700">Status</th>
-                      <th className="text-left py-3 px-3 font-medium text-gray-700">Actions</th>
+                      <th className="text-left py-3 px-2 font-medium text-gray-700">Variant</th>
+                      <th className="text-left py-3 px-2 font-medium text-gray-700 hidden sm:table-cell">SKU</th>
+                      <th className="text-left py-3 px-2 font-medium text-gray-700">Price</th>
+                      <th className="text-left py-3 px-2 font-medium text-gray-700 hidden md:table-cell">Cost</th>
+                      <th className="text-left py-3 px-2 font-medium text-gray-700">Stock</th>
+                      <th className="text-left py-3 px-2 font-medium text-gray-700">Status</th>
+                      <th className="text-left py-3 px-2 font-medium text-gray-700">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {product.variants?.map((variant, index) => (
                       <tr key={variant.id || index} className="border-b border-gray-100 hover:bg-gray-50">
-                        <td className="py-2 px-3">
+                        <td className="py-3 px-2">
                           <div>
-                            <p className="font-medium text-gray-900 text-base">{variant.name}</p>
-                            
+                            <p className="font-medium text-gray-900 text-sm">{variant.name}</p>
+                            <p className="text-xs text-gray-500 sm:hidden">{variant.sku}</p>
                           </div>
                         </td>
-                        <td className="py-2 px-3">
-                          <span className="font-mono text-sm">{variant.sku}</span>
+                        <td className="py-3 px-2 hidden sm:table-cell">
+                          <span className="font-mono text-xs">{variant.sku}</span>
                         </td>
-                        <td className="py-2 px-3">
-                          <span className="font-medium text-green-600 text-base">{format.money(variant.price || 0)}</span>
+                        <td className="py-3 px-2">
+                          <span className="font-medium text-green-600 text-sm">{format.money(variant.price || 0)}</span>
                         </td>
-                        <td className="py-2 px-3">
-                          <span className="font-medium text-gray-600 text-base">{format.money(variant.costPrice || 0)}</span>
+                        <td className="py-3 px-2 hidden md:table-cell">
+                          <span className="font-medium text-gray-600 text-sm">{format.money(variant.costPrice || 0)}</span>
                         </td>
-                        <td className="py-2 px-3">
+                        <td className="py-3 px-2">
                           <div className="flex items-center gap-1">
-                            <span className="font-medium text-base">{variant.stockQuantity || 0}</span>
-                            <span className="text-sm text-gray-500">units</span>
+                            <span className="font-medium text-sm">{variant.stockQuantity || 0}</span>
+                            <span className="text-xs text-gray-500 hidden sm:inline">units</span>
                           </div>
                         </td>
-                        <td className="py-2 px-3">
+                        <td className="py-3 px-2">
                           <GlassBadge 
                             variant={
                               (variant.stockQuantity || 0) === 0 ? 'error' :
@@ -678,14 +625,14 @@ const ProductDetailPage: React.FC = () => {
                             }
                             size="sm"
                           >
-                            {(variant.stockQuantity || 0) === 0 ? 'Out of Stock' :
-                             (variant.stockQuantity || 0) <= (variant.minStockLevel || 0) ? 'Low Stock' : 'In Stock'}
+                            {(variant.stockQuantity || 0) === 0 ? 'Out' :
+                             (variant.stockQuantity || 0) <= (variant.minStockLevel || 0) ? 'Low' : 'In Stock'}
                           </GlassBadge>
                         </td>
-                        <td className="py-2 px-3">
+                        <td className="py-3 px-2">
                           <div className="flex items-center gap-1">
                             <GlassButton
-                              size="md"
+                              size="sm"
                               variant="ghost"
                               onClick={() => setSelectedVariant(variant)}
                               className="p-1"
@@ -693,7 +640,7 @@ const ProductDetailPage: React.FC = () => {
                               <Edit size={12} />
                             </GlassButton>
                             <GlassButton
-                              size="md"
+                              size="sm"
                               variant="ghost"
                               onClick={() => setShowStockAdjustment(true)}
                               className="p-1"
@@ -701,7 +648,7 @@ const ProductDetailPage: React.FC = () => {
                               <RefreshCw size={12} />
                             </GlassButton>
                             <GlassButton
-                              size="md"
+                              size="sm"
                               variant="ghost"
                               onClick={() => handleVariantSpecificationsClick(index)}
                               className="p-1"
@@ -719,28 +666,28 @@ const ProductDetailPage: React.FC = () => {
           </div>
 
           {/* Sidebar */}
-          <div className="xl:col-span-1 space-y-4">
+          <div className="lg:col-span-1 space-y-4">
             {/* Product Images */}
             <GlassCard className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                <Camera size={16} className="text-pink-600" />
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <Camera size={18} className="text-pink-600" />
                 Product Images ({images.length})
               </h3>
               {images.length > 0 ? (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {images.map((image, index) => (
                     <div key={image.id || index} className="relative group">
                       <img
                         src={image.url}
                         alt={`Product ${index + 1}`}
-                        className="w-full h-40 object-cover rounded-lg cursor-pointer hover:opacity-80 transition-opacity"
+                        className="w-full h-32 object-cover rounded-lg cursor-pointer hover:opacity-80 transition-opacity"
                         onClick={() => openImageModal(image)}
                       />
                       <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all rounded-lg flex items-center justify-center">
                         <Eye className="text-white opacity-0 group-hover:opacity-100 transition-opacity" size={16} />
                       </div>
                       {image.isPrimary && (
-                        <div className="absolute top-1 left-1">
+                        <div className="absolute top-2 left-2">
                           <GlassBadge variant="success" size="sm">Primary</GlassBadge>
                         </div>
                       )}
@@ -748,17 +695,45 @@ const ProductDetailPage: React.FC = () => {
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-6 text-gray-500">
+                <div className="text-center py-8 text-gray-500">
                   <ImageIcon size={32} className="mx-auto mb-2 text-gray-300" />
                   <p className="text-sm">No images uploaded</p>
                 </div>
               )}
             </GlassCard>
 
-            {/* Product IDs Info */}
+            {/* Product Details */}
             <GlassCard className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                <Tag size={16} className="text-indigo-600" />
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <Info size={18} className="text-gray-600" />
+                Product Details
+              </h3>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-500">Created:</span>
+                  <span className="text-sm text-gray-900">{new Date(product.createdAt).toLocaleDateString()}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-500">Updated:</span>
+                  <span className="text-sm text-gray-900">{new Date(product.updatedAt).toLocaleDateString()}</span>
+                </div>
+                {product.condition && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-500">Condition:</span>
+                    <GlassBadge variant="info" size="sm">{product.condition}</GlassBadge>
+                  </div>
+                )}
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-500">Price:</span>
+                  <span className="text-sm font-medium text-gray-900">{format.money(product.price)}</span>
+                </div>
+              </div>
+            </GlassCard>
+
+            {/* Product IDs */}
+            <GlassCard className="p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <Tag size={18} className="text-indigo-600" />
                 Product IDs
               </h3>
               <div className="space-y-3">
@@ -767,7 +742,7 @@ const ProductDetailPage: React.FC = () => {
                     <label className="block text-sm font-medium text-gray-600 mb-1">Category ID</label>
                     <div className="flex items-center gap-2">
                       <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                      <span className="text-gray-900 font-medium text-base">{product.categoryId}</span>
+                      <span className="text-sm text-gray-900 font-mono">{product.categoryId}</span>
                     </div>
                   </div>
                 )}
@@ -777,48 +752,10 @@ const ProductDetailPage: React.FC = () => {
                     <label className="block text-sm font-medium text-gray-600 mb-1">Supplier ID</label>
                     <div className="flex items-center gap-2">
                       <div className="w-3 h-3 rounded-full bg-purple-500"></div>
-                      <span className="text-gray-900 font-medium text-base">{product.supplierId}</span>
+                      <span className="text-sm text-gray-900 font-mono">{product.supplierId}</span>
                     </div>
                   </div>
                 )}
-              </div>
-            </GlassCard>
-
-            {/* Metadata */}
-            <GlassCard className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                <Info size={16} className="text-gray-600" />
-                Additional Information
-              </h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Created:</span>
-                  <span className="text-gray-900 text-base">{new Date(product.createdAt).toLocaleDateString()}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Updated:</span>
-                  <span className="text-gray-900 text-base">{new Date(product.updatedAt).toLocaleDateString()}</span>
-                </div>
-                {product.condition && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Condition:</span>
-                    <GlassBadge variant="info" size="sm">{product.condition}</GlassBadge>
-                  </div>
-                )}
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Stock Quantity:</span>
-                  <span className="text-gray-900 text-base">{product.stockQuantity}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Price:</span>
-                  <span className="text-gray-900 text-base">{format.money(product.price)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Shelf:</span>
-                  <span className="text-gray-900 text-base">
-                    {product.shelfName || product.shelfCode || product.storeLocationName || product.storageRoomName || 'N/A'}
-                  </span>
-                </div>
               </div>
             </GlassCard>
           </div>
@@ -1029,18 +966,6 @@ const ProductDetailPage: React.FC = () => {
           </Modal>
         )}
 
-        {/* Debug Modal */}
-        {showDebug && (
-          <Modal
-            isOpen={showDebug}
-            onClose={() => setShowDebug(false)}
-            title="Debug Information"
-          >
-            <div className="space-y-4">
-              <div>
-                <h4 className="font-semibold text-gray-900 mb-2">Product Data</h4>
-                <pre className="bg-gray-100 p-4 rounded-lg text-xs overflow-auto max-h-64">
-                  {JSON.stringify(product, null, 2)}
 
         {/* Product Specifications Modal */}
         {showProductSpecificationsModal && (
@@ -1358,23 +1283,6 @@ const ProductDetailPage: React.FC = () => {
                     Save Specifications
                   </GlassButton>
                 </div>
-              </div>
-            </div>
-          </Modal>
-        )}
-                </pre>
-              </div>
-              <div>
-                <h4 className="font-semibold text-gray-900 mb-2">Images Data</h4>
-                <pre className="bg-gray-100 p-4 rounded-lg text-xs overflow-auto max-h-64">
-                  {JSON.stringify(images, null, 2)}
-                </pre>
-              </div>
-              <div>
-                <h4 className="font-semibold text-gray-900 mb-2">Analytics Data</h4>
-                <pre className="bg-gray-100 p-4 rounded-lg text-xs overflow-auto max-h-64">
-                  {JSON.stringify(analytics, null, 2)}
-                </pre>
               </div>
             </div>
           </Modal>

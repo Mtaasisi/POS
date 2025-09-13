@@ -10,10 +10,6 @@ interface BreadcrumbItem {
 }
 
 const LATS_BREADCRUMB_MAP: Record<string, BreadcrumbItem[]> = {
-  '/pos': [
-    { path: '/dashboard', name: 'Dashboard', icon: Home },
-    { path: '/pos', name: 'POS System' }
-  ],
   '/lats/quick-cash': [
     { path: '/dashboard', name: 'Dashboard', icon: Home },
     { path: '/lats/quick-cash', name: 'Quick Cash' }

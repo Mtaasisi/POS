@@ -77,7 +77,7 @@ class CustomerLoyaltyService {
       // First, get the total count for pagination
       let countQuery = supabase
         .from('customers')
-        .select('*', { count: 'exact', head: true });
+        .select('id', { count: 'exact', head: true });
 
       // Apply filters to count query
       if (tierFilter && tierFilter !== 'all') {
@@ -237,7 +237,7 @@ class CustomerLoyaltyService {
       // First, get the total count to know how many customers we need to fetch
       const { count: totalCustomerCount, error: countError } = await supabase
         .from('customers')
-        .select('*', { count: 'exact', head: true });
+        .select('id', { count: 'exact', head: true });
 
       if (countError) {
         console.error('Error getting customer count:', countError);
@@ -260,7 +260,7 @@ class CustomerLoyaltyService {
         let query = supabase
           .from('customers')
           .select(`
-            *,
+            id, name, email, phone, gender, city, birth_month, birth_day, total_returns, profile_image, created_at, updated_at, whatsapp, notes, is_active, loyalty_level, color_tag, referred_by, total_spent, points, last_visit, created_by, referral_source, initial_notes, referrals, customer_tag,
             customer_payments(*),
             devices(*)
           `)
@@ -350,7 +350,7 @@ class CustomerLoyaltyService {
       // Get total count from database directly
       const { count: totalCustomerCount, error: countError } = await supabase
         .from('customers')
-        .select('*', { count: 'exact', head: true });
+        .select('id', { count: 'exact', head: true });
 
       if (countError) {
         console.error('Error getting customer count:', countError);

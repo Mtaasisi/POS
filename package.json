@@ -7,7 +7,14 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:pos": "tsc && vite build --config vite.config.pos.ts",
+    "android:build": "npm run build:pos && npx cap sync android && npx cap build android",
+    "android:dev": "npm run build:pos && npx cap sync android && npx cap open android",
+    "android:run": "npx cap run android",
+    "android:sync": "npx cap sync android",
+    "android:init": "npx cap init LATS-POS com.lats.pos --web-dir=dist",
+    "android:add": "npx cap add android"
   },
   "dependencies": {
     "@capacitor/android": "^7.4.2",

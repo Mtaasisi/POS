@@ -118,9 +118,13 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
   const [hasLoggedNoProducts, setHasLoggedNoProducts] = useState(false);
   useEffect(() => {
     if (import.meta.env.MODE === 'development' && products?.length === 0 && !hasLoggedNoProducts) {
-      console.log('ℹ️ [EnhancedInventoryTab] No products available - this may be normal during initial load');
+      console.log('ℹ️ [EnhancedInventoryTab] No products available - this may be normal during initial load or if user is not authenticated');
+      console.log('🔍 [EnhancedInventoryTab] Products prop:', products);
+      console.log('🔍 [EnhancedInventoryTab] Products type:', typeof products);
+      console.log('🔍 [EnhancedInventoryTab] Products length:', products?.length);
       setHasLoggedNoProducts(true);
     } else if (products?.length > 0 && hasLoggedNoProducts) {
+      console.log('✅ [EnhancedInventoryTab] Products loaded successfully:', products.length);
       setHasLoggedNoProducts(false); // Reset for future loads
     }
   }, [products, hasLoggedNoProducts]);
@@ -524,7 +528,7 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
                       </td>
                       <td className="py-4 px-4">
                         <span className="text-sm text-gray-600">
-                          {product.shelfName || product.shelfCode || product.storeLocationName || product.storageRoomName || 'N/A'}
+                          N/A
                         </span>
                       </td>
                       <td className="py-4 px-4 text-right">

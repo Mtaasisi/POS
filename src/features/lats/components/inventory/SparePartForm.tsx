@@ -308,7 +308,7 @@ const SparePartForm: React.FC<SparePartFormProps> = ({
     const shelf = allShelves[formData.storageRoomId]?.find(s => s.id === formData.shelfId);
     
     if (room && shelf) {
-      return `${room.name} - ${shelf.name}`;
+      return `${room.code} - ${shelf.code}`;
     }
     
     return 'Select storage location';
@@ -403,13 +403,14 @@ const SparePartForm: React.FC<SparePartFormProps> = ({
     
     if (searchTerm) {
       shelves = shelves.filter(shelf => 
-        shelf.name.toLowerCase().includes(searchTerm.toLowerCase())
+        shelf.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (shelf.name && shelf.name.toLowerCase().includes(searchTerm.toLowerCase()))
       );
     }
     
     if (selectedLetter) {
       shelves = shelves.filter(shelf => 
-        shelf.name.toUpperCase().includes(selectedLetter)
+        shelf.code.toUpperCase().includes(selectedLetter)
       );
     }
     
@@ -421,7 +422,7 @@ const SparePartForm: React.FC<SparePartFormProps> = ({
     const letters = new Set<string>();
     
     shelves.forEach(shelf => {
-      const upperName = shelf.name.toUpperCase();
+      const upperName = shelf.code.toUpperCase();
       for (let i = 0; i < upperName.length; i++) {
         const char = upperName[i];
         if (char >= 'A' && char <= 'Z') {
@@ -1197,8 +1198,8 @@ const SparePartForm: React.FC<SparePartFormProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                   {getFilteredShelves().map((shelf, index) => {
                     const isSelected = formData.storageRoomId === selectedRoomId && formData.shelfId === shelf.id;
-                    const shelfColor = getShelfColor(shelf.name.charAt(0).toUpperCase());
-                    const foundLetter = shelf.name.toUpperCase().match(/[A-Z]/)?.[0];
+                    const shelfColor = getShelfColor(shelf.code.charAt(0).toUpperCase());
+                    const foundLetter = shelf.code.toUpperCase().match(/[A-Z]/)?.[0];
                     
                     // Letter-based background colors - Strong vibrant colors
                     const getLetterBackgroundColor = (letter: string) => {
@@ -1282,7 +1283,7 @@ const SparePartForm: React.FC<SparePartFormProps> = ({
                                 <div className={`text-5xl font-black tracking-tight transition-all duration-500 ${
                                   isSelected ? 'text-white' : 'text-white'
                                 }`}>
-                                  {shelf.name}
+                                  {shelf.code}
                                 </div>
                                 <div className={`text-base font-medium transition-all duration-500 ${
                                   isSelected ? 'text-white opacity-90' : 'text-white opacity-80'
