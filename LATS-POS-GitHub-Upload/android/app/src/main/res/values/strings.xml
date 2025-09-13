@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">LATS-POS</string>
+    <string name="title_activity_main">LATS-POS</string>
+    <string name="package_name">com.lats.pos</string>
+    <string name="custom_url_scheme">com.lats.pos</string>
+</resources>

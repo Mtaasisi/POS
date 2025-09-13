@@ -25,6 +25,9 @@ interface SupplierFormData {
   country: string;
   exchange_rates: string;
   currency: string;
+  description: string;
+  whatsapp: string;
+  notes: string;
 }
 
 const AddSupplierModal: React.FC<AddSupplierModalProps> = ({
@@ -44,7 +47,10 @@ const AddSupplierModal: React.FC<AddSupplierModalProps> = ({
     city: '',
     country: 'Tanzania',
     exchange_rates: '',
-    currency: 'TZS'
+    currency: 'TZS',
+    description: '',
+    whatsapp: '',
+    notes: ''
   });
 
   const handleInputChange = (field: keyof SupplierFormData, value: string) => {
@@ -68,7 +74,7 @@ const AddSupplierModal: React.FC<AddSupplierModalProps> = ({
       // Create supplier using the inventory store
       const result = await createSupplier({
         ...formData,
-        isActive: true
+        is_active: true
       });
 
       if (result.ok && result.data) {
@@ -86,7 +92,10 @@ const AddSupplierModal: React.FC<AddSupplierModalProps> = ({
           city: '',
           country: 'Tanzania',
           exchange_rates: '',
-          currency: 'TZS'
+          currency: 'TZS',
+          description: '',
+          whatsapp: '',
+          notes: ''
         });
       } else {
         toast.error(result.message || 'Failed to add supplier');
@@ -159,6 +168,15 @@ const AddSupplierModal: React.FC<AddSupplierModalProps> = ({
                 value={formData.contact_person}
                 onChange={(e) => handleInputChange('contact_person', e.target.value)}
               />
+
+              <GlassInput
+                label="Description"
+                placeholder="Enter supplier description (optional)"
+                value={formData.description}
+                onChange={(e) => handleInputChange('description', e.target.value)}
+                multiline
+                rows={2}
+              />
             </div>
 
             {/* Contact Information */}
@@ -181,6 +199,14 @@ const AddSupplierModal: React.FC<AddSupplierModalProps> = ({
                   type="email"
                 />
               </div>
+
+              <GlassInput
+                label="WhatsApp"
+                placeholder="Enter WhatsApp number"
+                value={formData.whatsapp}
+                onChange={(e) => handleInputChange('whatsapp', e.target.value)}
+                helperText="WhatsApp number for quick communication"
+              />
 
               <GlassInput
                 label="Address"
@@ -237,6 +263,21 @@ const AddSupplierModal: React.FC<AddSupplierModalProps> = ({
                   </select>
                 </div>
               </div>
+            </div>
+
+            {/* Additional Information */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium text-gray-800">Additional Information</h3>
+              
+              <GlassInput
+                label="Notes"
+                placeholder="Enter additional notes about this supplier"
+                value={formData.notes}
+                onChange={(e) => handleInputChange('notes', e.target.value)}
+                multiline
+                rows={2}
+                helperText="Any additional information about this supplier"
+              />
             </div>
 
             {/* Action Buttons */}

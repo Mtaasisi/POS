@@ -524,9 +524,9 @@ export const useInventoryStore = create<InventoryState>()(
         );
 
         try {
-          // Race between actual fetch and timeout - now loading ALL suppliers (including inactive)
+          // Race between actual fetch and timeout - loading only active suppliers
           const suppliers = await Promise.race([
-            getAllSuppliersApi(),
+            getActiveSuppliersApi(),
             timeoutPromise
           ]);
           

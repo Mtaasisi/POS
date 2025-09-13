@@ -9,6 +9,8 @@ export interface PurchaseOrder {
   subtotal: number;
   tax: number;
   totalAmount: number;
+  totalPaid?: number;
+  paymentStatus?: 'unpaid' | 'partial' | 'paid';
   expectedDelivery: string;
   actualDelivery?: string;
   paymentTerms: string;
@@ -18,6 +20,7 @@ export interface PurchaseOrder {
   updatedAt: string;
   items: PurchaseOrderItem[];
   shippedItems?: ShippedItem[];
+  payments?: PurchaseOrderPayment[];
 }
 
 export interface PurchaseOrderItem {
@@ -143,6 +146,23 @@ export interface PaymentTerm {
   name: string;
   days: number;
   description?: string;
+}
+
+export interface PurchaseOrderPayment {
+  id: string;
+  purchaseOrderId: string;
+  paymentAccountId: string;
+  amount: number;
+  currency: string;
+  paymentMethod: string;
+  paymentMethodId: string;
+  reference?: string;
+  notes?: string;
+  status: 'pending' | 'completed' | 'failed' | 'cancelled';
+  paymentDate: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ApiResponse<T> {

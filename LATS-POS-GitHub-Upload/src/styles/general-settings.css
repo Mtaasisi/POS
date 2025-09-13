@@ -1,0 +1,236 @@
+/* General Settings CSS Variables and Styles */
+
+:root {
+  /* Display Settings - Default values */
+  --show-product-images: block;
+  --show-stock-levels: block;
+  --show-prices: block;
+  --show-barcodes: block;
+  
+  /* Theme Settings */
+  --primary-color: #3b82f6;
+  --secondary-color: #64748b;
+  --success-color: #10b981;
+  --warning-color: #f59e0b;
+  --error-color: #ef4444;
+  --background-color: #ffffff;
+  --text-color: #1f2937;
+  --border-color: #e5e7eb;
+  
+  /* Animation Settings */
+  --animation-duration: 0.3s;
+  --animation-timing: ease-in-out;
+}
+
+/* Dark Theme */
+.dark {
+  --background-color: #1f2937;
+  --text-color: #f9fafb;
+  --border-color: #374151;
+}
+
+/* Display Settings Classes */
+.product-image {
+  display: var(--show-product-images);
+}
+
+.stock-level {
+  display: var(--show-stock-levels);
+}
+
+.price {
+  display: var(--show-prices);
+}
+
+.barcode {
+  display: var(--show-barcodes);
+}
+
+/* Animation Classes */
+.animate-enabled {
+  transition: all var(--animation-duration) var(--animation-timing);
+}
+
+.animate-disabled {
+  transition: none;
+}
+
+/* Sound Effects */
+.sound-enabled {
+  /* Add sound effect styles here */
+}
+
+.sound-disabled {
+  /* Disable sound effects */
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .product-image {
+    /* Adjust for mobile */
+    max-width: 100px;
+    height: auto;
+  }
+  
+  .stock-level {
+    /* Compact display on mobile */
+    font-size: 0.875rem;
+  }
+  
+  .price {
+    /* Larger price display on mobile */
+    font-size: 1.125rem;
+    font-weight: 600;
+  }
+  
+  .barcode {
+    /* Hide barcodes on very small screens */
+    display: none;
+  }
+}
+
+/* Currency Formatting */
+.currency {
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+}
+
+/* Date and Time Formatting */
+.date {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.time {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-weight: 500;
+}
+
+/* Language-specific Styles */
+[lang="sw"] {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+[lang="fr"] {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Theme-specific Styles */
+.theme-light {
+  --background-color: #ffffff;
+  --text-color: #1f2937;
+  --border-color: #e5e7eb;
+}
+
+.theme-dark {
+  --background-color: #1f2937;
+  --text-color: #f9fafb;
+  --border-color: #374151;
+}
+
+/* Auto theme detection */
+@media (prefers-color-scheme: dark) {
+  .theme-auto {
+    --background-color: #1f2937;
+    --text-color: #f9fafb;
+    --border-color: #374151;
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  .theme-auto {
+    --background-color: #ffffff;
+    --text-color: #1f2937;
+    --border-color: #e5e7eb;
+  }
+}
+
+/* Utility Classes */
+.hidden-by-setting {
+  display: none !important;
+}
+
+.visible-by-setting {
+  display: block !important;
+}
+
+/* Confirmation Dialog Styles */
+.confirmation-dialog {
+  /* Styles for confirmation dialogs */
+  background: var(--background-color);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+}
+
+/* Search Auto-complete Styles */
+.search-autocomplete {
+  /* Styles for auto-complete search */
+  background: var(--background-color);
+  border: 1px solid var(--border-color);
+  color: var(--text-color);
+}
+
+/* Product Grid Styles */
+.product-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+}
+
+.product-card {
+  background: var(--background-color);
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  transition: all var(--animation-duration) var(--animation-timing);
+}
+
+.product-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+/* Stock Level Indicators */
+.stock-level-high {
+  color: var(--success-color);
+}
+
+.stock-level-medium {
+  color: var(--warning-color);
+}
+
+.stock-level-low {
+  color: var(--error-color);
+}
+
+/* Price Display */
+.price-display {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--primary-color);
+}
+
+/* Barcode Display */
+.barcode-display {
+  font-family: 'Courier New', monospace;
+  font-size: 0.875rem;
+  background: #f8f9fa;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  border: 1px solid #dee2e6;
+}
+
+/* Responsive Grid Adjustments */
+@media (max-width: 640px) {
+  .product-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 0.5rem;
+  }
+  
+  .product-card {
+    padding: 0.75rem;
+  }
+  
+  .price-display {
+    font-size: 1rem;
+  }
+}

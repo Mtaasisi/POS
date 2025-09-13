@@ -128,10 +128,22 @@ const ProductUpdateModal: React.FC<ProductUpdateModalProps> = ({
           
         console.log('🔍 [ProductUpdateModal] Shipping data lookup result:', { shippingData, shippingError });
           
-        if (shippingError || !shippingData) {
-          console.error('❌ [ProductUpdateModal] Could not find purchase order for this shipment:', shippingError);
-          toast.error('Could not find purchase order for this shipment. Please ensure the shipment is properly linked to a purchase order.');
-          throw new Error('Could not find purchase order for this shipment');
+        if (shippingError) {
+          if (shippingError.code === 'PGRST116') {
+            console.log('🔍 [ProductUpdateModal] No shipping info found for ID:', shippingInfo.id);
+            toast.error('No shipping information found for this shipment. Please create shipping information first.');
+            throw new Error('No shipping information found for this shipment');
+          } else {
+            console.error('❌ [ProductUpdateModal] Could not find purchase order for this shipment:', shippingError);
+            toast.error('Could not find purchase order for this shipment. Please ensure the shipment is properly linked to a purchase order.');
+            throw new Error('Could not find purchase order for this shipment');
+          }
+        }
+        
+        if (!shippingData) {
+          console.error('❌ [ProductUpdateModal] No shipping data returned for ID:', shippingInfo.id);
+          toast.error('No shipping data found for this shipment.');
+          throw new Error('No shipping data found for this shipment');
         }
         
         console.log('✅ [ProductUpdateModal] Found purchase order ID:', shippingData.purchase_order_id);

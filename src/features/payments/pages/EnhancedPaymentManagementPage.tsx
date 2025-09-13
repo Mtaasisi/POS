@@ -8,7 +8,7 @@ import { PageErrorBoundary } from '../../shared/components/PageErrorBoundary';
 import { 
   CreditCard, BarChart3, 
   RefreshCw, ChevronRight, Download, Activity,
-  Settings, Shield, Zap, AlertCircle
+  Settings, Shield, Zap, AlertCircle, ShoppingCart
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { supabase } from '../../../lib/supabaseClient';
@@ -26,9 +26,10 @@ import { paymentAutomationService } from '../../../lib/paymentAutomationService'
 // Import our new components
 import PaymentTrackingDashboard from '../components/PaymentTrackingDashboard';
 import PaymentAnalyticsDashboard from '../components/PaymentAnalyticsDashboard';
+import PurchaseOrderPaymentDashboard from '../components/PurchaseOrderPaymentDashboard';
 
 // Payment tab types
-type PaymentTab = 'tracking' | 'analytics' | 'reconciliation' | 'providers' | 'security' | 'automation';
+type PaymentTab = 'tracking' | 'analytics' | 'reconciliation' | 'providers' | 'security' | 'automation' | 'purchase-orders';
 
 interface TabConfig {
   id: PaymentTab;
@@ -245,6 +246,14 @@ const EnhancedPaymentManagementPage: React.FC = () => {
         console.log('🔔 Automation workflow update received:', payload.eventType);
         debouncedRefresh();
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_order_payments' }, (payload) => {
+        console.log('🔔 Purchase order payment update received:', payload.eventType);
+        debouncedRefresh();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'lats_purchase_orders' }, (payload) => {
+        console.log('🔔 Purchase order update received:', payload.eventType);
+        debouncedRefresh();
+      })
       .subscribe((status) => {
         console.log('📡 Enhanced payment management subscription status:', status);
         if (status === 'CHANNEL_ERROR' || status === 'CLOSED') {
@@ -314,6 +323,13 @@ const EnhancedPaymentManagementPage: React.FC = () => {
       adminOnly: true,
       color: 'orange',
       badge: 'New'
+    },
+    {
+      id: 'purchase-orders',
+      label: 'Purchase Orders',
+      icon: <ShoppingCart size={20} />,
+      description: 'Manage purchase order payments and supplier transactions',
+      color: 'teal'
     }
   ];
 
@@ -505,6 +521,18 @@ const EnhancedPaymentManagementPage: React.FC = () => {
               </div>
             </div>
           </div>
+        );
+      case 'purchase-orders':
+        return (
+          <PurchaseOrderPaymentDashboard
+            onViewDetails={(payment) => {
+              toast(`Viewing purchase order payment details for ${payment.id}`);
+            }}
+            onMakePayment={(purchaseOrder) => {
+              toast(`Opening payment modal for purchase order ${purchaseOrder.orderNumber}`);
+            }}
+            onExport={handleExportData}
+          />
         );
       default:
         return (

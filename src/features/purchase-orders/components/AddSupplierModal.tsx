@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { X, Building, Plus } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useInventoryStore } from '../../lats/stores/useInventoryStore';
+import { SUPPORTED_CURRENCIES } from '../../lats/lib/purchaseOrderUtils';
 import GlassCard from '../../shared/components/ui/GlassCard';
 import GlassButton from '../../shared/components/ui/GlassButton';
 import GlassInput from '../../shared/components/ui/GlassInput';
@@ -22,8 +23,11 @@ interface SupplierFormData {
   address: string;
   city: string;
   country: string;
-  payment_terms: string;
+  exchange_rates: string;
   currency: string;
+  description: string;
+  whatsapp: string;
+  notes: string;
 }
 
 const AddSupplierModal: React.FC<AddSupplierModalProps> = ({
@@ -41,9 +45,12 @@ const AddSupplierModal: React.FC<AddSupplierModalProps> = ({
     email: '',
     address: '',
     city: '',
-    country: 'Kenya',
-    payment_terms: 'Net 30',
-    currency: 'KES'
+    country: 'Tanzania',
+    exchange_rates: '',
+    currency: 'TZS',
+    description: '',
+    whatsapp: '',
+    notes: ''
   });
 
   const handleInputChange = (field: keyof SupplierFormData, value: string) => {
@@ -67,7 +74,7 @@ const AddSupplierModal: React.FC<AddSupplierModalProps> = ({
       // Create supplier using the inventory store
       const result = await createSupplier({
         ...formData,
-        isActive: true
+        is_active: true
       });
 
       if (result.ok && result.data) {
@@ -83,9 +90,12 @@ const AddSupplierModal: React.FC<AddSupplierModalProps> = ({
           email: '',
           address: '',
           city: '',
-          country: 'Kenya',
-          payment_terms: 'Net 30',
-          currency: 'KES'
+          country: 'Tanzania',
+          exchange_rates: '',
+          currency: 'TZS',
+          description: '',
+          whatsapp: '',
+          notes: ''
         });
       } else {
         toast.error(result.message || 'Failed to add supplier');
@@ -101,8 +111,14 @@ const AddSupplierModal: React.FC<AddSupplierModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div 
+        className="w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
         <GlassCard className="p-6">
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
@@ -152,6 +168,15 @@ const AddSupplierModal: React.FC<AddSupplierModalProps> = ({
                 value={formData.contact_person}
                 onChange={(e) => handleInputChange('contact_person', e.target.value)}
               />
+
+              <GlassInput
+                label="Description"
+                placeholder="Enter supplier description (optional)"
+                value={formData.description}
+                onChange={(e) => handleInputChange('description', e.target.value)}
+                multiline
+                rows={2}
+              />
             </div>
 
             {/* Contact Information */}
@@ -174,6 +199,14 @@ const AddSupplierModal: React.FC<AddSupplierModalProps> = ({
                   type="email"
                 />
               </div>
+
+              <GlassInput
+                label="WhatsApp"
+                placeholder="Enter WhatsApp number"
+                value={formData.whatsapp}
+                onChange={(e) => handleInputChange('whatsapp', e.target.value)}
+                helperText="WhatsApp number for quick communication"
+              />
 
               <GlassInput
                 label="Address"
@@ -205,18 +238,14 @@ const AddSupplierModal: React.FC<AddSupplierModalProps> = ({
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Payment Terms</label>
-                  <select
-                    value={formData.payment_terms}
-                    onChange={(e) => handleInputChange('payment_terms', e.target.value)}
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Exchange Rates</label>
+                  <input
+                    type="text"
+                    value={formData.exchange_rates}
+                    onChange={(e) => handleInputChange('exchange_rates', e.target.value)}
+                    placeholder="Enter exchange rates (e.g., 1 USD = 150 TZS)"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                  >
-                    <option value="Net 30">Net 30</option>
-                    <option value="Net 15">Net 15</option>
-                    <option value="Net 7">Net 7</option>
-                    <option value="Cash on Delivery">Cash on Delivery</option>
-                    <option value="Advance Payment">Advance Payment</option>
-                  </select>
+                  />
                 </div>
                 
                 <div>
@@ -226,31 +255,38 @@ const AddSupplierModal: React.FC<AddSupplierModalProps> = ({
                     onChange={(e) => handleInputChange('currency', e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                   >
-                    <option value="KES">🇰🇪 KES - Kenyan Shilling</option>
-                    <option value="USD">🇺🇸 USD - US Dollar</option>
-                    <option value="EUR">🇪🇺 EUR - Euro</option>
-                    <option value="CNY">🇨🇳 CNY - Chinese Yuan</option>
+                    {SUPPORTED_CURRENCIES.map(currency => (
+                      <option key={currency.code} value={currency.code}>
+                        {currency.flag} {currency.code} - {currency.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
-              <GlassButton
-                type="button"
-                variant="outline"
-                onClick={onClose}
-                disabled={isSubmitting}
-              >
-                Cancel
-              </GlassButton>
+            {/* Additional Information */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium text-gray-800">Additional Information</h3>
               
+              <GlassInput
+                label="Notes"
+                placeholder="Enter additional notes about this supplier"
+                value={formData.notes}
+                onChange={(e) => handleInputChange('notes', e.target.value)}
+                multiline
+                rows={2}
+                helperText="Any additional information about this supplier"
+              />
+            </div>
+
+            {/* Action Buttons */}
+            <div className="pt-4 border-t border-gray-200">
               <GlassButton
                 type="submit"
                 disabled={isSubmitting || !formData.name.trim()}
-                className="bg-orange-600 text-white hover:bg-orange-700"
-                icon={isSubmitting ? undefined : <Plus size={18} />}
+                className="w-full py-4 bg-orange-600 text-white hover:bg-orange-700 text-lg font-semibold"
+                icon={isSubmitting ? undefined : <Plus size={20} />}
               >
                 {isSubmitting ? 'Adding...' : 'Add Supplier'}
               </GlassButton>

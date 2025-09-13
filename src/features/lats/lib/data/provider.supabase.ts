@@ -2572,15 +2572,25 @@ class SupabaseDataProvider implements LatsDataProvider {
         totalAmountBaseCurrency: order.total_amount_base_currency
       });
       
-      // Fetch supplier separately
+      // Fetch supplier separately with full details
       const { data: supplier, error: supplierError } = await supabase
         .from('lats_suppliers')
-        .select('id, name')
+        .select('*')
         .eq('id', order.supplier_id)
         .single();
 
       if (supplierError) {
         console.warn('Warning: Could not fetch supplier:', supplierError.message);
+      } else if (supplier) {
+        console.log('✅ [getPurchaseOrder] Supplier fetched successfully:', {
+          id: supplier.id,
+          name: supplier.name,
+          contactPerson: supplier.contact_person,
+          phone: supplier.phone,
+          email: supplier.email,
+          country: supplier.country,
+          currency: supplier.currency
+        });
       }
 
       // Fetch purchase order items first
@@ -2728,7 +2738,6 @@ class SupabaseDataProvider implements LatsDataProvider {
         id: order.id,
         orderNumber: order.order_number,
         supplierId: order.supplier_id,
-        supplierName: supplier?.name || 'Unknown Supplier',
         status: order.status,
         totalAmount: order.total_amount || 0,
         expectedDelivery: order.expected_delivery,
@@ -2822,6 +2831,37 @@ class SupabaseDataProvider implements LatsDataProvider {
             return null;
           }
         })(),
+        // Include full supplier object
+        supplier: supplier ? {
+          id: supplier.id,
+          name: supplier.name,
+          code: supplier.code,
+          contactPerson: supplier.contact_person,
+          email: supplier.email,
+          phone: supplier.phone,
+          address: supplier.address,
+          city: supplier.city,
+          country: supplier.country || 'Tanzania',
+          currency: supplier.currency,
+          paymentTerms: supplier.payment_terms,
+          leadTimeDays: supplier.lead_time_days || 0,
+          isActive: supplier.is_active !== false,
+          metadata: supplier.metadata,
+          createdAt: supplier.created_at,
+          updatedAt: supplier.updated_at,
+          // Performance fields
+          leadTime: supplier.lead_time,
+          rating: supplier.rating,
+          totalOrders: supplier.total_orders,
+          onTimeDeliveryRate: supplier.on_time_delivery_rate,
+          qualityRating: supplier.quality_rating,
+          // Shipping cost fields
+          defaultShippingCost: supplier.default_shipping_cost,
+          shippingCostPerKg: supplier.shipping_cost_per_kg,
+          shippingCostPerCbm: supplier.shipping_cost_per_cbm,
+          minimumShippingCost: supplier.minimum_shipping_cost,
+          freeShippingThreshold: supplier.free_shipping_threshold
+        } : null,
         items: (itemsWithProductData || []).map((item: any) => ({
           id: item.id,
           purchaseOrderId: item.purchase_order_id,
@@ -2854,7 +2894,9 @@ class SupabaseDataProvider implements LatsDataProvider {
         paymentTerms: transformedData.paymentTerms,
         totalAmount: transformedData.totalAmount,
         itemsCount: transformedData.items.length,
-        hasShippingInfo: !!transformedData.shippingInfo
+        hasShippingInfo: !!transformedData.shippingInfo,
+        hasSupplier: !!transformedData.supplier,
+        supplierName: transformedData.supplier?.name || 'No supplier'
       });
       
       console.log('🚚 [getPurchaseOrder] Final shipping info being returned:', transformedData.shippingInfo);

@@ -14,6 +14,7 @@ import {
   Currency,
   ApiResponse 
 } from '../types';
+import { purchaseOrderDraftService, PurchaseOrderDraft } from '../lib/draftService';
 
 interface PurchaseOrderState {
   // Loading states
@@ -69,6 +70,12 @@ interface PurchaseOrderState {
   toggleOrderSelection: (orderId: string) => void;
   selectAllOrders: () => void;
   deselectAllOrders: () => void;
+
+  // Draft management
+  saveDraft: (name: string, notes?: string) => string | null;
+  loadDraft: (draft: PurchaseOrderDraft) => void;
+  autoSaveDraft: () => string | null;
+  clearDrafts: () => void;
 
   // Computed values
   getFilteredPurchaseOrders: () => PurchaseOrder[];
@@ -451,6 +458,65 @@ export const usePurchaseOrderStore = create<PurchaseOrderState>()(
         const total = subtotal + tax;
         
         return { subtotal, tax, total };
+      },
+
+      // Draft management functions
+      saveDraft: (name: string, notes?: string) => {
+        const { cartItems, selectedSupplier, selectedCurrency, expectedDelivery, paymentTerms } = get();
+        
+        try {
+          const draftId = purchaseOrderDraftService.saveDraft(
+            name,
+            cartItems,
+            selectedSupplier,
+            selectedCurrency,
+            expectedDelivery,
+            paymentTerms,
+            notes || get().notes
+          );
+          return draftId;
+        } catch (error) {
+          console.error('Failed to save draft:', error);
+          return null;
+        }
+      },
+
+      loadDraft: (draft: PurchaseOrderDraft) => {
+        set({
+          cartItems: draft.cartItems || [],
+          selectedSupplier: draft.supplier,
+          selectedCurrency: draft.currency || { code: 'TZS', name: 'Tanzanian Shilling', symbol: 'TZS', flag: '🇹🇿' },
+          expectedDelivery: draft.expectedDelivery || '',
+          paymentTerms: draft.paymentTerms || 'net_30',
+          notes: draft.notes || ''
+        });
+      },
+
+      autoSaveDraft: () => {
+        const { cartItems, selectedSupplier, selectedCurrency, expectedDelivery, paymentTerms, notes } = get();
+        
+        // Only auto-save if there are items in cart
+        if (cartItems.length === 0) {
+          return null;
+        }
+
+        try {
+          return purchaseOrderDraftService.autoSave(
+            cartItems,
+            selectedSupplier,
+            selectedCurrency,
+            expectedDelivery,
+            paymentTerms,
+            notes
+          );
+        } catch (error) {
+          console.error('Auto-save failed:', error);
+          return null;
+        }
+      },
+
+      clearDrafts: () => {
+        purchaseOrderDraftService.clearAllDrafts();
       }
     })),
     {

@@ -38,6 +38,7 @@ import {
   validatePurchaseOrder,
   Currency
 } from '../lib/purchaseOrderUtils';
+import { purchaseOrderDraftService, PurchaseOrderDraft } from '../../purchase-orders/lib/draftService';
 
 // Performance optimization constants
 const SEARCH_DEBOUNCE_MS = 300;
@@ -537,6 +538,52 @@ const PurchaseOrderPage: React.FC = () => {
       setPurchaseCartItems([]);
     }
   }, [purchaseCartItems.length]);
+
+  // Auto-save functionality
+  const autoSaveDraft = useCallback(() => {
+    if (purchaseCartItems.length > 0) {
+      try {
+        purchaseOrderDraftService.autoSave(
+          purchaseCartItems,
+          selectedSupplier,
+          selectedCurrency,
+          expectedDelivery,
+          paymentTerms,
+          purchaseOrderNotes,
+          exchangeRates
+        );
+      } catch (error) {
+        console.error('Auto-save failed:', error);
+      }
+    }
+  }, [purchaseCartItems, selectedSupplier, selectedCurrency, expectedDelivery, paymentTerms, purchaseOrderNotes, exchangeRates]);
+
+  // Auto-save when cart changes (with debounce)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      autoSaveDraft();
+    }, 2000); // Auto-save after 2 seconds of inactivity
+
+    return () => clearTimeout(timeoutId);
+  }, [autoSaveDraft]);
+
+  // Draft loading functionality
+  const handleLoadDraft = useCallback((draft: PurchaseOrderDraft) => {
+    try {
+      setPurchaseCartItems(draft.cartItems || []);
+      setSelectedSupplier(draft.supplier);
+      setSelectedCurrency(draft.currency || SUPPORTED_CURRENCIES[0]);
+      setExpectedDelivery(draft.expectedDelivery || '');
+      setPaymentTerms(draft.paymentTerms || 'net_30');
+      setPurchaseOrderNotes(draft.notes || '');
+      setExchangeRates(draft.exchangeRates || '');
+      
+      toast.success(`Loaded draft: ${draft.name}`);
+    } catch (error) {
+      console.error('Failed to load draft:', error);
+      toast.error('Failed to load draft. Please try again.');
+    }
+  }, []);
 
   // Test function to debug purchase order fetching
   const testPurchaseOrderFetch = useCallback(async () => {
@@ -1413,6 +1460,7 @@ const PurchaseOrderPage: React.FC = () => {
           expectedDelivery={expectedDelivery}
           exchangeRates={exchangeRates}
           notes={purchaseOrderNotes}
+          onLoadDraft={handleLoadDraft}
         />
       )}
 

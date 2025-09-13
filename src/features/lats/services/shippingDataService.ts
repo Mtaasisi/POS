@@ -38,93 +38,106 @@ class ShippingDataServiceImpl implements ShippingDataService {
     try {
       console.log('🚚 [ShippingDataService] Fetching shipping info for PO:', purchaseOrderId);
       
+      // Use simple query to avoid 406 errors with complex nested selects
       const { data: shippingInfoData, error } = await supabase
         .from('lats_shipping_info')
-        .select(`
-          *,
-          carrier:lats_shipping_carriers(id, name, code, tracking_url, contact_info),
-          agent:lats_shipping_agents!lats_shipping_info_agent_id_fkey(id, name, company, phone, email, is_active),
-          manager:lats_shipping_managers(id, name, department, phone, email)
-        `)
-        .eq('purchase_order_id', purchaseOrderId)
-        .single();
+        .select('*')
+        .eq('purchase_order_id', purchaseOrderId);
 
       if (error) {
-        if (error.code === 'PGRST116') {
-          console.log('🚚 [ShippingDataService] No shipping info found for PO:', purchaseOrderId);
-          return null;
-        }
         console.error('❌ [ShippingDataService] Error fetching shipping info:', error);
         throw error;
       }
 
-      if (!shippingInfoData) {
-        console.log('🚚 [ShippingDataService] No shipping info data returned for PO:', purchaseOrderId);
+      // Handle array response - take first item or return null if empty
+      if (!shippingInfoData || shippingInfoData.length === 0) {
+        console.log('🚚 [ShippingDataService] No shipping info found for PO:', purchaseOrderId);
         return null;
       }
 
+      // Get the first shipping info record (there should typically be only one per purchase order)
+      const shippingRecord = shippingInfoData[0];
+
       console.log('✅ [ShippingDataService] Shipping info found:', {
-        id: shippingInfoData.id,
-        trackingNumber: shippingInfoData.tracking_number,
-        status: shippingInfoData.status
+        id: shippingRecord.id,
+        trackingNumber: shippingRecord.tracking_number,
+        status: shippingRecord.status
       });
 
-      // Fetch cargo items (draft products) for this shipment
-      const cargoItems = await this.getShippingCargoItems(shippingInfoData.id);
+      // Fetch related data separately to avoid 406 errors
+      const [carrierData, agentData, managerData, cargoItems] = await Promise.all([
+        shippingRecord.carrier_id ? this.getCarrierData(shippingRecord.carrier_id) : null,
+        shippingRecord.agent_id ? this.getAgentData(shippingRecord.agent_id) : null,
+        shippingRecord.manager_id ? this.getManagerData(shippingRecord.manager_id) : null,
+        this.getShippingCargoItems(shippingRecord.id)
+      ]);
 
       // Transform to ShippingInfo format
       const shippingInfo: ShippingInfo = {
-        id: shippingInfoData.id,
-        carrier: shippingInfoData.carrier?.name || 'Unknown Carrier',
-        carrierId: shippingInfoData.carrier_id,
-        trackingNumber: shippingInfoData.tracking_number,
-        method: shippingInfoData.shipping_method || 'Standard',
-        shippingMethod: shippingInfoData.shipping_method || 'standard',
-        cost: shippingInfoData.cost || 0,
-        notes: shippingInfoData.notes || '',
-        agentId: shippingInfoData.agent_id || '',
-        agent: shippingInfoData.agent ? {
-          id: shippingInfoData.agent.id,
-          name: shippingInfoData.agent.name,
-          company: shippingInfoData.agent.company,
-          phone: shippingInfoData.agent.phone,
-          email: shippingInfoData.agent.email,
-          isActive: shippingInfoData.agent.is_active
+        id: shippingRecord.id,
+        carrier: carrierData?.name || shippingRecord.carrier_name || 'Unknown Carrier',
+        carrierId: shippingRecord.carrier_id || '',
+        trackingNumber: shippingRecord.tracking_number || '',
+        method: shippingRecord.shipping_method || 'Standard',
+        shippingMethod: shippingRecord.shipping_method || 'standard',
+        cost: shippingRecord.cost || shippingRecord.shipping_cost || 0,
+        notes: shippingRecord.notes || '',
+        agentId: shippingRecord.agent_id || '',
+        agent: agentData ? {
+          id: agentData.id,
+          name: agentData.name,
+          company: agentData.company,
+          phone: agentData.phone,
+          email: agentData.email,
+          isActive: agentData.is_active
+        } : shippingRecord.shipping_agent ? {
+          id: '',
+          name: shippingRecord.shipping_agent,
+          company: '',
+          phone: '',
+          email: '',
+          isActive: true
         } : null,
-        managerId: shippingInfoData.manager_id || '',
-        manager: shippingInfoData.manager ? {
-          id: shippingInfoData.manager.id,
-          name: shippingInfoData.manager.name,
-          department: shippingInfoData.manager.department,
-          phone: shippingInfoData.manager.phone,
-          email: shippingInfoData.manager.email
+        managerId: shippingRecord.manager_id || '',
+        manager: managerData ? {
+          id: managerData.id,
+          name: managerData.name,
+          department: managerData.department,
+          phone: managerData.phone,
+          email: managerData.email
+        } : shippingRecord.shipping_manager ? {
+          id: '',
+          name: shippingRecord.shipping_manager,
+          department: '',
+          phone: '',
+          email: ''
         } : null,
-        estimatedDelivery: shippingInfoData.estimated_delivery || '',
-        shippedDate: '',
-        deliveredDate: shippingInfoData.actual_delivery || '',
-        portOfLoading: shippingInfoData.port_of_loading || '',
-        portOfDischarge: shippingInfoData.port_of_discharge || '',
-        pricePerCBM: shippingInfoData.price_per_cbm || 0,
-        enableInsurance: shippingInfoData.enable_insurance || false,
-        requireSignature: shippingInfoData.require_signature || false,
-        status: shippingInfoData.status || 'pending',
-        cargoBoxes: shippingInfoData.cargo_boxes ? JSON.parse(shippingInfoData.cargo_boxes) : [],
+        estimatedDelivery: shippingRecord.estimated_delivery || shippingRecord.expected_delivery_date || '',
+        shippedDate: shippingRecord.shipped_date || '',
+        deliveredDate: shippingRecord.actual_delivery || shippingRecord.actual_delivery_date || '',
+        portOfLoading: shippingRecord.port_of_loading || '',
+        portOfDischarge: shippingRecord.port_of_discharge || '',
+        pricePerCBM: shippingRecord.price_per_cbm || 0,
+        enableInsurance: shippingRecord.enable_insurance || false,
+        requireSignature: shippingRecord.require_signature || false,
+        status: shippingRecord.status || 'pending',
+        cargoBoxes: shippingRecord.cargo_boxes ? JSON.parse(shippingRecord.cargo_boxes) : [],
         cargoItems: cargoItems,
         trackingEvents: [],
         // Additional fields
-        flightNumber: shippingInfoData.flight_number || '',
-        departureAirport: shippingInfoData.departure_airport || '',
-        arrivalAirport: shippingInfoData.arrival_airport || '',
-        departureTime: shippingInfoData.departure_time || '',
-        arrivalTime: shippingInfoData.arrival_time || '',
-        vesselName: shippingInfoData.vessel_name || '',
-        departureDate: shippingInfoData.departure_date || '',
-        arrivalDate: shippingInfoData.arrival_date || '',
-        containerNumber: shippingInfoData.container_number || '',
+        flightNumber: shippingRecord.flight_number || '',
+        departureAirport: shippingRecord.departure_airport || '',
+        arrivalAirport: shippingRecord.arrival_airport || '',
+        departureTime: shippingRecord.departure_time || '',
+        arrivalTime: shippingRecord.arrival_time || '',
+        vesselName: shippingRecord.vessel_name || '',
+        departureDate: shippingRecord.departure_date || '',
+        arrivalDate: shippingRecord.arrival_date || '',
+        containerNumber: shippingRecord.container_number || '',
         // Additional tracking fields
-        shippingOrigin: shippingInfoData.shipping_origin || '',
-        shippingDestination: shippingInfoData.shipping_destination || '',
-        totalCBM: shippingInfoData.total_cbm || 0
+        shippingOrigin: shippingRecord.shipping_origin || '',
+        shippingDestination: shippingRecord.shipping_destination || '',
+        totalCBM: shippingRecord.total_cbm || 0
       };
 
       return shippingInfo;
@@ -242,12 +255,7 @@ class ShippingDataServiceImpl implements ShippingDataService {
       const { data, error } = await supabase
         .from('lats_shipping_info')
         .insert(insertData)
-        .select(`
-          *,
-          carrier:lats_shipping_carriers(id, name, code, tracking_url, contact_info),
-          agent:lats_shipping_agents!lats_shipping_info_agent_id_fkey(id, name, company, phone, email, is_active),
-          manager:lats_shipping_managers!lats_shipping_info_manager_id_fkey(id, name, department, phone, email)
-        `)
+        .select('*')
         .single();
 
       if (error) {
@@ -275,10 +283,17 @@ class ShippingDataServiceImpl implements ShippingDataService {
         }
       }
 
+      // Fetch related data separately to avoid 406 errors
+      const [carrierData, agentData, managerData] = await Promise.all([
+        data.carrier_id ? this.getCarrierData(data.carrier_id) : null,
+        data.agent_id ? this.getAgentData(data.agent_id) : null,
+        data.manager_id ? this.getManagerData(data.manager_id) : null
+      ]);
+
       // Transform to ShippingInfo format
       const shippingInfo: ShippingInfo = {
         id: data.id,
-        carrier: data.carrier?.name || 'Unknown Carrier',
+        carrier: carrierData?.name || 'Unknown Carrier',
         carrierId: data.carrier_id,
         trackingNumber: data.tracking_number,
         method: data.shipping_method || 'Standard',
@@ -286,21 +301,21 @@ class ShippingDataServiceImpl implements ShippingDataService {
         cost: data.cost || 0,
         notes: data.notes || '',
         agentId: data.agent_id || '',
-        agent: data.agent ? {
-          id: data.agent.id,
-          name: data.agent.name,
-          company: data.agent.company,
-          phone: data.agent.phone,
-          email: data.agent.email,
-          isActive: data.agent.is_active
+        agent: agentData ? {
+          id: agentData.id,
+          name: agentData.name,
+          company: agentData.company,
+          phone: agentData.phone,
+          email: agentData.email,
+          isActive: agentData.is_active
         } : null,
         managerId: data.manager_id || '',
-        manager: data.manager ? {
-          id: data.manager.id,
-          name: data.manager.name,
-          department: data.manager.department,
-          phone: data.manager.phone,
-          email: data.manager.email
+        manager: managerData ? {
+          id: managerData.id,
+          name: managerData.name,
+          department: managerData.department,
+          phone: managerData.phone,
+          email: managerData.email
         } : null,
         estimatedDelivery: data.estimated_delivery || '',
         shippedDate: '',
@@ -385,12 +400,7 @@ class ShippingDataServiceImpl implements ShippingDataService {
         .from('lats_shipping_info')
         .update(updateData)
         .eq('id', shippingId)
-        .select(`
-          *,
-          carrier:lats_shipping_carriers(id, name, code, tracking_url, contact_info),
-          agent:lats_shipping_agents!lats_shipping_info_agent_id_fkey(id, name, company, phone, email, is_active),
-          manager:lats_shipping_managers!lats_shipping_info_manager_id_fkey(id, name, department, phone, email)
-        `)
+        .select('*')
         .single();
 
       if (error) {
@@ -398,10 +408,17 @@ class ShippingDataServiceImpl implements ShippingDataService {
         throw error;
       }
 
+      // Fetch related data separately to avoid 406 errors
+      const [carrierData, agentData, managerData] = await Promise.all([
+        data.carrier_id ? this.getCarrierData(data.carrier_id) : null,
+        data.agent_id ? this.getAgentData(data.agent_id) : null,
+        data.manager_id ? this.getManagerData(data.manager_id) : null
+      ]);
+
       // Transform to ShippingInfo format
       const shippingInfo: ShippingInfo = {
         id: data.id,
-        carrier: data.carrier?.name || 'Unknown Carrier',
+        carrier: carrierData?.name || 'Unknown Carrier',
         carrierId: data.carrier_id,
         trackingNumber: data.tracking_number,
         method: data.shipping_method || 'Standard',
@@ -409,21 +426,21 @@ class ShippingDataServiceImpl implements ShippingDataService {
         cost: data.cost || 0,
         notes: data.notes || '',
         agentId: data.agent_id || '',
-        agent: data.agent ? {
-          id: data.agent.id,
-          name: data.agent.name,
-          company: data.agent.company,
-          phone: data.agent.phone,
-          email: data.agent.email,
-          isActive: data.agent.is_active
+        agent: agentData ? {
+          id: agentData.id,
+          name: agentData.name,
+          company: agentData.company,
+          phone: agentData.phone,
+          email: agentData.email,
+          isActive: agentData.is_active
         } : null,
         managerId: data.manager_id || '',
-        manager: data.manager ? {
-          id: data.manager.id,
-          name: data.manager.name,
-          department: data.manager.department,
-          phone: data.manager.phone,
-          email: data.manager.email
+        manager: managerData ? {
+          id: managerData.id,
+          name: managerData.name,
+          department: managerData.department,
+          phone: managerData.phone,
+          email: managerData.email
         } : null,
         estimatedDelivery: data.estimated_delivery || '',
         shippedDate: '',
@@ -542,14 +559,10 @@ class ShippingDataServiceImpl implements ShippingDataService {
     try {
       console.log('🚚 [ShippingDataService] Fetching all shipping info with filters:', filters);
       
+      // Use simple query to avoid 406 errors with complex nested selects
       let query = supabase
         .from('lats_shipping_info')
-        .select(`
-          *,
-          carrier:lats_shipping_carriers(id, name, code, tracking_url, contact_info),
-          agent:lats_shipping_agents!lats_shipping_info_agent_id_fkey(id, name, company, phone, email, is_active),
-          manager:lats_shipping_managers(id, name, department, phone, email)
-        `);
+        .select('*');
 
       if (filters?.status) {
         query = query.eq('status', filters.status);
@@ -576,33 +589,33 @@ class ShippingDataServiceImpl implements ShippingDataService {
 
       const shippingInfoList: ShippingInfo[] = data.map(item => ({
         id: item.id,
-        carrier: item.carrier?.name || 'Unknown Carrier',
-        carrierId: item.carrier_id,
-        trackingNumber: item.tracking_number,
+        carrier: item.carrier_name || 'Unknown Carrier',
+        carrierId: item.carrier_id || '',
+        trackingNumber: item.tracking_number || '',
         method: item.shipping_method || 'Standard',
         shippingMethod: item.shipping_method || 'standard',
-        cost: item.cost || 0,
+        cost: item.cost || item.shipping_cost || 0,
         notes: item.notes || '',
         agentId: item.agent_id || '',
-        agent: item.agent ? {
-          id: item.agent.id,
-          name: item.agent.name,
-          company: item.agent.company,
-          phone: item.agent.phone,
-          email: item.agent.email,
-          isActive: item.agent.is_active
+        agent: item.shipping_agent ? {
+          id: '',
+          name: item.shipping_agent,
+          company: '',
+          phone: '',
+          email: '',
+          isActive: true
         } : null,
         managerId: item.manager_id || '',
-        manager: item.manager ? {
-          id: item.manager.id,
-          name: item.manager.name,
-          department: item.manager.department,
-          phone: item.manager.phone,
-          email: item.manager.email
+        manager: item.shipping_manager ? {
+          id: '',
+          name: item.shipping_manager,
+          department: '',
+          phone: '',
+          email: ''
         } : null,
-        estimatedDelivery: item.estimated_delivery || '',
-        shippedDate: '',
-        deliveredDate: item.actual_delivery || '',
+        estimatedDelivery: item.estimated_delivery || item.expected_delivery_date || '',
+        shippedDate: item.shipped_date || '',
+        deliveredDate: item.actual_delivery || item.actual_delivery_date || '',
         portOfLoading: item.port_of_loading || '',
         portOfDischarge: item.port_of_discharge || '',
         pricePerCBM: item.price_per_cbm || 0,
@@ -659,10 +672,7 @@ class ShippingDataServiceImpl implements ShippingDataService {
       // Now fetch shipping info for these purchase orders
       const { data, error } = await supabase
         .from('lats_shipping_info')
-        .select(`
-          *,
-          purchase_order:lats_purchase_orders(id, order_number, status, created_at)
-        `)
+        .select('*')
         .in('purchase_order_id', purchaseOrderIds)
         .order('created_at', { ascending: false });
 
@@ -831,18 +841,20 @@ class ShippingDataServiceImpl implements ShippingDataService {
         .from('lats_shipping_info')
         .update(updateData)
         .eq('id', shippingId)
-        .select(`
-          *,
-          carrier:lats_shipping_carriers(id, name, code, tracking_url, contact_info),
-          agent:lats_shipping_agents!lats_shipping_info_agent_id_fkey(id, name, company, phone, email, is_active),
-          manager:lats_shipping_managers!lats_shipping_info_manager_id_fkey(id, name, department, phone, email)
-        `)
+        .select('*')
         .single();
 
       if (shippingError) {
         console.error('❌ [ShippingDataService] Error updating shipping status:', shippingError);
         throw shippingError;
       }
+
+      // Fetch related data separately to avoid 406 errors
+      const [carrierData, agentData, managerData] = await Promise.all([
+        shippingData.carrier_id ? this.getCarrierData(shippingData.carrier_id) : null,
+        shippingData.agent_id ? this.getAgentData(shippingData.agent_id) : null,
+        shippingData.manager_id ? this.getManagerData(shippingData.manager_id) : null
+      ]);
 
       // Create enhanced description with additional information
       const additionalInfo: string[] = [];
@@ -1037,7 +1049,7 @@ class ShippingDataServiceImpl implements ShippingDataService {
       // Transform shipping data to ShippingInfo format
       const shippingInfo: ShippingInfo = {
         id: shippingData.id,
-        carrier: shippingData.carrier?.name || 'Unknown Carrier',
+        carrier: carrierData?.name || 'Unknown Carrier',
         carrierId: shippingData.carrier_id,
         trackingNumber: shippingData.tracking_number,
         method: shippingData.shipping_method || 'Standard',
@@ -1045,21 +1057,21 @@ class ShippingDataServiceImpl implements ShippingDataService {
         cost: shippingData.cost || 0,
         notes: shippingData.notes || '',
         agentId: shippingData.agent_id || '',
-        agent: shippingData.agent ? {
-          id: shippingData.agent.id,
-          name: shippingData.agent.name,
-          company: shippingData.agent.company,
-          phone: shippingData.agent.phone,
-          email: shippingData.agent.email,
-          isActive: shippingData.agent.is_active
+        agent: agentData ? {
+          id: agentData.id,
+          name: agentData.name,
+          company: agentData.company,
+          phone: agentData.phone,
+          email: agentData.email,
+          isActive: agentData.is_active
         } : null,
         managerId: shippingData.manager_id || '',
-        manager: shippingData.manager ? {
-          id: shippingData.manager.id,
-          name: shippingData.manager.name,
-          department: shippingData.manager.department,
-          phone: shippingData.manager.phone,
-          email: shippingData.manager.email
+        manager: managerData ? {
+          id: managerData.id,
+          name: managerData.name,
+          department: managerData.department,
+          phone: managerData.phone,
+          email: managerData.email
         } : null,
         estimatedDelivery: shippingData.estimated_delivery || '',
         shippedDate: '',
@@ -1105,18 +1117,10 @@ class ShippingDataServiceImpl implements ShippingDataService {
    */
   async getShippingCargoItems(shippingId: string): Promise<any[]> {
     try {
+      // Use simple query to avoid 406 errors with complex nested selects
       const { data, error } = await supabase
         .from('lats_shipping_cargo_items')
-        .select(`
-          *,
-          product:lats_products(
-            *,
-            category:lats_categories(*),
-            supplier:lats_suppliers(*),
-            variants:lats_product_variants(*)
-          ),
-          purchase_order_item:lats_purchase_order_items(*)
-        `)
+        .select('*')
         .eq('shipping_id', shippingId)
         .order('created_at', { ascending: true });
 
@@ -1139,6 +1143,75 @@ class ShippingDataServiceImpl implements ShippingDataService {
     const carrierPrefix = carrierId ? carrierId.substring(0, 3).toUpperCase() : 'TRK';
     
     return `${carrierPrefix}${timestamp}${random}`;
+  }
+
+  /**
+   * Get carrier data by ID (separate query to avoid 406 errors)
+   */
+  private async getCarrierData(carrierId: string): Promise<any> {
+    try {
+      const { data, error } = await supabase
+        .from('lats_shipping_carriers')
+        .select('*')
+        .eq('id', carrierId)
+        .single();
+
+      if (error) {
+        console.warn('⚠️ [ShippingDataService] Error fetching carrier data:', error);
+        return null;
+      }
+
+      return data;
+    } catch (error) {
+      console.warn('⚠️ [ShippingDataService] Unexpected error fetching carrier data:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get agent data by ID (separate query to avoid 406 errors)
+   */
+  private async getAgentData(agentId: string): Promise<any> {
+    try {
+      const { data, error } = await supabase
+        .from('lats_shipping_agents')
+        .select('*')
+        .eq('id', agentId)
+        .single();
+
+      if (error) {
+        console.warn('⚠️ [ShippingDataService] Error fetching agent data:', error);
+        return null;
+      }
+
+      return data;
+    } catch (error) {
+      console.warn('⚠️ [ShippingDataService] Unexpected error fetching agent data:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get manager data by ID (separate query to avoid 406 errors)
+   */
+  private async getManagerData(managerId: string): Promise<any> {
+    try {
+      const { data, error } = await supabase
+        .from('lats_shipping_managers')
+        .select('*')
+        .eq('id', managerId)
+        .single();
+
+      if (error) {
+        console.warn('⚠️ [ShippingDataService] Error fetching manager data:', error);
+        return null;
+      }
+
+      return data;
+    } catch (error) {
+      console.warn('⚠️ [ShippingDataService] Unexpected error fetching manager data:', error);
+      return null;
+    }
   }
 }
 

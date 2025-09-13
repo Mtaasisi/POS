@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, CheckCircle, Loader2 } from 'lucide-react';
+import { X, CheckCircle, Loader2, CreditCard, DollarSign, AlertCircle, CheckCircle2, Plus } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { usePaymentMethods } from '../hooks/usePaymentMethods';
 import { usePaymentAccounts } from '../hooks/usePaymentAccounts';
@@ -15,6 +15,17 @@ interface PaymentsPopupModalProps {
   description?: string;
   onPaymentComplete: (paymentData: any, totalPaid?: number) => Promise<void>;
   title?: string;
+}
+
+interface PaymentEntry {
+  id: string;
+  method: string;
+  methodId: string;
+  amount: number;
+  account: string;
+  accountId: string;
+  reference?: string;
+  notes?: string;
 }
 
 const PaymentsPopupModal: React.FC<PaymentsPopupModalProps> = ({
@@ -34,13 +45,7 @@ const PaymentsPopupModal: React.FC<PaymentsPopupModalProps> = ({
   const [selectedMethod, setSelectedMethod] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isMultipleMode, setIsMultipleMode] = useState(false);
-  const [paymentEntries, setPaymentEntries] = useState<Array<{
-    method: string, 
-    methodId: string,
-    amount: number, 
-    account: string,
-    accountId: string
-  }>>([]);
+  const [paymentEntries, setPaymentEntries] = useState<PaymentEntry[]>([]);
   const [customAmount, setCustomAmount] = useState('');
 
   // Reset form when modal opens
@@ -62,15 +67,7 @@ const PaymentsPopupModal: React.FC<PaymentsPopupModalProps> = ({
   const getAutoSelectedAccount = (methodId: string) => {
     const method = paymentMethods.find(m => m.id === methodId);
     if (!method) return null;
-
-    // In the current system, finance accounts with is_payment_method = true ARE the payment methods
-    // So we just return the selected payment method as the account
     return method;
-  };
-
-  // Get payment method icon
-  const getMethodIcon = (type: string, name: string) => {
-    return <PaymentMethodIcon type={type} name={name} className="w-6 h-6" />;
   };
 
   // Add payment entry in multiple mode
@@ -78,50 +75,50 @@ const PaymentsPopupModal: React.FC<PaymentsPopupModalProps> = ({
     const method = paymentMethods.find(m => m.id === methodId);
     const account = getAutoSelectedAccount(methodId);
     
-    // Check if method already exists
-    const existingEntry = paymentEntries.find(entry => entry.methodId === methodId);
-    if (existingEntry) {
-      toast.error('This payment method is already added');
+    if (!method || !account) {
+      toast.error('Payment method or account not found');
       return;
     }
+
+    const amount = paymentAmount || parseFloat(customAmount) || remainingAmount;
     
-    // Use custom amount if provided, otherwise use remaining amount
-    const amountToAdd = paymentAmount || parseFloat(customAmount) || remainingAmount;
-    
-    if (method && account && amountToAdd > 0) {
-      setPaymentEntries(prev => [...prev, {
-        method: method.name,
-        methodId: method.id,
-        amount: amountToAdd,
-        account: account.name,
-        accountId: account.id
-      }]);
-      setCustomAmount(''); // Clear custom amount after adding
+    if (amount <= 0) {
+      toast.error('Please enter a valid amount');
+      return;
     }
+
+    if (amount > remainingAmount) {
+      toast.error('Amount exceeds remaining balance');
+      return;
+    }
+
+    const newEntry: PaymentEntry = {
+      id: crypto.randomUUID(),
+      method: method.name,
+      methodId: method.id,
+      amount: amount,
+      account: account.name,
+      accountId: account.id,
+      reference: '',
+      notes: ''
+    };
+
+    setPaymentEntries(prev => [...prev, newEntry]);
+    setCustomAmount('');
   };
 
-  // Quick amount buttons
-  const quickAmounts = [
-    { label: '25%', value: amount * 0.25 },
-    { label: '50%', value: amount * 0.5 },
-    { label: '75%', value: amount * 0.75 },
-    { label: 'Full', value: amount }
-  ];
-
-  // Remove payment entry
   const removePayment = (index: number) => {
     setPaymentEntries(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handlePayment = async () => {
-    // Check if customer is selected
-    if (!customerId) {
-      toast.error('Please select a customer first');
-      return;
-    }
+  const updatePaymentEntry = (index: number, field: keyof PaymentEntry, value: string | number) => {
+    setPaymentEntries(prev => prev.map((entry, i) => 
+      i === index ? { ...entry, [field]: value } : entry
+    ));
+  };
 
+  const handlePayment = async () => {
     if (isMultipleMode) {
-      // Multiple payment mode
       if (paymentEntries.length === 0) {
         toast.error('Please add at least one payment');
         return;
@@ -132,7 +129,6 @@ const PaymentsPopupModal: React.FC<PaymentsPopupModalProps> = ({
         return;
       }
     } else {
-      // Single payment mode
       if (!selectedMethod) {
         toast.error('Please select a payment method');
         return;
@@ -166,7 +162,7 @@ const PaymentsPopupModal: React.FC<PaymentsPopupModalProps> = ({
           return;
         }
 
-        const paymentData = {
+        const paymentData = [{
           amount: amount,
           paymentMethod: method.name,
           paymentMethodId: method.id,
@@ -175,7 +171,7 @@ const PaymentsPopupModal: React.FC<PaymentsPopupModalProps> = ({
           customerName: customerName,
           description: description,
           timestamp: new Date().toISOString()
-        };
+        }];
 
         await onPaymentComplete(paymentData, totalPaid);
       }
@@ -183,30 +179,7 @@ const PaymentsPopupModal: React.FC<PaymentsPopupModalProps> = ({
       onClose();
     } catch (error) {
       console.error('Payment failed:', error);
-      
-      // Provide more specific error messages based on the error type
-      let errorMessage = 'Payment failed. Please try again.';
-      
-      if (error instanceof Error) {
-        if (error.message.includes('Customer information is required')) {
-          errorMessage = 'Customer information is required for payment processing.';
-        } else if (error.message.includes('No payment data received')) {
-          errorMessage = 'No payment data received. Please try again.';
-        } else if (error.message.includes('Failed to process sale')) {
-          errorMessage = 'Sale processing failed. Please check your connection and try again.';
-        } else if (error.message.includes('Database connection error')) {
-          errorMessage = 'Database connection error. Please check your internet connection.';
-        } else if (error.message.includes('Invalid payment method')) {
-          errorMessage = 'Invalid payment method selected. Please choose a different method.';
-        } else if (error.message.includes('Connection issue')) {
-          errorMessage = 'Connection issue detected. Please check your internet connection.';
-        } else {
-          // Use the actual error message if it's informative
-          errorMessage = error.message || errorMessage;
-        }
-      }
-      
-      toast.error(errorMessage);
+      toast.error('Payment failed. Please try again.');
     } finally {
       setIsProcessing(false);
     }
@@ -215,257 +188,336 @@ const PaymentsPopupModal: React.FC<PaymentsPopupModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50 p-4">
-      <div className="w-full max-w-5xl">
-        {/* Enhanced Glassmorphism Modal */}
-        <div className="bg-white/8 backdrop-blur-2xl border border-white/30 rounded-3xl shadow-2xl shadow-purple-500/20 overflow-hidden relative">
-          {/* Animated Background Gradient */}
-          <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-purple-500/10"></div>
-          <div className="relative z-10">
-            {/* Enhanced Header */}
-            <div className="p-8 border-b border-white/20 bg-gradient-to-r from-white/5 to-transparent">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-2xl font-bold text-white mb-1">{title}</h2>
-                  <p className="text-white/70 text-sm">Complete your payment securely</p>
-                </div>
-                <button
-                  onClick={onClose}
-                  className="text-white/70 hover:text-white transition-all duration-200 p-3 hover:bg-white/10 rounded-xl hover:scale-105"
-                  disabled={isProcessing}
-                >
-                  <X className="w-6 h-6" />
-                </button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div 
+        className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      
+      <div 
+        className="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-indigo-50">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center">
+              <CreditCard className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Complete Your Payment</h2>
+              <p className="text-sm text-gray-600">
+                {customerName ? `Thank you, ${customerName}!` : 'Secure payment processing'}
+              </p>
+            </div>
+          </div>
+          <button 
+            onClick={onClose}
+            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-white/50 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
+          {/* Payment Summary */}
+          <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
+            <div className="flex items-center gap-2 mb-3">
+              <DollarSign className="w-5 h-5 text-blue-600" />
+              <h3 className="text-sm font-semibold text-blue-800">Payment Summary</h3>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <span className="text-xs text-blue-600 uppercase tracking-wide">Total Amount</span>
+                <p className="text-lg font-bold text-blue-900">
+                  TZS {amount.toLocaleString()}
+                </p>
+              </div>
+              <div>
+                <span className="text-xs text-blue-600 uppercase tracking-wide">Remaining</span>
+                <p className="text-lg font-bold text-blue-900">
+                  TZS {remainingAmount.toLocaleString()}
+                </p>
               </div>
             </div>
+          </div>
 
-            <div className="p-8">
-              {/* Enhanced Mode Toggle */}
-              <div className="flex items-center justify-center gap-3 mb-8">
-                <div className="bg-white/10 backdrop-blur-md rounded-2xl p-1 border border-white/20">
-                  <button
-                    onClick={() => setIsMultipleMode(false)}
-                    className={`px-8 py-4 rounded-xl text-sm font-semibold transition-all duration-300 ${
-                      !isMultipleMode 
-                        ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg shadow-blue-500/30' 
-                        : 'text-white/70 hover:text-white/90 hover:bg-white/5'
-                    }`}
-                  >
-                    Single Payment
-                  </button>
-                  <button
-                    onClick={() => setIsMultipleMode(true)}
-                    className={`px-8 py-4 rounded-xl text-sm font-semibold transition-all duration-300 ${
-                      isMultipleMode 
-                        ? 'bg-gradient-to-r from-purple-500 to-pink-600 text-white shadow-lg shadow-purple-500/30' 
-                        : 'text-white/70 hover:text-white/90 hover:bg-white/5'
-                    }`}
-                  >
-                    Multiple Payments
-                  </button>
-                </div>
-              </div>
+          {/* Payment Mode Toggle */}
+          <div className="mb-6">
+            <div className="text-center mb-4">
+              <h4 className="text-lg font-semibold text-gray-900 mb-2">Choose Payment Method</h4>
+              <p className="text-sm text-gray-600">Select how you'd like to pay</p>
+            </div>
+            <div className="flex items-center justify-center gap-4">
+              <button
+                onClick={() => setIsMultipleMode(false)}
+                className={`px-6 py-3 rounded-xl font-medium text-sm transition-all duration-200 ${
+                  !isMultipleMode 
+                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' 
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                💳 Single Payment
+              </button>
+              <button
+                onClick={() => setIsMultipleMode(true)}
+                className={`px-6 py-3 rounded-xl font-medium text-sm transition-all duration-200 ${
+                  isMultipleMode 
+                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' 
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                💰 Split Payment
+              </button>
+            </div>
+          </div>
 
-              {/* Main Content Grid */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Left Column - Amount & Payment Methods */}
-                <div className="space-y-8">
-                  {/* Enhanced Amount Display */}
-                  <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl rounded-2xl border border-white/30 p-8 text-center shadow-xl shadow-blue-500/10">
-                    {isMultipleMode ? (
-                      <>
-                        <div className="text-white/80 text-sm mb-3 font-medium">Total Amount</div>
-                        <div className="text-white text-5xl font-bold mb-6 bg-gradient-to-r from-white to-blue-200 bg-clip-text text-transparent">
-                          TSh {amount.toLocaleString()}
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="bg-gradient-to-br from-green-500/30 to-emerald-500/20 rounded-xl p-4 border border-green-400/30">
-                            <div className="text-green-300 text-xs mb-2 font-semibold">PAID</div>
-                            <div className="text-white font-bold text-lg">TSh {(totalPaid || 0).toLocaleString()}</div>
-                          </div>
-                          <div className="bg-gradient-to-br from-blue-500/30 to-cyan-500/20 rounded-xl p-4 border border-blue-400/30">
-                            <div className="text-blue-300 text-xs mb-2 font-semibold">REMAINING</div>
-                            <div className="text-white font-bold text-lg">TSh {remainingAmount.toLocaleString()}</div>
-                          </div>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="text-white/80 text-sm mb-3 font-medium">Amount to Pay</div>
-                        <div className="text-white text-6xl font-bold bg-gradient-to-r from-white to-blue-200 bg-clip-text text-transparent">
-                          TSh {amount.toLocaleString()}
-                        </div>
-                        <div className="mt-4 text-white/60 text-sm">Select a payment method below</div>
-                      </>
-                    )}
+          {/* Payment Methods */}
+          {methodsLoading || accountsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+              <span className="ml-2 text-gray-600">Loading payment methods...</span>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {!isMultipleMode ? (
+                /* Single Payment Mode */
+                <div className="space-y-4">
+                  <div className="text-center mb-4">
+                    <h5 className="text-md font-semibold text-gray-900 mb-2">How would you like to pay?</h5>
+                    <p className="text-sm text-gray-600">Select your preferred payment method</p>
                   </div>
-
-                  {/* Enhanced Payment Methods */}
-                  <div className="space-y-4">
-                    <div className="text-white/90 text-lg font-semibold text-center">
-                      {isMultipleMode ? 'Add Payment Method' : 'Choose Payment Method'}
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      {paymentMethods.slice(0, 4).map((method) => {
-                        const isSelected = selectedMethod === method.id;
-                        const isAlreadyAdded = paymentEntries.some(entry => entry.methodId === method.id);
-                        const isDisabled = isProcessing || (isMultipleMode && isAlreadyAdded);
-                        
-                        return (
-                          <button
-                            key={method.id}
-                            onClick={() => {
-                              if (isMultipleMode) {
-                                // Add payment with custom amount or remaining amount
-                                addPayment(method.id);
-                              } else {
-                                // Select method for single payment
-                                setSelectedMethod(method.id);
-                              }
-                            }}
-                            disabled={isDisabled}
-                            className={`p-6 rounded-2xl border backdrop-blur-xl transition-all duration-300 text-center transform hover:scale-105 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed group ${
-                              isSelected 
-                                ? 'bg-gradient-to-br from-blue-500/30 to-purple-500/30 border-blue-400/50 ring-2 ring-blue-300/50 shadow-lg shadow-blue-500/20' 
-                                : isAlreadyAdded
-                                ? 'bg-gradient-to-br from-green-500/30 to-emerald-500/30 border-green-400/50 text-green-200 shadow-lg shadow-green-500/20'
-                                : 'bg-white/10 border-white/30 hover:bg-white/15 hover:border-white/40 hover:shadow-lg hover:shadow-white/10'
-                            }`}
-                          >
-                            <div className="flex flex-col items-center gap-3">
-                              <div className="text-3xl text-white/90 group-hover:scale-110 transition-transform duration-200">
-                                {getMethodIcon(method.type, method.name)}
-                              </div>
-                              <div className="text-white font-semibold text-sm">
-                                {method.name}
-                              </div>
-                              {isAlreadyAdded && (
-                                <div className="text-green-300 text-xs font-bold bg-green-500/20 px-2 py-1 rounded-full">
-                                  ✓ Added
-                                </div>
-                              )}
+                  <div className="grid grid-cols-1 gap-3">
+                    {paymentMethods.map((method) => (
+                      <button
+                        key={method.id}
+                        onClick={() => setSelectedMethod(method.id)}
+                        className={`p-4 rounded-xl border-2 transition-all duration-200 text-left ${
+                          selectedMethod === method.id
+                            ? 'border-blue-500 bg-blue-50 shadow-lg shadow-blue-500/20'
+                            : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50/50'
+                        }`}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
+                            selectedMethod === method.id ? 'bg-blue-100' : 'bg-gray-100'
+                          }`}>
+                            <PaymentMethodIcon 
+                              type={method.type} 
+                              name={method.name} 
+                              className="w-6 h-6" 
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <p className="font-semibold text-gray-900">{method.name}</p>
+                            <p className="text-sm text-gray-600">
+                              Accept payments via {method.name}
+                            </p>
+                          </div>
+                          {selectedMethod === method.id && (
+                            <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center">
+                              <CheckCircle2 className="w-4 h-4 text-white" />
                             </div>
-                          </button>
-                        );
-                      })}
-                    </div>
+                          )}
+                        </div>
+                      </button>
+                    ))}
                   </div>
-              </div>
-
-                {/* Right Column - Multiple Payment Features */}
-                <div className="space-y-8">
-                  {/* Enhanced Custom Amount Input (Multiple Mode) */}
-                  {isMultipleMode && (
-                    <div className="space-y-4">
-                      <div className="text-white/90 text-lg font-semibold text-center">Enter Amount</div>
-                      <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl rounded-2xl border border-white/30 p-6 shadow-xl shadow-purple-500/10">
+                </div>
+              ) : (
+                /* Multiple Payment Mode */
+                <div className="space-y-4">
+                  <div className="text-center mb-4">
+                    <h5 className="text-md font-semibold text-gray-900 mb-2">Split Your Payment</h5>
+                    <p className="text-sm text-gray-600">Use multiple payment methods if needed</p>
+                  </div>
+                  
+                  {/* Add Payment Section */}
+                  <div className="p-5 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
+                    <h4 className="text-sm font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                      <Plus className="w-4 h-4" />
+                      Add Another Payment Method
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Amount</label>
                         <input
                           type="number"
                           value={customAmount}
                           onChange={(e) => setCustomAmount(e.target.value)}
-                          placeholder="Enter amount..."
-                          className="w-full bg-transparent text-white text-center text-3xl font-bold placeholder-white/40 border-none outline-none"
+                          placeholder="Enter amount"
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         />
-                        <div className="text-white/70 text-sm text-center mt-3 font-medium">
-                          Remaining: TSh {(remainingAmount || 0).toLocaleString()}
-                        </div>
                       </div>
-                      
-                      {/* Enhanced Quick Amount Buttons */}
-                      <div className="grid grid-cols-4 gap-3">
-                        {quickAmounts.map((quick) => (
-                          <button
-                            key={quick.label}
-                            onClick={() => setCustomAmount(quick.value.toString())}
-                            className="py-3 px-4 bg-gradient-to-br from-white/15 to-white/5 border border-white/30 rounded-xl text-white/90 text-sm font-semibold hover:bg-white/20 hover:scale-105 transition-all duration-200 shadow-lg hover:shadow-white/10"
-                          >
-                            {quick.label}
-                          </button>
-                        ))}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
+                        <select
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              addPayment(e.target.value);
+                              e.target.value = '';
+                            }
+                          }}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        >
+                           <option value="">Choose method</option>
+                           {paymentMethods.map((method) => (
+                             <option key={method.id} value={method.id}>
+                               {method.name} - Accept {method.currency} payments
+                             </option>
+                           ))}
+                        </select>
+                      </div>
+                      <div className="flex items-end">
+                        <button
+                          onClick={() => {
+                            if (selectedMethod) {
+                              addPayment(selectedMethod);
+                            }
+                          }}
+                          className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                        >
+                          <Plus className="w-4 h-4" />
+                          Add Method
+                        </button>
                       </div>
                     </div>
-                  )}
+                  </div>
 
-                  {/* Enhanced Payment Entries (Multiple Mode) */}
-                  {isMultipleMode && paymentEntries.length > 0 && (
-                    <div className="space-y-4">
-                      <div className="text-white/90 text-lg font-semibold">Payment Entries</div>
-                      <div className="max-h-64 overflow-y-auto space-y-3">
-                        {paymentEntries.map((entry, index) => {
-                          const method = paymentMethods.find(m => m.id === entry.methodId);
-                          return (
-                            <div key={index} className="bg-gradient-to-r from-white/10 to-white/5 backdrop-blur-xl rounded-xl border border-white/30 p-4 flex items-center justify-between shadow-lg hover:shadow-xl transition-all duration-200">
-                              <div className="flex items-center gap-4">
-                                <div className="text-white/90 text-2xl">
-                                  {method ? getMethodIcon(method.type, method.name) : '💳'}
-                                </div>
-                                <div>
-                                  <div className="text-white font-semibold text-sm">{entry.method}</div>
-                                  <div className="text-white/70 text-xs">{entry.account}</div>
-                                </div>
+                  {/* Payment Entries */}
+                  {paymentEntries.length > 0 && (
+                    <div className="space-y-3">
+                      <h4 className="text-sm font-semibold text-gray-800 mb-3">Your Payment Methods</h4>
+                      {paymentEntries.map((entry, index) => (
+                        <div key={entry.id} className="p-4 bg-white border border-gray-200 rounded-xl shadow-sm">
+                          <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                                <PaymentMethodIcon 
+                                  type={paymentMethods.find(m => m.id === entry.methodId)?.type || 'other'} 
+                                  name={entry.method} 
+                                  className="w-5 h-5" 
+                                />
                               </div>
-                              <div className="flex items-center gap-3">
-                                <div className="text-white font-bold text-lg">TSh {(entry.amount || 0).toLocaleString()}</div>
-                                <button
-                                  onClick={() => removePayment(index)}
-                                  className="text-red-400 hover:text-red-300 p-2 hover:bg-red-500/20 rounded-lg transition-all duration-200 hover:scale-110"
-                                >
-                                  <X className="w-5 h-5" />
-                                </button>
+                              <div>
+                                <p className="font-semibold text-gray-900">{entry.method}</p>
+                                <p className="text-sm text-gray-600">{entry.account}</p>
                               </div>
                             </div>
-                          );
-                        })}
-                      </div>
+                            <button
+                              onClick={() => removePayment(index)}
+                              className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Amount</label>
+                              <input
+                                type="number"
+                                value={entry.amount}
+                                onChange={(e) => updatePaymentEntry(index, 'amount', parseFloat(e.target.value) || 0)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Reference</label>
+                              <input
+                                type="text"
+                                value={entry.reference || ''}
+                                onChange={(e) => updatePaymentEntry(index, 'reference', e.target.value)}
+                                placeholder="Optional"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Notes</label>
+                              <input
+                                type="text"
+                                value={entry.notes || ''}
+                                onChange={(e) => updatePaymentEntry(index, 'notes', e.target.value)}
+                                placeholder="Optional"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   )}
+                </div>
+              )}
+            </div>
+          )}
 
-                  {/* Enhanced Single Mode Info */}
-                  {!isMultipleMode && (
-                    <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl rounded-2xl border border-white/30 p-8 text-center shadow-xl shadow-blue-500/10">
-                      <div className="text-white/80 text-sm mb-3 font-semibold">Payment Mode</div>
-                      <div className="text-white text-2xl font-bold mb-3">Single Payment</div>
-                      <div className="text-white/70 text-sm">
-                        Select one payment method to pay the full amount
-                      </div>
-                    </div>
-                  )}
+          {/* Payment Summary */}
+          {paymentEntries.length > 0 && (
+            <div className="mt-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
+              <div className="flex items-center gap-2 mb-3">
+                <CheckCircle2 className="w-5 h-5 text-blue-600" />
+                <h4 className="text-sm font-semibold text-blue-800">Payment Summary</h4>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <span className="text-xs text-blue-600 uppercase tracking-wide">Total Paid</span>
+                  <p className="text-lg font-bold text-blue-900">
+                    TZS {totalPaid.toLocaleString()}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-xs text-blue-600 uppercase tracking-wide">Remaining</span>
+                  <p className="text-lg font-bold text-blue-900">
+                    TZS {remainingAmount.toLocaleString()}
+                  </p>
+                </div>
               </div>
             </div>
+          )}
+        </div>
 
-              {/* Enhanced Action Buttons */}
-              <div className="flex gap-6 pt-8 mt-8 border-t border-white/20">
-                <button
-                  onClick={onClose}
-                  disabled={isProcessing}
-                  className="flex-1 py-5 px-8 bg-transparent border-2 border-white/30 rounded-2xl text-white/90 font-semibold hover:bg-white/10 hover:border-white/50 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105"
-                >
-                  Cancel
-                </button>
-                
-                <button
-                  onClick={handlePayment}
-                  disabled={
-                    isProcessing || 
-                    !customerId ||
-                    (isMultipleMode ? paymentEntries.length === 0 : !selectedMethod)
-                  }
-                  className="flex-1 py-5 px-8 bg-gradient-to-r from-green-500 via-emerald-500 to-green-600 hover:from-green-600 hover:via-emerald-600 hover:to-green-700 border-2 border-green-400/50 rounded-2xl text-white font-bold transition-all duration-300 hover:shadow-2xl hover:shadow-green-500/30 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 hover:scale-105"
-                >
-                  {isProcessing ? (
-                    <>
-                      <Loader2 className="w-6 h-6 animate-spin" />
-                      Processing...
-                    </>
-                  ) : (
-                    <>
-                      {isMultipleMode ? 'Complete Payment' : 'Pay Now'}
-                      <CheckCircle className="w-6 h-6" />
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
+        {/* Footer */}
+        <div className="flex items-center justify-between p-6 border-t border-gray-100 bg-gradient-to-r from-gray-50 to-blue-50">
+          <div className="text-sm text-gray-600">
+            {remainingAmount > 0 ? (
+              <span className="text-orange-600 flex items-center gap-1">
+                <AlertCircle className="w-4 h-4" />
+                TZS {remainingAmount.toLocaleString()} remaining
+              </span>
+            ) : (
+              <span className="text-green-600 flex items-center gap-1">
+                <CheckCircle2 className="w-4 h-4" />
+                Payment complete
+              </span>
+            )}
+          </div>
+          
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onClose}
+              className="px-6 py-3 border border-gray-300 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors text-sm font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handlePayment}
+              disabled={isProcessing || (isMultipleMode ? paymentEntries.length === 0 : !selectedMethod)}
+              className="px-8 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed text-white rounded-lg transition-all duration-200 text-sm font-semibold shadow-lg shadow-green-500/25 flex items-center gap-2"
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <CreditCard className="w-4 h-4" />
+                  Complete Payment
+                </>
+              )}
+            </button>
           </div>
         </div>
       </div>

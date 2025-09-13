@@ -19,7 +19,8 @@ const countryFlags: { [key: string]: string } = {
 import { toast } from 'react-hot-toast';
 import SupplierForm from '../inventory/SupplierForm';
 import { 
-  getAllSuppliers, 
+  getActiveSuppliers, 
+  getAllSuppliers,
   createSupplier, 
   updateSupplier, 
   deleteSupplier,
@@ -34,6 +35,7 @@ const SuppliersTab: React.FC = () => {
   const [filteredSuppliers, setFilteredSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'active' | 'all'>('active');
   const [showSupplierForm, setShowSupplierForm] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -44,7 +46,7 @@ const SuppliersTab: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await getAllSuppliers();
+      const data = statusFilter === 'active' ? await getActiveSuppliers() : await getAllSuppliers();
       setSuppliers(data);
       setFilteredSuppliers(data);
     } catch (err) {
@@ -57,10 +59,10 @@ const SuppliersTab: React.FC = () => {
     }
   };
 
-  // Load suppliers on component mount
+  // Load suppliers on component mount and when status filter changes
   useEffect(() => {
     loadSuppliers();
-  }, []);
+  }, [statusFilter]);
 
   // Filter suppliers based on search
   useEffect(() => {
@@ -234,12 +236,27 @@ const SuppliersTab: React.FC = () => {
 
       {/* Filters */}
       <GlassCard className="p-4">
-        <SearchBar
-          placeholder="Search suppliers by name, company, contact person, or email..."
-          value={searchQuery}
-          onChange={setSearchQuery}
-          icon={<Search size={18} />}
-        />
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex-1">
+            <SearchBar
+              placeholder="Search suppliers by name, company, contact person, or email..."
+              value={searchQuery}
+              onChange={setSearchQuery}
+              icon={<Search size={18} />}
+            />
+          </div>
+          <div className="sm:w-48">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Status Filter</label>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as 'active' | 'all')}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+            >
+              <option value="active">Active Only</option>
+              <option value="all">All Suppliers</option>
+            </select>
+          </div>
+        </div>
       </GlassCard>
 
       {/* Suppliers List */}

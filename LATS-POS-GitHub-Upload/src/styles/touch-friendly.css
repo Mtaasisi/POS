@@ -1,0 +1,127 @@
+/* Touch-Friendly CSS Utilities */
+
+/* Minimum touch target size (44px as per Apple/Google guidelines) */
+.touch-target {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.touch-target-lg {
+  min-width: 56px;
+  min-height: 56px;
+}
+
+/* Touch feedback animations */
+.touch-feedback {
+  transition: all 0.15s ease-in-out;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.touch-feedback:active {
+  transform: scale(0.95);
+}
+
+/* Improved touch scrolling */
+.touch-scroll {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+/* Touch-friendly spacing */
+.touch-spacing {
+  padding: 12px;
+  margin: 8px;
+}
+
+.touch-spacing-lg {
+  padding: 16px;
+  margin: 12px;
+}
+
+/* Touch-friendly text input */
+.touch-input {
+  min-height: 48px;
+  padding: 12px 16px;
+  font-size: 16px; /* Prevents zoom on iOS */
+  border-radius: 8px;
+}
+
+/* Touch-friendly buttons */
+.touch-button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 500;
+  transition: all 0.15s ease-in-out;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.touch-button:active {
+  transform: scale(0.95);
+}
+
+/* Touch-friendly cards */
+.touch-card {
+  padding: 16px;
+  border-radius: 12px;
+  transition: all 0.2s ease-in-out;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.touch-card:active {
+  transform: scale(0.98);
+}
+
+/* Mobile-specific optimizations */
+@media (max-width: 768px) {
+  .touch-target {
+    min-width: 48px;
+    min-height: 48px;
+  }
+  
+  .touch-spacing {
+    padding: 16px;
+    margin: 12px;
+  }
+  
+  .touch-input {
+    min-height: 52px;
+    padding: 14px 18px;
+  }
+  
+  .touch-button {
+    min-width: 48px;
+    min-height: 48px;
+    padding: 14px 18px;
+  }
+}
+
+/* High contrast mode for outdoor use */
+@media (prefers-contrast: high) {
+  .touch-button {
+    border: 2px solid currentColor;
+  }
+  
+  .touch-card {
+    border: 2px solid currentColor;
+  }
+}
+
+/* Reduced motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .touch-feedback,
+  .touch-button,
+  .touch-card {
+    transition: none;
+  }
+  
+  .touch-feedback:active,
+  .touch-button:active,
+  .touch-card:active {
+    transform: none;
+  }
+}

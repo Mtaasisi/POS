@@ -1,5 +1,5 @@
 // PurchaseOrderDraftModal component - For managing purchase order drafts
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Archive, Save, Trash2, Clock, FileText, Edit, Eye,
   Plus, Search, Calendar, DollarSign, Truck, XCircle
@@ -7,6 +7,8 @@ import {
 import GlassCard from '../../shared/components/ui/GlassCard';
 import GlassButton from '../../shared/components/ui/GlassButton';
 import { formatMoney, formatDate, formatTime, Currency } from '../lib/utils';
+import { purchaseOrderDraftService, PurchaseOrderDraft } from '../lib/draftService';
+import { toast } from 'react-hot-toast';
 
 interface PurchaseCartItem {
   id: string;
@@ -40,6 +42,7 @@ interface PurchaseOrderDraftModalProps {
   expectedDelivery: string;
   paymentTerms: string;
   notes: string;
+  onLoadDraft?: (draft: PurchaseOrderDraft) => void;
 }
 
 const PurchaseOrderDraftModal: React.FC<PurchaseOrderDraftModalProps> = ({
@@ -50,58 +53,88 @@ const PurchaseOrderDraftModal: React.FC<PurchaseOrderDraftModalProps> = ({
   currency,
   expectedDelivery,
   paymentTerms,
-  notes
+  notes,
+  onLoadDraft
 }) => {
   const [draftName, setDraftName] = useState('');
   const [draftNotes, setDraftNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [savedDrafts, setSavedDrafts] = useState<PurchaseOrderDraft[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Mock draft data - in real app, this would come from a store or API
-  const [savedDrafts] = useState([
-    {
-      id: '1',
-      name: 'Office Supplies Order',
-      supplier: 'Stationery Plus Ltd',
-      itemCount: 5,
-      totalAmount: 45000,
-      currency: 'TZS',
-      createdAt: '2024-01-15T10:30:00Z',
-      updatedAt: '2024-01-15T14:45:00Z'
-    },
-    {
-      id: '2',
-      name: 'IT Equipment Purchase',
-      supplier: 'Tech Solutions Co',
-      itemCount: 3,
-      totalAmount: 180000,
-      currency: 'USD',
-      createdAt: '2024-01-14T09:15:00Z',
-      updatedAt: '2024-01-14T16:20:00Z'
+  // Load drafts when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      loadDrafts();
     }
-  ]);
+  }, [isOpen]);
+
+  const loadDrafts = () => {
+    try {
+      const drafts = purchaseOrderDraftService.getAllDrafts();
+      setSavedDrafts(drafts);
+    } catch (error) {
+      console.error('Failed to load drafts:', error);
+      toast.error('Failed to load drafts');
+    }
+  };
 
   const handleSaveDraft = async () => {
     if (!draftName.trim()) {
-      alert('Please enter a draft name');
+      toast.error('Please enter a draft name');
       return;
     }
 
     if (cartItems.length === 0) {
-      alert('Cannot save empty draft');
+      toast.error('Cannot save empty draft');
       return;
     }
 
     setIsSaving(true);
     try {
-      // TODO: Save draft to backend
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
+      const draftId = purchaseOrderDraftService.saveDraft(
+        draftName,
+        cartItems,
+        supplier,
+        currency,
+        expectedDelivery,
+        paymentTerms,
+        draftNotes || notes
+      );
       
-      alert('Draft saved successfully!');
-      onClose();
+      toast.success('Draft saved successfully!');
+      setDraftName('');
+      setDraftNotes('');
+      loadDrafts(); // Refresh the drafts list
     } catch (error) {
-      alert('Failed to save draft. Please try again.');
+      console.error('Failed to save draft:', error);
+      toast.error('Failed to save draft. Please try again.');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleLoadDraft = (draft: PurchaseOrderDraft) => {
+    if (onLoadDraft) {
+      onLoadDraft(draft);
+      onClose();
+    }
+  };
+
+  const handleDeleteDraft = (draftId: string) => {
+    if (confirm('Are you sure you want to delete this draft?')) {
+      try {
+        const success = purchaseOrderDraftService.deleteDraft(draftId);
+        if (success) {
+          toast.success('Draft deleted successfully');
+          loadDrafts(); // Refresh the drafts list
+        } else {
+          toast.error('Failed to delete draft');
+        }
+      } catch (error) {
+        console.error('Failed to delete draft:', error);
+        toast.error('Failed to delete draft');
+      }
     }
   };
 
@@ -227,70 +260,66 @@ const PurchaseOrderDraftModal: React.FC<PurchaseOrderDraftModalProps> = ({
                 
                 {savedDrafts.length > 0 ? (
                   <div className="space-y-3">
-                    {savedDrafts.map((draft) => (
-                      <div 
-                        key={draft.id}
-                        className="p-4 border border-gray-200 rounded-xl hover:shadow-lg hover:border-orange-300 transition-all duration-200 bg-white"
-                      >
-                        <div className="flex items-center justify-between mb-3">
-                          <div>
-                            <h4 className="font-semibold text-gray-900">{draft.name}</h4>
-                            <p className="text-sm text-gray-600">{draft.supplier}</p>
-                          </div>
-                          <div className="text-right">
-                            <div className="font-semibold text-orange-600">
-                              {formatMoney(draft.totalAmount, { code: draft.currency, name: '', symbol: '$', flag: '' })}
+                    {savedDrafts.map((draft) => {
+                      const summary = purchaseOrderDraftService.getDraftSummary(draft);
+                      return (
+                        <div 
+                          key={draft.id}
+                          className="p-4 border border-gray-200 rounded-xl hover:shadow-lg hover:border-orange-300 transition-all duration-200 bg-white"
+                        >
+                          <div className="flex items-center justify-between mb-3">
+                            <div>
+                              <h4 className="font-semibold text-gray-900">{summary.name}</h4>
+                              <p className="text-sm text-gray-600">{summary.supplier}</p>
                             </div>
-                            <div className="text-xs text-gray-500">
-                              {draft.itemCount} items
+                            <div className="text-right">
+                              <div className="font-semibold text-orange-600">
+                                {formatMoney(summary.totalAmount, { code: summary.currency, name: '', symbol: '$', flag: '' })}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {summary.itemCount} items
+                              </div>
                             </div>
                           </div>
-                        </div>
-                        
-                        <div className="flex items-center justify-between text-xs text-gray-500 mb-3">
-                          <div className="flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
-                            <span>Created: {formatDate(draft.createdAt)}</span>
+                          
+                          <div className="flex items-center justify-between text-xs text-gray-500 mb-3">
+                            <div className="flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              <span>Created: {formatDate(summary.createdAt)}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Edit className="w-3 h-3" />
+                              <span>Updated: {formatTime(summary.updatedAt)}</span>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-1">
-                            <Edit className="w-3 h-3" />
-                            <span>Updated: {formatTime(draft.updatedAt)}</span>
+                          
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleLoadDraft(draft)}
+                              className="flex-1 px-3 py-2 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 transition-colors text-sm font-medium"
+                            >
+                              Load Draft
+                            </button>
+                            <button
+                              onClick={() => {
+                                // Show draft details in a simple alert for now
+                                const details = `Draft: ${summary.name}\nSupplier: ${summary.supplier}\nItems: ${summary.itemCount}\nTotal: ${formatMoney(summary.totalAmount, { code: summary.currency, name: '', symbol: '$', flag: '' })}\nNotes: ${draft.notes || 'None'}`;
+                                alert(details);
+                              }}
+                              className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteDraft(draft.id)}
+                              className="px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
                         </div>
-                        
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => {
-                              // TODO: Load draft
-                              alert('Load draft functionality coming soon!');
-                            }}
-                            className="flex-1 px-3 py-2 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 transition-colors text-sm font-medium"
-                          >
-                            Load Draft
-                          </button>
-                          <button
-                            onClick={() => {
-                              // TODO: View draft details
-                              alert('View draft details coming soon!');
-                            }}
-                            className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (confirm('Are you sure you want to delete this draft?')) {
-                                // TODO: Delete draft
-                                alert('Delete draft functionality coming soon!');
-                              }
-                            }}
-                            className="px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="text-center py-8">
