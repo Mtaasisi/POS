@@ -1,0 +1,345 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  ShoppingCart, 
+  Search, 
+  Scan, 
+  User, 
+  Settings, 
+  Package,
+  CreditCard,
+  Receipt,
+  Home,
+  History,
+  Plus,
+  Minus,
+  X,
+  ChevronUp,
+  ChevronDown
+} from 'lucide-react';
+import { toast } from 'react-hot-toast';
+
+interface MobilePOSLayoutProps {
+  // Cart data
+  cartItems: any[];
+  cartTotal: number;
+  cartItemCount: number;
+  
+  // Search
+  searchQuery: string;
+  onSearchChange: (query: string) => void;
+  
+  // Actions
+  onProcessPayment: () => void;
+  onClearCart: () => void;
+  onScanBarcode: () => void;
+  onAddCustomer: () => void;
+  onViewReceipts: () => void;
+  onToggleSettings: () => void;
+  
+  // Children
+  children: React.ReactNode;
+  
+  // States
+  isProcessingPayment: boolean;
+  hasSelectedCustomer: boolean;
+}
+
+const MobilePOSLayout: React.FC<MobilePOSLayoutProps> = ({
+  cartItems,
+  cartTotal,
+  cartItemCount,
+  searchQuery,
+  onSearchChange,
+  onProcessPayment,
+  onClearCart,
+  onScanBarcode,
+  onAddCustomer,
+  onViewReceipts,
+  onToggleSettings,
+  children,
+  isProcessingPayment,
+  hasSelectedCustomer
+}) => {
+  const [activeTab, setActiveTab] = useState<'products' | 'cart' | 'customers' | 'settings'>('products');
+  const [showCartSheet, setShowCartSheet] = useState(false);
+  const [showSearchSheet, setShowSearchSheet] = useState(false);
+
+  // Android-style bottom navigation
+  const BottomNavigation = () => (
+    <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 safe-area-pb">
+      <div className="flex items-center justify-around py-2">
+        {/* Products Tab */}
+        <button
+          onClick={() => setActiveTab('products')}
+          className={`flex flex-col items-center py-2 px-3 rounded-lg transition-colors ${
+            activeTab === 'products' 
+              ? 'bg-blue-50 text-blue-600' 
+              : 'text-gray-600 hover:text-blue-600'
+          }`}
+        >
+          <Package size={24} className="mb-1" />
+          <span className="text-xs font-medium">Products</span>
+        </button>
+
+        {/* Cart Tab */}
+        <button
+          onClick={() => {
+            setActiveTab('cart');
+            setShowCartSheet(true);
+          }}
+          className={`flex flex-col items-center py-2 px-3 rounded-lg transition-colors relative ${
+            activeTab === 'cart' 
+              ? 'bg-green-50 text-green-600' 
+              : 'text-gray-600 hover:text-green-600'
+          }`}
+        >
+          <div className="relative">
+            <ShoppingCart size={24} className="mb-1" />
+            {cartItemCount > 0 && (
+              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                {cartItemCount > 9 ? '9+' : cartItemCount}
+              </span>
+            )}
+          </div>
+          <span className="text-xs font-medium">Cart</span>
+        </button>
+
+        {/* Customers Tab */}
+        <button
+          onClick={() => setActiveTab('customers')}
+          className={`flex flex-col items-center py-2 px-3 rounded-lg transition-colors ${
+            activeTab === 'customers' 
+              ? 'bg-purple-50 text-purple-600' 
+              : 'text-gray-600 hover:text-purple-600'
+          }`}
+        >
+          <User size={24} className="mb-1" />
+          <span className="text-xs font-medium">Customers</span>
+        </button>
+
+        {/* Settings Tab */}
+        <button
+          onClick={() => setActiveTab('settings')}
+          className={`flex flex-col items-center py-2 px-3 rounded-lg transition-colors ${
+            activeTab === 'settings' 
+              ? 'bg-gray-50 text-gray-600' 
+              : 'text-gray-600 hover:text-gray-600'
+          }`}
+        >
+          <Settings size={24} className="mb-1" />
+          <span className="text-xs font-medium">Settings</span>
+        </button>
+      </div>
+    </div>
+  );
+
+  // Android-style top bar
+  const TopBar = () => (
+    <div className="sticky top-0 z-50 bg-white border-b border-gray-200 safe-area-pt">
+      <div className="flex items-center justify-between px-4 py-3">
+        {/* App Title */}
+        <div>
+          <h1 className="text-lg font-bold text-gray-900">LATS POS</h1>
+          <p className="text-xs text-gray-500">Point of Sale</p>
+        </div>
+
+        {/* Quick Actions */}
+        <div className="flex items-center gap-2">
+          {/* Search Button */}
+          <button
+            onClick={() => setShowSearchSheet(true)}
+            className="p-2 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+          >
+            <Search size={20} />
+          </button>
+
+          {/* Barcode Scanner */}
+          <button
+            onClick={onScanBarcode}
+            className="p-2 rounded-full bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
+          >
+            <Scan size={20} />
+          </button>
+
+          {/* Cart Summary */}
+          {cartItemCount > 0 && (
+            <button
+              onClick={() => setShowCartSheet(true)}
+              className="px-3 py-1.5 rounded-full bg-green-500 text-white text-sm font-medium hover:bg-green-600 transition-colors"
+            >
+              {cartItemCount} items • {cartTotal.toLocaleString()} TSH
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  // Android-style search sheet
+  const SearchSheet = () => (
+    showSearchSheet && (
+      <div className="fixed inset-0 z-50 bg-white">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200">
+          <button
+            onClick={() => setShowSearchSheet(false)}
+            className="p-2 rounded-full hover:bg-gray-100"
+          >
+            <X size={24} />
+          </button>
+          <h2 className="text-lg font-semibold">Search Products</h2>
+          <div className="w-10" />
+        </div>
+        
+        <div className="p-4">
+          <div className="relative mb-4">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+              placeholder="Search products, categories..."
+              className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+          
+          {/* Search Results */}
+          <div className="space-y-3">
+            {children}
+          </div>
+        </div>
+      </div>
+    )
+  );
+
+  // Android-style cart sheet
+  const CartSheet = () => (
+    showCartSheet && (
+      <div className="fixed inset-0 z-50 bg-white">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200">
+          <button
+            onClick={() => setShowCartSheet(false)}
+            className="p-2 rounded-full hover:bg-gray-100"
+          >
+            <X size={24} />
+          </button>
+          <h2 className="text-lg font-semibold">Shopping Cart</h2>
+          <button
+            onClick={onClearCart}
+            className="text-red-500 text-sm font-medium"
+          >
+            Clear
+          </button>
+        </div>
+        
+        <div className="flex-1 overflow-y-auto p-4">
+          {/* Cart Items */}
+          {cartItems.length === 0 ? (
+            <div className="text-center py-12">
+              <ShoppingCart size={48} className="mx-auto text-gray-300 mb-4" />
+              <p className="text-gray-500">Your cart is empty</p>
+              <p className="text-sm text-gray-400">Add products to get started</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {cartItems.map((item, index) => (
+                <div key={index} className="flex items-center bg-gray-50 rounded-xl p-3">
+                  <div className="flex-1">
+                    <h3 className="font-medium text-gray-900">{item.name}</h3>
+                    <p className="text-sm text-gray-500">{item.price.toLocaleString()} TSH each</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button className="p-1 rounded-full hover:bg-gray-200">
+                      <Minus size={16} />
+                    </button>
+                    <span className="px-3 py-1 bg-white rounded-lg font-medium">{item.quantity}</span>
+                    <button className="p-1 rounded-full hover:bg-gray-200">
+                      <Plus size={16} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        
+        {/* Cart Footer */}
+        {cartItems.length > 0 && (
+          <div className="border-t border-gray-200 p-4">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-lg font-semibold">Total:</span>
+              <span className="text-lg font-bold text-green-600">{cartTotal.toLocaleString()} TSH</span>
+            </div>
+            <button
+              onClick={onProcessPayment}
+              disabled={isProcessingPayment}
+              className="w-full py-3 bg-green-500 text-white font-semibold rounded-xl hover:bg-green-600 disabled:bg-gray-400 transition-colors"
+            >
+              {isProcessingPayment ? 'Processing...' : 'Process Payment'}
+            </button>
+          </div>
+        )}
+      </div>
+    )
+  );
+
+  return (
+    <div className="h-screen bg-gray-50 flex flex-col">
+      <TopBar />
+      
+      {/* Main Content */}
+      <div className="flex-1 overflow-hidden">
+        {activeTab === 'products' && (
+          <div className="h-full overflow-y-auto p-4">
+            {children}
+          </div>
+        )}
+        
+        {activeTab === 'customers' && (
+          <div className="h-full overflow-y-auto p-4">
+            <div className="space-y-4">
+              <button
+                onClick={onAddCustomer}
+                className="w-full py-4 bg-blue-500 text-white font-semibold rounded-xl hover:bg-blue-600 transition-colors flex items-center justify-center gap-2"
+              >
+                <Plus size={20} />
+                Add Customer
+              </button>
+              
+              <div className="bg-white rounded-xl p-4">
+                <h3 className="font-semibold mb-2">Recent Customers</h3>
+                <p className="text-gray-500 text-sm">Customer management features coming soon...</p>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {activeTab === 'settings' && (
+          <div className="h-full overflow-y-auto p-4">
+            <div className="space-y-4">
+              <button
+                onClick={onToggleSettings}
+                className="w-full py-4 bg-gray-500 text-white font-semibold rounded-xl hover:bg-gray-600 transition-colors"
+              >
+                POS Settings
+              </button>
+              
+              <button
+                onClick={onViewReceipts}
+                className="w-full py-4 bg-purple-500 text-white font-semibold rounded-xl hover:bg-purple-600 transition-colors flex items-center justify-center gap-2"
+              >
+                <Receipt size={20} />
+                View Receipts
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+      
+      <BottomNavigation />
+      <SearchSheet />
+      <CartSheet />
+    </div>
+  );
+};
+
+export default MobilePOSLayout;

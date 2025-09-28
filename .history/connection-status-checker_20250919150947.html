@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Socket Connection Status Checker</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .status-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .status-icon {
+            font-size: 24px;
+        }
+        .status-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin: 0;
+        }
+        .status-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .detail-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .detail-label {
+            font-weight: 500;
+            color: #666;
+        }
+        .detail-value {
+            color: #333;
+        }
+        .status-good { color: #10b981; }
+        .status-warning { color: #f59e0b; }
+        .status-error { color: #ef4444; }
+        .status-unknown { color: #6b7280; }
+        .refresh-btn {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        .refresh-btn:hover {
+            background: #2563eb;
+        }
+        .loading {
+            opacity: 0.6;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔌 Socket Connection Status Checker</h1>
+    
+    <div class="status-card">
+        <div class="status-header">
+            <span class="status-icon">🌐</span>
+            <h2 class="status-title">Network Status</h2>
+        </div>
+        <div id="network-status">
+            <div class="detail-item">
+                <span class="detail-label">Online Status:</span>
+                <span class="detail-value" id="online-status">Checking...</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">Connection Type:</span>
+                <span class="detail-value" id="connection-type">Checking...</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">Download Speed:</span>
+                <span class="detail-value" id="download-speed">Checking...</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">Round Trip Time:</span>
+                <span class="detail-value" id="rtt">Checking...</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="status-card">
+        <div class="status-header">
+            <span class="status-icon">🗄️</span>
+            <h2 class="status-title">Database Connection (Supabase)</h2>
+        </div>
+        <div id="database-status">
+            <div class="detail-item">
+                <span class="detail-label">Connection Status:</span>
+                <span class="detail-value" id="db-connected">Checking...</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">Last Check:</span>
+                <span class="detail-value" id="db-last-check">Checking...</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">Retry Count:</span>
+                <span class="detail-value" id="db-retry-count">Checking...</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">Error:</span>
+                <span class="detail-value" id="db-error">None</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="status-card">
+        <div class="status-header">
+            <span class="status-icon">📱</span>
+            <h2 class="status-title">WhatsApp API Connections</h2>
+        </div>
+        <div id="whatsapp-status">
+            <div class="detail-item">
+                <span class="detail-label">Instances Found:</span>
+                <span class="detail-value" id="whatsapp-instances">Checking...</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">Connected Instances:</span>
+                <span class="detail-value" id="whatsapp-connected">Checking...</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="status-card">
+        <div class="status-header">
+            <span class="status-icon">📦</span>
+            <h2 class="status-title">Real-time Stock Service</h2>
+        </div>
+        <div id="realtime-status">
+            <div class="detail-item">
+                <span class="detail-label">Service Status:</span>
+                <span class="detail-value" id="realtime-service">Checking...</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">Subscriptions:</span>
+                <span class="detail-value" id="realtime-subscriptions">Checking...</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">Last Heartbeat:</span>
+                <span class="detail-value" id="realtime-heartbeat">Checking...</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="status-card">
+        <div class="status-header">
+            <span class="status-icon">🔌</span>
+            <h2 class="status-title">WebSocket Support</h2>
+        </div>
+        <div id="websocket-status">
+            <div class="detail-item">
+                <span class="detail-label">WebSocket API:</span>
+                <span class="detail-value" id="websocket-api">Checking...</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">Test Connection:</span>
+                <span class="detail-value" id="websocket-test">Checking...</span>
+            </div>
+        </div>
+    </div>
+
+    <button class="refresh-btn" onclick="checkAllConnections()">🔄 Refresh All Connections</button>
+
+    <script>
+        // Check network status
+        function checkNetworkStatus() {
+            const onlineStatus = document.getElementById('online-status');
+            const connectionType = document.getElementById('connection-type');
+            const downloadSpeed = document.getElementById('download-speed');
+            const rtt = document.getElementById('rtt');
+
+            // Online status
+            onlineStatus.textContent = navigator.onLine ? 'Online' : 'Offline';
+            onlineStatus.className = navigator.onLine ? 'detail-value status-good' : 'detail-value status-error';
+
+            // Connection details
+            if ('connection' in navigator) {
+                const connection = navigator.connection;
+                connectionType.textContent = connection.effectiveType || 'Unknown';
+                downloadSpeed.textContent = connection.downlink ? `${connection.downlink} Mbps` : 'Unknown';
+                rtt.textContent = connection.rtt ? `${connection.rtt} ms` : 'Unknown';
+            } else {
+                connectionType.textContent = 'Not available';
+                downloadSpeed.textContent = 'Not available';
+                rtt.textContent = 'Not available';
+            }
+        }
+
+        // Check database connection
+        async function checkDatabaseStatus() {
+            const dbConnected = document.getElementById('db-connected');
+            const dbLastCheck = document.getElementById('db-last-check');
+            const dbRetryCount = document.getElementById('db-retry-count');
+            const dbError = document.getElementById('db-error');
+
+            try {
+                // Try to access localStorage for Supabase status
+                const supabaseStatus = localStorage.getItem('supabase-status');
+                if (supabaseStatus) {
+                    const status = JSON.parse(supabaseStatus);
+                    dbConnected.textContent = status.isConnected ? 'Connected' : 'Disconnected';
+                    dbConnected.className = status.isConnected ? 'detail-value status-good' : 'detail-value status-error';
+                    dbLastCheck.textContent = new Date(status.lastCheck).toLocaleString();
+                    dbRetryCount.textContent = status.retryCount || 0;
+                    dbError.textContent = status.error || 'None';
+                } else {
+                    // Try a simple fetch to test connectivity
+                    const response = await fetch('https://api.github.com', { 
+                        method: 'HEAD',
+                        mode: 'no-cors'
+                    });
+                    dbConnected.textContent = 'Network OK';
+                    dbConnected.className = 'detail-value status-good';
+                    dbLastCheck.textContent = new Date().toLocaleString();
+                    dbRetryCount.textContent = '0';
+                    dbError.textContent = 'None';
+                }
+            } catch (error) {
+                dbConnected.textContent = 'Error';
+                dbConnected.className = 'detail-value status-error';
+                dbLastCheck.textContent = new Date().toLocaleString();
+                dbRetryCount.textContent = '1';
+                dbError.textContent = error.message;
+            }
+        }
+
+        // Check WhatsApp connections
+        async function checkWhatsAppStatus() {
+            const instances = document.getElementById('whatsapp-instances');
+            const connected = document.getElementById('whatsapp-connected');
+
+            try {
+                // Try to access localStorage for WhatsApp instances
+                const whatsappData = localStorage.getItem('whatsapp-instances');
+                if (whatsappData) {
+                    const data = JSON.parse(whatsappData);
+                    const instanceCount = Array.isArray(data) ? data.length : 0;
+                    const connectedCount = Array.isArray(data) ? data.filter(inst => inst.status === 'connected').length : 0;
+                    
+                    instances.textContent = instanceCount.toString();
+                    connected.textContent = `${connectedCount}/${instanceCount}`;
+                    connected.className = connectedCount > 0 ? 'detail-value status-good' : 'detail-value status-warning';
+                } else {
+                    instances.textContent = '0';
+                    connected.textContent = '0/0';
+                    connected.className = 'detail-value status-unknown';
+                }
+            } catch (error) {
+                instances.textContent = 'Error';
+                connected.textContent = 'Error';
+                connected.className = 'detail-value status-error';
+            }
+        }
+
+        // Check real-time service
+        function checkRealtimeStatus() {
+            const service = document.getElementById('realtime-service');
+            const subscriptions = document.getElementById('realtime-subscriptions');
+            const heartbeat = document.getElementById('realtime-heartbeat');
+
+            // Check if real-time service is available
+            if (typeof window !== 'undefined' && window.RealTimeStockService) {
+                service.textContent = 'Available';
+                service.className = 'detail-value status-good';
+            } else {
+                service.textContent = 'Not loaded';
+                service.className = 'detail-value status-unknown';
+            }
+
+            // Check for real-time data in localStorage
+            const realtimeData = localStorage.getItem('realtime-stock-data');
+            if (realtimeData) {
+                subscriptions.textContent = 'Active';
+                subscriptions.className = 'detail-value status-good';
+                heartbeat.textContent = new Date().toLocaleString();
+            } else {
+                subscriptions.textContent = 'Inactive';
+                subscriptions.className = 'detail-value status-warning';
+                heartbeat.textContent = 'Never';
+            }
+        }
+
+        // Check WebSocket support
+        function checkWebSocketStatus() {
+            const api = document.getElementById('websocket-api');
+            const test = document.getElementById('websocket-test');
+
+            // Check WebSocket API availability
+            if (typeof WebSocket !== 'undefined') {
+                api.textContent = 'Supported';
+                api.className = 'detail-value status-good';
+
+                // Test WebSocket connection
+                try {
+                    const ws = new WebSocket('wss://echo.websocket.org');
+                    ws.onopen = () => {
+                        test.textContent = 'Working';
+                        test.className = 'detail-value status-good';
+                        ws.close();
+                    };
+                    ws.onerror = () => {
+                        test.textContent = 'Failed';
+                        test.className = 'detail-value status-error';
+                    };
+                    ws.onclose = () => {
+                        // Connection closed
+                    };
+                } catch (error) {
+                    test.textContent = 'Error';
+                    test.className = 'detail-value status-error';
+                }
+            } else {
+                api.textContent = 'Not supported';
+                api.className = 'detail-value status-error';
+                test.textContent = 'N/A';
+                test.className = 'detail-value status-unknown';
+            }
+        }
+
+        // Check all connections
+        async function checkAllConnections() {
+            document.body.classList.add('loading');
+            
+            checkNetworkStatus();
+            await checkDatabaseStatus();
+            await checkWhatsAppStatus();
+            checkRealtimeStatus();
+            checkWebSocketStatus();
+            
+            document.body.classList.remove('loading');
+        }
+
+        // Listen for online/offline events
+        window.addEventListener('online', checkNetworkStatus);
+        window.addEventListener('offline', checkNetworkStatus);
+
+        // Initial check
+        checkAllConnections();
+
+        // Auto-refresh every 30 seconds
+        setInterval(checkAllConnections, 30000);
+    </script>
+</body>
+</html>

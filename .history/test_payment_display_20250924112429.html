@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Display Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .payment-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+        }
+        .payment-item {
+            background: #f8f9fa;
+            padding: 12px;
+            margin: 8px 0;
+            border-radius: 4px;
+            border-left: 4px solid #007bff;
+        }
+        .payment-method {
+            font-weight: bold;
+            color: #333;
+        }
+        .payment-amount {
+            font-size: 1.1em;
+            color: #28a745;
+            font-weight: bold;
+        }
+        .payment-details {
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 4px;
+        }
+        .total-section {
+            background: #e8f5e8;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 15px;
+        }
+        .total-amount {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #28a745;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Payment Display Test</h1>
+        <p>Testing the payment breakdown display with sample data: Cash 1000 + Mobile Transfer 2000 = Total 3000</p>
+        
+        <div class="payment-section">
+            <h3>Payment Information</h3>
+            <div class="payment-item">
+                <div class="payment-method">Cash</div>
+                <div class="payment-amount">TZS 1,000</div>
+                <div class="payment-details">
+                    <div>Status: <span style="color: #28a745; font-weight: bold;">COMPLETED</span></div>
+                    <div>Reference: CASH-001</div>
+                    <div>Timestamp: 2024-01-15 14:30:25</div>
+                </div>
+            </div>
+            
+            <div class="payment-item">
+                <div class="payment-method">Mobile Money</div>
+                <div class="payment-amount">TZS 2,000</div>
+                <div class="payment-details">
+                    <div>Status: <span style="color: #28a745; font-weight: bold;">COMPLETED</span></div>
+                    <div>Reference: MOMO-123456</div>
+                    <div>Transaction ID: TXN-789012</div>
+                    <div>Provider: Vodacom M-Pesa</div>
+                    <div>Timestamp: 2024-01-15 14:31:10</div>
+                </div>
+            </div>
+            
+            <div class="total-section">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>Payment Total:</span>
+                    <span class="total-amount">TZS 3,000</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+                    <span>Sale Total:</span>
+                    <span class="total-amount">TZS 3,000</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="payment-section">
+            <h3>JSON Structure Used</h3>
+            <pre style="background: #f8f9fa; padding: 15px; border-radius: 4px; overflow-x: auto;">
+{
+  "type": "multiple",
+  "details": {
+    "payments": [
+      {
+        "method": "cash",
+        "amount": 1000,
+        "reference": "CASH-001",
+        "status": "completed",
+        "timestamp": "2024-01-15T14:30:25Z"
+      },
+      {
+        "method": "mobile_money",
+        "amount": 2000,
+        "reference": "MOMO-123456",
+        "transactionId": "TXN-789012",
+        "status": "completed",
+        "timestamp": "2024-01-15T14:31:10Z"
+      }
+    ],
+    "totalPaid": 3000
+  },
+  "amount": 3000
+}
+            </pre>
+        </div>
+    </div>
+</body>
+</html>

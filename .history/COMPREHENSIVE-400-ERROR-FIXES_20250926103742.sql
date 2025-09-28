@@ -1,0 +1,95 @@
+PaymentsContext.tsx?t=1758872196063:181 Auth state changed: SIGNED_IN a7c9adb7-f525-4850-bd42-79a769f12953
+PaymentsContext.tsx?t=1758872196063:181 Auth state changed: INITIAL_SESSION a7c9adb7-f525-4850-bd42-79a769f12953
+PaymentsContext.tsx?t=1758872196063:52 🔧 Using simplified POS sales query to avoid 400 errors...
+PaymentsContext.tsx?t=1758872196063:52 🔧 Using simplified POS sales query to avoid 400 errors...
+PaymentsContext.tsx?t=1758872196063:52 🔧 Using simplified POS sales query to avoid 400 errors...
+PaymentsContext.tsx?t=1758872196063:61 ✅ Loaded 3 POS sales (simplified query)
+PaymentsContext.tsx?t=1758872196063:61 ✅ Loaded 3 POS sales (simplified query)
+PaymentsContext.tsx?t=1758872196063:61 ✅ Loaded 3 POS sales (simplified query)
+financialService.ts?t=1758872195969:98 ✅ Loaded 3 financial sales
+financialService.ts?t=1758872195969:98 ✅ Loaded 3 financial sales
+paymentTrackingService.ts?t=1758872196061:269 🔍 PaymentTrackingService: Fetching payment transactions...
+financialService.ts?t=1758872195969:98 ✅ Loaded 3 financial sales
+financialService.ts?t=1758872195969:98 ✅ Loaded 3 financial sales
+paymentTrackingService.ts?t=1758872196061:280 📊 PaymentTrackingService: Found 5 device payments
+paymentTrackingService.ts?t=1758872196061:315 🔍 PaymentTrackingService: Fetching POS sales...
+@supabase_supabase-js.js?v=8d246123:4230  GET https://jxhzveborezjhsmzsgbc.supabase.co/rest/v1/lats_sales?select=*%2Ccustomers%28name%29&order=created_at.desc&limit=1000 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=8d246123:4230
+(anonymous) @ @supabase_supabase-js.js?v=8d246123:4251
+fulfilled @ @supabase_supabase-js.js?v=8d246123:4203
+Promise.then
+step @ @supabase_supabase-js.js?v=8d246123:4216
+(anonymous) @ @supabase_supabase-js.js?v=8d246123:4218
+__awaiter6 @ @supabase_supabase-js.js?v=8d246123:4200
+(anonymous) @ @supabase_supabase-js.js?v=8d246123:4241
+then @ @supabase_supabase-js.js?v=8d246123:90
+paymentTrackingService.ts?t=1758872196061:361 🔍 PaymentTrackingService: Fetching Purchase Order payments...
+paymentTrackingService.ts?t=1758872196061:373 📊 PaymentTrackingService: Found 10 Purchase Order payments
+paymentTrackingService.ts?t=1758872196061:443 ✅ PaymentTrackingService: Returning 15 total payments (0 POS sales, 5 device payments)
+paymentTrackingService.ts?t=1758872196061:444 🔍 PaymentTrackingService: Filters applied - startDate: undefined, endDate: undefined, status: undefined, method: undefined
+paymentTrackingService.ts?t=1758872196061:445 🔍 PaymentTrackingService: All payments before filtering: 15, after filtering: 15
+paymentTrackingService.ts?t=1758872196061:209 📦 PaymentTrackingService: Returning cached payment data
+paymentTrackingService.ts?t=1758872196061:209 📦 PaymentTrackingService: Returning cached payment data
+paymentTrackingService.ts?t=1758872196061:269 🔍 PaymentTrackingService: Fetching payment transactions...
+paymentTrackingService.ts?t=1758872196061:209 📦 PaymentTrackingService: Returning cached payment data
+paymentTrackingService.ts?t=1758872196061:209 📦 PaymentTrackingService: Returning cached payment data
+paymentTrackingService.ts?t=1758872196061:213 ⏳ PaymentTrackingService: Global fetch in progress, waiting...
+paymentTrackingService.ts?t=1758872196061:209 📦 PaymentTrackingService: Returning cached payment data
+paymentTrackingService.ts?t=1758872196061:209 📦 PaymentTrackingService: Returning cached payment data
+paymentTrackingService.ts?t=1758872196061:213 ⏳ PaymentTrackingService: Global fetch in progress, waiting...
+paymentTrackingService.ts?t=1758872196061:209 📦 PaymentTrackingService: Returning cached payment data
+financialService.ts?t=1758872195969:98 ✅ Loaded 3 financial sales
+financialService.ts?t=1758872195969:98 ✅ Loaded 3 financial sales
+paymentTrackingService.ts?t=1758872196061:280 📊 PaymentTrackingService: Found 5 device payments
+paymentTrackingService.ts?t=1758872196061:315 🔍 PaymentTrackingService: Fetching POS sales...
+@supabase_supabase-js.js?v=8d246123:4230  GET https://jxhzveborezjhsmzsgbc.supabase.co/rest/v1/lats_sales?select=*%2Ccustomers%28name%29&order=created_at.desc&limit=1000 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=8d246123:4230
+(anonymous) @ @supabase_supabase-js.js?v=8d246123:4251
+fulfilled @ @supabase_supabase-js.js?v=8d246123:4203
+Promise.then
+step @ @supabase_supabase-js.js?v=8d246123:4216
+(anonymous) @ @supabase_supabase-js.js?v=8d246123:4218
+__awaiter6 @ @supabase_supabase-js.js?v=8d246123:4200
+(anonymous) @ @supabase_supabase-js.js?v=8d246123:4241
+then @ @supabase_supabase-js.js?v=8d246123:90
+paymentTrackingService.ts?t=1758872196061:361 🔍 PaymentTrackingService: Fetching Purchase Order payments...
+paymentTrackingService.ts?t=1758872196061:373 📊 PaymentTrackingService: Found 10 Purchase Order payments
+paymentTrackingService.ts?t=1758872196061:443 ✅ PaymentTrackingService: Returning 5 total payments (0 POS sales, 5 device payments)
+paymentTrackingService.ts?t=1758872196061:444 🔍 PaymentTrackingService: Filters applied - startDate: 2025-09-19, endDate: 2025-09-26, status: undefined, method: undefined
+paymentTrackingService.ts?t=1758872196061:445 🔍 PaymentTrackingService: All payments before filtering: 15, after filtering: 5
+paymentTrackingService.ts?t=1758872196061:269 🔍 PaymentTrackingService: Fetching payment transactions...
+paymentTrackingService.ts?t=1758872196061:269 🔍 PaymentTrackingService: Fetching payment transactions...
+paymentTrackingService.ts?t=1758872196061:280 📊 PaymentTrackingService: Found 5 device payments
+paymentTrackingService.ts?t=1758872196061:315 🔍 PaymentTrackingService: Fetching POS sales...
+paymentTrackingService.ts?t=1758872196061:280 📊 PaymentTrackingService: Found 5 device payments
+paymentTrackingService.ts?t=1758872196061:315 🔍 PaymentTrackingService: Fetching POS sales...
+@supabase_supabase-js.js?v=8d246123:4230  GET https://jxhzveborezjhsmzsgbc.supabase.co/rest/v1/lats_sales?select=*%2Ccustomers%28name%29&order=created_at.desc&limit=1000 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=8d246123:4230
+(anonymous) @ @supabase_supabase-js.js?v=8d246123:4251
+fulfilled @ @supabase_supabase-js.js?v=8d246123:4203
+Promise.then
+step @ @supabase_supabase-js.js?v=8d246123:4216
+(anonymous) @ @supabase_supabase-js.js?v=8d246123:4218
+__awaiter6 @ @supabase_supabase-js.js?v=8d246123:4200
+(anonymous) @ @supabase_supabase-js.js?v=8d246123:4241
+then @ @supabase_supabase-js.js?v=8d246123:90
+paymentTrackingService.ts?t=1758872196061:361 🔍 PaymentTrackingService: Fetching Purchase Order payments...
+@supabase_supabase-js.js?v=8d246123:4230  GET https://jxhzveborezjhsmzsgbc.supabase.co/rest/v1/lats_sales?select=*%2Ccustomers%28name%29&order=created_at.desc&limit=1000 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=8d246123:4230
+(anonymous) @ @supabase_supabase-js.js?v=8d246123:4251
+fulfilled @ @supabase_supabase-js.js?v=8d246123:4203
+Promise.then
+step @ @supabase_supabase-js.js?v=8d246123:4216
+(anonymous) @ @supabase_supabase-js.js?v=8d246123:4218
+__awaiter6 @ @supabase_supabase-js.js?v=8d246123:4200
+(anonymous) @ @supabase_supabase-js.js?v=8d246123:4241
+then @ @supabase_supabase-js.js?v=8d246123:90
+paymentTrackingService.ts?t=1758872196061:361 🔍 PaymentTrackingService: Fetching Purchase Order payments...
+paymentTrackingService.ts?t=1758872196061:373 📊 PaymentTrackingService: Found 10 Purchase Order payments
+paymentTrackingService.ts?t=1758872196061:443 ✅ PaymentTrackingService: Returning 0 total payments (0 POS sales, 0 device payments)
+paymentTrackingService.ts?t=1758872196061:444 🔍 PaymentTrackingService: Filters applied - startDate: 2025-08-27, endDate: 2025-08-27, status: undefined, method: undefined
+paymentTrackingService.ts?t=1758872196061:445 🔍 PaymentTrackingService: All payments before filtering: 15, after filtering: 0
+paymentTrackingService.ts?t=1758872196061:373 📊 PaymentTrackingService: Found 10 Purchase Order payments
+paymentTrackingService.ts?t=1758872196061:443 ✅ PaymentTrackingService: Returning 0 total payments (0 POS sales, 0 device payments)
+paymentTrackingService.ts?t=1758872196061:444 🔍 PaymentTrackingService: Filters applied - startDate: 2025-09-26, endDate: 2025-09-26, status: undefined, method: undefined
+paymentTrackingService.ts?t=1758872196061:445 🔍 PaymentTrackingService: All payments before filtering: 15, after filtering: 0

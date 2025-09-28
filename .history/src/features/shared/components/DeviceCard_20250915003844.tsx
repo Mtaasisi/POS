@@ -1,0 +1,606 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Device, DeviceStatus } from '../../../types';
+import GlassCard from './ui/GlassCard';
+import StatusBadge from './ui/StatusBadge';
+import CountdownTimer from './ui/CountdownTimer';
+import { Clock, User, Smartphone, Wrench, Calendar, AlarmClock, CheckSquare, MessageSquare, Edit, AlertTriangle, Star, DollarSign } from 'lucide-react';
+import { useAuth } from '../../../context/AuthContext';
+import { useCustomers } from '../../../context/CustomersContext';
+import { useDevices } from '../../../context/DevicesContext';
+import RepairChecklist from '../../devices/components/RepairChecklist';
+import QuickStatusUpdate from '../../devices/components/QuickStatusUpdate';
+import { updateDeviceInDb, fixCorruptedDeviceData } from '../../../lib/deviceApi';
+import { toast } from 'react-hot-toast';
+import { supabase } from '../../../lib/supabaseClient';
+
+interface DeviceCardProps {
+  device: Device;
+  showDetails?: boolean;
+  now?: Date; // Pass the shared timer from parent
+}
+
+// Utility: Sort devices so 'done' and 'failed' are at the bottom, action-needed devices at the top
+export function sortDevicesForAction(devices: Device[]) {
+  return devices.slice().sort((a, b) => {
+    const isADone = a.status === 'done' || a.status === 'failed';
+    const isBDone = b.status === 'done' || b.status === 'failed';
+    if (isADone === isBDone) return 0;
+    return isADone ? 1 : -1;
+  });
+}
+
+// Utility: Remove duplicate devices based on device ID
+export function removeDuplicateDevices<T extends { id: string }>(devices: T[]): T[] {
+  const seen = new Set<string>();
+  return devices.filter(device => {
+    if (seen.has(device.id)) {
+      return false;
+    }
+    seen.add(device.id);
+    return true;
+  });
+}
+
+// Usage: Sort your device list with sortDevicesForAction before rendering DeviceCard.
+// Usage: Remove duplicates with removeDuplicateDevices before rendering DeviceCard.
+
+const DeviceCard: React.FC<DeviceCardProps> = React.memo(({ device, showDetails = true, now = new Date() }) => {
+  const navigate = useNavigate();
+  const { currentUser } = useAuth();
+  const { customers } = useCustomers();
+  const { getDeviceOverdueStatus } = useDevices();
+  
+  // Add state for technician quick actions
+  const [showRepairChecklist, setShowRepairChecklist] = useState(false);
+  const [showQuickStatusUpdate, setShowQuickStatusUpdate] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingDevice, setEditingDevice] = useState<Partial<Device>>({});
+  const [saving, setSaving] = useState(false);
+
+  // Add state for customer information
+  const [customerInfo, setCustomerInfo] = useState<any>(null);
+  const [loadingCustomer, setLoadingCustomer] = useState(false);
+
+  // Fetch detailed customer information
+  useEffect(() => {
+    const fetchCustomerInfo = async () => {
+      if (!device.customerId) return;
+      
+      setLoadingCustomer(true);
+      try {
+        const { data, error } = await supabase
+          .from('customers')
+          .select('*')
+          .eq('id', device.customerId)
+          .single();
+        
+        if (!error && data) {
+          setCustomerInfo(data);
+        }
+      } catch (error) {
+        console.error('Error fetching customer info:', error);
+      } finally {
+        setLoadingCustomer(false);
+      }
+    };
+
+    fetchCustomerInfo();
+  }, [device.customerId]);
+
+
+  
+  // Format date to readable format
+  const formatDate = (dateString: string | undefined | null) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return 'N/A';
+    const options: Intl.DateTimeFormatOptions = {
+      year: '2-digit', // two-digit year
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    };
+    return date.toLocaleDateString(undefined, options);
+  };
+
+  // Animated dot state for fade in/out
+  const [dotVisible, setDotVisible] = useState(true);
+  useEffect(() => {
+    const interval = setInterval(() => setDotVisible(v => !v), 500);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Minimal countdown string: only two most significant units, with color
+  const getMinimalCountdown = (dateString: string) => {
+    const target = new Date(dateString);
+    const diff = target.getTime() - now.getTime();
+    let color = '#22c55e'; // green-500
+    if (diff <= 0) color = '#ef4444'; // red-500
+    else if (diff < 24 * 60 * 60 * 1000) color = '#f59e42'; // orange-400
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+    const minutes = Math.floor((diff / (1000 * 60)) % 60);
+    const seconds = Math.floor((diff / 1000) % 60);
+    
+    // Hide the "Overdue" text in countdown - let the status display handle it
+    let units = [];
+    if (days > 0) units.push(`${days}d`);
+    if (hours > 0 || days > 0) units.push(`${hours}h`);
+    if (minutes > 0 && days === 0) units.push(`${minutes}m`);
+    if (days === 0 && hours === 0) units.push(`${seconds}s`);
+    units = units.slice(0, 2);
+    const dot = <span style={{opacity: dotVisible ? 1 : 0.2, transition: 'opacity 0.3s', fontWeight: 'bold', color}}>.</span>;
+    return (
+      <span style={{fontFamily: 'monospace', fontSize: '0.95em', letterSpacing: '0.5px', color, fontWeight: 600}}>
+        {units.map((u, i) => (
+          <React.Fragment key={i}>
+            {u}
+            {i < units.length - 1 && dot}
+          </React.Fragment>
+        ))}
+      </span>
+    );
+  };
+  
+  // Track if the card has been opened (clicked)
+  const [opened, setOpened] = useState(false);
+  useEffect(() => {
+    // Check localStorage for opened state
+    if (localStorage.getItem(`devicecard_opened_${device.id}`) === '1') {
+      setOpened(true);
+    }
+  }, [device.id]);
+
+  const handleCardClick = () => {
+    // Mark as opened in localStorage
+    localStorage.setItem(`devicecard_opened_${device.id}`, '1');
+    setOpened(true);
+    navigate(`/devices/${device.id}`);
+  };
+
+  const handleStatusUpdate = (newStatus: DeviceStatus) => {
+    // This will be handled by the parent component through context
+    // For now, we'll just close the modal
+    setShowRepairChecklist(false);
+    setShowQuickStatusUpdate(false);
+  };
+
+  const handleSaveDevice = async () => {
+    if (!editingDevice.id) return;
+    
+    // Validate the editing device data before saving
+    const validStatusValues = [
+      'assigned', 'diagnosis-started', 'awaiting-parts', 'in-repair',
+      'reassembled-testing', 'repair-complete', 'returned-to-customer-care', 'done', 'failed'
+    ];
+    
+    // Check if status is valid
+    if (editingDevice.status && !validStatusValues.includes(editingDevice.status)) {
+      console.error('Invalid status value detected:', editingDevice.status);
+      toast.error(`Invalid status value: ${editingDevice.status}. Please select a valid status.`);
+      return;
+    }
+    
+    // Check if status is a UUID (which would be a bug)
+    if (editingDevice.status && editingDevice.status.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+      console.error('Status field contains UUID instead of valid status:', editingDevice.status);
+      toast.error('Status field contains invalid data. Please select a valid status from the dropdown.');
+      return;
+    }
+    
+    setSaving(true);
+    try {
+      await updateDeviceInDb(editingDevice.id, editingDevice);
+      toast.success('Device updated successfully!');
+      setShowEditModal(false);
+      // Refresh the page to show updated data
+      window.location.reload();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to update device');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+
+
+
+  
+  // Helper to get icon for main action
+
+  
+  // Helper to format duration
+  function formatDuration(ms?: number) {
+    if (!ms || ms < 0 || isNaN(ms)) return '-';
+    const totalSeconds = Math.floor(ms / 1000);
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    if (days > 0) return `${days}d ${hours}h ${minutes}m`;
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    return `${minutes}m`;
+  }
+
+  // Helper to get transition time
+  function getTransitionTime(transitions: {toStatus: string, timestamp: string}[] = [], toStatus: string): number | undefined {
+    const t = transitions.find((tr) => tr.toStatus === toStatus);
+    return t ? new Date(t.timestamp).getTime() : undefined;
+  }
+
+  const inRepairTime = getTransitionTime(device.transitions || [], 'in-repair');
+  const repairCompleteTime = getTransitionTime(device.transitions || [], 'repair-complete');
+  const doneTime = getTransitionTime(device.transitions || [], 'done');
+
+  const technicianDuration = (inRepairTime && repairCompleteTime) ? repairCompleteTime - inRepairTime : undefined;
+  const handoverDuration = (repairCompleteTime && doneTime) ? doneTime - repairCompleteTime : undefined;
+  
+  // Helper to get display model name (hide model number for iPhone)
+  const getDisplayModel = () => {
+    if ((device.brand && device.brand.toLowerCase() === 'apple') || (device.model && device.model.toLowerCase().includes('iphone'))) {
+      // Remove model numbers in parentheses, e.g., 'iPhone 7 (A1660, A1778)' => 'iPhone 7'
+      let model = device.model.replace(/\s*\([^)]*A\d{4}[^)]*\)/gi, '');
+      // Also remove trailing model number if present
+      const parts = model.split(' ');
+      if (parts.length > 2 && /^A\d{4,}$/.test(parts[parts.length - 1])) {
+        model = parts.slice(0, -1).join(' ');
+      }
+      return model.trim();
+    }
+    return device.model;
+  };
+  
+  // Minimal live repair timer: only the most significant unit, small font, no extra styling
+  const getMinimalLiveRepairTimer = (ms: number) => {
+    if (!ms || ms < 0 || isNaN(ms)) return '-';
+    const totalSeconds = Math.floor(ms / 1000);
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = Math.floor((totalSeconds % 60));
+    if (days > 0) return `${days}d`;
+    if (hours > 0) return `${hours}h`;
+    if (minutes > 0) return `${minutes}m`;
+    return `${seconds}s`;
+  };
+
+  return (
+    <>
+      <GlassCard 
+        onClick={handleCardClick}
+        className={`transform transition-all duration-500 ease-in-out hover:translate-y-[-5px] relative ${showDetails ? '' : 'p-4'}`}
+      >
+        {/* Comment count in top-left corner */}
+        {device.remarks && device.remarks.length > 0 && !opened && (
+          <div className="absolute top-1 left-1 z-10">
+            <span className="bg-red-500 text-white text-sm font-bold rounded-full w-7 h-7 flex items-center justify-center border border-white shadow">
+              {device.remarks.length}
+            </span>
+          </div>
+        )}
+        
+        {/* Move intake date to a new prominent line below the device title */}
+        <div className="flex justify-between items-start mb-1 pt-2">
+          <div className="flex items-center gap-2 w-full">
+            <h3 className="font-bold text-base sm:text-lg text-gray-900 truncate overflow-hidden text-ellipsis" title={getDisplayModel()}>{getDisplayModel()}</h3>
+          </div>
+          <div className="flex items-center gap-2">
+            {currentUser?.role === 'admin' && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  
+                  // Validate device data before opening edit modal
+                  const validStatusValues = [
+                    'assigned', 'diagnosis-started', 'awaiting-parts', 'in-repair',
+                    'reassembled-testing', 'repair-complete', 'returned-to-customer-care', 'done', 'failed'
+                  ];
+                  
+                  // Check if device status is valid
+                  if (device.status && !validStatusValues.includes(device.status)) {
+                    console.error('Device has invalid status:', device.status);
+                    toast.error(`Device has invalid status: ${device.status}. Please contact support.`);
+                    return;
+                  }
+                  
+                  // Check if status is a UUID (which would be a bug)
+                  if (device.status && device.status.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+                    console.error('Device status field contains UUID instead of valid status:', device.status);
+                    toast.error('Device data is corrupted. Attempting to fix...');
+                    
+                    // Try to fix the corrupted data
+                    const fixed = await fixCorruptedDeviceData(device.id);
+                    if (fixed) {
+                      toast.success('Device data fixed! Please refresh the page.');
+                      window.location.reload();
+                    } else {
+                      toast.error('Could not fix device data. Please contact support.');
+                    }
+                    return;
+                  }
+                  
+                  setEditingDevice(device);
+                  setShowEditModal(true);
+                }}
+                className="p-1 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors duration-200"
+                title="Edit Device"
+              >
+                <Edit size={16} />
+              </button>
+            )}
+            <StatusBadge status={device.status} />
+          </div>
+        </div>
+        {/* Minimal device issue display */}
+        {device.issueDescription && (
+          <div
+            className="pl-2 sm:pl-3 py-1 mb-2 border-l-4 border-red-500 bg-red-50 text-red-800 text-xs sm:text-sm line-clamp-2 uppercase"
+            title={device.issueDescription}
+          >
+            {device.issueDescription}
+          </div>
+        )}
+        {/* Serial Number and Intake Date */}
+        <div className="flex flex-wrap gap-2 sm:gap-4 mb-2 text-xs text-gray-500">
+          <div>
+            <span className="font-medium">Serial:</span> {device.serialNumber || 'N/A'}
+          </div>
+          {/* Overdue Indicator removed */}
+        </div>
+        {showDetails ? (
+          <>
+            <div className="space-y-1 sm:space-y-2 mb-3 sm:mb-4">
+              {/* Enhanced Customer Information */}
+              <div className="flex items-center gap-1 sm:gap-2 text-gray-700">
+                <User size={16} />
+                <span className="text-sm sm:text-base font-medium truncate capitalize">
+                  {customerInfo?.name || device.customerName || 'Unknown Customer'}
+                </span>
+                {customerInfo && (
+                  <div className="flex items-center gap-1">
+                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${
+                      customerInfo.color_tag === 'vip' ? 'bg-purple-100 text-purple-700 border-purple-200' :
+                      customerInfo.color_tag === 'complainer' ? 'bg-red-100 text-red-700 border-red-200' :
+                      customerInfo.color_tag === 'purchased' ? 'bg-green-100 text-green-700 border-green-200' :
+                      'bg-gray-100 text-gray-700 border-gray-200'
+                    }`}>
+                      {customerInfo.color_tag || 'normal'}
+                    </span>
+                  </div>
+                )}
+              </div>
+              
+
+              
+              {/* Intake Date - Moved above overdue status */}
+              <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm">
+                <Calendar className="text-blue-500" size={14} />
+                <span className="text-gray-700 font-medium">Intake:</span>
+                <span className="font-semibold text-blue-700">{formatDate(device.createdAt || (device as any).created_at)}</span>
+              </div>
+
+              {/* Overdue Status Display */}
+              {(() => {
+                // Hide overdue status for completed devices
+                if (device.status === 'done' || device.status === 'failed') {
+                  return null;
+                }
+                
+                const overdueStatus = getDeviceOverdueStatus(device);
+                if (overdueStatus.status === 'completed') {
+                  return (
+                    <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-2 rounded-lg bg-green-50 border border-green-200 mt-1">
+                      <CheckSquare className="text-green-600" size={16} />
+                      <span className="text-sm sm:text-base font-semibold text-green-700">Completed</span>
+                    </div>
+                  );
+                } else if (overdueStatus.status === 'no-due-date') {
+                  return (
+                    <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-2 rounded-lg bg-gray-50 border border-gray-200 mt-1">
+                      <Clock className="text-gray-600" size={16} />
+                      <span className="text-sm sm:text-base font-semibold text-gray-700">No Due Date</span>
+                    </div>
+                  );
+                } else if (overdueStatus.isOverdue) {
+                  return (
+                    <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-2 rounded-lg bg-red-50 border border-red-200 mt-1">
+                      <AlertTriangle className="text-red-600" size={16} />
+                      <span className="text-sm sm:text-base font-semibold text-red-700">{overdueStatus.overdueTime}</span>
+                    </div>
+                  );
+                } else if (overdueStatus.status === 'due-today') {
+                  return (
+                    <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-2 rounded-lg bg-orange-50 border border-orange-200 mt-1">
+                      <AlarmClock className="text-orange-600" size={16} />
+                      <span className="text-sm sm:text-base font-semibold text-orange-700">Due Today</span>
+                    </div>
+                  );
+                } else if (overdueStatus.overdueTime) {
+                  return (
+                    <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-2 rounded-lg bg-blue-50 border border-blue-200 mt-1">
+                      <Clock className="text-blue-600" size={16} />
+                      <span className="text-sm sm:text-base font-semibold text-blue-700">{overdueStatus.overdueTime}</span>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
+            </div>
+            {currentUser?.role === 'admin' && (
+              <div className="mt-1 sm:mt-2 text-xs text-gray-600">
+                <div>Tech job: <span className="font-semibold">{formatDuration(technicianDuration)}</span></div>
+                <div>CC handover: <span className="font-semibold">{formatDuration(handoverDuration)}</span></div>
+              </div>
+            )}
+
+          </>
+        ) : (
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 text-gray-700">
+              <Smartphone size={16} />
+              <span className="truncate">{device.model}</span>
+            </div>
+            <div className="flex items-center gap-1 text-gray-600 text-xs">
+              <User size={12} />
+              <span className="truncate capitalize">
+                {customerInfo?.name || device.customerName || 'Unknown Customer'}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Technician Quick Actions */}
+        {currentUser?.role === 'technician' && showDetails && (
+          <div className="flex gap-2 mt-3 pt-3 border-t border-gray-200">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowRepairChecklist(true);
+              }}
+              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-700 rounded-lg border border-blue-200/50 transition-all duration-200 text-sm font-medium"
+            >
+              <CheckSquare size={16} />
+              Checklist
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowQuickStatusUpdate(true);
+              }}
+              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 rounded-lg border border-purple-200/50 transition-all duration-200 text-sm font-medium"
+            >
+              <MessageSquare size={16} />
+              Update
+            </button>
+          </div>
+        )}
+      </GlassCard>
+
+      {/* Repair Checklist Modal */}
+      <RepairChecklist
+        device={device}
+        isOpen={showRepairChecklist}
+        onClose={() => setShowRepairChecklist(false)}
+        onStatusUpdate={handleStatusUpdate}
+      />
+
+      {/* Quick Status Update Modal */}
+      <QuickStatusUpdate
+        device={device}
+        isOpen={showQuickStatusUpdate}
+        onClose={() => setShowQuickStatusUpdate(false)}
+        onStatusUpdate={handleStatusUpdate}
+      />
+
+      {/* Edit Device Modal */}
+      {showEditModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Edit Device</h3>
+                <button
+                  onClick={() => setShowEditModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                handleSaveDevice();
+              }}>
+                <div className="space-y-4">
+
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Model</label>
+                    <input
+                      type="text"
+                      value={editingDevice.model || ''}
+                      onChange={(e) => setEditingDevice({...editingDevice, model: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Serial Number</label>
+                    <input
+                      type="text"
+                      value={editingDevice.serialNumber || ''}
+                      onChange={(e) => setEditingDevice({...editingDevice, serialNumber: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Issue Description</label>
+                    <textarea
+                      value={editingDevice.issueDescription || ''}
+                      onChange={(e) => setEditingDevice({...editingDevice, issueDescription: e.target.value})}
+                      rows={3}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Expected Return Date</label>
+                    <input
+                      type="date"
+                      value={editingDevice.expectedReturnDate ? editingDevice.expectedReturnDate.split('T')[0] : ''}
+                      onChange={(e) => setEditingDevice({...editingDevice, expectedReturnDate: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                    <select
+                      value={editingDevice.status || ''}
+                      onChange={(e) => setEditingDevice({...editingDevice, status: e.target.value as DeviceStatus})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="assigned">Assigned</option>
+                      <option value="diagnosis-started">Diagnosis Started</option>
+                      <option value="awaiting-parts">Awaiting Parts</option>
+                      <option value="in-repair">In Repair</option>
+                      <option value="reassembled-testing">Reassembled/Testing</option>
+                      <option value="repair-complete">Repair Complete</option>
+                      <option value="returned-to-customer-care">Returned to Customer Care</option>
+                      <option value="done">Done</option>
+                      <option value="failed">Failed</option>
+                    </select>
+                  </div>
+                </div>
+                
+                <div className="flex gap-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={() => setShowEditModal(false)}
+                    className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors duration-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {saving ? 'Saving...' : 'Save Changes'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+});
+
+export default DeviceCard;

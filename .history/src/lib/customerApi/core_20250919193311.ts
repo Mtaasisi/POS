@@ -1,0 +1,1075 @@
+import { supabase } from '../supabaseClient';
+import { Customer } from '../../types';
+import { trackCustomerActivity } from '../customerStatusService';
+import { withTimeoutAndRetry } from '../../utils/networkErrorHandler';
+
+console.log('🚀 Customer API core.ts loaded at:', new Date().toISOString());
+
+// Configuration constants to prevent resource exhaustion
+const BATCH_SIZE = 50; // Maximum customers per batch
+const REQUEST_DELAY = 100; // Delay between batches in milliseconds
+// const MAX_CONCURRENT_REQUESTS = 10; // Maximum concurrent requests
+const MAX_RETRIES = 3; // Maximum retry attempts for failed requests
+const RETRY_DELAY = 1000; // Delay between retries in milliseconds
+const REQUEST_TIMEOUT = 30000; // Default timeout for requests in milliseconds
+
+// Request deduplication cache
+const requestCache = new Map<string, Promise<any>>();
+
+// Helper function to check if supabase is initialized
+function checkSupabase() {
+  if (!supabase) {
+    throw new Error('Supabase client not initialized');
+  }
+  return supabase;
+}
+
+// Enhanced retry wrapper function for network requests with QUIC error handling
+async function retryRequest<T>(
+  requestFn: () => Promise<T>,
+  maxRetries: number = MAX_RETRIES,
+  delay: number = RETRY_DELAY
+): Promise<T> {
+  return withTimeoutAndRetry(requestFn, REQUEST_TIMEOUT, {
+    maxRetries,
+    baseDelay: delay,
+    maxDelay: 10000,
+    backoffMultiplier: 2
+  });
+}
+
+// Timeout wrapper function to prevent hanging requests
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number = REQUEST_TIMEOUT
+): Promise<T> {
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error(`Request timeout after ${timeoutMs}ms`)), timeoutMs);
+  });
+  
+  return Promise.race([promise, timeoutPromise]);
+}
+
+// Network status check function
+export function checkNetworkStatus() {
+  const status = {
+    online: navigator.onLine,
+    connectionType: 'unknown' as string,
+    effectiveType: 'unknown' as string,
+    downlink: 0,
+    rtt: 0,
+    saveData: false
+  };
+  
+  // Check for Network Information API
+  if ('connection' in navigator) {
+    const connection = (navigator as any).connection;
+    if (connection) {
+      status.connectionType = connection.effectiveType || 'unknown';
+      status.effectiveType = connection.effectiveType || 'unknown';
+      status.downlink = connection.downlink || 0;
+      status.rtt = connection.rtt || 0;
+      status.saveData = connection.saveData || false;
+    }
+  }
+  
+  return status;
+}
+
+// Connection quality indicator
+export function getConnectionQuality() {
+  const status = checkNetworkStatus();
+  
+  if (!status.online) {
+    return { quality: 'offline', message: 'No internet connection' };
+  }
+  
+  if (status.effectiveType === 'slow-2g' || status.effectiveType === '2g') {
+    return { quality: 'poor', message: 'Slow connection detected' };
+  }
+  
+  if (status.effectiveType === '3g') {
+    return { quality: 'fair', message: 'Moderate connection speed' };
+  }
+  
+  if (status.effectiveType === '4g') {
+    return { quality: 'good', message: 'Good connection speed' };
+  }
+  
+  return { quality: 'unknown', message: 'Connection quality unknown' };
+}
+
+// Function to normalize color tag values
+function normalizeColorTag(colorTag: string): 'new' | 'vip' | 'complainer' | 'purchased' {
+  if (!colorTag) return 'new';
+  
+  const normalized = colorTag.trim().toLowerCase();
+  
+  // Map common variations to valid values
+  const colorMap: { [key: string]: 'new' | 'vip' | 'complainer' | 'purchased' } = {
+    'normal': 'new',
+    'vip': 'vip',
+    'complainer': 'complainer',
+    'purchased': 'purchased',
+    'not normal': 'new', // Map "not normal" to "new"
+    'new': 'new',
+    'regular': 'new',
+    'standard': 'new',
+    'basic': 'new',
+    'premium': 'vip',
+    'important': 'vip',
+    'priority': 'vip',
+    'problem': 'complainer',
+    'issue': 'complainer',
+    'buyer': 'purchased',
+    'customer': 'purchased',
+    'buying': 'purchased'
+  };
+  
+  return colorMap[normalized] || 'new';
+}
+
+// Utility for formatting currency with full numbers
+export function formatCurrency(amount: number) {
+  const formatted = Number(amount).toLocaleString('en-TZ', { 
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0 
+  });
+  return 'Tsh ' + formatted;
+}
+
+export async function fetchAllCustomers() {
+  // Check if there's already a request in progress
+  const cacheKey = 'fetchAllCustomers';
+  if (requestCache.has(cacheKey)) {
+    console.log('🔄 Returning existing fetchAllCustomers request');
+    return requestCache.get(cacheKey);
+  }
+
+  // Create new request
+  const requestPromise = performFetchAllCustomers();
+  requestCache.set(cacheKey, requestPromise);
+
+  try {
+    const result = await requestPromise;
+    return result;
+  } finally {
+    // Clean up cache after request completes (success or failure)
+    setTimeout(() => {
+      requestCache.delete(cacheKey);
+    }, 1000); // Keep in cache for 1 second to prevent rapid re-requests
+  }
+}
+
+async function performFetchAllCustomers() {
+  if (navigator.onLine) {
+    try {
+      console.log('🔍 Fetching customers from database...');
+      
+      // First, let's get a simple count to see how many customers exist
+      const { count, error: countError } = await withTimeout(
+        retryRequest(async () => {
+          const result = await checkSupabase()
+            .from('customers')
+            .select('id', { count: 'exact', head: true });
+          
+          if (result.error) {
+            throw result.error;
+          }
+          return result;
+        }),
+        REQUEST_TIMEOUT
+      );
+      
+      if (countError) {
+        console.error('❌ Error counting customers:', countError);
+        throw countError;
+      }
+      
+      console.log(`📊 Total customers in database: ${count}`);
+      
+      // Use pagination to fetch customers in batches to avoid overwhelming the browser
+      const pageSize = BATCH_SIZE; // Use configured batch size
+      const totalPages = Math.ceil((count || 0) / pageSize);
+      const allCustomers = [];
+      
+      // Prevent infinite loops by limiting maximum pages
+      const maxPages = Math.min(totalPages, 100);
+      
+      console.log(`📄 Fetching ${maxPages} pages of customers with batch size ${pageSize}...`);
+      
+      // Fetch customers page by page with controlled concurrency and timeout protection
+      for (let page = 1; page <= maxPages; page++) {
+        console.log(`📄 Fetching page ${page}/${maxPages}...`);
+        
+        const from = (page - 1) * pageSize;
+        const to = from + pageSize - 1;
+        
+        try {
+          const { data: pageData, error: pageError } = await withTimeout(
+            retryRequest(async () => {
+              const result = await checkSupabase()
+                .from('customers')
+                .select(`
+                  id,
+                  name,
+                  phone,
+                  email,
+                  gender,
+                  city,
+                  color_tag,
+                  loyalty_level,
+                  points,
+                  total_spent,
+                  last_visit,
+                  is_active,
+                  referral_source,
+                  birth_month,
+                  birth_day,
+                  total_returns,
+                  profile_image,
+                  whatsapp,
+                  whatsapp_opt_out,
+                  initial_notes,
+                  notes,
+                  referrals,
+                  customer_tag,
+                  created_at,
+                  updated_at,
+                  created_by,
+                  last_purchase_date,
+                  total_purchases,
+                  birthday,
+                  referred_by,
+                  total_calls,
+                  total_call_duration_minutes,
+                  incoming_calls,
+                  outgoing_calls,
+                  missed_calls,
+                  avg_call_duration_minutes,
+                  first_call_date,
+                  last_call_date,
+                  call_loyalty_level
+                `)
+                .range(from, to)
+                .order('created_at', { ascending: false });
+              
+              if (result.error) {
+                throw result.error;
+              }
+              return result;
+            }),
+            REQUEST_TIMEOUT
+          );
+          
+          if (pageError) {
+            console.error(`❌ Error fetching page ${page}:`, pageError);
+            throw pageError;
+          }
+          
+          if (pageData && Array.isArray(pageData)) {
+            // Process and normalize the data
+            const processedCustomers = pageData.map((customer: any) => {
+              // Map snake_case database fields to camelCase interface fields
+              const mappedCustomer = {
+                id: customer.id,
+                name: customer.name,
+                email: customer.email,
+                phone: customer.phone,
+                gender: customer.gender,
+                city: customer.city,
+                joinedDate: customer.created_at,
+                loyaltyLevel: customer.loyalty_level,
+                colorTag: normalizeColorTag(customer.color_tag || 'new'),
+                referredBy: customer.referred_by,
+                totalSpent: customer.total_spent,
+                points: customer.points,
+                lastVisit: customer.last_visit,
+                isActive: customer.is_active,
+                referralSource: customer.referral_source,
+                birthMonth: customer.birth_month,
+                birthDay: customer.birth_day,
+                totalReturns: customer.total_returns,
+                profileImage: customer.profile_image,
+                createdAt: customer.created_at,
+                updatedAt: customer.updated_at,
+                createdBy: customer.created_by,
+                lastPurchaseDate: customer.last_purchase_date,
+                totalPurchases: customer.total_purchases,
+                birthday: customer.birthday,
+                whatsapp: customer.whatsapp,
+                whatsappOptOut: customer.whatsapp_opt_out,
+                initialNotes: customer.initial_notes,
+                notes: customer.notes ? (typeof customer.notes === 'string' ? 
+                  (() => {
+                    try { return JSON.parse(customer.notes); } 
+                    catch { return []; }
+                  })() : customer.notes) : [],
+                referrals: customer.referrals ? (typeof customer.referrals === 'string' ? 
+                  (() => {
+                    try { return JSON.parse(customer.referrals); } 
+                    catch { return []; }
+                  })() : customer.referrals) : [],
+                customerTag: customer.customer_tag,
+                // Call analytics fields
+                totalCalls: customer.total_calls || 0,
+                totalCallDurationMinutes: customer.total_call_duration_minutes || 0,
+                incomingCalls: customer.incoming_calls || 0,
+                outgoingCalls: customer.outgoing_calls || 0,
+                missedCalls: customer.missed_calls || 0,
+                avgCallDurationMinutes: customer.avg_call_duration_minutes || 0,
+                firstCallDate: customer.first_call_date || '',
+                lastCallDate: customer.last_call_date || '',
+                callLoyaltyLevel: customer.call_loyalty_level || 'Basic',
+                // Additional fields for interface compatibility
+                customerNotes: [],
+                customerPayments: [],
+                devices: [],
+                promoHistory: []
+              };
+              return mappedCustomer;
+            });
+            
+            allCustomers.push(...processedCustomers);
+            console.log(`✅ Page ${page} fetched: ${pageData.length} customers`);
+          }
+          
+          // Add delay between requests to prevent overwhelming the server
+          if (page < maxPages) {
+            await new Promise(resolve => setTimeout(resolve, REQUEST_DELAY));
+          }
+          
+        } catch (error) {
+          console.error(`❌ Failed to fetch page ${page}:`, error);
+          // Continue with partial data rather than failing completely
+          console.log(`⚠️ Continuing with ${allCustomers.length} customers from ${page - 1} pages`);
+          break;
+        }
+      }
+      
+      console.log(`🎉 Successfully fetched ${allCustomers.length} customers`);
+      return allCustomers;
+      
+    } catch (error) {
+      console.error('❌ Error fetching customers:', error);
+      throw error;
+    }
+  } else {
+    console.log('📱 Offline mode: Loading customers from cache...');
+    // Load from cache when offline
+    const cachedCustomers = await import('../offlineCache').then(m => m.cacheGetAll('customers'));
+    return cachedCustomers || [];
+  }
+}
+
+export async function fetchAllCustomersSimple() {
+  console.log('🚀 fetchAllCustomersSimple function called - starting execution', new Date().toISOString());
+  
+  // Clear cache to force fresh request
+  const cacheKey = 'fetchAllCustomersSimple';
+  if (requestCache.has(cacheKey)) {
+    console.log('🔄 Clearing existing cache and making fresh request');
+    requestCache.delete(cacheKey);
+  }
+
+  // Create new request
+  const requestPromise = performFetchAllCustomersSimple();
+  requestCache.set(cacheKey, requestPromise);
+
+  try {
+    const result = await requestPromise;
+    return result;
+  } finally {
+    // Clean up cache after request completes (success or failure)
+    setTimeout(() => {
+      requestCache.delete(cacheKey);
+    }, 1000); // Keep in cache for 1 second to prevent rapid re-requests
+  }
+}
+
+async function performFetchAllCustomersSimple() {
+  console.log('🚀 performFetchAllCustomersSimple function called');
+  
+  if (navigator.onLine) {
+    try {
+      console.log('🔍 Fetching ALL customers from database (no limits)...');
+      
+      // First, get the total count
+      const { count, error: countError } = await withTimeout(
+        retryRequest(async () => {
+          const result = await checkSupabase()
+            .from('customers')
+            .select('*', { count: 'exact', head: true });
+          return result;
+        }),
+        REQUEST_TIMEOUT
+      );
+
+      if (countError) {
+        console.error('❌ Error getting customer count:', countError);
+        throw countError;
+      }
+
+      console.log(`📊 Total customers in database: ${count}`);
+
+      // If count is reasonable, fetch all at once with a high limit
+      if (count && count <= 100000) { // 100k limit for safety
+        const { data, error } = await withTimeout(
+          retryRequest(async () => {
+            const result = await checkSupabase()
+              .from('customers')
+              .select(`
+                id,
+                name,
+                phone,
+                email,
+                gender,
+                city,
+                color_tag,
+                loyalty_level,
+                points,
+                total_spent,
+                last_visit,
+                is_active,
+                referral_source,
+                birth_month,
+                birth_day,
+                total_returns,
+                profile_image,
+                whatsapp,
+                whatsapp_opt_out,
+                initial_notes,
+                notes,
+                referrals,
+                customer_tag,
+                created_at,
+                updated_at,
+                created_by,
+                last_purchase_date,
+                total_purchases,
+                birthday,
+                referred_by,
+                total_calls,
+                total_call_duration_minutes,
+                incoming_calls,
+                outgoing_calls,
+                missed_calls,
+                avg_call_duration_minutes,
+                first_call_date,
+                last_call_date,
+                call_loyalty_level
+              `)
+              .order('created_at', { ascending: false })
+              .limit(100000); // High limit to get all customers
+            
+            if (result.error) {
+              throw result.error;
+            }
+            return result;
+          }),
+          REQUEST_TIMEOUT
+        );
+        
+        if (error) {
+          console.error('❌ Error fetching customers (simple):', error);
+          throw error;
+        }
+        
+        if (data && Array.isArray(data)) {
+          // Debug: Show raw database data for first customer
+          if (data.length > 0) {
+            console.log(`🔍 Raw database data for first customer:`, data[0]);
+          }
+          
+          // Process and normalize the data
+          const processedCustomers = data.map((customer: any) => {
+            // Map snake_case database fields to camelCase interface fields
+            const mappedCustomer = {
+              id: customer.id,
+              name: customer.name || 'Unknown Customer', // Ensure name is never null/undefined
+              phone: customer.phone || `NO_PHONE_${customer.id}`, // Ensure phone is never null/undefined
+              email: customer.email || '',
+              gender: customer.gender || 'other',
+              city: customer.city || '',
+              colorTag: normalizeColorTag(customer.color_tag || 'new'),
+              loyaltyLevel: customer.loyalty_level || 'bronze',
+              points: customer.points || 0,
+              totalSpent: customer.total_spent || 0,
+              lastVisit: customer.last_visit || customer.created_at,
+              isActive: customer.is_active !== false, // Default to true if null
+              referralSource: customer.referral_source,
+              birthMonth: customer.birth_month,
+              birthDay: customer.birth_day,
+              totalReturns: customer.total_returns || 0,
+              profileImage: customer.profile_image,
+              whatsapp: customer.whatsapp,
+              whatsappOptOut: customer.whatsapp_opt_out || false,
+              initialNotes: customer.initial_notes,
+              notes: customer.notes ? (typeof customer.notes === 'string' ? 
+                (() => {
+                  try { return JSON.parse(customer.notes); } 
+                  catch { return []; }
+                })() : customer.notes) : [],
+              referrals: customer.referrals ? (typeof customer.referrals === 'string' ? 
+                (() => {
+                  try { return JSON.parse(customer.referrals); } 
+                  catch { return []; }
+                })() : customer.referrals) : [],
+              customerTag: customer.customer_tag,
+              joinedDate: customer.created_at,
+              createdAt: customer.created_at,
+              updatedAt: customer.updated_at,
+              createdBy: customer.created_by,
+              lastPurchaseDate: customer.last_purchase_date,
+              totalPurchases: customer.total_purchases || 0,
+              birthday: customer.birthday,
+              referredBy: customer.referred_by,
+              // Call analytics fields
+              totalCalls: customer.total_calls || 0,
+              totalCallDurationMinutes: customer.total_call_duration_minutes || 0,
+              incomingCalls: customer.incoming_calls || 0,
+              outgoingCalls: customer.outgoing_calls || 0,
+              missedCalls: customer.missed_calls || 0,
+              avgCallDurationMinutes: customer.avg_call_duration_minutes || 0,
+              firstCallDate: customer.first_call_date || '',
+              lastCallDate: customer.last_call_date || '',
+              callLoyaltyLevel: customer.call_loyalty_level || 'Basic',
+              // Additional fields for interface compatibility
+              customerNotes: [],
+              customerPayments: [],
+              devices: [],
+              promoHistory: []
+            };
+            return mappedCustomer;
+          });
+          
+          console.log(`✅ Successfully fetched ${processedCustomers.length} customers from entire database`);
+          
+          // Debug: Show first few customer names
+          if (processedCustomers.length > 0) {
+            console.log(`🔍 First 5 customers from API:`, processedCustomers.slice(0, 5).map(c => ({
+              name: c.name,
+              phone: c.phone,
+              email: c.email
+            })));
+          }
+          
+          return processedCustomers;
+        } else {
+          console.log('⚠️ No data returned from database or data is not an array');
+          return [];
+        }
+      } else {
+        console.log(`⚠️ Customer count (${count}) exceeds safety limit (100,000). Using fallback method.`);
+        // Fallback to original method for very large datasets
+        const { data, error } = await withTimeout(
+          retryRequest(async () => {
+            const result = await checkSupabase()
+              .from('customers')
+              .select(`
+                id,
+                name,
+                phone,
+                email,
+                gender,
+                city,
+                color_tag,
+                loyalty_level,
+                points,
+                total_spent,
+                last_visit,
+                is_active,
+                referral_source,
+                birth_month,
+                birth_day,
+                total_returns,
+                profile_image,
+                whatsapp,
+                whatsapp_opt_out,
+                initial_notes,
+                notes,
+                referrals,
+                customer_tag,
+                created_at,
+                updated_at,
+                created_by,
+                last_purchase_date,
+                total_purchases,
+                birthday,
+                referred_by,
+                total_calls,
+                total_call_duration_minutes,
+                incoming_calls,
+                outgoing_calls,
+                missed_calls,
+                avg_call_duration_minutes,
+                first_call_date,
+                last_call_date,
+                call_loyalty_level
+              `)
+              .order('created_at', { ascending: false })
+              .limit(100000); // Increased limit for large datasets
+            
+            if (result.error) {
+              throw result.error;
+            }
+            return result;
+          }),
+          REQUEST_TIMEOUT
+        );
+        
+        if (error) {
+          console.error('❌ Error fetching customers (fallback):', error);
+          throw error;
+        }
+        
+        if (data && Array.isArray(data)) {
+          // Debug: Show raw database data for first customer (fallback)
+          if (data.length > 0) {
+            console.log(`🔍 Raw database data for first customer (fallback):`, data[0]);
+          }
+          
+          // Process and normalize the data
+          const processedCustomers = data.map((customer: any) => {
+            // Map snake_case database fields to camelCase interface fields
+          const mappedCustomer = {
+            id: customer.id,
+            name: customer.name || 'Unknown Customer', // Ensure name is never null/undefined
+            phone: customer.phone || `NO_PHONE_${customer.id}`, // Ensure phone is never null/undefined
+            email: customer.email || '',
+            gender: customer.gender || 'other',
+            city: customer.city || '',
+            colorTag: normalizeColorTag(customer.color_tag || 'new'),
+            loyaltyLevel: customer.loyalty_level || 'bronze',
+            points: customer.points || 0,
+            totalSpent: customer.total_spent || 0,
+            lastVisit: customer.last_visit || customer.created_at,
+            isActive: customer.is_active !== false, // Default to true if null
+            referralSource: customer.referral_source,
+            birthMonth: customer.birth_month,
+            birthDay: customer.birth_day,
+            totalReturns: customer.total_returns || 0,
+            profileImage: customer.profile_image,
+            whatsapp: customer.whatsapp,
+            whatsappOptOut: customer.whatsapp_opt_out || false,
+            initialNotes: customer.initial_notes,
+            notes: customer.notes ? (typeof customer.notes === 'string' ? 
+              (() => {
+                try { return JSON.parse(customer.notes); } 
+                catch { return []; }
+              })() : customer.notes) : [],
+            referrals: customer.referrals ? (typeof customer.referrals === 'string' ? 
+              (() => {
+                try { return JSON.parse(customer.referrals); } 
+                catch { return []; }
+              })() : customer.referrals) : [],
+            customerTag: customer.customer_tag,
+            joinedDate: customer.created_at,
+            createdAt: customer.created_at,
+            updatedAt: customer.updated_at,
+            createdBy: customer.created_by,
+            lastPurchaseDate: customer.last_purchase_date,
+            totalPurchases: customer.total_purchases || 0,
+            birthday: customer.birthday,
+            referredBy: customer.referred_by,
+            // Call analytics fields
+            totalCalls: customer.total_calls || 0,
+            totalCallDurationMinutes: customer.total_call_duration_minutes || 0,
+            incomingCalls: customer.incoming_calls || 0,
+            outgoingCalls: customer.outgoing_calls || 0,
+            missedCalls: customer.missed_calls || 0,
+            avgCallDurationMinutes: customer.avg_call_duration_minutes || 0,
+            firstCallDate: customer.first_call_date || '',
+            lastCallDate: customer.last_call_date || '',
+            callLoyaltyLevel: customer.call_loyalty_level || 'Basic',
+            // Additional fields for interface compatibility
+            customerNotes: [],
+            customerPayments: [],
+            devices: [],
+            promoHistory: []
+          };
+          return mappedCustomer;
+          });
+          
+          console.log(`✅ Successfully fetched ${processedCustomers.length} customers (fallback - limited to 1000)`);
+          return processedCustomers;
+        } else {
+          console.log('⚠️ No data returned from database or data is not an array');
+          return [];
+        }
+      }
+      
+    } catch (error) {
+      console.error('❌ Error fetching customers (simple):', error);
+      throw error;
+    }
+  } else {
+    console.log('📱 Offline mode: Loading customers from cache...');
+    // Load from cache when offline
+    const cachedCustomers = await import('../offlineCache').then(m => m.cacheGetAll('customers'));
+    return cachedCustomers || [];
+  }
+}
+
+export async function fetchCustomerById(customerId: string) {
+  try {
+    console.log(`🔍 Fetching customer by ID: ${customerId}`);
+    
+    const { data, error } = await checkSupabase()
+      .from('customers')
+      .select(`
+        id,
+        name,
+        phone,
+        email,
+        gender,
+        city,
+        color_tag,
+        loyalty_level,
+        points,
+        total_spent,
+        last_visit,
+        is_active,
+        referral_source,
+        birth_month,
+        birth_day,
+        total_returns,
+        profile_image,
+        whatsapp,
+        whatsapp_opt_out,
+        initial_notes,
+        notes,
+        referrals,
+        customer_tag,
+        created_at,
+        updated_at,
+        created_by,
+        last_purchase_date,
+        total_purchases,
+        birthday,
+        referred_by,
+        total_calls,
+        total_call_duration_minutes,
+        incoming_calls,
+        outgoing_calls,
+        missed_calls,
+        avg_call_duration_minutes,
+        first_call_date,
+        last_call_date,
+        call_loyalty_level
+      `)
+      .eq('id', customerId as any)
+      .single();
+    
+    if (error) {
+      console.error('❌ Error fetching customer by ID:', error);
+      throw error;
+    }
+    
+    if (data && !error && typeof data === 'object' && 'id' in data) {
+      // Process and normalize the data
+      const processedCustomer = {
+        id: (data as any).id,
+        name: (data as any).name,
+        phone: (data as any).phone,
+        email: (data as any).email,
+        gender: (data as any).gender || 'other',
+        city: (data as any).city || '',
+        colorTag: normalizeColorTag((data as any).color_tag || 'new'),
+        loyaltyLevel: (data as any).loyalty_level || 'bronze',
+        points: (data as any).points || 0,
+        totalSpent: (data as any).total_spent || 0,
+        lastVisit: (data as any).last_visit || (data as any).created_at,
+        isActive: (data as any).is_active !== false, // Default to true if null
+        referralSource: (data as any).referral_source,
+        birthMonth: (data as any).birth_month,
+        birthDay: (data as any).birth_day,
+        totalReturns: (data as any).total_returns || 0,
+        profileImage: (data as any).profile_image,
+        whatsapp: (data as any).whatsapp,
+        whatsappOptOut: (data as any).whatsapp_opt_out || false,
+        initialNotes: (data as any).initial_notes,
+        notes: (data as any).notes ? (typeof (data as any).notes === 'string' ? 
+          (() => {
+            try { return JSON.parse((data as any).notes); } 
+            catch { return []; }
+          })() : (data as any).notes) : [],
+        referrals: (data as any).referrals ? (typeof (data as any).referrals === 'string' ? 
+          (() => {
+            try { return JSON.parse((data as any).referrals); } 
+            catch { return []; }
+          })() : (data as any).referrals) : [],
+        customerTag: (data as any).customer_tag,
+        joinedDate: (data as any).created_at,
+        createdAt: (data as any).created_at,
+        updatedAt: (data as any).updated_at,
+        createdBy: (data as any).created_by,
+        lastPurchaseDate: (data as any).last_purchase_date,
+        totalPurchases: (data as any).total_purchases || 0,
+        birthday: (data as any).birthday,
+        referredBy: (data as any).referred_by,
+        // Call analytics fields
+        totalCalls: (data as any).total_calls || 0,
+        totalCallDurationMinutes: (data as any).total_call_duration_minutes || 0,
+        incomingCalls: (data as any).incoming_calls || 0,
+        outgoingCalls: (data as any).outgoing_calls || 0,
+        missedCalls: (data as any).missed_calls || 0,
+        avgCallDurationMinutes: (data as any).avg_call_duration_minutes || 0,
+        firstCallDate: (data as any).first_call_date || '',
+        lastCallDate: (data as any).last_call_date || '',
+        callLoyaltyLevel: (data as any).call_loyalty_level || 'Basic',
+        // Additional fields for interface compatibility
+        customerNotes: [],
+        customerPayments: [],
+        devices: [],
+        promoHistory: []
+      };
+      
+      console.log(`✅ Successfully fetched customer: ${processedCustomer.name}`);
+      return processedCustomer;
+    }
+    
+    return null;
+    
+  } catch (error) {
+    console.error('❌ Error fetching customer by ID:', error);
+    throw error;
+  }
+}
+
+export async function addCustomerToDb(customer: Omit<Customer, 'promoHistory' | 'payments' | 'devices'>) {
+  try {
+    console.log('➕ Adding customer to database:', customer.name);
+    
+    // Map camelCase fields to snake_case database fields
+    const fieldMapping: Record<string, string> = {
+      colorTag: 'color_tag',
+      isActive: 'is_active',
+      lastVisit: 'last_visit',
+      joinedDate: 'created_at',
+      loyaltyLevel: 'loyalty_level',
+      totalSpent: 'total_spent',
+      referredBy: 'referred_by',
+      referralSource: 'referral_source',
+      birthMonth: 'birth_month',
+      birthDay: 'birth_day',
+      totalReturns: 'total_returns',
+      initialNotes: 'initial_notes',
+      locationDescription: 'location_description',
+      nationalId: 'national_id',
+      profileImage: 'profile_image',
+      createdBy: 'created_by',
+      loyaltyTier: 'loyalty_tier',
+      loyaltyJoinDate: 'loyalty_join_date',
+      loyaltyLastVisit: 'loyalty_last_visit',
+      loyaltyRewardsRedeemed: 'loyalty_rewards_redeemed',
+      loyaltyTotalSpent: 'loyalty_total_spent',
+      isLoyaltyMember: 'is_loyalty_member'
+    };
+    
+    // Fields that should not be inserted into the database (TypeScript-only fields)
+    const excludeFields = ['devices', 'promoHistory', 'payments', 'notes', 'referrals'];
+    
+    // Map customer fields to database fields
+    const dbCustomer: any = {};
+    Object.entries(customer).forEach(([key, value]) => {
+      // Skip fields that don't exist in the database
+      if (excludeFields.includes(key)) {
+        return;
+      }
+      
+      if (value !== undefined && value !== null) {
+        const dbFieldName = fieldMapping[key] || key;
+        dbCustomer[dbFieldName] = value;
+      }
+    });
+    
+    // Normalize color tag
+    if (dbCustomer.color_tag) {
+      dbCustomer.color_tag = normalizeColorTag(dbCustomer.color_tag);
+    }
+    
+    // Ensure phone is unique and valid
+    if (!dbCustomer.phone || dbCustomer.phone.trim() === '') {
+      // Generate a unique phone number for customers without phones
+      dbCustomer.phone = `NO_PHONE_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    }
+    
+    const { data, error } = await checkSupabase()
+      .from('customers')
+      .insert([dbCustomer])
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('❌ Error adding customer:', error);
+      throw error;
+    }
+    
+    console.log('✅ Customer added successfully:', data);
+    return data;
+    
+  } catch (error) {
+    console.error('❌ Error adding customer:', error);
+    throw error;
+  }
+}
+
+export async function updateCustomerInDb(customerId: string, updates: Partial<Customer>) {
+  try {
+    console.log(`🔄 Updating customer: ${customerId}`);
+    
+    // Map camelCase fields to snake_case database fields
+    const fieldMapping: Record<string, string> = {
+      colorTag: 'color_tag',
+      isActive: 'is_active',
+      lastVisit: 'last_visit',
+      joinedDate: 'created_at',
+      loyaltyLevel: 'loyalty_level',
+      totalSpent: 'total_spent',
+      referredBy: 'referred_by',
+      referralSource: 'referral_source',
+      birthMonth: 'birth_month',
+      birthDay: 'birth_day',
+      totalReturns: 'total_returns',
+      initialNotes: 'initial_notes',
+      locationDescription: 'location_description',
+      nationalId: 'national_id',
+      profileImage: 'profile_image',
+      createdBy: 'created_by',
+      loyaltyTier: 'loyalty_tier',
+      loyaltyJoinDate: 'loyalty_join_date',
+      loyaltyLastVisit: 'loyalty_last_visit',
+      loyaltyRewardsRedeemed: 'loyalty_rewards_redeemed',
+      loyaltyTotalSpent: 'loyalty_total_spent',
+      isLoyaltyMember: 'is_loyalty_member'
+    };
+    
+    // Filter out undefined values and map field names
+    const cleanUpdates: any = {};
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        const dbFieldName = fieldMapping[key] || key;
+        cleanUpdates[dbFieldName] = value;
+      }
+    });
+    
+    // Add updated_at timestamp
+    cleanUpdates.updated_at = new Date().toISOString();
+    
+    // Handle colorTag normalization (now mapped to color_tag)
+    if (cleanUpdates.color_tag) {
+      cleanUpdates.color_tag = normalizeColorTag(cleanUpdates.color_tag);
+    }
+    
+    // Ensure phone is unique and valid for updates
+    if (cleanUpdates.phone !== undefined) {
+      if (!cleanUpdates.phone || cleanUpdates.phone.trim() === '') {
+        // Generate a unique phone number for customers without phones
+        cleanUpdates.phone = `NO_PHONE_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      }
+    }
+    
+    console.log('🔧 Clean updates:', cleanUpdates);
+    
+    // Validate that we're not trying to update invalid fields
+    const validFields = [
+      'id', 'name', 'email', 'phone', 'gender', 'city', 'loyalty_level', 
+      'color_tag', 'referred_by', 'total_spent', 'points', 'last_visit', 'is_active', 
+      'referral_source', 'birth_month', 'birth_day', 'total_returns', 'profile_image', 
+      'created_at', 'updated_at', 'created_by', 'whatsapp', 'initial_notes', 'notes', 
+      'referrals', 'customer_tag'
+    ];
+    
+    // Filter out any invalid fields and handle data type conversions
+    const validatedUpdates: any = {};
+    Object.entries(cleanUpdates).forEach(([key, value]) => {
+      if (validFields.includes(key)) {
+        // Handle special data type conversions
+        if (key === 'notes' && Array.isArray(value)) {
+          // Convert CustomerNote[] to string for database storage
+          validatedUpdates[key] = JSON.stringify(value);
+        } else if (key === 'referrals' && Array.isArray(value)) {
+          // Convert referrals array to string for database storage
+          validatedUpdates[key] = JSON.stringify(value);
+        } else if (key === 'points' && typeof value === 'string') {
+          // Convert string points to number
+          validatedUpdates[key] = parseInt(value, 10) || 0;
+        } else if (key === 'total_spent' && typeof value === 'string') {
+          // Convert string total_spent to number
+          validatedUpdates[key] = parseFloat(value) || 0;
+        } else if (key === 'total_returns' && typeof value === 'string') {
+          // Convert string total_returns to number
+          validatedUpdates[key] = parseInt(value, 10) || 0;
+        } else if (key === 'total_purchases' && typeof value === 'string') {
+          // Convert string total_purchases to number
+          validatedUpdates[key] = parseInt(value, 10) || 0;
+        } else if (key === 'is_active' && typeof value === 'string') {
+          // Convert string boolean to actual boolean
+          validatedUpdates[key] = value === 'true' || value === '1';
+        } else if (key === 'whatsapp_opt_out' && typeof value === 'string') {
+          // Convert string boolean to actual boolean
+          validatedUpdates[key] = value === 'true' || value === '1';
+        } else {
+          validatedUpdates[key] = value;
+        }
+      } else {
+        console.warn(`⚠️ Skipping invalid field: ${key}`);
+      }
+    });
+    
+    console.log('🔧 Validated updates:', validatedUpdates);
+    
+    const { data, error } = await checkSupabase()
+      .from('customers')
+      .update(validatedUpdates)
+      .eq('id', customerId as any)
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('❌ Error updating customer:', error);
+      console.error('❌ Error details:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      });
+      console.error('❌ Update data that caused error:', validatedUpdates);
+      throw error;
+    }
+    
+    console.log('✅ Customer updated successfully:', data);
+    
+    // Track customer activity when they are updated
+    try {
+      await trackCustomerActivity(customerId, 'profile_updated');
+    } catch (activityError) {
+      console.warn('⚠️ Failed to track customer activity:', activityError);
+      // Don't throw here as the main update was successful
+    }
+    
+    return data;
+    
+  } catch (error) {
+    console.error('❌ Error updating customer:', error);
+    throw error;
+  }
+}
+
+// Alias for backward compatibility
+export const createCustomer = addCustomerToDb;
+
+// Function to clear request cache (useful for debugging or forcing fresh requests)
+export function clearRequestCache() {
+  requestCache.clear();
+  console.log('🧹 Request cache cleared');
+}
+
+// Function to get request cache stats
+export function getRequestCacheStats() {
+  return {
+    size: requestCache.size,
+    keys: Array.from(requestCache.keys())
+  };
+}

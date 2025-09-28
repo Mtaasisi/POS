@@ -1,0 +1,63 @@
+import React from 'react';
+import { CheckCircle } from 'lucide-react';
+import PaymentMethodIcon from '../../../components/PaymentMethodIcon';
+
+interface PaymentMethod {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+}
+
+interface TouchPaymentMethodSelectorProps {
+  methods: PaymentMethod[];
+  selectedMethod: PaymentMethod | null;
+  onSelectMethod: (method: PaymentMethod) => void;
+  className?: string;
+}
+
+const TouchPaymentMethodSelector: React.FC<TouchPaymentMethodSelectorProps> = ({
+  methods,
+  selectedMethod,
+  onSelectMethod,
+  className = ''
+}) => {
+  return (
+    <div className={`space-y-3 ${className}`}>
+      {methods.map((method) => (
+        <div
+          key={method.id}
+          onClick={() => onSelectMethod(method)}
+          className={`touch-card p-4 border rounded-xl cursor-pointer transition-all duration-200 ${
+            selectedMethod?.id === method.id
+              ? 'border-green-500 bg-green-50 shadow-lg'
+              : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-md'
+          }`}
+          style={{ minHeight: '80px' }}
+        >
+          <div className="flex items-center space-x-4">
+            {/* Payment Icon */}
+            <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <span className="text-2xl">{method.icon}</span>
+            </div>
+            
+            {/* Payment Info */}
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-gray-900 text-lg">{method.name}</div>
+              <div className="text-sm text-gray-600 mt-1">{method.description}</div>
+            </div>
+            
+            {/* Selection Indicator */}
+            {selectedMethod?.id === method.id && (
+              <div className="flex-shrink-0">
+                <CheckCircle className="w-6 h-6 text-green-600" />
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+export default TouchPaymentMethodSelector;
