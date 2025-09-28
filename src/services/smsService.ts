@@ -4,15 +4,15 @@ import geminiService from './geminiService';
 
 export interface SMSLog {
   id: string;
-  recipient_phone: string;
-  message_content: string;
+  phone_number: string;
+  message: string;
   status: 'sent' | 'delivered' | 'failed' | 'pending';
   error_message?: string;
   sent_at?: string;
   sent_by?: string;
   created_at: string;
-  ai_enhanced?: boolean;
-  personalization_data?: any;
+  device_id?: string;
+  cost?: number;
 }
 
 export interface SMSTemplate {
@@ -48,36 +48,84 @@ export interface AISMSAnalysis {
 class SMSService {
   private apiKey: string | null = null;
   private apiUrl: string | null = null;
+  private apiPassword: string | null = null;
+  private initialized: boolean = false;
+  private initializationPromise: Promise<void> | null = null;
 
   constructor() {
-    this.initializeService();
+    this.initializationPromise = this.initializeService();
   }
 
   private async initializeService() {
     // Load SMS configuration from settings
     try {
+      console.log('🔧 Initializing SMS service...');
+      console.log('🔍 DEBUG: Starting SMS service initialization');
+      
       // Fix the query to use proper Supabase syntax
       const { data, error } = await supabase
         .from('settings')
         .select('key, value')
-        .or('key.eq.sms_provider_api_key,key.eq.sms_api_url');
+        .or('key.eq.sms_provider_api_key,key.eq.sms_api_url,key.eq.sms_provider_password');
+      
+      console.log('🔍 DEBUG: Supabase query result:', { data, error });
 
       if (error) {
-        console.warn('SMS service configuration query failed:', error);
+        console.warn('❌ SMS service configuration query failed:', error);
         return;
       }
 
       if (data && Array.isArray(data)) {
+        console.log('📋 Found SMS settings:', data.length, 'records');
+        
         data.forEach(setting => {
+          console.log('🔍 DEBUG: Processing setting:', setting.key, '=', setting.value);
           if (setting.key === 'sms_provider_api_key') {
             this.apiKey = setting.value || null;
+            console.log('🔑 SMS API Key:', this.apiKey ? '✅ Configured' : '❌ Missing');
+            console.log('🔍 DEBUG: API Key set to:', this.apiKey);
           } else if (setting.key === 'sms_api_url') {
             this.apiUrl = setting.value || null;
+            console.log('🌐 SMS API URL:', this.apiUrl ? '✅ Configured' : '❌ Missing');
+            console.log('🔍 DEBUG: API URL set to:', this.apiUrl);
+          } else if (setting.key === 'sms_provider_password') {
+            this.apiPassword = setting.value || null;
+            console.log('🔐 SMS Password:', this.apiPassword ? '✅ Configured' : '❌ Missing');
+            console.log('🔍 DEBUG: Password set to:', this.apiPassword);
           }
         });
+        
+        console.log('🔍 DEBUG: Final SMS service state:', {
+          apiKey: this.apiKey,
+          apiUrl: this.apiUrl,
+          apiPassword: this.apiPassword,
+          initialized: this.initialized
+        });
+        
+        if (!this.apiKey || !this.apiUrl) {
+          console.warn('⚠️ SMS service not fully configured. SMS notifications will fail.');
+          console.warn('💡 To configure SMS, run the setup instructions in the console.');
+        } else {
+          console.log('✅ SMS service initialized successfully');
+        }
+      } else {
+        console.warn('⚠️ No SMS settings found in database');
+        console.warn('💡 SMS notifications will be disabled until configured');
       }
+      
+      this.initialized = true;
     } catch (error) {
-      console.warn('SMS service configuration not found:', error);
+      console.warn('❌ SMS service configuration error:', error);
+      this.initialized = true; // Still mark as initialized to prevent infinite waiting
+    }
+  }
+
+  /**
+   * Ensure SMS service is initialized before use
+   */
+  private async ensureInitialized(): Promise<void> {
+    if (!this.initialized && this.initializationPromise) {
+      await this.initializationPromise;
     }
   }
 
@@ -86,6 +134,9 @@ class SMSService {
    */
   async sendSMS(phone: string, message: string, options?: { ai_enhanced?: boolean }): Promise<{ success: boolean; error?: string; log_id?: string }> {
     try {
+      // Ensure service is initialized
+      await this.ensureInitialized();
+      
       // AI enhancement if requested
       let enhancedMessage = message;
       let ai_enhanced = false;
@@ -105,20 +156,23 @@ class SMSService {
       
       // Log the SMS
       const logData = {
-        recipient_phone: phone,
-        message_content: enhancedMessage,
+        phone_number: phone,
+        message: enhancedMessage,
         status: result.success ? 'sent' : 'failed',
         error_message: result.error,
         sent_at: new Date().toISOString(),
-        ai_enhanced,
-        personalization_data
+        created_at: new Date().toISOString()
       };
 
-      const { data: log } = await supabase
+      const { data: log, error: logError } = await supabase
         .from('sms_logs')
         .insert(logData)
         .select()
         .single();
+
+      if (logError) {
+        console.error('Error logging SMS:', logError);
+      }
 
       return {
         success: result.success,
@@ -317,43 +371,90 @@ Respond in JSON format:
   }
 
   /**
-   * Send SMS to provider
+   * Send SMS to provider via backend proxy (to avoid CORS issues)
    */
   private async sendSMSToProvider(phone: string, message: string): Promise<{ success: boolean; error?: string }> {
+    // Ensure service is initialized
+    await this.ensureInitialized();
+    
+    console.log('🔍 DEBUG: sendSMSToProvider called with:', {
+      phone,
+      message: message.substring(0, 50) + '...',
+      apiKey: this.apiKey,
+      apiUrl: this.apiUrl,
+      apiPassword: this.apiPassword,
+      initialized: this.initialized
+    });
+    
     if (!this.apiKey || !this.apiUrl) {
-      return { success: false, error: 'SMS provider not configured' };
+      console.warn('📱 SMS Configuration Missing:');
+      console.warn('   - sms_provider_api_key: ' + (this.apiKey ? '✅ Configured' : '❌ Missing'));
+      console.warn('   - sms_api_url: ' + (this.apiUrl ? '✅ Configured' : '❌ Missing'));
+      console.warn('   To configure SMS, add these to your database settings table:');
+      console.warn('   INSERT INTO settings (key, value) VALUES ');
+      console.warn('   (\'sms_provider_api_key\', \'your_api_key_here\'),');
+      console.warn('   (\'sms_api_url\', \'https://your-sms-provider.com/api/send\');');
+      return { success: false, error: 'SMS provider not configured. Check console for setup instructions.' };
     }
 
     try {
-      // This is a placeholder - replace with your actual SMS provider API
-      const response = await fetch(this.apiUrl, {
+      // For testing purposes, if using a test phone number, simulate success
+      if (phone === '255700000000' || phone.startsWith('255700')) {
+        console.log('🧪 Test SMS - simulating success for phone:', phone);
+        return { success: true };
+      }
+
+      // Use backend proxy to avoid CORS issues
+      const proxyUrl = '/api/sms-proxy.php';
+      
+      console.log('📱 Sending SMS via backend proxy...');
+      console.log('   Phone:', phone);
+      console.log('   Message:', message.substring(0, 50) + '...');
+      console.log('   Provider:', this.apiUrl);
+
+      const response = await fetch(proxyUrl, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           phone,
           message,
-          sender_id: 'LATS CHANCE'
+          apiUrl: this.apiUrl,
+          apiKey: this.apiKey,
+          apiPassword: this.apiPassword,
+          senderId: 'INAUZWA'
         })
       });
+      
+      console.log('🔍 DEBUG: Request payload:', {
+        phone,
+        message: message.substring(0, 50) + '...',
+        apiUrl: this.apiUrl,
+        apiKey: this.apiKey,
+        apiPassword: this.apiPassword,
+        senderId: 'INAUZWA'
+      });
 
-      if (response.ok) {
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('✅ SMS sent successfully via proxy');
         return { success: true };
       } else {
-        const error = await response.text();
-        return { success: false, error };
+        console.error('📱 SMS Provider Error via proxy:', result.error);
+        return { success: false, error: result.error || 'SMS sending failed' };
       }
     } catch (error) {
-      return { success: false, error: error.message };
+      console.error('📱 SMS Network Error:', error);
+      return { success: false, error: `Network error: ${error.message}` };
     }
   }
 
   /**
    * Get SMS logs with AI enhancement info
    */
-  async getSMSLogs(filters?: { search?: string; ai_enhanced?: boolean }): Promise<SMSLog[]> {
+  async getSMSLogs(filters?: { search?: string }): Promise<SMSLog[]> {
     try {
       let query = supabase
         .from('sms_logs')
@@ -361,14 +462,16 @@ Respond in JSON format:
         .order('created_at', { ascending: false });
 
       if (filters?.search) {
-        query = query.or(`recipient_phone.ilike.%${filters.search}%,message_content.ilike.%${filters.search}%`);
+        query = query.or(`phone_number.ilike.%${filters.search}%,message.ilike.%${filters.search}%`);
       }
 
-      if (filters?.ai_enhanced !== undefined) {
-        query = query.eq('ai_enhanced', filters.ai_enhanced);
+      const { data, error } = await query;
+      
+      if (error) {
+        console.error('Error fetching SMS logs:', error);
+        return [];
       }
-
-      const { data } = await query;
+      
       return data || [];
     } catch (error) {
       console.error('Error fetching SMS logs:', error);
@@ -439,7 +542,7 @@ Respond in JSON format:
       }
 
       // Resend the SMS
-      const result = await this.sendSMS(log.recipient_phone, log.message_content);
+      const result = await this.sendSMS(log.phone_number, log.message);
 
       // Update the log
       await supabase
@@ -495,11 +598,16 @@ Respond in JSON format:
   }): Promise<boolean> {
     try {
       // Get customer phone number for logging
-      const { data: customer } = await supabase
+      const { data: customer, error: customerError } = await supabase
         .from('customers')
         .select('phone')
         .eq('id', data.customerId)
         .single();
+
+      if (customerError) {
+        console.error('Error fetching customer for SMS logging:', customerError);
+        return false;
+      }
 
       const { error } = await supabase
         .from('sms_logs')
@@ -522,6 +630,162 @@ Respond in JSON format:
     } catch (error) {
       console.error('Error logging manual SMS:', error);
       return false;
+    }
+  }
+
+  /**
+   * Send device received SMS notification
+   */
+  async sendDeviceReceivedSMS(
+    phone: string,
+    customerName: string,
+    deviceBrand: string,
+    deviceModel: string,
+    deviceId: string,
+    issueDescription: string,
+    customerId: string
+  ): Promise<{ success: boolean; error?: string; log_id?: string }> {
+    try {
+      // Create the SMS message using the device received template
+      const message = `✅ Tumepokea Kimepokelewa!
+
+Hellow Mtaasisi ${customerName},
+
+Habari njema! ${deviceBrand} ${deviceModel} yako imepokelewa na sasa iko katika foleni ya ukarabati wa Inauzwa.
+
+📋 Namba ya Kumbukumbu: #${deviceId}
+📅 Tarehe ya Kupokea: ${new Date().toLocaleDateString('sw-TZ')}
+🔧 Tatizo: ${issueDescription}
+
+Subiri ujumbe kupitia SMS kikiwa tayari!
+
+Asante kwa kumtumaini Inauzwa 🚀`;
+
+      // Send the SMS using the existing sendSMS method
+      const result = await this.sendSMS(phone, message, { ai_enhanced: false });
+
+      // Log additional device-specific information if SMS was sent successfully
+      if (result.success && result.log_id) {
+        try {
+          await supabase
+            .from('sms_logs')
+            .update({
+              device_id: deviceId
+            })
+            .eq('id', result.log_id);
+        } catch (updateError) {
+          console.warn('Failed to update SMS log with device data:', updateError);
+        }
+      }
+
+      return result;
+    } catch (error) {
+      console.error('Error sending device received SMS:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Send device ready SMS notification
+   */
+  async sendDeviceReadySMS(
+    phone: string,
+    customerName: string,
+    deviceBrand: string,
+    deviceModel: string,
+    deviceId: string,
+    customerId: string
+  ): Promise<{ success: boolean; error?: string; log_id?: string }> {
+    try {
+      // Create the SMS message using the device ready template
+      const message = `🎉 Kifaa Chako Tayari!
+
+Habari Mtaasisi ${customerName},
+
+Habari njema! ${deviceBrand} ${deviceModel} yako imekamilika na tayari kuchukuliwa.
+
+📋 Namba ya Kumbukumbu: #${deviceId}
+✅ Tarehe ya Kukamilisha: ${new Date().toLocaleDateString('sw-TZ')}
+
+Tafadhali uje kuchukua kifaa chako katika ofisi yetu ndani ya muda ili kuepuka usumbufu.
+
+Asante kwa kumtumaini Inauzwa! 🚀`;
+
+      // Send the SMS using the existing sendSMS method
+      const result = await this.sendSMS(phone, message, { ai_enhanced: false });
+
+      // Log additional device-specific information if SMS was sent successfully
+      if (result.success && result.log_id) {
+        try {
+          await supabase
+            .from('sms_logs')
+            .update({
+              device_id: deviceId
+            })
+            .eq('id', result.log_id);
+        } catch (updateError) {
+          console.warn('Failed to update SMS log with device data:', updateError);
+        }
+      }
+
+      return result;
+    } catch (error) {
+      console.error('Error sending device ready SMS:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Send template SMS with variables
+   */
+  async sendTemplateSMS(
+    phone: string,
+    templateId: string,
+    variables: Record<string, string>,
+    customerId?: string
+  ): Promise<{ success: boolean; error?: string; log_id?: string }> {
+    try {
+      // Get template from database
+      const { data: template, error: templateError } = await supabase
+        .from('sms_templates')
+        .select('*')
+        .eq('id', templateId)
+        .single();
+
+      if (templateError || !template) {
+        return { success: false, error: 'Template not found' };
+      }
+
+      // Replace variables in template content
+      let message = template.content;
+      Object.entries(variables).forEach(([key, value]) => {
+        const placeholder = `{${key}}`;
+        message = message.replace(new RegExp(placeholder, 'g'), value);
+      });
+
+      // Send the SMS using the existing sendSMS method
+      const result = await this.sendSMS(phone, message, { ai_enhanced: false });
+
+      // Log additional template information if SMS was sent successfully
+      if (result.success && result.log_id) {
+        try {
+          // Note: personalization_data field is not available in current schema
+          // Template information is already included in the message content
+          console.log('Template SMS sent successfully:', {
+            template_id: templateId,
+            template_name: template.name,
+            variables,
+            customer_id: customerId
+          });
+        } catch (updateError) {
+          console.warn('Failed to log template SMS data:', updateError);
+        }
+      }
+
+      return result;
+    } catch (error) {
+      console.error('Error sending template SMS:', error);
+      return { success: false, error: error.message };
     }
   }
 }

@@ -1,10 +1,14 @@
 import { supabase } from '../supabaseClient';
 import { Customer } from '../../types';
+import { trackCustomerActivity } from '../customerStatusService';
+import { withTimeoutAndRetry } from '../../utils/networkErrorHandler';
+
+console.log('🚀 Customer API core.ts loaded at:', new Date().toISOString());
 
 // Configuration constants to prevent resource exhaustion
 const BATCH_SIZE = 50; // Maximum customers per batch
 const REQUEST_DELAY = 100; // Delay between batches in milliseconds
-const MAX_CONCURRENT_REQUESTS = 10; // Maximum concurrent requests
+// const MAX_CONCURRENT_REQUESTS = 10; // Maximum concurrent requests
 const MAX_RETRIES = 3; // Maximum retry attempts for failed requests
 const RETRY_DELAY = 1000; // Delay between retries in milliseconds
 const REQUEST_TIMEOUT = 30000; // Default timeout for requests in milliseconds
@@ -20,42 +24,18 @@ function checkSupabase() {
   return supabase;
 }
 
-// Retry wrapper function for network requests
+// Enhanced retry wrapper function for network requests with QUIC error handling
 async function retryRequest<T>(
   requestFn: () => Promise<T>,
   maxRetries: number = MAX_RETRIES,
   delay: number = RETRY_DELAY
 ): Promise<T> {
-  let lastError: any;
-  
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      return await requestFn();
-    } catch (error: any) {
-      lastError = error;
-      
-      // Check if it's a network error that should be retried
-      const isNetworkError = 
-        error.message?.includes('QUIC_PROTOCOL_ERROR') ||
-        error.message?.includes('net::ERR_QUIC_PROTOCOL_ERROR') ||
-        error.message?.includes('Failed to fetch') ||
-        error.message?.includes('NetworkError') ||
-        error.code === 'NETWORK_ERROR' ||
-        error.name === 'NetworkError';
-      
-      if (!isNetworkError || attempt === maxRetries) {
-        throw error;
-      }
-      
-      console.log(`🔄 Retry attempt ${attempt}/${maxRetries} after network error:`, error.message);
-      
-      // Exponential backoff
-      const backoffDelay = delay * Math.pow(2, attempt - 1);
-      await new Promise(resolve => setTimeout(resolve, backoffDelay));
-    }
-  }
-  
-  throw lastError;
+  return withTimeoutAndRetry(requestFn, REQUEST_TIMEOUT, {
+    maxRetries,
+    baseDelay: delay,
+    maxDelay: 10000,
+    backoffMultiplier: 2
+  });
 }
 
 // Timeout wrapper function to prevent hanging requests
@@ -162,7 +142,7 @@ export async function fetchAllCustomers() {
   // Check if there's already a request in progress
   const cacheKey = 'fetchAllCustomers';
   if (requestCache.has(cacheKey)) {
-    console.log('🔄 Returning existing fetchAllCustomers request');
+
     return requestCache.get(cacheKey);
   }
 
@@ -184,8 +164,7 @@ export async function fetchAllCustomers() {
 async function performFetchAllCustomers() {
   if (navigator.onLine) {
     try {
-      console.log('🔍 Fetching customers from database...');
-      
+
       // First, let's get a simple count to see how many customers exist
       const { count, error: countError } = await withTimeout(
         retryRequest(async () => {
@@ -205,9 +184,7 @@ async function performFetchAllCustomers() {
         console.error('❌ Error counting customers:', countError);
         throw countError;
       }
-      
-      console.log(`📊 Total customers in database: ${count}`);
-      
+
       // Use pagination to fetch customers in batches to avoid overwhelming the browser
       const pageSize = BATCH_SIZE; // Use configured batch size
       const totalPages = Math.ceil((count || 0) / pageSize);
@@ -215,13 +192,10 @@ async function performFetchAllCustomers() {
       
       // Prevent infinite loops by limiting maximum pages
       const maxPages = Math.min(totalPages, 100);
-      
-      console.log(`📄 Fetching ${maxPages} pages of customers with batch size ${pageSize}...`);
-      
+
       // Fetch customers page by page with controlled concurrency and timeout protection
       for (let page = 1; page <= maxPages; page++) {
-        console.log(`📄 Fetching page ${page}/${maxPages}...`);
-        
+
         const from = (page - 1) * pageSize;
         const to = from + pageSize - 1;
         
@@ -260,7 +234,16 @@ async function performFetchAllCustomers() {
                   last_purchase_date,
                   total_purchases,
                   birthday,
-                  referred_by
+                  referred_by,
+                  total_calls,
+                  total_call_duration_minutes,
+                  incoming_calls,
+                  outgoing_calls,
+                  missed_calls,
+                  avg_call_duration_minutes,
+                  first_call_date,
+                  last_call_date,
+                  call_loyalty_level
                 `)
                 .range(from, to)
                 .order('created_at', { ascending: false });
@@ -278,9 +261,9 @@ async function performFetchAllCustomers() {
             throw pageError;
           }
           
-          if (pageData) {
+          if (pageData && Array.isArray(pageData)) {
             // Process and normalize the data
-            const processedCustomers = pageData.map(customer => {
+            const processedCustomers = pageData.map((customer: any) => {
               // Map snake_case database fields to camelCase interface fields
               const mappedCustomer = {
                 id: customer.id,
@@ -322,6 +305,16 @@ async function performFetchAllCustomers() {
                     catch { return []; }
                   })() : customer.referrals) : [],
                 customerTag: customer.customer_tag,
+                // Call analytics fields
+                totalCalls: customer.total_calls || 0,
+                totalCallDurationMinutes: customer.total_call_duration_minutes || 0,
+                incomingCalls: customer.incoming_calls || 0,
+                outgoingCalls: customer.outgoing_calls || 0,
+                missedCalls: customer.missed_calls || 0,
+                avgCallDurationMinutes: customer.avg_call_duration_minutes || 0,
+                firstCallDate: customer.first_call_date || '',
+                lastCallDate: customer.last_call_date || '',
+                callLoyaltyLevel: customer.call_loyalty_level || 'Basic',
                 // Additional fields for interface compatibility
                 customerNotes: [],
                 customerPayments: [],
@@ -332,7 +325,7 @@ async function performFetchAllCustomers() {
             });
             
             allCustomers.push(...processedCustomers);
-            console.log(`✅ Page ${page} fetched: ${pageData.length} customers`);
+
           }
           
           // Add delay between requests to prevent overwhelming the server
@@ -343,12 +336,11 @@ async function performFetchAllCustomers() {
         } catch (error) {
           console.error(`❌ Failed to fetch page ${page}:`, error);
           // Continue with partial data rather than failing completely
-          console.log(`⚠️ Continuing with ${allCustomers.length} customers from ${page - 1} pages`);
+
           break;
         }
       }
-      
-      console.log(`🎉 Successfully fetched ${allCustomers.length} customers`);
+
       return allCustomers;
       
     } catch (error) {
@@ -356,7 +348,7 @@ async function performFetchAllCustomers() {
       throw error;
     }
   } else {
-    console.log('📱 Offline mode: Loading customers from cache...');
+
     // Load from cache when offline
     const cachedCustomers = await import('../offlineCache').then(m => m.cacheGetAll('customers'));
     return cachedCustomers || [];
@@ -364,11 +356,13 @@ async function performFetchAllCustomers() {
 }
 
 export async function fetchAllCustomersSimple() {
-  // Check if there's already a request in progress
+  console.log('🚀 fetchAllCustomersSimple function called - starting execution', new Date().toISOString());
+  
+  // Clear cache to force fresh request
   const cacheKey = 'fetchAllCustomersSimple';
   if (requestCache.has(cacheKey)) {
-    console.log('🔄 Returning existing fetchAllCustomersSimple request');
-    return requestCache.get(cacheKey);
+
+    requestCache.delete(cacheKey);
   }
 
   // Create new request
@@ -387,70 +381,250 @@ export async function fetchAllCustomersSimple() {
 }
 
 async function performFetchAllCustomersSimple() {
+
   if (navigator.onLine) {
     try {
-      console.log('🔍 Fetching customers (simple) from database...');
+      console.log('🔍 Fetching ALL customers from database (no limits)...');
       
-      const { data, error } = await withTimeout(
+      // First, get the total count
+      const { count, error: countError } = await withTimeout(
         retryRequest(async () => {
           const result = await checkSupabase()
             .from('customers')
-            .select(`
-              id,
-              name,
-              phone,
-              email,
-              gender,
-              city,
-              color_tag,
-              loyalty_level,
-              points,
-              total_spent,
-              last_visit,
-              is_active,
-              referral_source,
-              birth_month,
-              birth_day,
-              total_returns,
-              profile_image,
-              whatsapp,
-              whatsapp_opt_out,
-              initial_notes,
-              notes,
-              referrals,
-              customer_tag,
-              created_at,
-              updated_at,
-              created_by,
-              last_purchase_date,
-              total_purchases,
-              birthday,
-              referred_by
-            `)
-            .order('created_at', { ascending: false });
-          
-          if (result.error) {
-            throw result.error;
-          }
+            .select('*', { count: 'exact', head: true });
           return result;
         }),
         REQUEST_TIMEOUT
       );
-      
-      if (error) {
-        console.error('❌ Error fetching customers (simple):', error);
-        throw error;
+
+      if (countError) {
+        console.error('❌ Error getting customer count:', countError);
+        throw countError;
       }
-      
-      if (data) {
-        // Process and normalize the data
-        const processedCustomers = data.map(customer => {
-          // Map snake_case database fields to camelCase interface fields
+
+      // If count is reasonable, fetch all at once with a high limit
+      if (count && count <= 100000) { // 100k limit for safety
+        const { data, error } = await withTimeout(
+          retryRequest(async () => {
+            const result = await checkSupabase()
+              .from('customers')
+              .select(`
+                id,
+                name,
+                phone,
+                email,
+                gender,
+                city,
+                color_tag,
+                loyalty_level,
+                points,
+                total_spent,
+                last_visit,
+                is_active,
+                referral_source,
+                birth_month,
+                birth_day,
+                total_returns,
+                profile_image,
+                whatsapp,
+                whatsapp_opt_out,
+                initial_notes,
+                notes,
+                referrals,
+                customer_tag,
+                created_at,
+                updated_at,
+                created_by,
+                last_purchase_date,
+                total_purchases,
+                birthday,
+                referred_by,
+                total_calls,
+                total_call_duration_minutes,
+                incoming_calls,
+                outgoing_calls,
+                missed_calls,
+                avg_call_duration_minutes,
+                first_call_date,
+                last_call_date,
+                call_loyalty_level
+              `)
+              .order('created_at', { ascending: false })
+              .limit(100000); // High limit to get all customers
+            
+            if (result.error) {
+              throw result.error;
+            }
+            return result;
+          }),
+          REQUEST_TIMEOUT
+        );
+        
+        if (error) {
+          console.error('❌ Error fetching customers (simple):', error);
+          throw error;
+        }
+        
+        if (data && Array.isArray(data)) {
+          // Debug: Show raw database data for first customer
+          if (data.length > 0) {
+
+          }
+          
+          // Process and normalize the data
+          const processedCustomers = data.map((customer: any) => {
+            // Map snake_case database fields to camelCase interface fields
+            const mappedCustomer = {
+              id: customer.id,
+              name: customer.name || 'Unknown Customer', // Ensure name is never null/undefined
+              phone: customer.phone || `NO_PHONE_${customer.id}`, // Ensure phone is never null/undefined
+              email: customer.email || '',
+              gender: customer.gender || 'other',
+              city: customer.city || '',
+              colorTag: normalizeColorTag(customer.color_tag || 'new'),
+              loyaltyLevel: customer.loyalty_level || 'bronze',
+              points: customer.points || 0,
+              totalSpent: customer.total_spent || 0,
+              lastVisit: customer.last_visit || customer.created_at,
+              isActive: customer.is_active !== false, // Default to true if null
+              referralSource: customer.referral_source,
+              birthMonth: customer.birth_month,
+              birthDay: customer.birth_day,
+              totalReturns: customer.total_returns || 0,
+              profileImage: customer.profile_image,
+              whatsapp: customer.whatsapp,
+              whatsappOptOut: customer.whatsapp_opt_out || false,
+              initialNotes: customer.initial_notes,
+              notes: customer.notes ? (typeof customer.notes === 'string' ? 
+                (() => {
+                  try { return JSON.parse(customer.notes); } 
+                  catch { return []; }
+                })() : customer.notes) : [],
+              referrals: customer.referrals ? (typeof customer.referrals === 'string' ? 
+                (() => {
+                  try { return JSON.parse(customer.referrals); } 
+                  catch { return []; }
+                })() : customer.referrals) : [],
+              customerTag: customer.customer_tag,
+              joinedDate: customer.created_at,
+              createdAt: customer.created_at,
+              updatedAt: customer.updated_at,
+              createdBy: customer.created_by,
+              lastPurchaseDate: customer.last_purchase_date,
+              totalPurchases: customer.total_purchases || 0,
+              birthday: customer.birthday,
+              referredBy: customer.referred_by,
+              // Call analytics fields
+              totalCalls: customer.total_calls || 0,
+              totalCallDurationMinutes: customer.total_call_duration_minutes || 0,
+              incomingCalls: customer.incoming_calls || 0,
+              outgoingCalls: customer.outgoing_calls || 0,
+              missedCalls: customer.missed_calls || 0,
+              avgCallDurationMinutes: customer.avg_call_duration_minutes || 0,
+              firstCallDate: customer.first_call_date || '',
+              lastCallDate: customer.last_call_date || '',
+              callLoyaltyLevel: customer.call_loyalty_level || 'Basic',
+              // Additional fields for interface compatibility
+              customerNotes: [],
+              customerPayments: [],
+              devices: [],
+              promoHistory: []
+            };
+            return mappedCustomer;
+          });
+
+          // Debug: Show first few customer names
+          if (processedCustomers.length > 0) {
+            console.log(`🔍 First 5 customers from API:`, processedCustomers.slice(0, 5).map(c => ({
+              name: c.name,
+              phone: c.phone,
+              email: c.email
+            })));
+          }
+          
+          return processedCustomers;
+        } else {
+
+          return [];
+        }
+      } else {
+        console.log(`⚠️ Customer count (${count}) exceeds safety limit (100,000). Using fallback method.`);
+        // Fallback to original method for very large datasets
+        const { data, error } = await withTimeout(
+          retryRequest(async () => {
+            const result = await checkSupabase()
+              .from('customers')
+              .select(`
+                id,
+                name,
+                phone,
+                email,
+                gender,
+                city,
+                color_tag,
+                loyalty_level,
+                points,
+                total_spent,
+                last_visit,
+                is_active,
+                referral_source,
+                birth_month,
+                birth_day,
+                total_returns,
+                profile_image,
+                whatsapp,
+                whatsapp_opt_out,
+                initial_notes,
+                notes,
+                referrals,
+                customer_tag,
+                created_at,
+                updated_at,
+                created_by,
+                last_purchase_date,
+                total_purchases,
+                birthday,
+                referred_by,
+                total_calls,
+                total_call_duration_minutes,
+                incoming_calls,
+                outgoing_calls,
+                missed_calls,
+                avg_call_duration_minutes,
+                first_call_date,
+                last_call_date,
+                call_loyalty_level
+              `)
+              .order('created_at', { ascending: false })
+              .limit(100000); // Increased limit for large datasets
+            
+            if (result.error) {
+              throw result.error;
+            }
+            return result;
+          }),
+          REQUEST_TIMEOUT
+        );
+        
+        if (error) {
+          console.error('❌ Error fetching customers (fallback):', error);
+          throw error;
+        }
+        
+        if (data && Array.isArray(data)) {
+          // Debug: Show raw database data for first customer (fallback)
+          if (data.length > 0) {
+            console.log(`🔍 Raw database data for first customer (fallback):`, data[0]);
+          }
+          
+          // Process and normalize the data
+          const processedCustomers = data.map((customer: any) => {
+            // Map snake_case database fields to camelCase interface fields
           const mappedCustomer = {
             id: customer.id,
-            name: customer.name,
-            phone: customer.phone,
-            email: customer.email,
+            name: customer.name || 'Unknown Customer', // Ensure name is never null/undefined
+            phone: customer.phone || `NO_PHONE_${customer.id}`, // Ensure phone is never null/undefined
+            email: customer.email || '',
             gender: customer.gender || 'other',
             city: customer.city || '',
             colorTag: normalizeColorTag(customer.color_tag || 'new'),
@@ -486,6 +660,16 @@ async function performFetchAllCustomersSimple() {
             totalPurchases: customer.total_purchases || 0,
             birthday: customer.birthday,
             referredBy: customer.referred_by,
+            // Call analytics fields
+            totalCalls: customer.total_calls || 0,
+            totalCallDurationMinutes: customer.total_call_duration_minutes || 0,
+            incomingCalls: customer.incoming_calls || 0,
+            outgoingCalls: customer.outgoing_calls || 0,
+            missedCalls: customer.missed_calls || 0,
+            avgCallDurationMinutes: customer.avg_call_duration_minutes || 0,
+            firstCallDate: customer.first_call_date || '',
+            lastCallDate: customer.last_call_date || '',
+            callLoyaltyLevel: customer.call_loyalty_level || 'Basic',
             // Additional fields for interface compatibility
             customerNotes: [],
             customerPayments: [],
@@ -493,20 +677,22 @@ async function performFetchAllCustomersSimple() {
             promoHistory: []
           };
           return mappedCustomer;
-        });
-        
-        console.log(`✅ Successfully fetched ${processedCustomers.length} customers (simple)`);
-        return processedCustomers;
+          });
+          
+          console.log(`✅ Successfully fetched ${processedCustomers.length} customers (fallback - limited to 1000)`);
+          return processedCustomers;
+        } else {
+
+          return [];
+        }
       }
-      
-      return [];
       
     } catch (error) {
       console.error('❌ Error fetching customers (simple):', error);
       throw error;
     }
   } else {
-    console.log('📱 Offline mode: Loading customers from cache...');
+
     // Load from cache when offline
     const cachedCustomers = await import('../offlineCache').then(m => m.cacheGetAll('customers'));
     return cachedCustomers || [];
@@ -515,8 +701,7 @@ async function performFetchAllCustomersSimple() {
 
 export async function fetchCustomerById(customerId: string) {
   try {
-    console.log(`🔍 Fetching customer by ID: ${customerId}`);
-    
+
     const { data, error } = await checkSupabase()
       .from('customers')
       .select(`
@@ -549,9 +734,18 @@ export async function fetchCustomerById(customerId: string) {
         last_purchase_date,
         total_purchases,
         birthday,
-        referred_by
+        referred_by,
+        total_calls,
+        total_call_duration_minutes,
+        incoming_calls,
+        outgoing_calls,
+        missed_calls,
+        avg_call_duration_minutes,
+        first_call_date,
+        last_call_date,
+        call_loyalty_level
       `)
-      .eq('id', customerId)
+      .eq('id', customerId as any)
       .single();
     
     if (error) {
@@ -559,56 +753,65 @@ export async function fetchCustomerById(customerId: string) {
       throw error;
     }
     
-    if (data) {
+    if (data && !error && typeof data === 'object' && 'id' in data) {
       // Process and normalize the data
       const processedCustomer = {
-        id: data.id,
-        name: data.name,
-        phone: data.phone,
-        email: data.email,
-        gender: data.gender || 'other',
-        city: data.city || '',
-        colorTag: normalizeColorTag(data.color_tag || 'new'),
-        loyaltyLevel: data.loyalty_level || 'bronze',
-        points: data.points || 0,
-        totalSpent: data.total_spent || 0,
-        lastVisit: data.last_visit || data.created_at,
-        isActive: data.is_active !== false, // Default to true if null
-        referralSource: data.referral_source,
-        birthMonth: data.birth_month,
-        birthDay: data.birth_day,
-        totalReturns: data.total_returns || 0,
-        profileImage: data.profile_image,
-        whatsapp: data.whatsapp,
-        whatsappOptOut: data.whatsapp_opt_out || false,
-        initialNotes: data.initial_notes,
-        notes: data.notes ? (typeof data.notes === 'string' ? 
+        id: (data as any).id,
+        name: (data as any).name,
+        phone: (data as any).phone,
+        email: (data as any).email,
+        gender: (data as any).gender || 'other',
+        city: (data as any).city || '',
+        colorTag: normalizeColorTag((data as any).color_tag || 'new'),
+        loyaltyLevel: (data as any).loyalty_level || 'bronze',
+        points: (data as any).points || 0,
+        totalSpent: (data as any).total_spent || 0,
+        lastVisit: (data as any).last_visit || (data as any).created_at,
+        isActive: (data as any).is_active !== false, // Default to true if null
+        referralSource: (data as any).referral_source,
+        birthMonth: (data as any).birth_month,
+        birthDay: (data as any).birth_day,
+        totalReturns: (data as any).total_returns || 0,
+        profileImage: (data as any).profile_image,
+        whatsapp: (data as any).whatsapp,
+        whatsappOptOut: (data as any).whatsapp_opt_out || false,
+        initialNotes: (data as any).initial_notes,
+        notes: (data as any).notes ? (typeof (data as any).notes === 'string' ? 
           (() => {
-            try { return JSON.parse(data.notes); } 
+            try { return JSON.parse((data as any).notes); } 
             catch { return []; }
-          })() : data.notes) : [],
-        referrals: data.referrals ? (typeof data.referrals === 'string' ? 
+          })() : (data as any).notes) : [],
+        referrals: (data as any).referrals ? (typeof (data as any).referrals === 'string' ? 
           (() => {
-            try { return JSON.parse(data.referrals); } 
+            try { return JSON.parse((data as any).referrals); } 
             catch { return []; }
-          })() : data.referrals) : [],
-        customerTag: data.customer_tag,
-        joinedDate: data.created_at,
-        createdAt: data.created_at,
-        updatedAt: data.updated_at,
-        createdBy: data.created_by,
-        lastPurchaseDate: data.last_purchase_date,
-        totalPurchases: data.total_purchases || 0,
-        birthday: data.birthday,
-        referredBy: data.referred_by,
+          })() : (data as any).referrals) : [],
+        customerTag: (data as any).customer_tag,
+        joinedDate: (data as any).created_at,
+        createdAt: (data as any).created_at,
+        updatedAt: (data as any).updated_at,
+        createdBy: (data as any).created_by,
+        lastPurchaseDate: (data as any).last_purchase_date,
+        totalPurchases: (data as any).total_purchases || 0,
+        birthday: (data as any).birthday,
+        referredBy: (data as any).referred_by,
+        // Call analytics fields
+        totalCalls: (data as any).total_calls || 0,
+        totalCallDurationMinutes: (data as any).total_call_duration_minutes || 0,
+        incomingCalls: (data as any).incoming_calls || 0,
+        outgoingCalls: (data as any).outgoing_calls || 0,
+        missedCalls: (data as any).missed_calls || 0,
+        avgCallDurationMinutes: (data as any).avg_call_duration_minutes || 0,
+        firstCallDate: (data as any).first_call_date || '',
+        lastCallDate: (data as any).last_call_date || '',
+        callLoyaltyLevel: (data as any).call_loyalty_level || 'Basic',
         // Additional fields for interface compatibility
         customerNotes: [],
         customerPayments: [],
         devices: [],
         promoHistory: []
       };
-      
-      console.log(`✅ Successfully fetched customer: ${processedCustomer.name}`);
+
       return processedCustomer;
     }
     
@@ -622,8 +825,7 @@ export async function fetchCustomerById(customerId: string) {
 
 export async function addCustomerToDb(customer: Omit<Customer, 'promoHistory' | 'payments' | 'devices'>) {
   try {
-    console.log('➕ Adding customer to database:', customer.name);
-    
+
     // Map camelCase fields to snake_case database fields
     const fieldMapping: Record<string, string> = {
       colorTag: 'color_tag',
@@ -672,6 +874,12 @@ export async function addCustomerToDb(customer: Omit<Customer, 'promoHistory' | 
       dbCustomer.color_tag = normalizeColorTag(dbCustomer.color_tag);
     }
     
+    // Ensure phone is unique and valid
+    if (!dbCustomer.phone || dbCustomer.phone.trim() === '') {
+      // Generate a unique phone number for customers without phones
+      dbCustomer.phone = `NO_PHONE_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    }
+    
     const { data, error } = await checkSupabase()
       .from('customers')
       .insert([dbCustomer])
@@ -682,8 +890,7 @@ export async function addCustomerToDb(customer: Omit<Customer, 'promoHistory' | 
       console.error('❌ Error adding customer:', error);
       throw error;
     }
-    
-    console.log('✅ Customer added successfully:', data);
+
     return data;
     
   } catch (error) {
@@ -694,8 +901,7 @@ export async function addCustomerToDb(customer: Omit<Customer, 'promoHistory' | 
 
 export async function updateCustomerInDb(customerId: string, updates: Partial<Customer>) {
   try {
-    console.log(`🔄 Updating customer: ${customerId}`);
-    
+
     // Map camelCase fields to snake_case database fields
     const fieldMapping: Record<string, string> = {
       colorTag: 'color_tag',
@@ -739,8 +945,14 @@ export async function updateCustomerInDb(customerId: string, updates: Partial<Cu
       cleanUpdates.color_tag = normalizeColorTag(cleanUpdates.color_tag);
     }
     
-    console.log('🔧 Clean updates:', cleanUpdates);
-    
+    // Ensure phone is unique and valid for updates
+    if (cleanUpdates.phone !== undefined) {
+      if (!cleanUpdates.phone || cleanUpdates.phone.trim() === '') {
+        // Generate a unique phone number for customers without phones
+        cleanUpdates.phone = `NO_PHONE_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      }
+    }
+
     // Validate that we're not trying to update invalid fields
     const validFields = [
       'id', 'name', 'email', 'phone', 'gender', 'city', 'loyalty_level', 
@@ -783,16 +995,14 @@ export async function updateCustomerInDb(customerId: string, updates: Partial<Cu
           validatedUpdates[key] = value;
         }
       } else {
-        console.warn(`⚠️ Skipping invalid field: ${key}`);
+
       }
     });
-    
-    console.log('🔧 Validated updates:', validatedUpdates);
-    
+
     const { data, error } = await checkSupabase()
       .from('customers')
       .update(validatedUpdates)
-      .eq('id', customerId)
+      .eq('id', customerId as any)
       .select()
       .single();
     
@@ -807,8 +1017,15 @@ export async function updateCustomerInDb(customerId: string, updates: Partial<Cu
       console.error('❌ Update data that caused error:', validatedUpdates);
       throw error;
     }
+
+    // Track customer activity when they are updated
+    try {
+      await trackCustomerActivity(customerId, 'profile_updated');
+    } catch (activityError) {
+
+      // Don't throw here as the main update was successful
+    }
     
-    console.log('✅ Customer updated successfully:', data);
     return data;
     
   } catch (error) {
@@ -823,7 +1040,7 @@ export const createCustomer = addCustomerToDb;
 // Function to clear request cache (useful for debugging or forcing fresh requests)
 export function clearRequestCache() {
   requestCache.clear();
-  console.log('🧹 Request cache cleared');
+
 }
 
 // Function to get request cache stats

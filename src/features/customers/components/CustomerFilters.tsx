@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Filter, X, Star, UserCheck, Tag, SortAsc, Calendar, MessageSquare, ChevronDown, Gift, Users } from 'lucide-react';
+import { Search, Filter, X, Star, UserCheck, Tag, SortAsc, Calendar, MessageSquare, ChevronDown, Gift, Users, Loader2, DollarSign, MapPin, TrendingUp } from 'lucide-react';
 import { Customer, LoyaltyLevel } from '../../../types';
 
 interface CustomerFiltersProps {
@@ -16,12 +16,40 @@ interface CustomerFiltersProps {
   birthdayFilter: boolean;
   onBirthdayFilterChange: (filter: boolean) => void;
   whatsappFilter: boolean;
-  onWhatsappFilterChange: (filter: boolean) => void;
+  onWhatsappFilterChange?: (filter: boolean) => void;
   showInactive: boolean;
   onShowInactiveChange: (show: boolean) => void;
   sortBy: string;
   onSortByChange: (sort: string) => void;
   customers: Customer[];
+  searchLoading?: boolean;
+  filteredCount?: number;
+  // New filters
+  genderFilter: Array<'male' | 'female' | 'other'>;
+  onGenderFilterChange: (filter: Array<'male' | 'female' | 'other'>) => void;
+  minSpent: string;
+  onMinSpentChange: (value: string) => void;
+  maxSpent: string;
+  onMaxSpentChange: (value: string) => void;
+  minPoints: string;
+  onMinPointsChange: (value: string) => void;
+  maxPoints: string;
+  onMaxPointsChange: (value: string) => void;
+  cityFilter: string[];
+  onCityFilterChange: (filter: string[]) => void;
+  minPurchases: string;
+  onMinPurchasesChange: (value: string) => void;
+  maxPurchases: string;
+  onMaxPurchasesChange: (value: string) => void;
+  // Date range filters
+  joinDateFrom: string;
+  onJoinDateFromChange: (value: string) => void;
+  joinDateTo: string;
+  onJoinDateToChange: (value: string) => void;
+  lastVisitFrom: string;
+  onLastVisitFromChange: (value: string) => void;
+  lastVisitTo: string;
+  onLastVisitToChange: (value: string) => void;
 }
 
 const CustomerFilters: React.FC<CustomerFiltersProps> = ({
@@ -43,7 +71,35 @@ const CustomerFilters: React.FC<CustomerFiltersProps> = ({
   onShowInactiveChange,
   sortBy,
   onSortByChange,
-  customers
+  customers,
+  searchLoading = false,
+  filteredCount,
+  // New filters
+  genderFilter,
+  onGenderFilterChange,
+  minSpent,
+  onMinSpentChange,
+  maxSpent,
+  onMaxSpentChange,
+  minPoints,
+  onMinPointsChange,
+  maxPoints,
+  onMaxPointsChange,
+  cityFilter,
+  onCityFilterChange,
+  minPurchases,
+  onMinPurchasesChange,
+  maxPurchases,
+  onMaxPurchasesChange,
+  // Date range filters
+  joinDateFrom,
+  onJoinDateFromChange,
+  joinDateTo,
+  onJoinDateToChange,
+  lastVisitFrom,
+  onLastVisitFromChange,
+  lastVisitTo,
+  onLastVisitToChange
 }) => {
   const [showFilters, setShowFilters] = useState(false);
 
@@ -54,7 +110,19 @@ const CustomerFilters: React.FC<CustomerFiltersProps> = ({
     referralFilter.length > 0 ||
     birthdayFilter ||
     whatsappFilter ||
-    showInactive;
+    showInactive ||
+    genderFilter.length > 0 ||
+    minSpent ||
+    maxSpent ||
+    minPoints ||
+    maxPoints ||
+    cityFilter.length > 0 ||
+    minPurchases ||
+    maxPurchases ||
+    joinDateFrom ||
+    joinDateTo ||
+    lastVisitFrom ||
+    lastVisitTo;
 
   const clearAllFilters = () => {
     onSearchChange('');
@@ -63,8 +131,22 @@ const CustomerFilters: React.FC<CustomerFiltersProps> = ({
     onTagFilterChange([]);
     onReferralFilterChange([]);
     onBirthdayFilterChange(false);
-    onWhatsappFilterChange(false);
+    if (onWhatsappFilterChange) {
+      onWhatsappFilterChange(false);
+    }
     onShowInactiveChange(false);
+    onGenderFilterChange([]);
+    onMinSpentChange('');
+    onMaxSpentChange('');
+    onMinPointsChange('');
+    onMaxPointsChange('');
+    onCityFilterChange([]);
+    onMinPurchasesChange('');
+    onMaxPurchasesChange('');
+    onJoinDateFromChange('');
+    onJoinDateToChange('');
+    onLastVisitFromChange('');
+    onLastVisitToChange('');
   };
 
   // Get unique values for dropdowns
@@ -74,6 +156,10 @@ const CustomerFilters: React.FC<CustomerFiltersProps> = ({
   
   const uniqueReferralSources = Array.from(new Set(
     customers.map(c => c.referralSource).filter(Boolean)
+  ));
+
+  const uniqueCities = Array.from(new Set(
+    customers.map(c => c.city).filter(Boolean)
   ));
 
   // Calculate today's birthdays
@@ -101,13 +187,29 @@ const CustomerFilters: React.FC<CustomerFiltersProps> = ({
       {/* Search Bar */}
       <div className="relative">
         <Search size={18} className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" />
+        {searchLoading && (
+          <Loader2 size={18} className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-200 animate-spin opacity-30" />
+        )}
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="Search customers by name, phone, or email..."
+          placeholder="Search customers (type at least 2 characters)..."
           className="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 text-gray-900 placeholder-gray-500"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck="false"
+          inputMode="text"
         />
+        {searchLoading && (
+          <div className="absolute right-4 top-1/2 transform -translate-y-1/2 pointer-events-none">
+            <div className="flex items-center gap-1 text-xs text-gray-300 opacity-40">
+              <Loader2 size={8} className="animate-spin" />
+              <span>Searching</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Filter Controls */}
@@ -140,19 +242,28 @@ const CustomerFilters: React.FC<CustomerFiltersProps> = ({
           )}
         </div>
 
-        {/* Sort Dropdown */}
-        <div className="relative">
-          <select
-            value={sortBy}
-            onChange={(e) => onSortByChange(e.target.value)}
-            className="appearance-none px-4 py-2 pr-10 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 text-sm font-medium text-gray-700"
-          >
-            <option value="name">Sort by Name</option>
-            <option value="recent">Sort by Recent</option>
-            <option value="spent">Sort by Spent</option>
-            <option value="points">Sort by Points</option>
-          </select>
-          <ChevronDown size={14} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" />
+        <div className="flex items-center gap-4">
+          {/* Filter Count */}
+          {filteredCount !== undefined && (
+            <div className="text-sm text-gray-600">
+              <span className="font-medium">{filteredCount}</span> customers found
+            </div>
+          )}
+          
+          {/* Sort Dropdown */}
+          <div className="relative">
+            <select
+              value={sortBy}
+              onChange={(e) => onSortByChange(e.target.value)}
+              className="appearance-none px-4 py-2 pr-10 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 text-sm font-medium text-gray-700"
+            >
+              <option value="name">Sort by Name</option>
+              <option value="recent">Sort by Recent</option>
+              <option value="spent">Sort by Spent</option>
+              <option value="points">Sort by Points</option>
+            </select>
+            <ChevronDown size={14} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
         </div>
       </div>
 
@@ -246,6 +357,233 @@ const CustomerFilters: React.FC<CustomerFiltersProps> = ({
                 ))}
               </div>
             </div>
+
+            {/* Gender */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-900 mb-3">
+                <Users size={16} className="inline mr-2 text-blue-500" />
+                Gender
+              </label>
+              <div className="space-y-2">
+                {(['male', 'female', 'other'] as const).map(gender => (
+                  <label key={gender} className="flex items-center gap-3 cursor-pointer group">
+                    <input
+                      type="checkbox"
+                      checked={genderFilter.includes(gender)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          onGenderFilterChange([...genderFilter, gender]);
+                        } else {
+                          onGenderFilterChange(genderFilter.filter(g => g !== gender));
+                        }
+                      }}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700 group-hover:text-gray-900 capitalize">
+                      {gender}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* City */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-900 mb-3">
+                <MapPin size={16} className="inline mr-2 text-green-500" />
+                City
+              </label>
+              <div className="space-y-2 max-h-32 overflow-y-auto">
+                {uniqueCities.map(city => (
+                  <label key={city} className="flex items-center gap-3 cursor-pointer group">
+                    <input
+                      type="checkbox"
+                      checked={cityFilter.includes(city)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          onCityFilterChange([...cityFilter, city]);
+                        } else {
+                          onCityFilterChange(cityFilter.filter(c => c !== city));
+                        }
+                      }}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700 group-hover:text-gray-900 capitalize">
+                      {city}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Referral Source */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-900 mb-3">
+                <Gift size={16} className="inline mr-2 text-orange-500" />
+                Referral Source
+              </label>
+              <div className="space-y-2 max-h-32 overflow-y-auto">
+                {uniqueReferralSources.map(source => (
+                  <label key={source} className="flex items-center gap-3 cursor-pointer group">
+                    <input
+                      type="checkbox"
+                      checked={referralFilter.includes(source)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          onReferralFilterChange([...referralFilter, source]);
+                        } else {
+                          onReferralFilterChange(referralFilter.filter(s => s !== source));
+                        }
+                      }}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700 group-hover:text-gray-900 capitalize">
+                      {source}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Range Filters */}
+          <div className="mt-6 pt-6 border-t border-gray-100">
+            <h4 className="text-sm font-semibold text-gray-900 mb-4">Range Filters</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {/* Spending Range */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-900 mb-3">
+                  <DollarSign size={16} className="inline mr-2 text-green-500" />
+                  Total Spent (TSH)
+                </label>
+                <div className="space-y-2">
+                  <input
+                    type="number"
+                    value={minSpent}
+                    onChange={(e) => onMinSpentChange(e.target.value)}
+                    placeholder="Min amount (TSH)"
+                    min="0"
+                    step="100"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  />
+                  <input
+                    type="number"
+                    value={maxSpent}
+                    onChange={(e) => onMaxSpentChange(e.target.value)}
+                    placeholder="Max amount (TSH)"
+                    min="0"
+                    step="100"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Points Range */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-900 mb-3">
+                  <Star size={16} className="inline mr-2 text-yellow-500" />
+                  Points
+                </label>
+                <div className="space-y-2">
+                  <input
+                    type="number"
+                    value={minPoints}
+                    onChange={(e) => onMinPointsChange(e.target.value)}
+                    placeholder="Min points"
+                    min="0"
+                    step="1"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  />
+                  <input
+                    type="number"
+                    value={maxPoints}
+                    onChange={(e) => onMaxPointsChange(e.target.value)}
+                    placeholder="Max points"
+                    min="0"
+                    step="1"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Purchase Count Range */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-900 mb-3">
+                  <TrendingUp size={16} className="inline mr-2 text-purple-500" />
+                  Purchase Count
+                </label>
+                <div className="space-y-2">
+                  <input
+                    type="number"
+                    value={minPurchases}
+                    onChange={(e) => onMinPurchasesChange(e.target.value)}
+                    placeholder="Min purchases"
+                    min="0"
+                    step="1"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  />
+                  <input
+                    type="number"
+                    value={maxPurchases}
+                    onChange={(e) => onMaxPurchasesChange(e.target.value)}
+                    placeholder="Max purchases"
+                    min="0"
+                    step="1"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Date Range Filters */}
+          <div className="mt-6 pt-6 border-t border-gray-100">
+            <h4 className="text-sm font-semibold text-gray-900 mb-4">Date Range Filters</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Join Date Range */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-900 mb-3">
+                  <Calendar size={16} className="inline mr-2 text-blue-500" />
+                  Join Date
+                </label>
+                <div className="space-y-2">
+                  <input
+                    type="date"
+                    value={joinDateFrom}
+                    onChange={(e) => onJoinDateFromChange(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  />
+                  <input
+                    type="date"
+                    value={joinDateTo}
+                    onChange={(e) => onJoinDateToChange(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Last Visit Date Range */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-900 mb-3">
+                  <Calendar size={16} className="inline mr-2 text-green-500" />
+                  Last Visit
+                </label>
+                <div className="space-y-2">
+                  <input
+                    type="date"
+                    value={lastVisitFrom}
+                    onChange={(e) => onLastVisitFromChange(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  />
+                  <input
+                    type="date"
+                    value={lastVisitTo}
+                    onChange={(e) => onLastVisitToChange(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Quick Filters */}
@@ -264,7 +602,14 @@ const CustomerFilters: React.FC<CustomerFiltersProps> = ({
               </label>
               
               <label className="flex items-center gap-3 cursor-pointer group">
-                
+                <input
+                  type="checkbox"
+                  checked={whatsappFilter}
+                  onChange={(e) => onWhatsappFilterChange?.(e.target.checked)}
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <MessageSquare size={16} className="text-green-500" />
+                <span className="text-sm text-gray-700 group-hover:text-gray-900">Has WhatsApp</span>
               </label>
               
               <label className="flex items-center gap-3 cursor-pointer group">

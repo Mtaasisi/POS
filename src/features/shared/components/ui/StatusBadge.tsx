@@ -4,9 +4,10 @@ import { DeviceStatus } from '../../../types';
 interface StatusBadgeProps {
   status: DeviceStatus;
   className?: string;
+  isUpdating?: boolean;
 }
 
-const StatusBadge: React.FC<StatusBadgeProps> = ({ status, className = '' }) => {
+const StatusBadge: React.FC<StatusBadgeProps> = ({ status, className = '', isUpdating = false }) => {
   const getStatusConfig = (status: DeviceStatus) => {
     switch (status) {
       case 'assigned':
@@ -27,6 +28,12 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({ status, className = '' }) => 
           text: 'text-white',
           label: 'Awaiting Parts'
         };
+      case 'parts-arrived':
+        return {
+          bg: 'bg-gradient-to-r from-green-500/80 to-emerald-500/80',
+          text: 'text-white',
+          label: 'Parts Arrived'
+        };
       case 'in-repair':
         return {
           bg: 'bg-gradient-to-r from-purple-500/80 to-indigo-500/80',
@@ -45,6 +52,7 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({ status, className = '' }) => 
           text: 'text-white',
           label: 'Complete'
         };
+      // REMOVED: process-payments case - Repair payment functionality removed
       case 'returned-to-customer-care':
         return {
           bg: 'bg-gradient-to-r from-teal-500/80 to-cyan-500/80',
@@ -84,10 +92,11 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({ status, className = '' }) => 
       whitespace-nowrap
       max-w-[120px] overflow-hidden text-ellipsis
       flex-shrink-0
-      absolute top-2 right-2 z-10
+      ${isUpdating ? 'animate-pulse' : ''}
       ${className}
     `}>
       {label}
+      {isUpdating && <span className="ml-1">⏳</span>}
     </span>
   );
 };

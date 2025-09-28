@@ -4,6 +4,7 @@ import { toast } from 'react-hot-toast';
 import GlassCard from '../ui/GlassCard';
 import GlassButton from '../ui/GlassButton';
 import { Customer } from '../../../customers/types';
+import { useBodyScrollLock } from '../../../../hooks/useBodyScrollLock';
 
 interface CreateCustomerModalProps {
   isOpen: boolean;
@@ -115,6 +116,9 @@ const CreateCustomerModal: React.FC<CreateCustomerModalProps> = ({
     setIsSubmitting(false);
     onClose();
   };
+
+  // Prevent body scroll when modal is open
+  useBodyScrollLock(isOpen);
 
   if (!isOpen) return null;
 

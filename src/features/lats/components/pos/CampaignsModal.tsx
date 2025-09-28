@@ -7,6 +7,7 @@ import {
   LoyaltyCustomer 
 } from '../../../../lib/customerLoyaltyService';
 import { toast } from '../../../../lib/toastUtils';
+import { useBodyScrollLock } from '../../../../hooks/useBodyScrollLock';
 
 interface Campaign {
   id: string;
@@ -214,6 +215,9 @@ const CampaignsModal: React.FC<CampaignsModalProps> = ({ isOpen, onClose }) => {
       minute: '2-digit'
     });
   };
+
+  // Prevent body scroll when modal is open
+  useBodyScrollLock(isOpen);
 
   if (!isOpen) return null;
 

@@ -42,6 +42,7 @@ import { SimpleImageDisplay } from '../../../components/SimpleImageDisplay';
 import { ProductImage } from '../../../lib/robustImageService';
 import DeliverySection from '../components/pos/DeliverySection';
 import AddCustomerModal from '../../../features/customers/components/forms/AddCustomerModal';
+import CustomerDetailModal from '../../../features/customers/components/CustomerDetailModal';
 import SalesAnalyticsModal from '../components/pos/SalesAnalyticsModal';
 import ZenoPayPaymentModal from '../components/pos/ZenoPayPaymentModal';
 import PaymentTrackingModal from '../components/pos/PaymentTrackingModal';
@@ -622,6 +623,19 @@ const POSPageAugust30: React.FC = () => {
         isOpen={showPaymentTracking}
         onClose={() => setShowPaymentTracking(false)}
         payments={sales}
+      />
+
+      {/* Customer Details Modal */}
+      <CustomerDetailModal
+        isOpen={showCustomerDetails}
+        onClose={() => setShowCustomerDetails(false)}
+        customer={selectedCustomerForDetails}
+        onEdit={(updatedCustomer) => {
+          // Update the selected customer in the POS
+          setSelectedCustomer(updatedCustomer);
+          setSelectedCustomerForDetails(updatedCustomer);
+          setShowCustomerDetails(false);
+        }}
       />
     </div>
   );

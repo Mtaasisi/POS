@@ -9,12 +9,10 @@ import {
   StockMovement,
   PurchaseOrder,
   PurchaseOrderItem,
-  SparePart,
-  SparePartUsage,
   ApiResponse,
   PaginatedResponse 
 } from '../types/inventory';
-import { ShippingAgent, ShippingManager } from '../lib/data/provider';
+import { SparePart, SparePartUsage } from '../types/spareParts';
 import { getLatsProvider } from '../lib/data/provider';
 import { latsEventBus, LatsEventType } from '../lib/data/eventBus';
 import { latsAnalyticsService as latsAnalytics } from '../lib/analytics';
@@ -27,6 +25,13 @@ import {
   createSupplier as createSupplierApi, 
   updateSupplier as updateSupplierApi 
 } from '../../../lib/supplierApi';
+import { 
+  createSparePart as createSparePartApi, 
+  createOrUpdateSparePart as createOrUpdateSparePartApi,
+  updateSparePartWithVariants as updateSparePartWithVariantsApi,
+  deleteSparePart as deleteSparePartApi,
+  recordSparePartUsage as recordSparePartUsageApi
+} from '../lib/sparePartsApi';
 
 interface InventoryState {
   // Loading states
@@ -49,6 +54,7 @@ interface InventoryState {
     products: Product[] | null;
     stockMovements: StockMovement[] | null;
     sales: any[] | null;
+    spareParts: SparePart[] | null;
   };
   cacheTimestamp: number;
   CACHE_DURATION: number; // 5 minutes
@@ -62,8 +68,6 @@ interface InventoryState {
   purchaseOrders: PurchaseOrder[];
   spareParts: SparePart[];
   sparePartUsage: SparePartUsage[];
-  shippingAgents: ShippingAgent[];
-  shippingManagers: ShippingManager[];
 
   // Filters and search
   searchTerm: string;
@@ -145,20 +149,16 @@ interface InventoryState {
   createPurchaseOrder: (order: any) => Promise<ApiResponse<PurchaseOrder>>;
   updatePurchaseOrder: (id: string, order: any) => Promise<ApiResponse<PurchaseOrder>>;
   updatePurchaseOrderStatus: (id: string, status: string) => Promise<ApiResponse<PurchaseOrder>>;
-  updatePurchaseOrderShipping: (id: string, shippingInfo: any) => Promise<ApiResponse<PurchaseOrder>>;
+  approvePurchaseOrder: (id: string) => Promise<ApiResponse<PurchaseOrder>>;
   receivePurchaseOrder: (id: string) => Promise<ApiResponse<void>>;
   deletePurchaseOrder: (id: string) => Promise<ApiResponse<void>>;
 
-  // Shipping Agents
-  loadShippingAgents: () => Promise<void>;
-  getShippingAgents: () => Promise<ApiResponse<ShippingAgent[]>>;
-  loadShippingManagers: () => Promise<void>;
-  getShippingManagers: () => Promise<ApiResponse<ShippingManager[]>>;
 
   // Spare Parts
   loadSpareParts: () => Promise<void>;
   getSparePart: (id: string) => Promise<ApiResponse<SparePart>>;
   createSparePart: (sparePart: any) => Promise<ApiResponse<SparePart>>;
+  createOrUpdateSparePart: (sparePart: any) => Promise<ApiResponse<SparePart>>;
   updateSparePart: (id: string, sparePart: any) => Promise<ApiResponse<SparePart>>;
   deleteSparePart: (id: string) => Promise<ApiResponse<void>>;
   useSparePart: (id: string, quantity: number, reason: string, notes?: string) => Promise<ApiResponse<void>>;
@@ -193,6 +193,7 @@ export const useInventoryStore = create<InventoryState>()(
         products: null,
         stockMovements: null,
         sales: null,
+        spareParts: null,
       },
       cacheTimestamp: 0,
       CACHE_DURATION: 5 * 60 * 1000, // 5 minutes
@@ -205,8 +206,6 @@ export const useInventoryStore = create<InventoryState>()(
       purchaseOrders: [],
       spareParts: [],
       sparePartUsage: [],
-      shippingAgents: [],
-      shippingManagers: [],
 
       searchTerm: '',
       selectedCategory: null,
@@ -282,11 +281,14 @@ export const useInventoryStore = create<InventoryState>()(
       isCacheValid: (dataType: keyof InventoryState['dataCache']) => {
         const state = get();
         const cacheAge = Date.now() - state.cacheTimestamp;
-        return state.dataCache[dataType] !== null && cacheAge < state.CACHE_DURATION;
+        const isValid = state.dataCache[dataType] !== null && cacheAge < state.CACHE_DURATION;
+
+        return isValid;
       },
 
       updateCache: (dataType: keyof InventoryState['dataCache'], data: any) => {
         const state = get();
+
         set({
           dataCache: {
             ...state.dataCache,
@@ -298,6 +300,7 @@ export const useInventoryStore = create<InventoryState>()(
 
       clearCache: (dataType?: keyof InventoryState['dataCache']) => {
         const state = get();
+
         if (dataType) {
           // Clear specific cache
           set({
@@ -368,7 +371,7 @@ export const useInventoryStore = create<InventoryState>()(
             );
           
           if (hasChanged) {
-            console.log('🔄 [useInventoryStore] Categories changed, updating state');
+
             set({ 
               categories: processedCategories, 
               lastDataLoadTime: Date.now(),
@@ -377,11 +380,62 @@ export const useInventoryStore = create<InventoryState>()(
             get().updateCache('categories', processedCategories);
             latsAnalytics.track('categories_loaded', { count: processedCategories.length });
           } else {
-            console.log('✅ [useInventoryStore] Categories unchanged, skipping state update');
+
           }
         } catch (error) {
           console.error('Categories exception:', error);
-          set({ error: 'Failed to load categories' });
+          
+          // Create fallback categories if database fails
+
+          const fallbackCategories = [
+            {
+              id: 'sample-category',
+              name: 'Electronics',
+              description: 'Electronic devices and accessories',
+              color: '#3B82F6',
+              icon: '📱',
+              parent_id: null,
+              isActive: true,
+              is_active: true,
+              sortOrder: 1,
+              metadata: {},
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            },
+            {
+              id: 'sample-category-2',
+              name: 'Accessories',
+              description: 'Phone and device accessories',
+              color: '#10B981',
+              icon: '🎧',
+              parent_id: null,
+              isActive: true,
+              is_active: true,
+              sortOrder: 2,
+              metadata: {},
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            },
+            {
+              id: 'sample-category-3',
+              name: 'Repair Parts',
+              description: 'Repair and replacement parts',
+              color: '#F59E0B',
+              icon: '🔧',
+              parent_id: null,
+              isActive: true,
+              is_active: true,
+              sortOrder: 3,
+              metadata: {},
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            }
+          ];
+          
+          set({ 
+            categories: fallbackCategories,
+            error: 'Using sample categories due to database connection issue'
+          });
         } finally {
           set({ isLoading: false, isCategoriesLoading: false });
         }
@@ -417,7 +471,7 @@ export const useInventoryStore = create<InventoryState>()(
             );
           
           if (hasChanged) {
-            console.log('🔄 [useInventoryStore] Spare part categories changed, updating state');
+
             set({ 
               categories: processedCategories, 
               lastDataLoadTime: Date.now(),
@@ -425,7 +479,7 @@ export const useInventoryStore = create<InventoryState>()(
             });
             latsAnalytics.track('spare_part_categories_loaded', { count: processedCategories.length });
           } else {
-            console.log('✅ [useInventoryStore] Spare part categories unchanged, skipping state update');
+
           }
         } catch (error) {
           console.error('Spare part categories exception:', error);
@@ -605,14 +659,15 @@ export const useInventoryStore = create<InventoryState>()(
 
       // Products
       loadProducts: async (filters?: any) => {
-        console.log('🔍 DEBUG: loadProducts called with filters:', filters);
         const state = get();
 
         // Prevent multiple simultaneous loads
         if (state.isDataLoading) {
-          console.log('🔍 DEBUG: Data already loading, skipping...');
+          console.log('🔍 [useInventoryStore] Products already loading, skipping...');
           return;
         }
+        
+        console.log('🔍 [useInventoryStore] Starting products load...', { filters });
 
         // Ensure filters has default pagination values
         const safeFilters = {
@@ -620,13 +675,12 @@ export const useInventoryStore = create<InventoryState>()(
           limit: 50,
           ...filters
         };
-        console.log('🔍 DEBUG: Safe filters:', safeFilters);
 
         // Check cache if no filters applied and cache is valid
         // Temporarily disabled to test supplier data loading
         if (false && !filters && state.isCacheValid('products')) {
           console.log('🔍 [useInventoryStore] Using cached products (supplier data may be outdated)');
-          console.log('📊 [useInventoryStore] Cached products count:', state.dataCache.products?.length || 0);
+
           set({ products: state.dataCache.products || [] });
           return;
         }
@@ -638,7 +692,6 @@ export const useInventoryStore = create<InventoryState>()(
           willLoadFromProvider: true
         });
 
-        console.log('🔍 [useInventoryStore] Loading products from provider...');
         console.log('🔍 [useInventoryStore] Cache status:', {
           isCacheValid: state.isCacheValid('products'),
           cacheTimestamp: state.cacheTimestamp,
@@ -654,36 +707,27 @@ export const useInventoryStore = create<InventoryState>()(
         
         try {
           const provider = getLatsProvider();
-          
-          console.log('🔍 DEBUG: Calling provider.getProducts...');
-          
+
           // Race between the actual request and timeout
           const response = await Promise.race([
             provider.getProducts(safeFilters),
             timeoutPromise
           ]);
-          console.log('🔍 DEBUG: Provider response:', {
-            ok: response.ok,
-            message: response.message,
-            dataLength: response.data?.data?.length || response.data?.length || 0
-          });
-          
+
           if (response.ok) {
             // Handle paginated response structure
             const rawProducts = response.data?.data || response.data || [];
-            console.log('🔍 DEBUG: Raw products from response:', rawProducts.length);
-            
+
             // Validate data integrity before processing
             if (rawProducts.length > 0) {
-              console.log('🔍 DEBUG: Validating data integrity...');
+
               validateDataIntegrity(rawProducts, 'Products');
             }
             
             // Process and clean up product data to prevent HTTP 431 errors
-            console.log('🔍 DEBUG: Processing products...');
+
             const processedProducts = processProductsOnly(rawProducts);
-            console.log('🔍 DEBUG: Processed products:', processedProducts.length);
-            
+
             // Update pagination info
             const paginationInfo = {
               currentPage: response.data?.page || 1,
@@ -691,12 +735,7 @@ export const useInventoryStore = create<InventoryState>()(
               totalPages: response.data?.totalPages || 1,
               itemsPerPage: response.data?.limit || 50
             };
-            
-            console.log('🔍 DEBUG: Setting store state with products:', {
-              productsCount: processedProducts.length,
-              paginationInfo
-            });
-            
+
             // DEBUG: Log detailed product information from store
             console.log('🔍 [InventoryStore] DEBUG - Products loaded in store:', processedProducts.map(product => ({
               id: product.id,
@@ -741,17 +780,7 @@ export const useInventoryStore = create<InventoryState>()(
                 stock: Math.round((missingInfoCount.stock / processedProducts.length) * 100)
               }
             });
-            
-            console.log('🔍 [useInventoryStore] Setting products in store:', {
-              count: processedProducts.length,
-              sampleProduct: processedProducts[0] ? {
-                id: processedProducts[0].id,
-                name: processedProducts[0].name,
-                hasSupplier: !!processedProducts[0].supplier,
-                supplier: processedProducts[0].supplier
-              } : null
-            });
-            
+
             set({ 
               products: processedProducts,
               ...paginationInfo,
@@ -770,15 +799,60 @@ export const useInventoryStore = create<InventoryState>()(
             });
           } else {
             console.error('Provider returned error:', response.message);
-            console.log('🔍 DEBUG: Setting error state:', response.message);
+
             set({ error: response.message || 'Failed to load products' });
           }
         } catch (error) {
           console.error('Exception in loadProducts:', error);
-          console.log('🔍 DEBUG: Setting error state due to exception');
+
+          // Create fallback sample categories and products so the interface works
+
+          // Create sample categories
+          const fallbackCategories = [
+            {
+              id: 'sample-category',
+              name: 'Electronics',
+              description: 'Electronic devices and accessories',
+              color: '#3B82F6',
+              icon: '📱',
+              parent_id: null,
+              isActive: true,
+              is_active: true,
+              sortOrder: 1,
+              metadata: {},
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            },
+            {
+              id: 'sample-category-2',
+              name: 'Accessories',
+              description: 'Phone and device accessories',
+              color: '#10B981',
+              icon: '🎧',
+              parent_id: null,
+              isActive: true,
+              is_active: true,
+              sortOrder: 2,
+              metadata: {},
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            },
+            {
+              id: 'sample-category-3',
+              name: 'Repair Parts',
+              description: 'Repair and replacement parts',
+              color: '#F59E0B',
+              icon: '🔧',
+              parent_id: null,
+              isActive: true,
+              is_active: true,
+              sortOrder: 3,
+              metadata: {},
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            }
+          ];
           
-          // Create fallback sample products so the interface works
-          console.log('🔄 Creating fallback sample products...');
           const fallbackProducts = [
             {
               id: 'sample-1',
@@ -823,7 +897,7 @@ export const useInventoryStore = create<InventoryState>()(
               name: 'Sample Samsung Galaxy',
               shortDescription: 'Sample Samsung Galaxy for testing',
               sku: 'SAMSUNG-SAMPLE',
-              categoryId: 'sample-category',
+              categoryId: 'sample-category-2',
               supplierId: 'sample-supplier',
               images: [],
               isActive: true,
@@ -855,19 +929,57 @@ export const useInventoryStore = create<InventoryState>()(
               ],
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString()
+            },
+            {
+              id: 'sample-3',
+              name: 'Sample iPhone Screen',
+              shortDescription: 'Sample iPhone screen replacement',
+              sku: 'IPH-SCREEN-SAMPLE',
+              categoryId: 'sample-category-3',
+              supplierId: 'sample-supplier',
+              images: [],
+              isActive: true,
+              totalQuantity: 5,
+              totalValue: 25000,
+              price: 25000,
+              costPrice: 20000,
+              priceRange: '25000',
+              condition: 'new',
+              internalNotes: 'Sample repair part for testing',
+              attributes: { model: 'iPhone 13', color: 'Black' },
+              variants: [
+                {
+                  id: 'sample-variant-3',
+                  productId: 'sample-3',
+                  sku: 'IPH-SCREEN-SAMPLE-BLK',
+                  name: 'Black Screen',
+                  attributes: { model: 'iPhone 13', color: 'Black' },
+                  costPrice: 20000,
+                  sellingPrice: 25000,
+                  quantity: 5,
+                  min_quantity: 1,
+                  max_quantity: null,
+                  weight: null,
+                  dimensions: null,
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString()
+                }
+              ],
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
             }
           ];
           
           set({ 
             products: fallbackProducts,
-            error: 'Using sample products due to database connection issue',
+            categories: fallbackCategories,
+            error: 'Using sample products and categories due to database connection issue',
             isLoading: false,
             isDataLoading: false
           });
-          
-          console.log('✅ Fallback products loaded:', fallbackProducts.length);
+
         } finally {
-          console.log('🔍 DEBUG: Finishing loadProducts, setting loading to false');
+
           set({ isLoading: false, isDataLoading: false });
         }
       },
@@ -1176,179 +1288,6 @@ export const useInventoryStore = create<InventoryState>()(
         }
       },
 
-      updatePurchaseOrderShipping: async (id, shippingInfo) => {
-        set({ isUpdating: true, error: null });
-        try {
-          console.log('🚚 [useInventoryStore] Starting shipping assignment...');
-          console.log('🚚 [useInventoryStore] Purchase Order ID:', id);
-          console.log('🚚 [useInventoryStore] Shipping info received:', shippingInfo);
-          
-          const provider = getLatsProvider();
-          
-          // Validate shipping info before processing
-          if (!shippingInfo || !shippingInfo.agentId) {
-            console.error('❌ [useInventoryStore] Missing shipping agent ID');
-            throw new Error('Shipping agent is required');
-          }
-          
-          if (!shippingInfo.trackingNumber) {
-            console.error('❌ [useInventoryStore] Missing tracking number');
-            throw new Error('Tracking number is required');
-          }
-          
-          console.log('✅ [useInventoryStore] Validation passed, creating shipping info in database...');
-          
-          // Import the shipping data service
-          const { shippingDataService } = await import('../services/shippingDataService');
-          
-          // Determine carrier ID from agent or use provided carrier ID
-          let carrierId = shippingInfo.carrierId || '';
-          
-          console.log('🔍 [useInventoryStore] Determining carrier ID...');
-          console.log('🔍 [useInventoryStore] Provided carrier ID:', carrierId);
-          console.log('🔍 [useInventoryStore] Agent ID:', shippingInfo.agentId);
-          
-          // If no carrier ID provided, try to determine from agent
-          if (!carrierId && shippingInfo.agentId) {
-            // Get agent details to determine carrier
-            const agent = get().shippingAgents?.find(a => a.id === shippingInfo.agentId);
-            console.log('🔍 [useInventoryStore] Found agent:', agent);
-            
-            if (agent?.company) {
-              // Map agent company to carrier ID (this is a simple mapping)
-              // In a real implementation, you'd have a proper agent-to-carrier relationship
-              const carrierMapping: Record<string, string> = {
-                'DHL Express': '826320dc-7d7c-41a7-82d7-bd484c64c8ae', // DHL Express ID
-                'FedEx Corporation': '826320dc-7d7c-41a7-82d7-bd484c64c8ae', // Use DHL as fallback
-                'United Parcel Service': '826320dc-7d7c-41a7-82d7-bd484c64c8ae', // Use DHL as fallback
-                'Maersk Line': '826320dc-7d7c-41a7-82d7-bd484c64c8ae', // Use DHL as fallback
-                'TED Services': '826320dc-7d7c-41a7-82d7-bd484c64c8ae', // Use DHL as fallback
-                'Shipping Company': '826320dc-7d7c-41a7-82d7-bd484c64c8ae' // Use DHL as fallback
-              };
-              carrierId = carrierMapping[agent.company] || '826320dc-7d7c-41a7-82d7-bd484c64c8ae'; // Default to DHL
-              console.log('🔍 [useInventoryStore] Mapped carrier ID:', carrierId, 'for company:', agent.company);
-            } else {
-              // Default to DHL Express if no company found
-              carrierId = '826320dc-7d7c-41a7-82d7-bd484c64c8ae';
-              console.log('🔍 [useInventoryStore] No agent company found, using default DHL carrier');
-            }
-          }
-          
-          console.log('✅ [useInventoryStore] Final carrier ID:', carrierId);
-          
-          // Create shipping info in the dedicated table
-          console.log('🚚 [useInventoryStore] Creating shipping info with data:', {
-            purchaseOrderId: id,
-            carrierId: carrierId,
-            agentId: shippingInfo.agentId,
-            managerId: shippingInfo.managerId || '',
-            trackingNumber: shippingInfo.trackingNumber,
-            status: 'pending',
-            estimatedDelivery: shippingInfo.estimatedDelivery || '',
-            cost: shippingInfo.cost || 0,
-            requireSignature: shippingInfo.requireSignature || false,
-            enableInsurance: shippingInfo.enableInsurance || false,
-            notes: shippingInfo.notes || ''
-          });
-          
-          const createdShippingInfo = await shippingDataService.createShippingInfo(id, {
-            carrierId: carrierId,
-            agentId: shippingInfo.agentId,
-            managerId: shippingInfo.managerId || '',
-            trackingNumber: shippingInfo.trackingNumber,
-            status: 'pending',
-            estimatedDelivery: shippingInfo.estimatedDelivery || '',
-            cost: shippingInfo.cost || 0,
-            requireSignature: shippingInfo.requireSignature || false,
-            enableInsurance: shippingInfo.enableInsurance || false,
-            notes: shippingInfo.notes || ''
-          });
-          
-          console.log('✅ [useInventoryStore] Shipping info created:', createdShippingInfo.id);
-          
-          // Create initial tracking event
-          try {
-            console.log('🚚 [useInventoryStore] Creating initial tracking event...');
-            await shippingDataService.addShippingEvent(createdShippingInfo.id, {
-              status: 'pending',
-              description: 'Shipment created and ready for pickup',
-              location: 'Origin',
-              timestamp: new Date().toISOString(),
-              notes: 'Shipment assigned via shipping assignment modal'
-            });
-            console.log('✅ [useInventoryStore] Initial tracking event created');
-          } catch (eventError) {
-            console.warn('⚠️ [useInventoryStore] Failed to create tracking event:', eventError);
-            // Don't fail the entire operation if event creation fails
-          }
-          
-          // Create draft products from purchase order items
-          try {
-            console.log('🔄 [useInventoryStore] Creating draft products from purchase order...');
-            const { draftProductsService } = await import('../services/draftProductsService');
-            
-            const draftResult = await draftProductsService.createDraftProductsFromPO(
-              id,
-              createdShippingInfo.id
-            );
-            
-            if (draftResult.success) {
-              console.log('✅ [useInventoryStore] Draft products created:', draftResult.message);
-            } else {
-              console.warn('⚠️ [useInventoryStore] Failed to create draft products:', draftResult.message);
-              // Don't fail the entire operation if draft products creation fails
-            }
-          } catch (draftError) {
-            console.warn('⚠️ [useInventoryStore] Error creating draft products:', draftError);
-            // Don't fail the entire operation if draft products creation fails
-          }
-          
-          // Update the purchase order status
-          console.log('🚚 [useInventoryStore] Updating purchase order status...');
-          const response = await provider.updatePurchaseOrder(id, {
-            status: 'shipped',
-            shippingInfo: createdShippingInfo,
-            shippingDate: new Date().toISOString(),
-            trackingNumber: shippingInfo.trackingNumber,
-            shippingStatus: 'shipped',
-            estimatedDelivery: shippingInfo.estimatedDelivery,
-            shippingNotes: shippingInfo.notes
-          });
-          
-          console.log('🚚 [useInventoryStore] Purchase order update response:', response);
-          
-          if (response.ok) {
-            console.log('🚚 [useInventoryStore] Reloading purchase orders...');
-            await get().loadPurchaseOrders();
-            
-            latsAnalytics.track('purchase_order_shipped', { 
-              orderId: id, 
-              carrier: shippingInfo.carrier || 'Unknown',
-              trackingNumber: shippingInfo.trackingNumber,
-              shippingInfoId: createdShippingInfo.id
-            });
-            
-            console.log('✅ [useInventoryStore] Purchase order updated and shipping info saved to database');
-          } else {
-            console.error('❌ [useInventoryStore] Failed to update purchase order:', response.message);
-            throw new Error(response.message || 'Failed to update purchase order');
-          }
-          
-          return { success: true, data: createdShippingInfo, message: 'Shipping assigned successfully' };
-        } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : 'Failed to update shipping information';
-          set({ error: errorMsg });
-          console.error('❌ [useInventoryStore] Error updating shipping info:', error);
-          console.error('❌ [useInventoryStore] Error details:', {
-            message: error instanceof Error ? error.message : 'Unknown error',
-            stack: error instanceof Error ? error.stack : undefined,
-            name: error instanceof Error ? error.name : undefined
-          });
-          return { success: false, message: errorMsg };
-        } finally {
-          set({ isUpdating: false });
-        }
-      },
 
       receivePurchaseOrder: async (id) => {
         set({ isUpdating: true, error: null });
@@ -1391,6 +1330,30 @@ export const useInventoryStore = create<InventoryState>()(
         }
       },
 
+      approvePurchaseOrder: async (id: string) => {
+        set({ isUpdating: true, error: null });
+        try {
+          const provider = getLatsProvider();
+          const response = await provider.updatePurchaseOrder(id, { 
+            status: 'sent',
+            approvedAt: new Date().toISOString(),
+            approvedBy: get().currentUser?.id
+          });
+          if (response.ok) {
+            await get().loadPurchaseOrders();
+            latsAnalytics.track('purchase_order_approved', { orderId: id });
+          }
+          return response;
+        } catch (error) {
+          const errorMsg = 'Failed to approve purchase order';
+          set({ error: errorMsg });
+          console.error('Error approving purchase order:', error);
+          return { ok: false, message: errorMsg };
+        } finally {
+          set({ isUpdating: false });
+        }
+      },
+
       deletePurchaseOrder: async (id) => {
         set({ isDeleting: true, error: null });
         try {
@@ -1411,92 +1374,35 @@ export const useInventoryStore = create<InventoryState>()(
         }
       },
 
-      // Shipping Agents
-      loadShippingAgents: async () => {
-        const state = get();
-        // Prevent multiple simultaneous loads if already loading
-        if (state.isLoading) {
-          return;
-        }
-        
-        set({ isLoading: true, error: null });
-        try {
-          const provider = getLatsProvider();
-          const response = await provider.getShippingAgents();
-          if (response.ok) {
-            set({ shippingAgents: response.data || [] });
-            latsAnalytics.track('shipping_agents_loaded', { count: response.data?.length || 0 });
-          } else {
-            set({ error: response.message || 'Failed to load shipping agents' });
-          }
-        } catch (error) {
-          const errorMsg = 'Failed to load shipping agents';
-          set({ error: errorMsg });
-          console.error('Error loading shipping agents:', error);
-        } finally {
-          set({ isLoading: false });
-        }
-      },
 
-      getShippingAgents: async () => {
-        try {
-          const provider = getLatsProvider();
-          const response = await provider.getShippingAgents();
-          return response;
-        } catch (error) {
-          console.error('Error getting shipping agents:', error);
-          return { ok: false, message: 'Failed to get shipping agents' };
-        }
-      },
-
-      loadShippingManagers: async () => {
-        set({ isLoading: true, error: null });
-        try {
-          const provider = getLatsProvider();
-          const response = await provider.getShippingManagers();
-          if (response.ok) {
-            set({ shippingManagers: response.data || [] });
-            latsAnalytics.track('shipping_managers_loaded', { count: response.data?.length || 0 });
-          } else {
-            set({ error: response.message || 'Failed to load shipping managers' });
-          }
-        } catch (error) {
-          const errorMsg = 'Failed to load shipping managers';
-          set({ error: errorMsg });
-          console.error('Error loading shipping managers:', error);
-        } finally {
-          set({ isLoading: false });
-        }
-      },
-
-      getShippingManagers: async () => {
-        try {
-          const provider = getLatsProvider();
-          const response = await provider.getShippingManagers();
-          return response;
-        } catch (error) {
-          console.error('Error getting shipping managers:', error);
-          return { ok: false, message: 'Failed to get shipping managers' };
-        }
-      },
 
       // Spare Parts
       loadSpareParts: async () => {
+
         set({ isLoading: true, error: null });
         try {
           const provider = getLatsProvider();
+
           const response = await provider.getSpareParts();
+
           if (response.ok) {
-            set({ spareParts: response.data || [] });
-            latsAnalytics.track('spare_parts_loaded', { count: response.data?.length || 0 });
+            const sparePartsData = response.data || [];
+
+            set({ spareParts: sparePartsData });
+            // Update cache
+            get().updateCache('spareParts', sparePartsData);
+            latsAnalytics.track('spare_parts_loaded', { count: sparePartsData.length });
+
           } else {
+            console.error('❌ [DEBUG] loadSpareParts: Failed to load spare parts:', response.message);
             set({ error: response.message || 'Failed to load spare parts' });
           }
         } catch (error) {
+          console.error('❌ [DEBUG] loadSpareParts: Error loading spare parts:', error);
           set({ error: 'Failed to load spare parts' });
-          console.error('Error loading spare parts:', error);
         } finally {
           set({ isLoading: false });
+
         }
       },
 
@@ -1513,9 +1419,10 @@ export const useInventoryStore = create<InventoryState>()(
       createSparePart: async (sparePart) => {
         set({ isCreating: true, error: null });
         try {
-          const provider = getLatsProvider();
-          const response = await provider.createSparePart(sparePart);
+          const response = await createSparePartApi(sparePart);
           if (response.ok) {
+            // Clear cache to force fresh data load
+            get().clearCache('spareParts');
             await get().loadSpareParts();
             latsAnalytics.track('spare_part_created', { sparePartId: response.data?.id });
           }
@@ -1530,12 +1437,37 @@ export const useInventoryStore = create<InventoryState>()(
         }
       },
 
+      createOrUpdateSparePart: async (sparePart) => {
+        set({ isCreating: true, error: null });
+        try {
+          const response = await createOrUpdateSparePartApi(sparePart);
+          if (response.ok) {
+
+            // Clear cache to force fresh data load
+            get().clearCache('spareParts');
+
+            await get().loadSpareParts();
+
+            latsAnalytics.track('spare_part_created_or_updated', { sparePartId: response.data?.id });
+          }
+          return response;
+        } catch (error) {
+          const errorMsg = 'Failed to create or update spare part';
+          set({ error: errorMsg });
+          console.error('Error creating or updating spare part:', error);
+          return { ok: false, message: errorMsg };
+        } finally {
+          set({ isCreating: false });
+        }
+      },
+
       updateSparePart: async (id, sparePart) => {
         set({ isUpdating: true, error: null });
         try {
-          const provider = getLatsProvider();
-          const response = await provider.updateSparePart(id, sparePart);
+          const response = await updateSparePartWithVariantsApi(id, sparePart);
           if (response.ok) {
+            // Clear cache to force fresh data load
+            get().clearCache('spareParts');
             await get().loadSpareParts();
             latsAnalytics.track('spare_part_updated', { sparePartId: id });
           }
@@ -1553,8 +1485,7 @@ export const useInventoryStore = create<InventoryState>()(
       deleteSparePart: async (id) => {
         set({ isDeleting: true, error: null });
         try {
-          const provider = getLatsProvider();
-          const response = await provider.deleteSparePart(id);
+          const response = await deleteSparePartApi(id);
           if (response.ok) {
             await get().loadSpareParts();
             latsAnalytics.track('spare_part_deleted', { sparePartId: id });
@@ -1573,15 +1504,13 @@ export const useInventoryStore = create<InventoryState>()(
       useSparePart: async (id, quantity, reason, notes) => {
         set({ isUpdating: true, error: null });
         try {
-          const provider = getLatsProvider();
           const usageData = {
             spare_part_id: id,
-            quantity,
+            quantity_used: quantity,
             reason,
-            notes,
-            used_by: (await supabase.auth.getUser()).data.user?.id
+            notes
           };
-          const response = await provider.useSparePart(usageData);
+          const response = await recordSparePartUsageApi(usageData);
           if (response.ok) {
             await get().loadSpareParts();
             await get().loadSparePartUsage();

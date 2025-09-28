@@ -272,21 +272,61 @@ const CustomerLoyaltyPage: React.FC = () => {
   const fetchCustomerAnalytics = async (customerId: string) => {
     setLoadingAnalytics(true);
     try {
-      // Fetch POS sales for this customer
+      // Get today's date range
+      const today = new Date();
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+      
+      // Fetch POS sales for this customer - TODAY ONLY
+      // Using simplified approach to avoid 400 errors
       const { data: posData, error: posError } = await supabase
         .from('lats_sales')
         .select(`
-          *,
-          lats_sale_items(
-            *,
-            lats_products(name, description),
-            lats_product_variants(name, sku, attributes)
-          )
+          id,
+          sale_number,
+          customer_id,
+          subtotal,
+          total_amount,
+          payment_method,
+          status,
+          created_at,
+          updated_at
         `)
         .eq('customer_id', customerId)
+        .gte('created_at', startOfDay.toISOString())
+        .lt('created_at', endOfDay.toISOString())
         .order('created_at', { ascending: false });
 
-      // Fetch spare part usage for this customer
+      let finalPosData = posData;
+      let finalPosError = posError;
+
+      if (posError) {
+        console.warn('Complex customer sales query failed, trying simpler query:', posError.message);
+        
+        // Fallback to simpler query without joins
+        const { data: simplePosData, error: simplePosError } = await supabase
+          .from('lats_sales')
+          .select('*')
+          .eq('customer_id', customerId)
+          .gte('created_at', startOfDay.toISOString())
+          .lt('created_at', endOfDay.toISOString())
+          .order('created_at', { ascending: false });
+
+        if (simplePosError) {
+          console.error('Simple customer sales query also failed:', simplePosError);
+          // Continue with empty data instead of failing completely
+          finalPosData = [];
+          finalPosError = null;
+        } else {
+          finalPosData = simplePosData;
+          finalPosError = null;
+          console.log(`✅ Loaded ${finalPosData?.length || 0} customer sales (without sale items)`);
+        }
+      } else {
+        console.log(`✅ Loaded ${finalPosData?.length || 0} customer sales`);
+      }
+
+      // Fetch spare part usage for this customer - TODAY ONLY
       const { data: spareData, error: spareError } = await supabase
         .from('lats_spare_part_usage')
         .select(`
@@ -294,22 +334,29 @@ const CustomerLoyaltyPage: React.FC = () => {
           lats_spare_parts(name, part_number, cost_price, selling_price)
         `)
         .eq('customer_id', customerId)
+        .gte('used_at', startOfDay.toISOString())
+        .lt('used_at', endOfDay.toISOString())
         .order('used_at', { ascending: false });
 
-      if (!posError && posData) {
-        setPosSales(posData);
+      if (!finalPosError && finalPosData) {
+        setPosSales(finalPosData);
         
-        // Extract sale items
-        const allItems = posData.flatMap((sale: any) => 
-          (sale.lats_sale_items || []).map((item: any) => ({
-            ...item,
-            saleNumber: sale.sale_number,
-            saleDate: sale.created_at,
-            paymentMethod: sale.payment_method,
-            saleStatus: sale.status
-          }))
-        );
-        setSaleItems(allItems);
+        // Extract sale items (only if we have the complex data with sale items)
+        if (finalPosData.length > 0 && finalPosData[0].lats_sale_items) {
+          const allItems = finalPosData.flatMap((sale: any) => 
+            (sale.lats_sale_items || []).map((item: any) => ({
+              ...item,
+              saleNumber: sale.sale_number,
+              saleDate: sale.created_at,
+              paymentMethod: sale.payment_method,
+              saleStatus: sale.status
+            }))
+          );
+          setSaleItems(allItems);
+        } else {
+          // If we only have simple data, set empty sale items
+          setSaleItems([]);
+        }
       }
 
       if (!spareError && spareData) {
@@ -317,7 +364,7 @@ const CustomerLoyaltyPage: React.FC = () => {
       }
 
       // Calculate analytics
-      const analytics = calculateCustomerAnalytics(customerId, posData || [], spareData || []);
+      const analytics = calculateCustomerAnalytics(customerId, finalPosData || [], spareData || []);
       setCustomerAnalyticsData(analytics);
 
     } catch (error) {

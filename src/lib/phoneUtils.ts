@@ -1,128 +1,177 @@
 /**
- * Tanzania Phone Number Formatting Utilities
- * Centralized functions for formatting phone numbers with +255 country code
+ * Phone number utility functions for Tanzanian phone numbers
+ * Handles conversion between different formats (07123 <-> 2557123)
  */
 
 /**
- * Format phone number with Tanzania country code (+255)
- * Handles various input formats and always returns +255XXXXXXXXX format
+ * Cleans a phone number by removing spaces, dashes, and parentheses
  */
-export const formatTanzaniaPhoneNumber = (phone: string): string => {
-  if (!phone) return '';
-  
-  // Remove all spaces, dashes, parentheses, dots, and other formatting
-  const cleanPhone = phone.replace(/[\s\-().]/g, '');
-  
-  // If already has +255 prefix, return as is
-  if (cleanPhone.startsWith('+255')) {
-    return cleanPhone;
-  }
-  
-  // If has 255 prefix without +, add the +
-  if (cleanPhone.startsWith('255')) {
-    return '+' + cleanPhone;
-  }
-  
-  // If starts with 0 (Tanzania mobile format), remove 0 and add +255
-  if (cleanPhone.startsWith('0')) {
-    return '+255' + cleanPhone.substring(1);
-  }
-  
-  // If it's a 9-digit number (Tanzania mobile format), add +255
-  if (cleanPhone.length === 9 && /^\d+$/.test(cleanPhone)) {
-    return '+255' + cleanPhone;
-  }
-  
-  // If it's a 10-digit number starting with 255, add +
-  if (cleanPhone.length === 10 && cleanPhone.startsWith('255')) {
-    return '+' + cleanPhone;
-  }
-  
-  // For any other format, try to add +255 prefix
-  // Remove any existing country code patterns and add +255
-  const withoutCountryCode = cleanPhone.replace(/^(\+?255|\+?1|\+?44|\+?91|\+?86)/, '');
-  if (withoutCountryCode.length === 9 && /^\d+$/.test(withoutCountryCode)) {
-    return '+255' + withoutCountryCode;
-  }
-  
-  // If it's already a valid Tanzania number format, just add +255
-  if (cleanPhone.length >= 9 && /^\d+$/.test(cleanPhone)) {
-    return '+255' + cleanPhone.slice(-9); // Take last 9 digits
-  }
-  
-  // Default: add +255 prefix
-  return '+255' + cleanPhone;
-};
-
-
+export function cleanPhoneNumber(phone: string): string {
+  return phone.replace(/[\s\-\(\)]/g, '');
+}
 
 /**
- * Clean phone number for SMS service (removes + and formats as 255XXXXXXXXX)
- * Used by SMS service which expects 255 prefix without +
+ * Converts a phone number starting with 0 to the 255 format
+ * Example: 071234567 -> 25571234567
  */
-export const cleanPhoneForSMS = (phone: string): string => {
-  const formatted = formatTanzaniaPhoneNumber(phone);
-  return formatted.replace('+', '');
-};
+export function convertToInternationalFormat(phone: string): string {
+  const cleaned = cleanPhoneNumber(phone);
+  if (cleaned.startsWith('0')) {
+    return `255${cleaned.substring(1)}`;
+  }
+  return cleaned;
+}
 
 /**
- * Validate Tanzania phone number format
- * Returns true if the number is in valid Tanzania mobile format
+ * Converts a phone number starting with 255 to the local 0 format
+ * Example: 25571234567 -> 071234567
  */
-export const isValidTanzaniaPhone = (phone: string): boolean => {
-  if (!phone) return false;
-  
-  const formatted = formatTanzaniaPhoneNumber(phone);
-  
-  // Check if it's a valid Tanzania mobile number
-  // Should be +255 followed by 9 digits
-  return /^\+255[0-9]{9}$/.test(formatted);
-};
+export function convertToLocalFormat(phone: string): string {
+  const cleaned = cleanPhoneNumber(phone);
+  if (cleaned.startsWith('255')) {
+    return `0${cleaned.substring(3)}`;
+  }
+  return cleaned;
+}
 
 /**
- * Extract the mobile number part (last 9 digits) from a Tanzania phone number
+ * Generates all possible phone number variations for a given input
+ * Useful for comprehensive phone number searching
  */
-export const extractMobileNumber = (phone: string): string => {
-  if (!phone) return '';
+export function getPhoneNumberVariations(input: string): string[] {
+  const cleaned = cleanPhoneNumber(input);
+  const variations = new Set<string>();
   
-  const formatted = formatTanzaniaPhoneNumber(phone);
-  return formatted.replace('+255', '');
-};
-
-/**
- * Format phone number for display (adds spaces for readability)
- * Example: +255 748 757 641
- */
-export const formatPhoneForDisplay = (phone: string): string => {
-  if (!phone) return '';
+  // Add the original cleaned number
+  variations.add(cleaned);
   
-  const formatted = formatTanzaniaPhoneNumber(phone);
-  
-  // Add spaces for readability: +255 748 757 641
-  if (formatted.startsWith('+255')) {
-    const mobilePart = formatted.substring(4); // Remove +255
-    return `+255 ${mobilePart.substring(0, 3)} ${mobilePart.substring(3, 6)} ${mobilePart.substring(6)}`;
+  // If it starts with 0, add the 255 version
+  if (/^0\d{3,}$/.test(cleaned)) {
+    variations.add(convertToInternationalFormat(cleaned));
   }
   
-  return formatted;
-};
+  // If it starts with 255, add the 0 version
+  if (/^255\d{3,}$/.test(cleaned)) {
+    variations.add(convertToLocalFormat(cleaned));
+  }
+  
+  // If it's a full international number, add local version
+  if (/^\+255\d{9}$/.test(cleaned)) {
+    variations.add(cleaned.substring(1)); // Remove +
+    variations.add(convertToLocalFormat(cleaned.substring(1)));
+  }
+  
+  return Array.from(variations);
+}
 
 /**
- * Format phone number for WhatsApp (same as regular phone formatting)
- * This function is kept for compatibility with existing code
+ * Checks if a customer's phone number matches a search term
+ * Handles all Tanzanian phone number format conversions
  */
-export const formatTanzaniaWhatsAppNumber = (phone: string): string => {
+export function matchesPhoneSearch(customerPhone: string, searchTerm: string): boolean {
+  if (!customerPhone || !searchTerm) return false;
+  
+  const cleanCustomerPhone = cleanPhoneNumber(customerPhone);
+  const cleanSearchTerm = cleanPhoneNumber(searchTerm);
+  
+  // Direct match
+  if (cleanCustomerPhone.includes(cleanSearchTerm)) {
+    return true;
+  }
+  
+  // Get all variations of the search term
+  const searchVariations = getPhoneNumberVariations(cleanSearchTerm);
+  
+  // Check if any variation matches the customer's phone
+  return searchVariations.some(variation => 
+    cleanCustomerPhone.includes(variation)
+  );
+}
+
+/**
+ * Formats a phone number for display
+ * Converts to local format (0XXXXXXXXX) for better readability
+ */
+export function formatPhoneForDisplay(phone: string): string {
+  const cleaned = cleanPhoneNumber(phone);
+  
+  // If it's an international format, convert to local
+  if (cleaned.startsWith('255') && cleaned.length === 12) {
+    return convertToLocalFormat(cleaned);
+  }
+  
+  // If it's already in local format, return as is
+  if (cleaned.startsWith('0') && cleaned.length === 10) {
+    return cleaned;
+  }
+  
+  // If it has +255, convert to local format
+  if (cleaned.startsWith('+255') && cleaned.length === 13) {
+    return convertToLocalFormat(cleaned.substring(1));
+  }
+  
+  // Return as is if format is unclear
+  return cleaned;
+}
+
+/**
+ * Validates if a phone number is a valid Tanzanian mobile number
+ */
+export function isValidTanzanianMobile(phone: string): boolean {
+  const cleaned = cleanPhoneNumber(phone);
+  
+  // Check various valid formats
+  const patterns = [
+    /^0[67]\d{8}$/, // Local format: 0XXXXXXXXX (starting with 06 or 07)
+    /^255[67]\d{8}$/, // International format: 255XXXXXXXXX
+    /^\+255[67]\d{8}$/, // International format with +: +255XXXXXXXXX
+  ];
+  
+  return patterns.some(pattern => pattern.test(cleaned));
+}
+
+/**
+ * Formats a Tanzanian phone number to international format (+255XXXXXXXXX)
+ * This is the legacy function name for backward compatibility
+ */
+export function formatTanzaniaPhoneNumber(phone: string): string {
+  const cleaned = cleanPhoneNumber(phone);
+  
+  // If already in international format with +, return as is
+  if (cleaned.startsWith('+255') && cleaned.length === 13) {
+    return cleaned;
+  }
+  
+  // If it's in local format (0XXXXXXXXX), convert to international
+  if (cleaned.startsWith('0') && cleaned.length === 10) {
+    return `+255${cleaned.substring(1)}`;
+  }
+  
+  // If it's in international format without + (255XXXXXXXXX), add +
+  if (cleaned.startsWith('255') && cleaned.length === 12) {
+    return `+${cleaned}`;
+  }
+  
+  // If it's a partial number or unclear format, try to format it
+  if (cleaned.length >= 9) {
+    // If it starts with 0, convert to international
+    if (cleaned.startsWith('0')) {
+      return `+255${cleaned.substring(1)}`;
+    }
+    // If it starts with 255, add +
+    if (cleaned.startsWith('255')) {
+      return `+${cleaned}`;
+    }
+  }
+  
+  // Return as is if we can't determine the format
+  return cleaned;
+}
+
+/**
+ * Formats a Tanzanian WhatsApp number to international format (+255XXXXXXXXX)
+ * This is the legacy function name for backward compatibility
+ */
+export function formatTanzaniaWhatsAppNumber(phone: string): string {
   return formatTanzaniaPhoneNumber(phone);
-};
-
-/**
- * Check if two phone numbers are the same (ignoring formatting differences)
- */
-export const areSamePhoneNumbers = (phone1: string, phone2: string): boolean => {
-  if (!phone1 || !phone2) return false;
-  
-  const formatted1 = formatTanzaniaPhoneNumber(phone1);
-  const formatted2 = formatTanzaniaPhoneNumber(phone2);
-  
-  return formatted1 === formatted2;
-}; 
+}

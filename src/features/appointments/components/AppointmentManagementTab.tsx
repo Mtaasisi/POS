@@ -6,6 +6,8 @@ import {
   CheckCircle, XCircle, AlertTriangle, MessageSquare, Send
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import AppointmentModal from '../../customers/components/forms/AppointmentModal';
+import { createAppointment, fetchAllAppointments, updateAppointment, deleteAppointment, getAppointmentStats } from '../../../lib/customerApi/appointments';
 
 interface AppointmentManagementTabProps {
   isActive: boolean;
@@ -59,74 +61,29 @@ const AppointmentManagementTab: React.FC<AppointmentManagementTabProps> = ({
   const loadAppointments = async () => {
     setLoading(true);
     try {
-      // Mock data - replace with actual API call
-      const mockAppointments: Appointment[] = [
-        {
-          id: '1',
-          customer_name: 'John Doe',
-          customer_phone: '+255 123 456 789',
-          customer_email: 'john@example.com',
-          service_type: 'iPhone Screen Replacement',
-          date: '2024-01-15',
-          time: '10:00',
-          duration: 60,
-          status: 'scheduled',
-          priority: 'medium',
-          notes: 'Customer prefers morning appointments',
-          technician_name: 'Mike Johnson',
-          location: 'Main Workshop'
-        },
-        {
-          id: '2',
-          customer_name: 'Sarah Smith',
-          customer_phone: '+255 987 654 321',
-          customer_email: 'sarah@example.com',
-          service_type: 'Laptop Diagnostics',
-          date: '2024-01-15',
-          time: '14:30',
-          duration: 45,
-          status: 'confirmed',
-          priority: 'high',
-          notes: 'Urgent - customer needs laptop for work',
-          technician_name: 'Lisa Brown',
-          location: 'Main Workshop'
-        },
-        {
-          id: '3',
-          customer_name: 'Alex Wilson',
-          customer_phone: '+255 555 123 456',
-          customer_email: 'alex@example.com',
-          service_type: 'Data Recovery',
-          date: '2024-01-16',
-          time: '09:00',
-          duration: 120,
-          status: 'in-progress',
-          priority: 'urgent',
-          notes: 'Important business data',
-          technician_name: 'David Lee',
-          location: 'Data Recovery Lab'
-        },
-        {
-          id: '4',
-          customer_name: 'Emma Davis',
-          customer_phone: '+255 777 888 999',
-          customer_email: 'emma@example.com',
-          service_type: 'Virus Removal',
-          date: '2024-01-14',
-          time: '16:00',
-          duration: 30,
-          status: 'completed',
-          priority: 'low',
-          notes: 'Standard virus removal service',
-          technician_name: 'Mike Johnson',
-          location: 'Main Workshop'
-        }
-      ];
+      console.log('📅 Loading appointments from database...');
+      const appointmentsData = await fetchAllAppointments();
       
-      setAppointments(mockAppointments);
+      // Transform the data to match our interface
+      const transformedAppointments = appointmentsData.map(appointment => ({
+        id: appointment.id,
+        customer_name: appointment.customer_name || 'Unknown Customer',
+        customer_phone: appointment.customer_phone || 'No Phone',
+        service_type: appointment.service_type,
+        appointment_date: appointment.appointment_date,
+        appointment_time: appointment.appointment_time,
+        status: appointment.status,
+        notes: appointment.notes,
+        priority: appointment.priority,
+        technician_name: appointment.technician_name || 'No Technician'
+      }));
+      
+      setAppointments(transformedAppointments);
+      console.log(`✅ Loaded ${transformedAppointments.length} appointments`);
     } catch (error) {
       console.error('Error loading appointments:', error);
       toast.error('Failed to load appointments');
+      setAppointments([]);
     } finally {
       setLoading(false);
     }
@@ -134,17 +91,27 @@ const AppointmentManagementTab: React.FC<AppointmentManagementTabProps> = ({
 
   const loadStats = async () => {
     try {
-      // Mock stats - replace with actual API call
-      const mockStats = {
-        total: 24,
-        today: 5,
-        pending: 8,
-        completed: 16,
-        cancelled: 0
-      };
-      setStats(mockStats);
+      console.log('📊 Loading appointment stats from database...');
+      const statsData = await getAppointmentStats();
+      
+      setStats({
+        total: statsData.total || 0,
+        today: statsData.today || 0,
+        pending: statsData.pending || 0,
+        completed: statsData.completed || 0,
+        cancelled: statsData.cancelled || 0
+      });
+      console.log('✅ Loaded appointment stats:', statsData);
     } catch (error) {
       console.error('Failed to load stats:', error);
+      // Set default stats on error
+      setStats({
+        total: 0,
+        today: 0,
+        pending: 0,
+        completed: 0,
+        cancelled: 0
+      });
     }
   };
 
@@ -190,14 +157,21 @@ const AppointmentManagementTab: React.FC<AppointmentManagementTabProps> = ({
 
   const handleStatusUpdate = async (appointmentId: string, newStatus: string) => {
     try {
-      // Mock API call
+      console.log(`📅 Updating appointment ${appointmentId} status to ${newStatus}`);
+      await updateAppointment(appointmentId, { status: newStatus });
+      
+      // Update local state
       setAppointments(prev => 
         prev.map(apt => 
           apt.id === appointmentId ? { ...apt, status: newStatus as any } : apt
         )
       );
-      toast.success('Appointment status updated');
+      
+      // Refresh stats
+      await loadStats();
+      toast.success('Appointment status updated successfully');
     } catch (error) {
+      console.error('Error updating appointment status:', error);
       toast.error('Failed to update appointment status');
     }
   };
@@ -205,10 +179,17 @@ const AppointmentManagementTab: React.FC<AppointmentManagementTabProps> = ({
   const handleDeleteAppointment = async (appointmentId: string) => {
     if (window.confirm('Are you sure you want to delete this appointment?')) {
       try {
-        // Mock API call
+        console.log(`🗑️ Deleting appointment ${appointmentId}`);
+        await deleteAppointment(appointmentId);
+        
+        // Update local state
         setAppointments(prev => prev.filter(apt => apt.id !== appointmentId));
-        toast.success('Appointment deleted');
+        
+        // Refresh stats
+        await loadStats();
+        toast.success('Appointment deleted successfully');
       } catch (error) {
+        console.error('Error deleting appointment:', error);
         toast.error('Failed to delete appointment');
       }
     }
@@ -361,6 +342,27 @@ const AppointmentManagementTab: React.FC<AppointmentManagementTabProps> = ({
           )}
         </div>
       </GlassCard>
+
+      {/* Appointment Modal */}
+      <AppointmentModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        mode="create"
+        onSave={async (appointmentData) => {
+          try {
+            await createAppointment(appointmentData);
+            toast.success('Appointment created successfully');
+            setShowCreateModal(false);
+            // Refresh appointments
+            await loadAppointments();
+            await loadStats();
+          } catch (error) {
+            console.error('Error creating appointment:', error);
+            toast.error('Failed to create appointment');
+            throw error;
+          }
+        }}
+      />
     </div>
   );
 };

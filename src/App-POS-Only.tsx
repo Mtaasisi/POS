@@ -12,9 +12,10 @@ import { Toaster } from 'react-hot-toast';
 
 // Import only POS-related components
 import GlobalLoadingProgress from './features/shared/components/ui/GlobalLoadingProgress';
-import LoginPage from './features/shared/pages/LoginPage';
-import DashboardPage from './features/shared/pages/DashboardPage';
-import AppLayout from './layout/AppLayout';
+import DynamicPageLoader from './features/shared/components/ui/DynamicPageLoader';
+const LoginPage = lazy(() => import('./features/shared/pages/LoginPage'));
+const DashboardPage = lazy(() => import('./features/shared/pages/DashboardPage'));
+const AppLayout = lazy(() => import('./layout/AppLayout'));
 import { ErrorBoundary } from './features/shared/components/ErrorBoundary';
 import DynamicImportErrorBoundary from './features/shared/components/DynamicImportErrorBoundary';
 import UrlValidatedRoute from './components/UrlValidatedRoute';
@@ -24,27 +25,17 @@ const POSPage = lazy(() => import('./features/lats/pages/MobilePOSPage'));
 const UnifiedInventoryPage = lazy(() => import('./features/lats/pages/UnifiedInventoryPage'));
 const AddProductPage = lazy(() => import('./features/lats/pages/AddProductPage'));
 const EditProductPage = lazy(() => import('./features/lats/pages/EditProductPage'));
-const ProductDetailPage = lazy(() => import('./features/lats/pages/ProductDetailPage'));
 const SalesReportsPage = lazy(() => import('./features/lats/pages/SalesReportsPage'));
 const CustomerLoyaltyPage = lazy(() => import('./features/lats/pages/CustomerLoyaltyPage'));
 const PaymentTrackingPage = lazy(() => import('./features/lats/pages/PaymentTrackingPage'));
 
 // Customer management (needed for POS)
 const CustomersPage = lazy(() => import('./features/customers/pages/CustomersPage'));
-const CustomerDetailPage = lazy(() => import('./features/customers/pages/CustomerDetailPage'));
 
 // Settings (minimal for POS)
 const SettingsPage = lazy(() => import('./features/settings/pages/UnifiedSettingsPage'));
 
-// Loading component for lazy-loaded pages
-const PageLoadingSpinner = () => (
-  <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-    <div className="text-center">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-      <p className="text-gray-600">Loading...</p>
-    </div>
-  </div>
-);
+// Using DynamicPageLoader component for consistent loading experience
 
 // Error fallback for dynamic imports
 const DynamicImportErrorFallback = ({ error, retry }: { error: Error; retry: () => void }) => (
@@ -178,13 +169,19 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
       )}
       
       <Routes>
-        <Route path="/login" element={<LoginPage />} />
+        <Route path="/login" element={
+          <Suspense fallback={<DynamicPageLoader />}>
+            <LoginPage />
+          </Suspense>
+        } />
         
         <Route 
           path="/" 
           element={
             <ProtectedRoute>
-              <AppLayout />
+              <Suspense fallback={<DynamicPageLoader />}>
+                <AppLayout />
+              </Suspense>
             </ProtectedRoute>
           }
         >
@@ -194,7 +191,7 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
           {/* POS Routes */}
           <Route path="/pos" element={
             <ErrorBoundary fallback={DynamicImportErrorFallback}>
-              <Suspense fallback={<PageLoadingSpinner />}>
+              <Suspense fallback={<DynamicPageLoader />}>
                 <POSPage />
               </Suspense>
             </ErrorBoundary>
@@ -203,68 +200,58 @@ const AppContent: React.FC<{ isOnline: boolean; isSyncing: boolean }> = ({ isOnl
           {/* Inventory Routes (needed for POS) */}
           <Route path="/inventory" element={
             <ErrorBoundary fallback={DynamicImportErrorFallback}>
-              <Suspense fallback={<PageLoadingSpinner />}>
+              <Suspense fallback={<DynamicPageLoader />}>
                 <UnifiedInventoryPage />
               </Suspense>
             </ErrorBoundary>
           } />
           
           <Route path="/add-product" element={
-            <Suspense fallback={<PageLoadingSpinner />}>
+            <Suspense fallback={<DynamicPageLoader />}>
               <AddProductPage />
             </Suspense>
           } />
           
           <Route path="/products/:productId/edit" element={
             <UrlValidatedRoute enableImageUrlValidation={true} enableUrlLogging={false}>
-              <Suspense fallback={<PageLoadingSpinner />}>
+              <Suspense fallback={<DynamicPageLoader />}>
                 <EditProductPage />
               </Suspense>
             </UrlValidatedRoute>
           } />
           
-          <Route path="/products/:id" element={
-            <UrlValidatedRoute enableImageUrlValidation={true} enableUrlLogging={false}>
-              <ProductDetailPage />
-            </UrlValidatedRoute>
-          } />
 
           {/* Customer Routes (needed for POS) */}
           <Route path="/customers" element={
             <ErrorBoundary fallback={DynamicImportErrorFallback}>
-              <Suspense fallback={<PageLoadingSpinner />}>
+              <Suspense fallback={<DynamicPageLoader />}>
                 <CustomersPage />
               </Suspense>
             </ErrorBoundary>
           } />
-          <Route path="/customers/:id" element={
-            <Suspense fallback={<PageLoadingSpinner />}>
-              <CustomerDetailPage />
-            </Suspense>
-          } />
 
           {/* Sales & Reports Routes */}
           <Route path="/sales-reports" element={
-            <Suspense fallback={<PageLoadingSpinner />}>
+            <Suspense fallback={<DynamicPageLoader />}>
               <SalesReportsPage />
             </Suspense>
           } />
           
           <Route path="/loyalty" element={
-            <Suspense fallback={<PageLoadingSpinner />}>
+            <Suspense fallback={<DynamicPageLoader />}>
               <CustomerLoyaltyPage />
             </Suspense>
           } />
           
           <Route path="/payments" element={
-            <Suspense fallback={<PageLoadingSpinner />}>
+            <Suspense fallback={<DynamicPageLoader />}>
               <PaymentTrackingPage />
             </Suspense>
           } />
 
           {/* Settings Route (minimal) */}
           <Route path="/settings" element={
-            <Suspense fallback={<PageLoadingSpinner />}>
+            <Suspense fallback={<DynamicPageLoader />}>
               <SettingsPage />
             </Suspense>
           } />

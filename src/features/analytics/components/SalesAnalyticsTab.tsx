@@ -3,42 +3,22 @@ import GlassCard from '../../../features/shared/components/ui/GlassCard';
 import GlassButton from '../../../features/shared/components/ui/GlassButton';
 import { 
   TrendingUp, DollarSign, ShoppingCart, BarChart3, 
-  ArrowUpRight, ArrowDownRight, Calendar, Target
+  ArrowUpRight, ArrowDownRight, Calendar, Target, Users
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { salesAnalyticsService, SalesAnalyticsData } from '../../lats/lib/salesAnalyticsService';
 
 interface SalesAnalyticsTabProps {
   isActive: boolean;
   timeRange: string;
 }
 
-interface SalesData {
-  totalSales: number;
-  totalRevenue: number;
-  averageOrderValue: number;
-  growthRate: number;
-  topSellingProducts: Array<{
-    name: string;
-    quantity: number;
-    revenue: number;
-    growth: number;
-  }>;
-  salesByDay: Array<{
-    date: string;
-    sales: number;
-    revenue: number;
-  }>;
-  salesByCategory: Array<{
-    category: string;
-    sales: number;
-    revenue: number;
-    percentage: number;
-  }>;
-}
+// Using SalesAnalyticsData from the service
 
 const SalesAnalyticsTab: React.FC<SalesAnalyticsTabProps> = ({ isActive, timeRange }) => {
-  const [salesData, setSalesData] = useState<SalesData | null>(null);
+  const [salesData, setSalesData] = useState<SalesAnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isActive) {
@@ -49,41 +29,20 @@ const SalesAnalyticsTab: React.FC<SalesAnalyticsTabProps> = ({ isActive, timeRan
   const loadSalesData = async () => {
     try {
       setLoading(true);
+      setError(null);
       
-      // Mock sales data
-      const mockData: SalesData = {
-        totalSales: 1247,
-        totalRevenue: 12500000,
-        averageOrderValue: 10032,
-        growthRate: 15.8,
-        topSellingProducts: [
-          { name: 'iPhone Screen Replacement', quantity: 45, revenue: 3600000, growth: 12.5 },
-          { name: 'Laptop Diagnostics', quantity: 32, revenue: 480000, growth: 8.3 },
-          { name: 'Windows Installation', quantity: 28, revenue: 700000, growth: 22.1 },
-          { name: 'Data Recovery', quantity: 15, revenue: 1125000, growth: 5.7 },
-          { name: 'Virus Removal', quantity: 42, revenue: 840000, growth: 18.9 }
-        ],
-        salesByDay: [
-          { date: 'Mon', sales: 45, revenue: 450000 },
-          { date: 'Tue', sales: 52, revenue: 520000 },
-          { date: 'Wed', sales: 38, revenue: 380000 },
-          { date: 'Thu', sales: 61, revenue: 610000 },
-          { date: 'Fri', sales: 48, revenue: 480000 },
-          { date: 'Sat', sales: 55, revenue: 550000 },
-          { date: 'Sun', sales: 42, revenue: 420000 }
-        ],
-        salesByCategory: [
-          { category: 'Electronics', sales: 456, revenue: 3200000, percentage: 25.6 },
-          { category: 'Services', sales: 234, revenue: 1200000, percentage: 9.6 },
-          { category: 'Accessories', sales: 189, revenue: 950000, percentage: 7.6 },
-          { category: 'Software', sales: 156, revenue: 780000, percentage: 6.2 },
-          { category: 'Parts', sales: 212, revenue: 1370000, percentage: 11.0 }
-        ]
-      };
+      console.log('📊 Loading sales analytics for period:', timeRange);
+      const data = await salesAnalyticsService.getSalesAnalytics(timeRange);
       
-      setSalesData(mockData);
-    } catch (error) {
-      console.error('Error loading sales data:', error);
+      if (data) {
+        setSalesData(data);
+        console.log('✅ Sales analytics data loaded:', data);
+      } else {
+        setError('No sales data available for the selected period');
+      }
+    } catch (err) {
+      console.error('❌ Error loading sales analytics:', err);
+      setError('Failed to load sales analytics data. Please try again.');
       toast.error('Failed to load sales data');
     } finally {
       setLoading(false);
@@ -120,6 +79,23 @@ const SalesAnalyticsTab: React.FC<SalesAnalyticsTabProps> = ({ isActive, timeRan
     );
   }
 
+  if (error) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-center">
+          <div className="text-red-500 text-2xl mb-4">⚠️</div>
+          <div className="text-gray-600 mb-4">{error}</div>
+          <GlassButton 
+            onClick={loadSalesData}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Retry
+          </GlassButton>
+        </div>
+      </div>
+    );
+  }
+
   if (!salesData) return null;
 
   return (
@@ -129,14 +105,14 @@ const SalesAnalyticsTab: React.FC<SalesAnalyticsTabProps> = ({ isActive, timeRan
         <GlassCard className="p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Total Sales</p>
+              <p className="text-sm text-gray-600">Total Revenue</p>
               <p className="text-2xl font-bold text-gray-900">
-                {formatNumber(salesData.totalSales)}
+                {formatMoney(salesData.metrics.totalSales)}
               </p>
               <div className="flex items-center mt-1">
                 <ArrowUpRight className="w-4 h-4 text-green-500" />
                 <span className="text-sm text-green-600 ml-1">
-                  +{salesData.growthRate}%
+                  +{salesData.metrics.growthRate.toFixed(1)}%
                 </span>
               </div>
             </div>
@@ -149,14 +125,14 @@ const SalesAnalyticsTab: React.FC<SalesAnalyticsTabProps> = ({ isActive, timeRan
         <GlassCard className="p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Total Revenue</p>
+              <p className="text-sm text-gray-600">Transactions</p>
               <p className="text-2xl font-bold text-gray-900">
-                {formatMoney(salesData.totalRevenue)}
+                {formatNumber(salesData.metrics.totalTransactions)}
               </p>
               <div className="flex items-center mt-1">
                 <ArrowUpRight className="w-4 h-4 text-green-500" />
                 <span className="text-sm text-green-600 ml-1">
-                  +{salesData.growthRate}%
+                  +{salesData.metrics.growthRate.toFixed(1)}%
                 </span>
               </div>
             </div>
@@ -171,11 +147,11 @@ const SalesAnalyticsTab: React.FC<SalesAnalyticsTabProps> = ({ isActive, timeRan
             <div>
               <p className="text-sm text-gray-600">Avg Order Value</p>
               <p className="text-2xl font-bold text-gray-900">
-                {formatMoney(salesData.averageOrderValue)}
+                {formatMoney(salesData.metrics.averageTransaction)}
               </p>
               <div className="flex items-center mt-1">
                 <ArrowUpRight className="w-4 h-4 text-green-500" />
-                <span className="text-sm text-green-600 ml-1">+8.2%</span>
+                <span className="text-sm text-green-600 ml-1">+{salesData.metrics.growthRate.toFixed(1)}%</span>
               </div>
             </div>
             <div className="p-3 bg-purple-100 rounded-lg">
@@ -189,7 +165,7 @@ const SalesAnalyticsTab: React.FC<SalesAnalyticsTabProps> = ({ isActive, timeRan
             <div>
               <p className="text-sm text-gray-600">Growth Rate</p>
               <p className="text-2xl font-bold text-gray-900">
-                +{salesData.growthRate}%
+                +{salesData.metrics.growthRate.toFixed(1)}%
               </p>
               <div className="flex items-center mt-1">
                 <span className="text-sm text-gray-600">vs last period</span>
@@ -206,26 +182,32 @@ const SalesAnalyticsTab: React.FC<SalesAnalyticsTabProps> = ({ isActive, timeRan
       <GlassCard className="p-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Top Selling Products</h3>
         <div className="space-y-3">
-          {salesData.topSellingProducts.map((product, index) => (
-            <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div className="flex items-center">
-                <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center mr-3">
-                  <span className="text-sm font-semibold text-green-600">{index + 1}</span>
-                </div>
-                <div>
-                  <p className="font-medium text-gray-900">{product.name}</p>
-                  <p className="text-sm text-gray-600">{product.quantity} sold</p>
-                </div>
-              </div>
-              <div className="text-right">
-                <p className="font-semibold text-gray-900">{formatMoney(product.revenue)}</p>
+          {salesData.topProducts.length > 0 ? (
+            salesData.topProducts.map((product, index) => (
+              <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                 <div className="flex items-center">
-                  <ArrowUpRight className="w-3 h-3 text-green-500" />
-                  <span className="text-xs text-green-600 ml-1">+{product.growth}%</span>
+                  <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center mr-3">
+                    <span className="text-sm font-semibold text-green-600">{index + 1}</span>
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-900">{product.name}</p>
+                    <p className="text-sm text-gray-600">{product.quantity} sold</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="font-semibold text-gray-900">{formatMoney(product.sales)}</p>
+                  <div className="flex items-center">
+                    <span className="text-xs text-gray-500">{product.percentage}% of total</span>
+                  </div>
                 </div>
               </div>
+            ))
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <ShoppingCart className="w-12 h-12 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">No product sales data available</p>
             </div>
-          ))}
+          )}
         </div>
       </GlassCard>
 
@@ -233,37 +215,53 @@ const SalesAnalyticsTab: React.FC<SalesAnalyticsTabProps> = ({ isActive, timeRan
       <GlassCard className="p-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Sales by Day</h3>
         <div className="grid grid-cols-7 gap-2">
-          {salesData.salesByDay.map((day, index) => (
-            <div key={index} className="text-center">
-              <div className="p-3 bg-gray-50 rounded-lg">
-                <p className="text-sm font-medium text-gray-900">{day.date}</p>
-                <p className="text-lg font-bold text-blue-600">{day.sales}</p>
-                <p className="text-xs text-gray-600">{formatMoney(day.revenue)}</p>
+          {salesData.dailySales.length > 0 ? (
+            salesData.dailySales.map((day, index) => (
+              <div key={index} className="text-center">
+                <div className="p-3 bg-gray-50 rounded-lg">
+                  <p className="text-sm font-medium text-gray-900">
+                    {new Date(day.date).toLocaleDateString('en-US', { weekday: 'short' })}
+                  </p>
+                  <p className="text-lg font-bold text-blue-600">{day.transactions}</p>
+                  <p className="text-xs text-gray-600">{formatMoney(day.sales)}</p>
+                </div>
               </div>
+            ))
+          ) : (
+            <div className="col-span-7 text-center py-8 text-gray-500">
+              <Calendar className="w-12 h-12 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">No daily sales data available</p>
             </div>
-          ))}
+          )}
         </div>
       </GlassCard>
 
-      {/* Sales by Category */}
+      {/* Customer Segments */}
       <GlassCard className="p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Sales by Category</h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Customer Segments</h3>
         <div className="space-y-4">
-          {salesData.salesByCategory.map((category, index) => (
-            <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div className="flex items-center">
-                <div className="w-4 h-4 bg-blue-500 rounded mr-3"></div>
-                <div>
-                  <p className="font-medium text-gray-900">{category.category}</p>
-                  <p className="text-sm text-gray-600">{category.sales} sales</p>
+          {salesData.customerSegments.length > 0 ? (
+            salesData.customerSegments.map((segment, index) => (
+              <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center">
+                  <div className="w-4 h-4 bg-blue-500 rounded mr-3"></div>
+                  <div>
+                    <p className="font-medium text-gray-900">{segment.segment}</p>
+                    <p className="text-sm text-gray-600">{segment.customers} customers</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="font-semibold text-gray-900">{formatMoney(segment.sales)}</p>
+                  <p className="text-sm text-gray-600">{segment.percentage}% of total</p>
                 </div>
               </div>
-              <div className="text-right">
-                <p className="font-semibold text-gray-900">{formatMoney(category.revenue)}</p>
-                <p className="text-sm text-gray-600">{category.percentage}%</p>
-              </div>
+            ))
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <Users className="w-12 h-12 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">No customer segment data available</p>
             </div>
-          ))}
+          )}
         </div>
       </GlassCard>
     </div>

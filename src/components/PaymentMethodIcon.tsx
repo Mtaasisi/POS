@@ -3,9 +3,7 @@ import {
   DollarSign, 
   CreditCard, 
   Smartphone, 
-  Building, 
-  CheckCircle,
-  XCircle 
+  Building
 } from 'lucide-react';
 
 interface PaymentMethodIconProps {
@@ -36,22 +34,27 @@ const PaymentMethodIcon: React.FC<PaymentMethodIconProps> = ({
     const nameLower = methodName?.toLowerCase() || '';
 
     // Direct type matches
-    if (typeLower === 'cash') return '/icons/payment-methods/cash-new.svg';
-    if (typeLower === 'credit_card' || typeLower === 'card') return '/icons/payment-methods/visa.svg';
+    if (typeLower === 'cash') return '/icons/payment-methods/cash-logo.png';
+    if (typeLower === 'credit_card' || typeLower === 'card') return '/icons/payment-methods/mastercard-logo.jpg';
     if (typeLower === 'mobile_money') {
-      if (nameLower.includes('mpesa')) return '/icons/payment-methods/mpesa.svg';
+      if (nameLower.includes('mpesa')) return '/icons/payment-methods/mpesa-google.png';
       if (nameLower.includes('airtel')) return '/icons/payment-methods/airtel-money.svg';
-      return '/icons/payment-methods/mpesa.svg'; // default mobile money
+      return '/icons/payment-methods/mpesa-google.png'; // default mobile money
     }
-    if (typeLower === 'bank' || typeLower === 'bank_transfer') return '/icons/payment-methods/bank-transfer.svg';
+    if (typeLower === 'bank' || typeLower === 'bank_transfer') {
+      if (nameLower.includes('crdb')) return '/icons/payment-methods/crdb-bank.png';
+      return '/icons/payment-methods/crdb-bank.png';
+    }
 
     // Name-based matches
-    if (nameLower.includes('mpesa')) return '/icons/payment-methods/mpesa.svg';
-    if (nameLower.includes('visa')) return '/icons/payment-methods/visa.svg';
-    if (nameLower.includes('mastercard') || nameLower.includes('master')) return '/icons/payment-methods/mastercard.svg';
+    if (nameLower.includes('mpesa')) return '/icons/payment-methods/mpesa-google.png';
+    if (nameLower.includes('visa')) return '/icons/payment-methods/visa-logo.jpg';
+    if (nameLower.includes('mastercard') || nameLower.includes('master')) return '/icons/payment-methods/mastercard-logo.jpg';
     if (nameLower.includes('airtel')) return '/icons/payment-methods/airtel-money.svg';
-    if (nameLower.includes('bank') && nameLower.includes('transfer')) return '/icons/payment-methods/bank-transfer.svg';
-    if (nameLower.includes('cash')) return '/icons/payment-methods/cash-new.svg';
+    if (nameLower.includes('crdb')) return '/icons/payment-methods/crdb-bank.png';
+    if (nameLower.includes('bank') && nameLower.includes('transfer')) return '/icons/payment-methods/crdb-bank.png';
+    if (nameLower.includes('bank')) return '/icons/payment-methods/crdb-bank.png';
+    if (nameLower.includes('cash')) return '/icons/payment-methods/cash-logo.png';
 
     return null;
   };
@@ -80,7 +83,7 @@ const PaymentMethodIcon: React.FC<PaymentMethodIconProps> = ({
       <img
         src={iconPath}
         alt={`${name || type} payment method`}
-        className={`${sizeClasses[size]} ${className}`}
+        className={className || sizeClasses[size]}
         style={{ objectFit: 'contain' }}
         onError={(e) => {
           // Fallback to default icon if image fails to load

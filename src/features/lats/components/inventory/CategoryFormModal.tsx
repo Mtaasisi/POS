@@ -2,6 +2,7 @@ import React from 'react';
 import { X } from 'lucide-react';
 import CategoryForm from './CategoryForm';
 import { CategoryFormData, Category } from '../../types/inventory';
+import { useBodyScrollLock } from '../../../../hooks/useBodyScrollLock';
 
 interface CategoryFormModalProps {
   isOpen: boolean;
@@ -23,6 +24,9 @@ const CategoryFormModal: React.FC<CategoryFormModalProps> = ({
   const handleCancel = () => {
     onClose();
   };
+
+  // Prevent body scroll when modal is open
+  useBodyScrollLock(isOpen);
 
   if (!isOpen) return null;
 

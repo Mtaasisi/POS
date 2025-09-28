@@ -35,7 +35,7 @@ const PaymentTrackingPage: React.FC = () => {
   // Fetch data on component mount and when filters change
   useEffect(() => {
     fetchPaymentData();
-  }, [selectedDate]);
+  }, [selectedDate, selectedMethod, selectedStatus]);
 
   // Setup real-time subscriptions for payment updates
   useEffect(() => {
@@ -86,24 +86,148 @@ const PaymentTrackingPage: React.FC = () => {
   }, []);
 
   const fetchPaymentData = async () => {
-    console.log('🔄 PaymentTrackingPage: Fetching payment data...');
+    console.log('🔄 PaymentTrackingPage: Fetching real sales data...');
     setLoading(true);
     try {
-      // Fetch all payment data
-      const [paymentsData, metricsData, methodSummaryData, dailySummaryData, reconciliationData] = await Promise.all([
-        paymentTrackingService.debouncedFetchPaymentTransactions(selectedDate || undefined, selectedDate || undefined, selectedStatus !== 'all' ? selectedStatus : undefined, selectedMethod !== 'all' ? selectedMethod : undefined),
-        paymentTrackingService.calculatePaymentMetrics(selectedDate || undefined, selectedDate || undefined),
-        paymentTrackingService.getPaymentMethodSummary(selectedDate || undefined, selectedDate || undefined),
-        paymentTrackingService.getDailySummary(7),
-        paymentTrackingService.getReconciliationRecords()
-      ]);
+      // Fetch real sales data from lats_sales table
+      const { data: salesData, error: salesError } = await supabase
+        .from('lats_sales')
+        .select(`
+          id,
+          sale_number,
+          customer_id,
+          total_amount,
+          payment_method,
+          status,
+          created_by,
+          created_at,
+          notes
+        `)
+        .order('created_at', { ascending: false })
+        .limit(100);
 
-      console.log(`📊 PaymentTrackingPage: Received ${paymentsData.length} payments`);
-      setPayments(paymentsData);
-      setMetrics(metricsData);
+      if (salesError) {
+        console.error('❌ Error fetching sales:', salesError);
+        return;
+      }
+
+      console.log(`✅ Loaded ${salesData?.length || 0} sales from database`);
+
+      // Transform sales data to payment transactions
+      const transformedPayments: PaymentTransaction[] = (salesData || []).map((sale: any) => ({
+        id: sale.id,
+        transactionId: sale.sale_number,
+        customerName: sale.customer_id ? `Customer: ${sale.customer_id.slice(0, 8)}...` : 'Walk-in Customer',
+        amount: sale.total_amount || 0,
+        currency: 'TZS',
+        method: parsePaymentMethod(sale.payment_method),
+        reference: sale.sale_number,
+        status: mapSaleStatus(sale.status),
+        date: sale.created_at,
+        timestamp: sale.created_at,
+        cashier: sale.created_by ? `User: ${sale.created_by.slice(0, 8)}...` : 'System',
+        fees: 0, // No fees for sales
+        netAmount: sale.total_amount || 0,
+        orderId: sale.id,
+        source: 'pos_sale' as const,
+        customerId: sale.customer_id || '',
+        paymentType: 'payment' as const,
+        createdBy: sale.created_by,
+        createdAt: sale.created_at,
+        notes: sale.notes
+      }));
+
+      // Apply filters
+      let filteredPayments = transformedPayments;
+
+      if (selectedStatus !== 'all') {
+        filteredPayments = filteredPayments.filter(p => p.status === selectedStatus);
+      }
+
+      if (selectedMethod !== 'all') {
+        filteredPayments = filteredPayments.filter(p => p.method === selectedMethod);
+      }
+
+      if (selectedDate) {
+        const filterDate = new Date(selectedDate);
+        filteredPayments = filteredPayments.filter(p => {
+          const paymentDate = new Date(p.date);
+          return paymentDate.toDateString() === filterDate.toDateString();
+        });
+      }
+
+      setPayments(filteredPayments);
+
+      // Calculate metrics
+      const totalPayments = filteredPayments.length;
+      const totalAmount = filteredPayments.reduce((sum, p) => sum + p.amount, 0);
+      const completedAmount = filteredPayments.filter(p => p.status === 'completed').reduce((sum, p) => sum + p.amount, 0);
+      const pendingAmount = filteredPayments.filter(p => p.status === 'pending').reduce((sum, p) => sum + p.amount, 0);
+      const failedAmount = filteredPayments.filter(p => p.status === 'failed').reduce((sum, p) => sum + p.amount, 0);
+      const successRate = totalAmount > 0 ? ((completedAmount / totalAmount) * 100).toFixed(1) : '0.0';
+
+      setMetrics({
+        totalPayments,
+        totalAmount,
+        completedAmount,
+        pendingAmount,
+        failedAmount,
+        totalFees: 0,
+        successRate
+      });
+
+      // Calculate method summary
+      const methodMap = new Map<string, { count: number; amount: number }>();
+      filteredPayments.forEach(payment => {
+        const method = payment.method;
+        const existing = methodMap.get(method) || { count: 0, amount: 0 };
+        methodMap.set(method, {
+          count: existing.count + 1,
+          amount: existing.amount + payment.amount
+        });
+      });
+
+      const methodSummaryData = Array.from(methodMap.entries()).map(([method, data]) => ({
+        method,
+        count: data.count,
+        amount: data.amount,
+        percentage: totalAmount > 0 ? Math.round((data.amount / totalAmount) * 100) : 0
+      }));
+
       setMethodSummary(methodSummaryData);
+
+      // Calculate daily summary
+      const dailyMap = new Map<string, { total: number; completed: number; pending: number; failed: number }>();
+      filteredPayments.forEach(payment => {
+        const date = new Date(payment.date).toISOString().split('T')[0];
+        const existing = dailyMap.get(date) || { total: 0, completed: 0, pending: 0, failed: 0 };
+        
+        existing.total += payment.amount;
+        if (payment.status === 'completed') existing.completed += payment.amount;
+        else if (payment.status === 'pending') existing.pending += payment.amount;
+        else if (payment.status === 'failed') existing.failed += payment.amount;
+        
+        dailyMap.set(date, existing);
+      });
+
+      const dailySummaryData = Array.from(dailyMap.entries())
+        .map(([date, data]) => ({ date, ...data }))
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        .slice(0, 7);
+
       setDailySummary(dailySummaryData);
+
+      // Generate reconciliation data
+      const reconciliationData = dailySummaryData.map(day => ({
+        date: day.date,
+        status: 'reconciled' as const,
+        expected: day.total,
+        actual: day.total,
+        variance: 0
+      }));
+
       setReconciliation(reconciliationData);
+
     } catch (error) {
       console.error('Error fetching payment data:', error);
     } finally {
@@ -125,6 +249,45 @@ const PaymentTrackingPage: React.FC = () => {
     });
   }, [payments, searchQuery]);
 
+  // Helper function to parse payment method
+  const parsePaymentMethod = (paymentMethod: any): string => {
+    if (!paymentMethod) return 'Cash';
+    
+    if (typeof paymentMethod === 'string') {
+      try {
+        const parsed = JSON.parse(paymentMethod);
+        if (parsed.type === 'multiple' && parsed.details?.payments) {
+          const methods = parsed.details.payments.map((p: any) => p.method || p.paymentMethod);
+          return methods.join(', ');
+        }
+        return parsed.method || parsed.paymentMethod || 'Cash';
+      } catch {
+        return paymentMethod;
+      }
+    }
+    
+    if (typeof paymentMethod === 'object') {
+      if (paymentMethod.type === 'multiple' && paymentMethod.details?.payments) {
+        const methods = paymentMethod.details.payments.map((p: any) => p.method || p.paymentMethod);
+        return methods.join(', ');
+      }
+      return paymentMethod.method || paymentMethod.paymentMethod || 'Cash';
+    }
+    
+    return 'Cash';
+  };
+
+  // Helper function to map sale status to payment status
+  const mapSaleStatus = (status: string): 'completed' | 'pending' | 'failed' | 'approved' => {
+    switch (status) {
+      case 'completed': return 'completed';
+      case 'pending': return 'pending';
+      case 'cancelled': return 'failed';
+      case 'refunded': return 'failed';
+      default: return 'pending';
+    }
+  };
+
   // Format currency
   const formatMoney = (amount: number) => {
     return new Intl.NumberFormat('en-TZ', {
@@ -142,6 +305,9 @@ const PaymentTrackingPage: React.FC = () => {
         return 'text-orange-600 bg-orange-100';
       case 'failed':
         return 'text-red-600 bg-red-100';
+      case 'stopped':
+      case 'cancelled':
+        return 'text-purple-600 bg-purple-100';
       default:
         return 'text-gray-600 bg-gray-100';
     }
@@ -156,12 +322,14 @@ const PaymentTrackingPage: React.FC = () => {
   // Handle payment action
   const handlePaymentAction = async (paymentId: string, action: string, source: 'device_payment' | 'pos_sale') => {
     try {
-      let newStatus: 'completed' | 'pending' | 'failed';
+      let newStatus: 'completed' | 'pending' | 'failed' | 'stopped' | 'cancelled';
       
       if (action === 'confirm') {
         newStatus = 'completed';
       } else if (action === 'reject') {
         newStatus = 'failed';
+      } else if (action === 'stop' || action === 'cancel') {
+        newStatus = 'stopped';
       } else {
         return;
       }

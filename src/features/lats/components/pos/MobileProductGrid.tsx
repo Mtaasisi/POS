@@ -60,87 +60,95 @@ const MobileProductGrid: React.FC<MobileProductGridProps> = ({
     };
 
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="bg-white rounded-sm shadow-sm border border-gray-100 overflow-hidden h-full flex flex-col">
         {/* Product Image */}
-        <div className="relative h-32 bg-gray-50">
+        <div className="relative h-12 sm:h-16 bg-gray-50 flex-shrink-0">
           <ProductImage
             src={product.thumbnail_url}
             alt={product.name}
             className="w-full h-full object-cover"
             fallback={
               <div className="w-full h-full flex items-center justify-center bg-gray-100">
-                <Package size={32} className="text-gray-400" />
+                <Package size={12} className="text-gray-400 sm:hidden" />
+                <Package size={14} className="text-gray-400 hidden sm:block" />
               </div>
             }
           />
           
           {/* Stock Badge */}
           {product.stock_quantity !== undefined && (
-            <div className={`absolute top-2 left-2 px-2 py-1 rounded-full text-xs font-medium ${
+            <div className={`absolute top-0 left-0 px-1 py-0.5 rounded-full text-xs font-medium shadow-sm ${
               product.stock_quantity > 10 
-                ? 'bg-green-100 text-green-700' 
+                ? 'bg-green-100 text-green-700 border border-green-200' 
                 : product.stock_quantity > 0 
-                  ? 'bg-yellow-100 text-yellow-700'
-                  : 'bg-red-100 text-red-700'
+                  ? 'bg-yellow-100 text-yellow-700 border border-yellow-200'
+                  : 'bg-red-100 text-red-700 border border-red-200'
             }`}>
-              {product.stock_quantity > 0 ? `${product.stock_quantity} in stock` : 'Out of stock'}
+              <span className="hidden sm:inline">
+                {product.stock_quantity > 0 ? `${product.stock_quantity} in stock` : 'Out of stock'}
+              </span>
+              <span className="sm:hidden">
+                {product.stock_quantity > 0 ? `${product.stock_quantity}` : '0'}
+              </span>
             </div>
           )}
         </div>
 
         {/* Product Info */}
-        <div className="p-3">
-          <h3 className="font-semibold text-gray-900 text-sm mb-1 line-clamp-2">
-            {product.name}
-          </h3>
-          
-          {product.sku && (
-            <p className="text-xs text-gray-500 mb-2">SKU: {product.sku}</p>
-          )}
-
-          {/* Variants */}
-          {product.variants && product.variants.length > 1 && (
-            <div className="mb-2">
-              <select
-                value={selectedVariant?.id || ''}
-                onChange={(e) => {
-                  const variant = product.variants?.find(v => v.id === e.target.value);
-                  setSelectedVariant(variant);
-                }}
-                className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1"
-              >
-                {product.variants.map(variant => (
-                  <option key={variant.id} value={variant.id}>
-                    {variant.name} - {formatPrice(variant.price)}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Price */}
-          <div className="flex items-center justify-between mb-3">
-            <span className="font-bold text-green-600">
-              {formatPrice(selectedVariant?.price || product.price)}
-            </span>
+        <div className="p-1 sm:p-1.5 flex-1 flex flex-col">
+          <div className="flex-1">
+            <h3 className="font-semibold text-gray-900 text-xs mb-0.5 line-clamp-2 leading-tight">
+              {product.name}
+            </h3>
             
-            {/* Quantity Selector */}
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                className="p-1 rounded-full hover:bg-gray-100"
-              >
-                <Minus size={16} />
-              </button>
-              <span className="px-2 py-1 bg-gray-100 rounded text-sm font-medium min-w-[2rem] text-center">
-                {quantity}
+            {product.sku && (
+              <p className="text-xs text-gray-500 mb-0.5 font-mono">SKU: {product.sku}</p>
+            )}
+
+            {/* Variants */}
+            {product.variants && product.variants.length > 1 && (
+              <div className="mb-0.5">
+                <select
+                  value={selectedVariant?.id || ''}
+                  onChange={(e) => {
+                    const variant = product.variants?.find(v => v.id === e.target.value);
+                    setSelectedVariant(variant);
+                  }}
+                  className="w-full text-xs border border-gray-200 rounded-sm px-1 py-0.5 touch-input bg-white"
+                >
+                  {product.variants.map(variant => (
+                    <option key={variant.id} value={variant.id}>
+                      {variant.name} - {formatPrice(variant.price)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Price */}
+            <div className="flex items-center justify-between mb-1">
+              <span className="font-bold text-green-600 text-xs">
+                {formatPrice(selectedVariant?.price || product.price)}
               </span>
-              <button
-                onClick={() => setQuantity(quantity + 1)}
-                className="p-1 rounded-full hover:bg-gray-100"
-              >
-                <Plus size={16} />
-              </button>
+              
+              {/* Quantity Selector */}
+              <div className="flex items-center gap-0.5 bg-gray-50 rounded-sm p-0.5">
+                <button
+                  onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                  className="p-0.5 rounded-sm active:bg-gray-200 touch-target"
+                >
+                  <Minus size={8} />
+                </button>
+                <span className="px-1 py-0.5 bg-white rounded text-xs font-medium min-w-[1rem] text-center border">
+                  {quantity}
+                </span>
+                <button
+                  onClick={() => setQuantity(quantity + 1)}
+                  className="p-0.5 rounded-sm active:bg-gray-200 touch-target"
+                >
+                  <Plus size={8} />
+                </button>
+              </div>
             </div>
           </div>
 
@@ -148,7 +156,7 @@ const MobileProductGrid: React.FC<MobileProductGridProps> = ({
           <button
             onClick={handleAddToCart}
             disabled={product.stock_quantity === 0}
-            className="w-full py-2 bg-blue-500 text-white font-medium rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors text-sm"
+            className="w-full py-1 bg-blue-500 text-white font-medium rounded-sm active:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors text-xs touch-button shadow-sm"
           >
             {product.stock_quantity === 0 ? 'Out of Stock' : 'Add to Cart'}
           </button>
@@ -160,29 +168,34 @@ const MobileProductGrid: React.FC<MobileProductGridProps> = ({
   return (
     <div className="h-full flex flex-col">
       {/* Search and Filters */}
-      <div className="sticky top-0 z-10 bg-white border-b border-gray-200 p-4">
+      <div className="sticky top-0 z-10 bg-white border-b border-gray-200 p-3">
         {/* Search Bar */}
-        <div className="relative mb-3">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+        <div className="relative mb-2">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Search products..."
-            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent touch-input"
           />
         </div>
 
         {/* Filters Row */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {/* Category Filter */}
           {showFilters && (
             <button
               onClick={() => setShowCategoryFilter(!showCategoryFilter)}
-              className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
+              className="flex items-center gap-1 px-2 py-2 bg-gray-100 rounded-lg text-xs font-medium active:bg-gray-200 transition-colors touch-target"
             >
-              <Filter size={16} />
-              {selectedCategory === 'all' ? 'All Categories' : selectedCategory}
+              <Filter size={14} />
+              <span className="hidden sm:inline">
+                {selectedCategory === 'all' ? 'All Categories' : selectedCategory}
+              </span>
+              <span className="sm:hidden">
+                {selectedCategory === 'all' ? 'All' : selectedCategory.substring(0, 8)}
+              </span>
             </button>
           )}
 
@@ -190,19 +203,19 @@ const MobileProductGrid: React.FC<MobileProductGridProps> = ({
           <div className="flex bg-gray-100 rounded-lg p-1 ml-auto">
             <button
               onClick={() => setViewMode('grid')}
-              className={`p-2 rounded-md transition-colors ${
-                viewMode === 'grid' ? 'bg-white shadow-sm' : 'hover:bg-gray-200'
+              className={`p-1.5 rounded-md transition-colors touch-target ${
+                viewMode === 'grid' ? 'bg-white shadow-sm' : 'active:bg-gray-200'
               }`}
             >
-              <Grid size={16} />
+              <Grid size={14} />
             </button>
             <button
               onClick={() => setViewMode('list')}
-              className={`p-2 rounded-md transition-colors ${
-                viewMode === 'list' ? 'bg-white shadow-sm' : 'hover:bg-gray-200'
+              className={`p-1.5 rounded-md transition-colors touch-target ${
+                viewMode === 'list' ? 'bg-white shadow-sm' : 'active:bg-gray-200'
               }`}
             >
-              <List size={16} />
+              <List size={14} />
             </button>
           </div>
         </div>
@@ -233,7 +246,7 @@ const MobileProductGrid: React.FC<MobileProductGridProps> = ({
       </div>
 
       {/* Products Grid/List */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-1.5 mobile-scroll">
         {isLoading ? (
           <div className="flex items-center justify-center h-32">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
@@ -247,8 +260,8 @@ const MobileProductGrid: React.FC<MobileProductGridProps> = ({
         ) : (
           <div className={
             viewMode === 'grid' 
-              ? 'grid grid-cols-2 gap-3' 
-              : 'space-y-3'
+              ? 'grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-1' 
+              : 'space-y-1'
           }>
             {filteredProducts.map((product) => (
               <ProductCard key={product.id} product={product} />

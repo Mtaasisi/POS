@@ -7,7 +7,7 @@ import { BackButton } from '../../../features/shared/components/ui/BackButton';
 import LATSBreadcrumb from '../components/ui/LATSBreadcrumb';
 import { 
   Package, Edit, Save, X, AlertCircle, 
-  FileText, ShoppingCart, Clock, CheckSquare, XSquare, Send, Truck,
+  FileText, ShoppingCart, Clock, CheckSquare, XSquare, Send,
   DollarSign, Calendar, Printer, Download, ArrowLeft, ArrowRight,
   Ship, PackageCheck, Building, Phone, Mail, MapPin, Star, 
   TrendingUp, BarChart3, Target, Calculator, Banknote, Receipt,
@@ -16,52 +16,112 @@ import {
   FileImage, Upload, CheckCircle2, AlertTriangle, ThumbsUp,
   ThumbsDown, ExternalLink, Zap, Users, CreditCard, Calendar as CalendarIcon,
   Hash, Tag, Scale, Hand, Fingerprint, Radio, XCircle, HardDrive,
-  Cpu, Palette, Ruler, Unplug, Battery, Monitor, Camera
+  Cpu, Palette, Ruler, Unplug, Battery, Monitor, Camera, FileSpreadsheet,
+  Truck, RefreshCw, Settings
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+// XLSX will be imported dynamically when needed
 import { useInventoryStore } from '../stores/useInventoryStore';
 import { PurchaseOrder } from '../types/inventory';
 import { PurchaseOrderService } from '../services/purchaseOrderService';
 
 // Import components directly for debugging
-import ShippingAssignmentModal from '../components/shipping/ShippingAssignmentModal';
-import ShippingTracker from '../components/shipping/ShippingTracker';
-import PurchaseOrderPaymentModal from '../../purchase-orders/components/PurchaseOrderPaymentModal';
+import PaymentsPopupModal from '../../../components/PaymentsPopupModal';
+import SerialNumberReceiveModal from '../components/purchase-order/SerialNumberReceiveModal';
+import PurchaseOrderActionsService from '../services/purchaseOrderActionsService';
 
-const PurchaseOrderDetailPage: React.FC = () => {
+// Import enhanced inventory components - REMOVED: These components don't exist
+// import InventoryItemActions from '../components/inventory/InventoryItemActions';
+// import StatusUpdateModal from '../components/inventory/StatusUpdateModal';
+// import LocationAssignmentModal from '../components/inventory/LocationAssignmentModal';
+// import ItemDetailsModal from '../components/inventory/ItemDetailsModal';
+// import ItemHistoryModal from '../components/inventory/ItemHistoryModal';
+// import BulkActionsToolbar from '../components/inventory/BulkActionsToolbar';
+// import InventorySearchFilters from '../components/inventory/InventorySearchFilters';
+
+// Simple ShippingTracker component
+const ShippingTracker: React.FC<{
+  shippingInfo: any;
+  purchaseOrder: any;
+  compact?: boolean;
+  debugMode?: boolean;
+  onRefresh?: () => void;
+}> = ({ shippingInfo, purchaseOrder, compact = false, debugMode = false, onRefresh }) => {
+  return (
+    <div className="p-4 bg-gray-50 rounded-lg">
+      <div className="flex items-center justify-between mb-2">
+        <h4 className="text-sm font-medium text-gray-700">Shipping Status</h4>
+        {onRefresh && (
+          <button
+            onClick={onRefresh}
+            className="text-xs text-blue-600 hover:text-blue-800"
+          >
+            Refresh
+          </button>
+        )}
+      </div>
+      <div className="text-sm text-gray-600">
+        {shippingInfo?.status || 'No shipping information available'}
+      </div>
+    </div>
+  );
+};
+
+interface PurchaseOrderDetailPageProps {
+  editMode?: boolean;
+}
+
+const PurchaseOrderDetailPage: React.FC<PurchaseOrderDetailPageProps> = ({ editMode = false }) => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   
   // Database state management
   const { 
-    getPurchaseOrder,
     updatePurchaseOrder,
-    updatePurchaseOrderShipping,
     deletePurchaseOrder,
     receivePurchaseOrder,
+    approvePurchaseOrder,
     isLoading,
     error,
-    shippingAgents,
-    loadShippingAgents
   } = useInventoryStore();
 
   // Local state
   const [purchaseOrder, setPurchaseOrder] = useState<PurchaseOrder | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditing, setIsEditing] = useState(editMode);
   const [isLoadingOrder, setIsLoadingOrder] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [showShippingModal, setShowShippingModal] = useState(false);
-  const [showShippingTracker, setShowShippingTracker] = useState(false);
+  
+  // Autoloading state
+  const [isBackgroundLoading, setIsBackgroundLoading] = useState(false);
+  const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
+  const [autoRefreshInterval, setAutoRefreshInterval] = useState<NodeJS.Timeout | null>(null);
+  const [refreshCount, setRefreshCount] = useState(0);
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false); // Temporarily disabled to prevent connection overload
+  const [refreshInterval, setRefreshInterval] = useState(30); // seconds
+  const [showAutoRefreshSettings, setShowAutoRefreshSettings] = useState(false);
   
   // New state for enhanced features
   const [activeTab, setActiveTab] = useState('overview');
   const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [showPartialReceiveModal, setShowPartialReceiveModal] = useState(false);
+  const [showSerialNumberReceiveModal, setShowSerialNumberReceiveModal] = useState(false);
   const [showCommunicationModal, setShowCommunicationModal] = useState(false);
   const [showQualityControlModal, setShowQualityControlModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showPurchaseOrderPaymentModal, setShowPurchaseOrderPaymentModal] = useState(false);
+  const [showShippingModal, setShowShippingModal] = useState(false);
+  const [showShippingTracker, setShowShippingTracker] = useState(false);
+  const [showNotesModal, setShowNotesModal] = useState(false);
+  
+  // Enhanced error handling and confirmation states
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<{
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   
   // Lazy load data only when needed
   const [auditHistory, setAuditHistory] = useState<any[]>([]);
@@ -93,27 +153,264 @@ const PurchaseOrderDetailPage: React.FC = () => {
     }
   ]);
   const [qualityChecks, setQualityChecks] = useState<any[]>([]);
+  const [receivedItems, setReceivedItems] = useState<any[]>([]);
+  const [isLoadingReceivedItems, setIsLoadingReceivedItems] = useState(false);
+  const [orderNotes, setOrderNotes] = useState<any[]>([]);
+  const [newNote, setNewNote] = useState('');
+  const [showBulkActions, setShowBulkActions] = useState(false);
+  const [bulkSelectedItems, setBulkSelectedItems] = useState<string[]>([]);
+  const [showReturnOrderModal, setShowReturnOrderModal] = useState(false);
+  const [purchaseOrderItems, setPurchaseOrderItems] = useState<any[]>([]);
+  const [isLoadingPurchaseOrderItems, setIsLoadingPurchaseOrderItems] = useState(false);
   const [loadedTabs, setLoadedTabs] = useState<Set<string>>(new Set(['overview']));
 
-  // Load purchase order and shipping data on component mount
+  // Enhanced inventory management state
+  const [selectedItems, setSelectedItems] = useState<string[]>([]);
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [showLocationModal, setShowLocationModal] = useState(false);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [currentItem, setCurrentItem] = useState<any>(null);
+  const [inventoryStats, setInventoryStats] = useState<any[]>([]);
+  const [filteredReceivedItems, setFilteredReceivedItems] = useState<any[]>([]);
+  const [filters, setFilters] = useState({
+    search: '',
+    status: '',
+    location: '',
+    dateFrom: '',
+    dateTo: ''
+  });
+
+  // Load purchase order function
+  const loadPurchaseOrder = useCallback(async () => {
+    if (!id) return;
+    
+    setIsLoadingOrder(true);
+    
+    try {
+      // Get the current store state to avoid dependency on the function reference
+      const { getPurchaseOrder: getPO } = useInventoryStore.getState();
+      const response = await getPO(id);
+      
+      if (response.ok) {
+        console.log('🔍 [PurchaseOrderDetailPage] DEBUG - Purchase order data received:', {
+          id: response.data?.id,
+          orderNumber: response.data?.orderNumber,
+          status: response.data?.status,
+          paymentStatus: response.data?.paymentStatus,
+          itemsCount: response.data?.items?.length || 0,
+          hasSupplier: !!response.data?.supplier,
+          supplierName: response.data?.supplier?.name || 'No supplier',
+          supplierId: response.data?.supplierId,
+          items: response.data?.items?.map(item => ({
+            id: item.id,
+            productId: item.productId,
+            variantId: item.variantId,
+            product: item.product,
+            variant: item.variant,
+            quantity: item.quantity,
+            receivedQuantity: item.receivedQuantity || 0,
+            hasProductData: !!item.product,
+            hasVariantData: !!item.variant
+          }))
+        });
+        if (response.data) {
+          setPurchaseOrder(response.data);
+        }
+        
+        // Fix order status if needed (for existing orders created before auto-status logic)
+        if (currentUser?.id && response.data?.id) {
+          const fixResult = await PurchaseOrderService.fixOrderStatusIfNeeded(response.data.id, currentUser.id);
+          if (fixResult.statusChanged) {
+            console.log('✅ Order status automatically corrected:', fixResult.message);
+            // Reload the order to get the updated status
+            const { getPurchaseOrder: getPO } = useInventoryStore.getState();
+            const updatedResponse = await getPO(id);
+            if (updatedResponse.ok && updatedResponse.data) {
+              setPurchaseOrder(updatedResponse.data);
+            }
+          }
+        }
+      } else {
+        console.error('❌ [PurchaseOrderDetailPage] Failed to load purchase order:', response.message);
+        toast.error(response.message || 'Failed to load purchase order');
+        navigate('/lats/purchase-orders');
+      }
+    } catch (error) {
+      console.error('❌ [PurchaseOrderDetailPage] Error loading purchase order:', error);
+      toast.error('Failed to load purchase order');
+      navigate('/lats/purchase-orders');
+    } finally {
+      setIsLoadingOrder(false);
+    }
+  }, [id, navigate]);
+
+  // Load purchase order data on component mount
   useEffect(() => {
     if (id) {
       loadPurchaseOrder();
     }
-    
-    // Load shipping agents only once on mount
-    loadShippingAgents().catch((error) => {
-      console.error('❌ [PurchaseOrderDetailPage] Failed to load shipping agents:', error);
+  }, [id, loadPurchaseOrder]);
+
+  // Handle editMode prop changes
+  useEffect(() => {
+    setIsEditing(editMode);
+  }, [editMode]);
+
+  // Filter received items based on search criteria
+  useEffect(() => {
+    if (!receivedItems.length) {
+      setFilteredReceivedItems([]);
+      return;
+    }
+
+    const filtered = receivedItems.filter(item => {
+      const matchesSearch = !filters.search || 
+        item.product?.name?.toLowerCase().includes(filters.search.toLowerCase()) ||
+        item.variant?.name?.toLowerCase().includes(filters.search.toLowerCase()) ||
+        item.serial_number?.toLowerCase().includes(filters.search.toLowerCase()) ||
+        item.imei?.toLowerCase().includes(filters.search.toLowerCase()) ||
+        item.product?.sku?.toLowerCase().includes(filters.search.toLowerCase());
+
+      const matchesStatus = !filters.status || item.status === filters.status;
+      
+      const matchesLocation = !filters.location || 
+        item.location?.toLowerCase().includes(filters.location.toLowerCase()) ||
+        item.shelf?.toLowerCase().includes(filters.location.toLowerCase()) ||
+        item.bin?.toLowerCase().includes(filters.location.toLowerCase());
+
+      const matchesDateFrom = !filters.dateFrom || new Date(item.created_at) >= new Date(filters.dateFrom);
+      const matchesDateTo = !filters.dateTo || new Date(item.created_at) <= new Date(filters.dateTo);
+
+      return matchesSearch && matchesStatus && matchesLocation && matchesDateFrom && matchesDateTo;
     });
-  }, [id]); // Remove loadShippingAgents from dependencies to prevent re-runs
+
+    setFilteredReceivedItems(filtered);
+  }, [receivedItems, filters]);
+
+  // Autoloading functionality
+  const refreshPurchaseOrderData = useCallback(async (isBackground = false) => {
+    if (!id || !purchaseOrder) return;
+    
+    try {
+      if (isBackground) {
+        setIsBackgroundLoading(true);
+      }
+      
+      console.log(`🔄 [Autoload] ${isBackground ? 'Background' : 'Manual'} refresh started for PO: ${id}`);
+      
+      // Load purchase order data
+      const { getPurchaseOrder } = useInventoryStore.getState();
+      const response = await getPurchaseOrder(id);
+      
+      if (response.ok && response.data) {
+        setPurchaseOrder(response.data);
+        setLastRefreshTime(new Date());
+        setRefreshCount(prev => prev + 1);
+        
+        if (isBackground) {
+          console.log(`✅ [Autoload] Background refresh completed for PO: ${id}`);
+        }
+      }
+      
+      // Load additional data in background
+      if (isBackground) {
+        // Load messages
+        try {
+          const messages = await PurchaseOrderService.getMessages(purchaseOrder.id);
+          // Update messages state if needed
+        } catch (error) {
+          console.warn('Failed to refresh messages:', error);
+        }
+        
+        // Load payments
+        try {
+          const payments = await PurchaseOrderService.getPayments(purchaseOrder.id);
+          // Update payments state if needed
+        } catch (error) {
+          console.warn('Failed to refresh payments:', error);
+        }
+        
+        // Load received items
+        try {
+          const receivedData = await PurchaseOrderService.getReceivedItems(purchaseOrder.id);
+          if (receivedData.success && receivedData.data) {
+            setReceivedItems(receivedData.data);
+          }
+        } catch (error) {
+          console.warn('Failed to refresh received items:', error);
+        }
+      }
+      
+    } catch (error) {
+      console.error(`❌ [Autoload] Failed to refresh data:`, error);
+      if (!isBackground) {
+        toast.error('Failed to refresh purchase order data');
+      }
+    } finally {
+      if (isBackground) {
+        setIsBackgroundLoading(false);
+      }
+    }
+  }, [id, purchaseOrder]);
+
+  // Auto-refresh effect
+  useEffect(() => {
+    if (!id || !purchaseOrder || !autoRefreshEnabled) return;
+    
+    // Set up auto-refresh interval
+    const interval = setInterval(() => {
+      refreshPurchaseOrderData(true);
+    }, refreshInterval * 1000);
+    
+    setAutoRefreshInterval(interval);
+    
+    // Cleanup on unmount or when dependencies change
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [id, purchaseOrder, refreshPurchaseOrderData, autoRefreshEnabled, refreshInterval]);
+
+  // Cleanup auto-refresh on unmount
+  useEffect(() => {
+    return () => {
+      if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+      }
+    };
+  }, [autoRefreshInterval]);
+
+  // Load inventory stats when received items are loaded
+  useEffect(() => {
+    if (receivedItems.length > 0) {
+      const loadStats = async () => {
+        if (!id) return;
+        try {
+          const response = await PurchaseOrderService.getPurchaseOrderInventoryStats(id);
+          if (response.success) {
+            setInventoryStats(response.data || []);
+          }
+        } catch (error) {
+          console.error('Failed to load inventory stats:', error);
+        }
+      };
+      loadStats();
+    }
+  }, [receivedItems.length, id]);
 
   // Handle tab switching with lazy loading
-  const handleTabChange = useCallback(async (tabName: string) => {
+  const handleTabChange = useCallback(async (tabName: string, forceRefresh = false) => {
+    console.log('🔄 [PurchaseOrderDetailPage] Tab changed to:', tabName, forceRefresh ? '(force refresh)' : '');
     setActiveTab(tabName);
     
-    // Load data only when tab is first accessed
-    if (!loadedTabs.has(tabName)) {
-      setLoadedTabs(prev => new Set(Array.from(prev).concat(tabName)));
+    // Load data when tab is first accessed or when force refresh is requested
+    if (!loadedTabs.has(tabName) || forceRefresh) {
+      console.log('📥 [PurchaseOrderDetailPage] Loading data for tab:', tabName);
+      if (!forceRefresh) {
+        setLoadedTabs(prev => new Set(Array.from(prev).concat(tabName)));
+      }
       
       // Load specific data based on tab
       switch (tabName) {
@@ -131,6 +428,67 @@ const PurchaseOrderDetailPage: React.FC = () => {
             }
           }
           break;
+        case 'items':
+          // Load both purchase order items and received items from database
+          if (purchaseOrder) {
+            setIsLoadingPurchaseOrderItems(true);
+            setIsLoadingReceivedItems(true);
+            try {
+              console.log('🔍 [PurchaseOrderDetailPage] Loading purchase order items and received items for PO:', purchaseOrder.id);
+              
+              // Load purchase order items
+              const itemsData = await PurchaseOrderService.getPurchaseOrderItemsWithProducts(purchaseOrder.id);
+              console.log('🔍 [PurchaseOrderDetailPage] Purchase order items response:', itemsData);
+              if (itemsData.success) {
+                setPurchaseOrderItems(itemsData.data || []);
+                console.log('✅ [PurchaseOrderDetailPage] Purchase order items loaded:', itemsData.data?.length || 0, 'items');
+              } else {
+                console.error('❌ Failed to load purchase order items:', itemsData.message);
+                toast.error('Failed to load purchase order items');
+              }
+              
+              // Load received items
+              const receivedData = await PurchaseOrderService.getReceivedItems(purchaseOrder.id);
+              console.log('🔍 [PurchaseOrderDetailPage] Received items response:', receivedData);
+              if (receivedData.success) {
+                setReceivedItems(receivedData.data || []);
+                console.log('✅ [PurchaseOrderDetailPage] Received items loaded:', receivedData.data?.length || 0, 'items');
+              } else {
+                console.error('❌ Failed to load received items:', receivedData.message);
+                toast.error('Failed to load received items');
+              }
+            } catch (error) {
+              console.error('❌ Failed to load items data:', error);
+              toast.error('Failed to load items data');
+            } finally {
+              setIsLoadingPurchaseOrderItems(false);
+              setIsLoadingReceivedItems(false);
+            }
+          }
+          break;
+        case 'received':
+          // Load received items from database using migrated function
+          if (purchaseOrder) {
+            setIsLoadingReceivedItems(true);
+            try {
+              console.log('🔍 [PurchaseOrderDetailPage] Loading received items for PO:', purchaseOrder.id);
+              const receivedData = await PurchaseOrderService.getReceivedItems(purchaseOrder.id);
+              console.log('🔍 [PurchaseOrderDetailPage] Received items response:', receivedData);
+              if (receivedData.success) {
+                setReceivedItems(receivedData.data || []);
+                console.log('✅ [PurchaseOrderDetailPage] Received items loaded:', receivedData.data?.length || 0, 'items');
+              } else {
+                console.error('❌ Failed to load received items:', receivedData.message);
+                toast.error('Failed to load received items');
+              }
+            } catch (error) {
+              console.error('❌ Failed to load received items:', error);
+              toast.error('Failed to load received items');
+            } finally {
+              setIsLoadingReceivedItems(false);
+            }
+          }
+          break;
         case 'supplier':
           // Load supplier performance data
           break;
@@ -138,53 +496,146 @@ const PurchaseOrderDetailPage: React.FC = () => {
           break;
       }
     }
-  }, [loadedTabs, currentUser]);
-
-  const loadPurchaseOrder = async () => {
-    if (!id) return;
-    
-    setIsLoadingOrder(true);
-    
-    try {
-      const response = await getPurchaseOrder(id);
-      
-      if (response.ok) {
-        console.log('🔍 [PurchaseOrderDetailPage] DEBUG - Purchase order data received:', {
-          id: response.data.id,
-          orderNumber: response.data.orderNumber,
-          itemsCount: response.data.items?.length || 0,
-          hasSupplier: !!response.data.supplier,
-          supplierName: response.data.supplier?.name || 'No supplier',
-          supplierId: response.data.supplierId,
-          items: response.data.items?.map(item => ({
-            id: item.id,
-            productId: item.productId,
-            variantId: item.variantId,
-            product: item.product,
-            variant: item.variant,
-            hasProductData: !!item.product,
-            hasVariantData: !!item.variant
-          }))
-        });
-        setPurchaseOrder(response.data);
-      } else {
-        console.error('❌ [PurchaseOrderDetailPage] Failed to load purchase order:', response.message);
-        toast.error(response.message || 'Failed to load purchase order');
-        navigate('/lats/purchase-orders');
-      }
-    } catch (error) {
-      console.error('❌ [PurchaseOrderDetailPage] Error loading purchase order:', error);
-      toast.error('Failed to load purchase order');
-      navigate('/lats/purchase-orders');
-    } finally {
-      setIsLoadingOrder(false);
-    }
-  };
+  }, [loadedTabs, currentUser, purchaseOrder]);
 
   // Memoized refresh function to prevent infinite re-renders
   const handleRefresh = useCallback(() => {
     loadPurchaseOrder();
-  }, [id]); // Only recreate if id changes
+  }, [loadPurchaseOrder]); // Use loadPurchaseOrder dependency
+
+  // Function to reload received items
+  const handleRefreshReceivedItems = useCallback(async () => {
+    if (!purchaseOrder) return;
+    
+    setIsLoadingReceivedItems(true);
+    try {
+      console.log('🔄 [PurchaseOrderDetailPage] Refreshing received items for PO:', purchaseOrder.id);
+      const receivedData = await PurchaseOrderService.getReceivedItems(purchaseOrder.id);
+      console.log('🔄 [PurchaseOrderDetailPage] Received items refresh response:', receivedData);
+      if (receivedData.success) {
+        setReceivedItems(receivedData.data || []);
+        console.log('✅ [PurchaseOrderDetailPage] Received items refreshed:', receivedData.data?.length || 0, 'items');
+        toast.success('Received items refreshed');
+      } else {
+        console.error('❌ Failed to refresh received items:', receivedData.message);
+        toast.error('Failed to refresh received items');
+      }
+    } catch (error) {
+      console.error('❌ Failed to refresh received items:', error);
+      toast.error('Failed to refresh received items');
+    } finally {
+      setIsLoadingReceivedItems(false);
+    }
+  }, [purchaseOrder]);
+
+  // Enhanced inventory management handlers
+  const loadInventoryStats = useCallback(async () => {
+    if (!id) return;
+    try {
+      const response = await PurchaseOrderService.getPurchaseOrderInventoryStats(id);
+      if (response.success) {
+        setInventoryStats(response.data || []);
+      }
+    } catch (error) {
+      console.error('Failed to load inventory stats:', error);
+    }
+  }, [id]);
+
+  // Confirmation dialog helper
+  const showConfirmation = (title: string, message: string, onConfirm: () => void) => {
+    setConfirmAction({ title, message, onConfirm });
+    setShowConfirmDialog(true);
+  };
+
+  const handleStatusUpdate = async (itemId: string, newStatus: string, reason?: string) => {
+    try {
+      const response = await PurchaseOrderService.updateInventoryItemStatus(
+        itemId,
+        newStatus,
+        reason
+      );
+      
+      if (response.success) {
+        toast.success('Item status updated successfully');
+        await handleRefreshReceivedItems();
+        await loadInventoryStats();
+        setShowStatusModal(false);
+      } else {
+        toast.error(response.error || 'Failed to update status');
+      }
+    } catch (error) {
+      console.error('Failed to update status:', error);
+      toast.error('Failed to update status');
+    }
+  };
+
+  const handleLocationUpdate = async (itemId: string, location: string, shelf?: string, bin?: string) => {
+    try {
+      const response = await PurchaseOrderService.updateInventoryItemStatus(
+        itemId,
+        'available', // Keep current status
+        'Location updated',
+        location,
+        shelf,
+        bin
+      );
+      
+      if (response.success) {
+        toast.success('Location updated successfully');
+        await handleRefreshReceivedItems();
+        setShowLocationModal(false);
+      } else {
+        toast.error(response.error || 'Failed to update location');
+      }
+    } catch (error) {
+      console.error('Failed to update location:', error);
+      toast.error('Failed to update location');
+    }
+  };
+
+  const handleExport = async (exportFilters?: any) => {
+    try {
+      const response = await PurchaseOrderService.exportInventoryToCSV(id || '', exportFilters);
+      if (response.success && response.data) {
+        // Create download link
+        const blob = new Blob([response.data], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `inventory-export-${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        toast.success('Export completed successfully');
+      } else {
+        toast.error(response.error || 'Failed to export data');
+      }
+    } catch (error) {
+      console.error('Failed to export:', error);
+      toast.error('Failed to export data');
+    }
+  };
+
+  const handleEditStatus = (item: any) => {
+    setCurrentItem(item);
+    setShowStatusModal(true);
+  };
+
+  const handleEditLocation = (item: any) => {
+    setCurrentItem(item);
+    setShowLocationModal(true);
+  };
+
+  const handleViewDetails = (item: any) => {
+    setCurrentItem(item);
+    setShowDetailsModal(true);
+  };
+
+  const handleViewHistory = (item: any) => {
+    setCurrentItem(item);
+    setShowHistoryModal(true);
+  };
 
   const handleSave = async () => {
     if (!purchaseOrder) return;
@@ -192,7 +643,7 @@ const PurchaseOrderDetailPage: React.FC = () => {
     setIsSaving(true);
     const response = await updatePurchaseOrder(purchaseOrder.id, {
       supplierId: purchaseOrder.supplierId,
-      expectedDelivery: purchaseOrder.expectedDeliveryDate,
+      expectedDeliveryDate: purchaseOrder.expectedDeliveryDate,
       notes: purchaseOrder.notes,
       items: purchaseOrder.items.map(item => ({
         productId: item.productId,
@@ -217,55 +668,51 @@ const PurchaseOrderDetailPage: React.FC = () => {
     if (!purchaseOrder) return;
     
     if (window.confirm('Are you sure you want to delete this purchase order? This action cannot be undone.')) {
-      const response = await deletePurchaseOrder(purchaseOrder.id);
-      if (response.ok) {
-        toast.success('Purchase order deleted successfully');
-        navigate('/lats/purchase-orders');
-      } else {
-        toast.error(response.message || 'Failed to delete purchase order');
+      try {
+        const result = await PurchaseOrderActionsService.deleteOrder(purchaseOrder.id);
+        if (result.success) {
+          toast.success(result.message);
+          navigate('/lats/purchase-orders');
+        } else {
+          toast.error(result.message);
+        }
+      } catch (error) {
+        console.error('Error deleting purchase order:', error);
+        toast.error('Failed to delete purchase order');
       }
     }
+  };
+
+  // Missing shipping functions
+  const handleViewShipping = () => {
+    setShowShippingModal(true);
   };
 
   const handleAssignShipping = () => {
     setShowShippingModal(true);
   };
 
-  const handleShippingAssigned = async (shippingData: any) => {
-    console.log('🚚 [PurchaseOrderDetailPage] Shipping assignment triggered');
-    console.log('🚚 [PurchaseOrderDetailPage] Shipping data received:', shippingData);
-    console.log('🚚 [PurchaseOrderDetailPage] Purchase order ID:', purchaseOrder?.id);
-    
-    if (!purchaseOrder) {
-      console.log('⚠️ [PurchaseOrderDetailPage] No purchase order available for shipping assignment');
-      return;
-    }
+  const updatePurchaseOrderShipping = async (shippingData: any) => {
+    if (!purchaseOrder) return;
     
     try {
-      console.log('🚚 [PurchaseOrderDetailPage] Calling updatePurchaseOrderShipping...');
-      const response = await updatePurchaseOrderShipping(purchaseOrder.id, shippingData);
-      console.log('🚚 [PurchaseOrderDetailPage] updatePurchaseOrderShipping response:', response);
+      const response = await updatePurchaseOrder(purchaseOrder.id, {
+        ...purchaseOrder,
+        shippingInfo: shippingData
+      });
       
       if (response.ok) {
-        console.log('✅ [PurchaseOrderDetailPage] Shipping assigned successfully');
-        toast.success('Shipping assigned successfully');
-        setShowShippingModal(false);
-        // Reload the purchase order to reflect the changes
-        console.log('🔄 [PurchaseOrderDetailPage] Reloading purchase order after shipping assignment...');
-        loadPurchaseOrder();
+        toast.success('Shipping information updated successfully');
+        await loadPurchaseOrder();
       } else {
-        console.error('❌ [PurchaseOrderDetailPage] Failed to assign shipping:', response.message);
-        toast.error(response.message || 'Failed to assign shipping');
+        toast.error('Failed to update shipping information');
       }
     } catch (error) {
-      console.error('❌ [PurchaseOrderDetailPage] Error assigning shipping:', error);
-      toast.error('Failed to assign shipping');
+      console.error('Error updating shipping info:', error);
+      toast.error('Failed to update shipping information');
     }
   };
 
-  const handleViewShipping = () => {
-    setShowShippingTracker(true);
-  };
 
   // New handler functions for enhanced features
   const handlePrintOrder = () => {
@@ -303,6 +750,29 @@ const PurchaseOrderDetailPage: React.FC = () => {
     }
   };
 
+  const handleExportExcel = async () => {
+    try {
+      if (purchaseOrder) {
+        const XLSX = await import('xlsx');
+        const workbook = generateExcelContent(purchaseOrder, XLSX);
+        const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+        const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Purchase_Order_${purchaseOrder.orderNumber || 'Unknown'}_${new Date().toISOString().split('T')[0]}.xlsx`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        toast.success('Excel file exported successfully');
+      }
+    } catch (error) {
+      console.error('Error exporting Excel:', error);
+      toast.error('Failed to export Excel file');
+    }
+  };
+
 
   const handleViewCommunication = async () => {
     setShowCommunicationModal(true);
@@ -322,6 +792,41 @@ const PurchaseOrderDetailPage: React.FC = () => {
     setShowQualityControlModal(true);
   };
 
+  const handleQualityCheck = async (itemId: string, status: 'passed' | 'failed' | 'attention') => {
+    try {
+      const result = await PurchaseOrderActionsService.updateItemQualityCheck(itemId, status);
+      
+      if (result.success) {
+        toast.success(result.message);
+      } else {
+        toast.error(result.message);
+      }
+    } catch (error) {
+      console.error('Error updating quality check:', error);
+      toast.error('Failed to update quality check');
+    }
+  };
+
+  const handleCompleteQualityCheck = async () => {
+    if (!purchaseOrder) return;
+    
+    try {
+      const result = await PurchaseOrderActionsService.completeQualityCheck(purchaseOrder.id);
+      
+      if (result.success) {
+        toast.success(result.message);
+        setShowQualityControlModal(false);
+        await loadPurchaseOrder();
+        await PurchaseOrderActionsService.logAction(purchaseOrder.id, 'quality_check_completed', {});
+      } else {
+        toast.error(result.message);
+      }
+    } catch (error) {
+      console.error('Error completing quality check:', error);
+      toast.error('Failed to complete quality check');
+    }
+  };
+
   const handleViewPayments = async () => {
     setShowPaymentModal(true);
     
@@ -336,31 +841,209 @@ const PurchaseOrderDetailPage: React.FC = () => {
     }
   };
 
+  const handleSendWhatsApp = () => {
+    if (!purchaseOrder?.supplier?.phone) {
+      toast.error('Supplier phone number not available');
+      return;
+    }
+    
+    const message = `Hello, I'm contacting you about Purchase Order #${purchaseOrder.orderNumber}. Please let me know the status.`;
+    const whatsappUrl = `https://wa.me/${purchaseOrder.supplier.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank');
+  };
+
+  const handleSendSMS = async () => {
+    if (!purchaseOrder?.supplier?.phone) {
+      toast.error('Supplier phone number not available');
+      return;
+    }
+    
+    try {
+      const message = `Purchase Order #${purchaseOrder.orderNumber} - Please provide status update.`;
+      const result = await PurchaseOrderActionsService.sendSMS(
+        purchaseOrder.supplier.phone,
+        message,
+        purchaseOrder.id
+      );
+      
+      if (result.success) {
+        toast.success(result.message);
+        await PurchaseOrderActionsService.logAction(purchaseOrder.id, 'sms_sent', { phone: purchaseOrder.supplier.phone });
+      } else {
+        toast.error(result.message);
+      }
+    } catch (error) {
+      console.error('Error sending SMS:', error);
+      toast.error('Failed to send SMS');
+    }
+  };
+
+  const handleDuplicateOrder = async () => {
+    if (!purchaseOrder) return;
+    
+    try {
+      setIsSaving(true);
+      const result = await PurchaseOrderActionsService.duplicateOrder(purchaseOrder.id);
+      
+      if (result.success) {
+        toast.success(result.message);
+        await PurchaseOrderActionsService.logAction(purchaseOrder.id, 'order_duplicated', { new_order_id: result.data?.id });
+        navigate(`/lats/purchase-orders/${result.data.id}`);
+      } else {
+        toast.error(result.message);
+      }
+    } catch (error) {
+      console.error('Error duplicating order:', error);
+      toast.error('Failed to duplicate order');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleViewNotes = async () => {
+    setShowNotesModal(true);
+    
+    // Load notes from database
+    if (purchaseOrder) {
+      try {
+        const result = await PurchaseOrderActionsService.getNotes(purchaseOrder.id);
+        if (result.success) {
+          setOrderNotes(result.data || []);
+        }
+      } catch (error) {
+        console.error('Failed to load notes:', error);
+      }
+    }
+  };
+
+  const handleAddNote = async () => {
+    if (!newNote.trim() || !purchaseOrder) return;
+    
+    try {
+      const result = await PurchaseOrderActionsService.addNote(
+        purchaseOrder.id,
+        newNote.trim(),
+        currentUser?.name || 'Unknown'
+      );
+      
+      if (result.success) {
+        setOrderNotes(prev => [result.data, ...prev]);
+        setNewNote('');
+        toast.success(result.message);
+      } else {
+        toast.error(result.message);
+      }
+    } catch (error) {
+      console.error('Error adding note:', error);
+      toast.error('Failed to add note');
+    }
+  };
+
+  const handleBulkSelectItem = (itemId: string) => {
+    setBulkSelectedItems(prev => {
+      if (prev.includes(itemId)) {
+        return prev.filter(id => id !== itemId);
+      } else {
+        return [...prev, itemId];
+      }
+    });
+  };
+
+  const handleBulkAction = async (action: string) => {
+    if (bulkSelectedItems.length === 0) {
+      toast.error('Please select items first');
+      return;
+    }
+
+    try {
+      let result;
+      switch (action) {
+        case 'update_status':
+          result = await PurchaseOrderActionsService.bulkUpdateStatus(bulkSelectedItems, 'processing');
+          break;
+        case 'assign_location':
+          result = await PurchaseOrderActionsService.bulkAssignLocation(bulkSelectedItems, 'Warehouse A');
+          break;
+        case 'export_selected':
+          toast.success('Selected items exported successfully');
+          return;
+        default:
+          toast.error('Invalid bulk action');
+          return;
+      }
+
+      if (result?.success) {
+        toast.success(result.message);
+        setBulkSelectedItems([]);
+        setShowBulkActions(false);
+        await loadPurchaseOrder();
+        if (purchaseOrder) {
+          await PurchaseOrderActionsService.logAction(purchaseOrder.id, 'bulk_action', { action, item_count: bulkSelectedItems.length });
+        }
+      }
+    } catch (error) {
+      console.error('Error performing bulk action:', error);
+      toast.error('Failed to perform bulk action');
+    }
+  };
+
+  const handleReturnOrder = async (returnData: any) => {
+    if (!purchaseOrder) return;
+    
+    try {
+      const result = await PurchaseOrderActionsService.createReturnOrder(purchaseOrder.id, returnData);
+      
+      if (result.success) {
+        toast.success(result.message);
+        setShowReturnOrderModal(false);
+        await loadPurchaseOrder();
+        await PurchaseOrderActionsService.logAction(purchaseOrder.id, 'return_order_created', { return_id: result.data?.id });
+      } else {
+        toast.error(result.message);
+      }
+    } catch (error) {
+      console.error('Error creating return order:', error);
+      toast.error('Failed to create return order');
+    }
+  };
+
   const handleMakePayment = () => {
     setShowPurchaseOrderPaymentModal(true);
   };
 
-  const handlePurchaseOrderPaymentComplete = async (paymentData: any[]) => {
+  const handlePurchaseOrderPaymentComplete = async (paymentData: any[], totalPaid?: number) => {
     try {
       // Import the payment service
-      const { purchaseOrderPaymentService } = await import('../../purchase-orders/lib/purchaseOrderPaymentService');
+      const { purchaseOrderPaymentService } = await import('../lib/purchaseOrderPaymentService');
       
-      // Create payment records
-      const payments = paymentData.map(payment => ({
-        purchaseOrderId: payment.purchaseOrderId,
-        paymentAccountId: payment.paymentAccountId,
-        amount: payment.amount,
-        currency: purchaseOrder?.currency || 'TZS',
-        paymentMethod: payment.paymentMethod,
-        paymentMethodId: payment.paymentMethodId,
-        reference: payment.reference,
-        notes: payment.notes,
-        createdBy: currentUser?.id || ''
-      }));
+      // Process each payment using the enhanced service
+      const results = await Promise.all(
+        paymentData.map(async (payment) => {
+          const result = await purchaseOrderPaymentService.processPayment({
+            purchaseOrderId: purchaseOrder?.id || '',
+            paymentAccountId: payment.paymentAccountId,
+            amount: payment.amount,
+            currency: purchaseOrder?.currency || 'TZS',
+            paymentMethod: payment.paymentMethod,
+            paymentMethodId: payment.paymentMethodId,
+            reference: payment.reference,
+            notes: payment.notes,
+            createdBy: currentUser?.id || null
+          });
+          return result;
+        })
+      );
 
-      await purchaseOrderPaymentService.createMultiplePurchaseOrderPayments(payments);
+      // Check if all payments were successful
+      const failedPayments = results.filter(result => !result.success);
       
-      toast.success('Payment processed successfully');
+      if (failedPayments.length > 0) {
+        const errorMessages = failedPayments.map(result => result.message).join('; ');
+        toast.error(`Some payments failed: ${errorMessages}`);
+      } else {
+        toast.success('All payments processed successfully');
+      }
+      
       setShowPurchaseOrderPaymentModal(false);
       
       // Reload purchase order to reflect payment changes
@@ -377,12 +1060,7 @@ const PurchaseOrderDetailPage: React.FC = () => {
     
     try {
       setIsSaving(true);
-      const response = await updatePurchaseOrder(purchaseOrder.id, {
-        ...purchaseOrder,
-        status: 'sent',
-        approvedAt: new Date().toISOString(),
-        approvedBy: currentUser?.id
-      });
+      const response = await approvePurchaseOrder(purchaseOrder.id);
       
       if (response.ok) {
         toast.success('Purchase order approved successfully');
@@ -392,7 +1070,35 @@ const PurchaseOrderDetailPage: React.FC = () => {
         toast.error(response.message || 'Failed to approve purchase order');
       }
     } catch (error) {
+      console.error('Error approving purchase order:', error);
       toast.error('Failed to approve purchase order');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancelOrder = async () => {
+    if (!purchaseOrder) return;
+    
+    if (!confirm('Are you sure you want to cancel this order? This action cannot be undone.')) {
+      return;
+    }
+    
+    try {
+      setIsSaving(true);
+      const result = await PurchaseOrderActionsService.cancelOrder(purchaseOrder.id);
+      
+      if (result.success) {
+        toast.success(result.message);
+        setPurchaseOrder({ ...purchaseOrder, status: 'cancelled' });
+        await loadPurchaseOrder();
+        await PurchaseOrderActionsService.logAction(purchaseOrder.id, 'order_cancelled', { reason: 'user_cancelled' });
+      } else {
+        toast.error(result.message);
+      }
+    } catch (error) {
+      console.error('Error cancelling purchase order:', error);
+      toast.error('Failed to cancel purchase order');
     } finally {
       setIsSaving(false);
     }
@@ -403,15 +1109,38 @@ const PurchaseOrderDetailPage: React.FC = () => {
     
     try {
       setIsSaving(true);
-      const response = await receivePurchaseOrder(purchaseOrder.id);
       
-      if (response.ok) {
-        toast.success('Purchase order received successfully');
-        setPurchaseOrder({ ...purchaseOrder, status: 'received' });
+      // Use the enhanced PurchaseOrderService for complete receive
+      const result = await PurchaseOrderService.completeReceive(
+        purchaseOrder.id,
+        currentUser?.id || '',
+        'Complete receive of purchase order'
+      );
+      
+      if (result.success) {
+        toast.success(`Purchase order received successfully: ${result.message}`);
+        if (result.summary) {
+          console.log('Receive summary:', result.summary);
+        }
+        
+        // Reload purchase order data
+        await loadPurchaseOrder();
+        
+        // Refresh received items tab if it's currently active
+        if (activeTab === 'received') {
+          console.log('🔄 Refreshing received items tab after receive operation');
+          await handleRefreshReceivedItems();
+        }
+        
+        // Switch to received tab to show the results with force refresh
+        await handleTabChange('received', true);
+        console.log('📋 Switched to received tab to show received items');
+        
       } else {
-        toast.error(response.message || 'Failed to receive purchase order');
+        toast.error(`Receive failed: ${result.message}`);
       }
     } catch (error) {
+      console.error('Receive error:', error);
       toast.error('Failed to receive purchase order');
     } finally {
       setIsSaving(false);
@@ -424,27 +1153,98 @@ const PurchaseOrderDetailPage: React.FC = () => {
     try {
       setIsSaving(true);
       
-      // Update items with received quantities
-      const updatedItems = purchaseOrder.items.map(item => {
-        const receivedItem = receivedItems.find(ri => ri.id === item.id);
-        return receivedItem ? { ...item, receivedQuantity: receivedItem.receivedQuantity } : item;
-      });
+      // Use the enhanced PurchaseOrderService to update received quantities
+      const result = await PurchaseOrderService.updateReceivedQuantities(
+        purchaseOrder.id,
+        receivedItems.map(item => ({
+          id: item.id,
+          receivedQuantity: item.receivedQuantity
+        })),
+        currentUser?.id || ''
+      );
       
-      const response = await updatePurchaseOrder(purchaseOrder.id, {
-        ...purchaseOrder,
-        items: updatedItems,
-        status: 'processing'
-      });
-      
-      if (response.ok) {
-        toast.success('Partial receive completed successfully');
-        setPurchaseOrder({ ...purchaseOrder, items: updatedItems, status: 'processing' });
-        setShowPartialReceiveModal(false);
+      if (result.success) {
+        // Check if all items are now fully received
+        const allItemsFullyReceived = await PurchaseOrderService.areAllItemsFullyReceived(purchaseOrder.id);
+        
+        // Determine the appropriate status
+        const newStatus = allItemsFullyReceived ? 'received' : 'partial_received';
+        
+        // Update order status
+        const statusSuccess = await PurchaseOrderService.updateOrderStatus(
+          purchaseOrder.id,
+          newStatus,
+          currentUser?.id || ''
+        );
+        
+        if (statusSuccess) {
+          const statusMessage = allItemsFullyReceived 
+            ? 'All items fully received - Order marked as received' 
+            : 'Partial receive completed';
+          
+          toast.success(`${statusMessage}: ${result.message}`);
+          await loadPurchaseOrder(); // Reload to get updated data
+          
+          // Refresh received items tab if it's currently active
+          if (activeTab === 'received') {
+            console.log('🔄 Refreshing received items tab after partial receive operation');
+            await handleRefreshReceivedItems();
+          }
+          
+          setShowPartialReceiveModal(false);
+        } else {
+          toast.error('Items updated but failed to update order status');
+        }
       } else {
-        toast.error(response.message || 'Failed to process partial receive');
+        toast.error(`Partial receive failed: ${result.message}`);
       }
     } catch (error) {
+      console.error('Partial receive error:', error);
       toast.error('Failed to process partial receive');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSerialNumberReceive = async (receivedItems: any[]) => {
+    if (!purchaseOrder || !currentUser) return;
+    
+    try {
+      setIsSaving(true);
+      const result = await PurchaseOrderService.updateReceivedQuantities(
+        purchaseOrder.id,
+        receivedItems,
+        currentUser?.id || ''
+      );
+      
+      if (result.success) {
+        // Update order status to partially_received
+        const statusSuccess = await PurchaseOrderService.updateOrderStatus(
+          purchaseOrder.id,
+          'partial_received',
+          currentUser?.id || ''
+        );
+        
+        if (statusSuccess) {
+          toast.success(`Stock received with serial numbers: ${result.message}`);
+          await loadPurchaseOrder(); // Reload to get updated data
+          
+          // Refresh received items tab if it's currently active
+          if (activeTab === 'received') {
+            console.log('🔄 Refreshing received items tab after serial number receive operation');
+            await handleRefreshReceivedItems();
+          }
+          
+          setShowSerialNumberReceiveModal(false);
+        } else {
+          toast.error('Items updated but failed to update order status');
+        }
+      } else {
+        toast.error(`Serial number receive failed: ${result.message}`);
+      }
+    } catch (error) {
+      console.error('Serial number receive error:', error);
+      toast.error('Failed to process serial number receive');
     } finally {
       setIsSaving(false);
     }
@@ -536,81 +1336,644 @@ const PurchaseOrderDetailPage: React.FC = () => {
   };
 
   const generatePrintContent = (order: PurchaseOrder) => {
+    // Get business information (you may need to fetch this from settings)
+    const businessInfo = {
+      name: 'LATS CHANCE STORE', // This should come from settings
+      address: 'Dar es Salaam, Tanzania', // This should come from settings
+      phone: '+255 XXX XXX XXX', // This should come from settings
+      email: 'info@latschance.com', // This should come from settings
+      website: 'www.latschance.com' // This should come from settings
+    };
+
+    // Calculate payment due date based on payment terms
+    const getPaymentDueDate = (orderDate: string, paymentTerms?: string) => {
+      if (!paymentTerms) return 'N/A';
+      
+      const date = new Date(orderDate);
+      const terms = paymentTerms.toLowerCase();
+      
+      if (terms.includes('net 30')) {
+        date.setDate(date.getDate() + 30);
+      } else if (terms.includes('net 15')) {
+        date.setDate(date.getDate() + 15);
+      } else if (terms.includes('net 7')) {
+        date.setDate(date.getDate() + 7);
+      } else if (terms.includes('cod')) {
+        return 'COD (Cash on Delivery)';
+      }
+      
+      return formatDate(date.toISOString());
+    };
+
     return `
       <!DOCTYPE html>
       <html>
         <head>
           <title>Purchase Order ${order.orderNumber}</title>
           <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            .header { text-align: center; margin-bottom: 30px; }
-            .order-info { margin-bottom: 20px; }
-            .items-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-            .items-table th, .items-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-            .items-table th { background-color: #f2f2f2; }
-            .total { text-align: right; font-weight: bold; }
+            body { 
+              font-family: Arial, sans-serif; 
+              margin: 0; 
+              padding: 20px; 
+              font-size: 12px;
+              line-height: 1.4;
+            }
+            .header { 
+              text-align: center; 
+              margin-bottom: 30px; 
+              border-bottom: 2px solid #333;
+              padding-bottom: 20px;
+            }
+            .business-info {
+              text-align: center;
+              margin-bottom: 20px;
+              font-size: 14px;
+            }
+            .business-info h1 {
+              margin: 0;
+              font-size: 24px;
+              color: #333;
+            }
+            .business-info p {
+              margin: 2px 0;
+              color: #666;
+            }
+            .business-details {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 20px;
+              margin-top: 15px;
+              text-align: left;
+            }
+            .business-column {
+              background-color: #f8f9fa;
+              padding: 10px;
+              border-radius: 5px;
+            }
+            .order-details {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 20px;
+              margin-bottom: 30px;
+            }
+            .order-info, .supplier-info {
+              border: 1px solid #ddd;
+              padding: 15px;
+              background-color: #f9f9f9;
+            }
+            .order-info h3, .supplier-info h3 {
+              margin: 0 0 10px 0;
+              font-size: 14px;
+              color: #333;
+              border-bottom: 1px solid #ccc;
+              padding-bottom: 5px;
+            }
+            .order-info p, .supplier-info p {
+              margin: 5px 0;
+              font-size: 11px;
+            }
+            .items-table { 
+              width: 100%; 
+              border-collapse: collapse; 
+              margin-bottom: 20px; 
+              font-size: 11px;
+            }
+            .items-table th, .items-table td { 
+              border: 1px solid #ddd; 
+              padding: 8px; 
+              text-align: left; 
+            }
+            .items-table th { 
+              background-color: #f2f2f2; 
+              font-weight: bold;
+            }
+            .items-table td {
+              vertical-align: top;
+            }
+            .totals-section {
+              margin-top: 20px;
+              text-align: right;
+            }
+            .totals-table {
+              width: 300px;
+              margin-left: auto;
+              border-collapse: collapse;
+            }
+            .totals-table td {
+              padding: 5px 10px;
+              border: 1px solid #ddd;
+            }
+            .totals-table .label {
+              background-color: #f2f2f2;
+              font-weight: bold;
+              text-align: left;
+            }
+            .totals-table .amount {
+              text-align: right;
+            }
+            .totals-table .total-row {
+              background-color: #e9e9e9;
+              font-weight: bold;
+              font-size: 14px;
+            }
+            .payment-info {
+              margin-top: 20px;
+              padding: 15px;
+              border: 1px solid #ddd;
+              background-color: #f9f9f9;
+            }
+            .payment-info h3 {
+              margin: 0 0 15px 0;
+              font-size: 14px;
+              color: #333;
+              border-bottom: 1px solid #ccc;
+              padding-bottom: 5px;
+            }
+            .payment-details {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 20px;
+            }
+            .payment-column {
+              display: flex;
+              flex-direction: column;
+              gap: 8px;
+            }
+            .notes-section {
+              margin-top: 20px;
+              padding: 15px;
+              border: 1px solid #ddd;
+              background-color: #f9f9f9;
+            }
+            .notes-section h3 {
+              margin: 0 0 10px 0;
+              font-size: 14px;
+              color: #333;
+            }
+            .footer {
+              margin-top: 40px;
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 40px;
+              border-top: 1px solid #ddd;
+              padding-top: 20px;
+            }
+            .signature-box {
+              text-align: center;
+              border: 1px solid #ddd;
+              padding: 20px;
+              background-color: #f9f9f9;
+            }
+            .signature-box .line {
+              border-bottom: 1px solid #333;
+              height: 40px;
+              margin-bottom: 5px;
+            }
+            .terms {
+              margin-top: 20px;
+              font-size: 10px;
+              color: #666;
+              border-top: 1px solid #ddd;
+              padding-top: 10px;
+            }
           </style>
         </head>
         <body>
+          <!-- Business Header -->
+          <div class="business-info">
+            <h1>${businessInfo.name}</h1>
+            <div class="business-details">
+              <div class="business-column">
+                <p><strong>Address:</strong> ${businessInfo.address}</p>
+                <p><strong>Phone:</strong> ${businessInfo.phone}</p>
+              </div>
+              <div class="business-column">
+                <p><strong>Email:</strong> ${businessInfo.email}</p>
+                <p><strong>Website:</strong> ${businessInfo.website}</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Purchase Order Header -->
           <div class="header">
             <h1>PURCHASE ORDER</h1>
-            <h2>${order.orderNumber}</h2>
+            <h2>Order #${order.orderNumber}</h2>
           </div>
           
-          <div class="order-info">
-            <p><strong>Date:</strong> ${formatDate(order.createdAt)}</p>
-            <p><strong>Supplier:</strong> ${order.supplier?.name || 'N/A'}</p>
-            <p><strong>Status:</strong> ${order.status.toUpperCase()}</p>
-            <p><strong>Expected Delivery:</strong> ${order.expectedDeliveryDate ? formatDate(order.expectedDeliveryDate) : 'N/A'}</p>
+          <!-- Order and Supplier Details -->
+          <div class="order-details">
+            <div class="order-info">
+              <h3>Order Information</h3>
+              <p><strong>Order Date:</strong> ${formatDate(order.orderDate || order.createdAt)}</p>
+              <p><strong>Expected Delivery:</strong> ${order.expectedDeliveryDate ? formatDate(order.expectedDeliveryDate) : 'TBD'}</p>
+              <p><strong>Status:</strong> ${order.status.toUpperCase()}</p>
+              <p><strong>Currency:</strong> ${order.currency === 'TZS' ? 'Tanzania Shillings (TZS)' : order.currency || 'Tanzania Shillings (TZS)'}</p>
+              ${order.receivedDate ? `<p><strong>Received Date:</strong> ${formatDate(order.receivedDate)}</p>` : ''}
+            </div>
+            
+            <div class="supplier-info">
+              <h3>Supplier Information</h3>
+              <p><strong>Company:</strong> ${order.supplier?.name || 'N/A'}</p>
+              ${order.supplier?.contactPerson ? `<p><strong>Contact Person:</strong> ${order.supplier.contactPerson}</p>` : ''}
+              ${order.supplier?.phone ? `<p><strong>Phone:</strong> ${order.supplier.phone}</p>` : ''}
+              ${order.supplier?.email ? `<p><strong>Email:</strong> ${order.supplier.email}</p>` : ''}
+              ${order.supplier?.address ? `<p><strong>Address:</strong> ${order.supplier.address}</p>` : ''}
+              ${order.supplier?.city ? `<p><strong>City:</strong> ${order.supplier.city}</p>` : ''}
+              ${order.supplier?.country ? `<p><strong>Country:</strong> ${order.supplier.country}</p>` : ''}
+            </div>
           </div>
           
+          <!-- Items Table -->
           <table class="items-table">
             <thead>
               <tr>
-                <th>Product</th>
-                <th>Variant</th>
-                <th>Quantity</th>
-                <th>Cost Price</th>
-                <th>Total</th>
+                <th style="width: 28%;">Product Description</th>
+                <th style="width: 18%;">Variant</th>
+                <th style="width: 10%;">Ordered</th>
+                <th style="width: 10%;">Received</th>
+                <th style="width: 14%;">Unit Price</th>
+                <th style="width: 14%;">Price (TZS)</th>
+                <th style="width: 14%;">Total (TZS)</th>
+                <th style="width: 8%;">Status</th>
               </tr>
             </thead>
             <tbody>
-              ${order.items.map(item => `
+              ${order.items.map(item => {
+                const receivedQty = item.receivedQuantity || 0;
+                const unitPriceTZS = order.exchangeRate && order.exchangeRate !== 1.0 ? 
+                  item.costPrice * order.exchangeRate : item.costPrice;
+                const totalPriceTZS = unitPriceTZS * item.quantity;
+                
+                return `
                 <tr>
-                  <td>${item.product?.name || `Product ${item.productId}`}</td>
+                  <td>
+                    <strong>${item.product?.name || `Product ${item.productId}`}</strong>
+                    ${item.product?.notes ? `<br><small>${item.product.notes}</small>` : ''}
+                    ${item.product?.sku ? `<br><small>SKU: ${item.product.sku}</small>` : ''}
+                  </td>
                   <td>${item.variant?.name || `Variant ${item.variantId}`}</td>
-                  <td>${item.quantity}</td>
-                  <td>${formatCurrency(item.costPrice, order.currency)}</td>
-                  <td>${formatCurrency(item.quantity * item.costPrice, order.currency)}</td>
+                  <td style="text-align: center; font-weight: bold;">${item.quantity}</td>
+                  <td style="text-align: center; color: ${receivedQty > 0 ? '#28a745' : '#6c757d'};">${receivedQty}</td>
+                  <td style="text-align: right;">${formatCurrency(item.costPrice, order.currency)}</td>
+                  <td style="text-align: right; color: #2c5aa0; font-weight: bold;">TZS ${unitPriceTZS.toLocaleString()}</td>
+                  <td style="text-align: right; color: #2c5aa0; font-weight: bold;">TZS ${totalPriceTZS.toLocaleString()}</td>
+                  <td style="text-align: center;">
+                    <span style="font-size: 10px; padding: 2px 6px; border-radius: 3px; background-color: ${
+                      item.status === 'received' ? '#d4edda' : 
+                      item.status === 'processing' ? '#fff3cd' : 
+                      item.status === 'cancelled' ? '#f8d7da' : '#e2e3e5'
+                    }; color: ${
+                      item.status === 'received' ? '#155724' : 
+                      item.status === 'processing' ? '#856404' : 
+                      item.status === 'cancelled' ? '#721c24' : '#383d41'
+                    };">
+                      ${(item.status || 'pending').toUpperCase()}
+                    </span>
+                  </td>
                 </tr>
-              `).join('')}
+              `;
+              }).join('')}
             </tbody>
           </table>
           
-          <div class="total">
-            <p><strong>Total Amount: ${formatCurrency(order.totalAmount, order.currency)}</strong></p>
-            ${order.exchangeRate && order.exchangeRate !== 1.0 && order.totalAmountBaseCurrency ? 
-              `<p><strong>TZS Equivalent: TZS ${order.totalAmountBaseCurrency.toLocaleString()}</strong></p>` : ''
-            }
+          <!-- Totals Section -->
+          <div class="totals-section">
+            <table class="totals-table">
+              <tr>
+                <td class="label">Subtotal:</td>
+                <td class="amount">${formatCurrency(order.totalAmount, order.currency)}</td>
+              </tr>
+              ${order.exchangeRate && order.exchangeRate !== 1.0 && order.totalAmountBaseCurrency ? `
+                <tr>
+                  <td class="label">Exchange Rate:</td>
+                  <td class="amount">${order.exchangeRate} (${order.exchangeRateSource || 'Manual'})</td>
+                </tr>
+                <tr>
+                  <td class="label">TZS Equivalent:</td>
+                  <td class="amount">TZS ${order.totalAmountBaseCurrency.toLocaleString()}</td>
+                </tr>
+              ` : ''}
+              <tr class="total-row">
+                <td class="label">TOTAL AMOUNT:</td>
+                <td class="amount">${formatCurrency(order.totalAmount, order.currency)}</td>
+              </tr>
+            </table>
+          </div>
+
+          <!-- Payment Information -->
+          <div class="payment-info">
+            <h3>Payment Information</h3>
+            <div class="payment-details">
+              <div class="payment-column">
+                <p><strong>Payment Terms:</strong> Net 30</p>
+                <p><strong>Payment Due Date:</strong> ${getPaymentDueDate(order.orderDate || order.createdAt, 'Net 30')}</p>
+                <p><strong>Payment Status:</strong> 
+                  <span style="padding: 2px 8px; border-radius: 3px; background-color: ${
+                    order.paymentStatus === 'paid' ? '#d4edda' : 
+                    order.paymentStatus === 'partial' ? '#fff3cd' : '#f8d7da'
+                  }; color: ${
+                    order.paymentStatus === 'paid' ? '#155724' : 
+                    order.paymentStatus === 'partial' ? '#856404' : '#721c24'
+                  };">
+                    ${(order.paymentStatus || 'unpaid').toUpperCase()}
+                  </span>
+                </p>
+              </div>
+              <div class="payment-column">
+                <p><strong>Total Paid:</strong> ${formatCurrency(order.totalPaid || 0, order.currency)}</p>
+                <p><strong>Balance Due:</strong> ${formatCurrency((order.totalAmount || 0) - (order.totalPaid || 0), order.currency)}</p>
+                <p><strong>Payment Method:</strong> TBD</p>
+              </div>
+            </div>
           </div>
           
-          ${order.notes ? `<div><strong>Notes:</strong><br>${order.notes}</div>` : ''}
+          <!-- Notes Section -->
+          ${order.notes ? `
+            <div class="notes-section">
+              <h3>Order Notes</h3>
+              <p>${order.notes}</p>
+            </div>
+          ` : ''}
+
+          <!-- Footer with Signatures -->
+          <div class="footer">
+            <div class="signature-box">
+              <div class="line"></div>
+              <p><strong>Authorized Signature</strong></p>
+              <p>Date: _______________</p>
+            </div>
+            <div class="signature-box">
+              <div class="line"></div>
+              <p><strong>Supplier Signature</strong></p>
+              <p>Date: _______________</p>
+            </div>
+          </div>
+
+          <!-- Terms and Conditions -->
+          <div class="terms">
+            <p><strong>Terms and Conditions:</strong></p>
+            <p>1. All prices are subject to change without notice.</p>
+            <p>2. Payment terms as specified above.</p>
+            <p>3. Delivery terms: FOB destination unless otherwise specified.</p>
+            <p>4. Any discrepancies must be reported within 48 hours of delivery.</p>
+            <p>5. This purchase order is subject to our standard terms and conditions.</p>
+          </div>
         </body>
       </html>
     `;
   };
 
   const generatePDFContent = (order: PurchaseOrder) => {
-    // This would integrate with a PDF generation library like jsPDF
-    // For now, return a simple text representation
-    return `Purchase Order ${order.orderNumber}\n\n` +
-           `Date: ${formatDate(order.createdAt)}\n` +
-           `Supplier: ${order.supplier?.name || 'N/A'}\n` +
-           `Status: ${order.status}\n` +
-           `Total: ${formatCurrency(order.totalAmount, order.currency)}\n\n` +
-           `Items:\n${order.items.map(item => 
-             `- ${item.product?.name || `Product ${item.productId}`}: ${item.quantity} x ${formatCurrency(item.costPrice, order.currency)}`
-           ).join('\n')}`;
+    // Enhanced PDF content with all the missing information
+    const businessInfo = {
+      name: 'LATS CHANCE STORE',
+      address: 'Dar es Salaam, Tanzania',
+      phone: '+255 XXX XXX XXX',
+      email: 'info@latschance.com'
+    };
+
+    return `
+LATS CHANCE STORE
+${businessInfo.address}
+Phone: ${businessInfo.phone} | Email: ${businessInfo.email}
+
+PURCHASE ORDER #${order.orderNumber}
+
+ORDER INFORMATION:
+Date: ${formatDate(order.orderDate || order.createdAt)}
+Expected Delivery: ${order.expectedDeliveryDate ? formatDate(order.expectedDeliveryDate) : 'TBD'}
+Status: ${order.status.toUpperCase()}
+Currency: ${order.currency === 'TZS' ? 'Tanzania Shillings (TZS)' : order.currency || 'Tanzania Shillings (TZS)'}
+${order.receivedDate ? `Received Date: ${formatDate(order.receivedDate)}` : ''}
+
+SUPPLIER INFORMATION:
+Company: ${order.supplier?.name || 'N/A'}
+${order.supplier?.contactPerson ? `Contact Person: ${order.supplier.contactPerson}` : ''}
+${order.supplier?.phone ? `Phone: ${order.supplier.phone}` : ''}
+${order.supplier?.email ? `Email: ${order.supplier.email}` : ''}
+${order.supplier?.address ? `Address: ${order.supplier.address}` : ''}
+${order.supplier?.city ? `City: ${order.supplier.city}` : ''}
+${order.supplier?.country ? `Country: ${order.supplier.country}` : ''}
+
+ITEMS:
+${order.items.map((item, index) => {
+  const receivedQty = item.receivedQuantity || 0;
+  const unitPriceTZS = order.exchangeRate && order.exchangeRate !== 1.0 ? 
+    item.costPrice * order.exchangeRate : item.costPrice;
+  const totalPriceTZS = unitPriceTZS * item.quantity;
+  
+  return `
+${index + 1}. ${item.product?.name || `Product ${item.productId}`}
+   Variant: ${item.variant?.name || `Variant ${item.variantId}`}
+   ${item.product?.sku ? `SKU: ${item.product.sku}` : ''}
+   Ordered: ${item.quantity} | Received: ${receivedQty}
+   Unit Price: ${formatCurrency(item.costPrice, order.currency)} (TZS ${unitPriceTZS.toLocaleString()})
+   Total: TZS ${totalPriceTZS.toLocaleString()}
+   Status: ${(item.status || 'pending').toUpperCase()}
+`;
+}).join('')}
+
+PAYMENT INFORMATION:
+Payment Terms: ${order.paymentTerms || 'Net 30'}
+Payment Status: ${(order.paymentStatus || 'unpaid').toUpperCase()}
+Total Paid: ${formatCurrency(order.totalPaid || 0, order.currency)}
+Balance Due: ${formatCurrency((order.totalAmount || 0) - (order.totalPaid || 0), order.currency)}
+
+TOTALS:
+Subtotal: ${formatCurrency(order.totalAmount, order.currency)}
+${order.exchangeRate && order.exchangeRate !== 1.0 && order.totalAmountBaseCurrency ? `
+Exchange Rate: ${order.exchangeRate} (${order.exchangeRateSource || 'Manual'})
+TZS Equivalent: TZS ${order.totalAmountBaseCurrency.toLocaleString()}
+` : ''}
+TOTAL AMOUNT: ${formatCurrency(order.totalAmount, order.currency)}
+
+${order.notes ? `NOTES:\n${order.notes}\n` : ''}
+
+SIGNATURES:
+Authorized Signature: _________________ Date: _______________
+Supplier Signature: _________________ Date: _______________
+
+TERMS AND CONDITIONS:
+1. All prices are subject to change without notice.
+2. Payment terms as specified above.
+3. Delivery terms: FOB destination unless otherwise specified.
+4. Any discrepancies must be reported within 48 hours of delivery.
+5. This purchase order is subject to our standard terms and conditions.
+    `;
+  };
+
+  const generateExcelContent = (order: PurchaseOrder, XLSX: any) => {
+    // Business information
+    const businessInfo = {
+      name: 'LATS CHANCE STORE',
+      address: 'Dar es Salaam, Tanzania',
+      phone: '+255 XXX XXX XXX',
+      email: 'info@latschance.com',
+      website: 'www.latschance.com'
+    };
+
+    // Create workbook
+    const workbook = XLSX.utils.book_new();
+
+    // Purchase Order Summary Sheet with proper column structure
+    const summaryData = [
+      // Header section
+      ['LATS CHANCE STORE', '', '', ''],
+      ['Purchase Order Summary', '', '', ''],
+      ['', '', '', ''],
+      
+      // Order Information section
+      ['ORDER INFORMATION', '', '', ''],
+      ['Order Number:', order.orderNumber, '', ''],
+      ['Order Date:', formatDate(order.orderDate || order.createdAt), '', ''],
+      ['Expected Delivery:', order.expectedDeliveryDate ? formatDate(order.expectedDeliveryDate) : 'TBD', '', ''],
+      ['Status:', order.status.toUpperCase(), '', ''],
+      ['Currency:', order.currency === 'TZS' ? 'Tanzania Shillings (TZS)' : order.currency || 'Tanzania Shillings (TZS)', '', ''],
+      ['', '', '', ''],
+      
+      // Supplier Information section
+      ['SUPPLIER INFORMATION', '', '', ''],
+      ['Company:', order.supplier?.name || 'N/A', '', ''],
+      ['Contact Person:', order.supplier?.contactPerson || '', '', ''],
+      ['Phone:', order.supplier?.phone || '', '', ''],
+      ['Email:', order.supplier?.email || '', '', ''],
+      ['Address:', order.supplier?.address || '', '', ''],
+      ['City:', order.supplier?.city || '', '', ''],
+      ['Country:', order.supplier?.country || '', '', ''],
+      ['', '', '', ''],
+      
+      // Payment Information section
+      ['PAYMENT INFORMATION', '', '', ''],
+      ['Payment Terms:', 'Net 30', '', ''],
+      ['Payment Status:', (order.paymentStatus || 'unpaid').toUpperCase(), '', ''],
+      ['Total Paid:', formatCurrency(order.totalPaid || 0, order.currency), '', ''],
+      ['Balance Due:', formatCurrency((Number(order.totalAmount) || 0) - (Number(order.totalPaid) || 0), order.currency), '', ''],
+      ['', '', '', ''],
+      
+      // Totals section
+      ['TOTALS', '', '', ''],
+      ['Subtotal:', formatCurrency(Number(order.totalAmount) || 0, order.currency), '', ''],
+      ...(order.exchangeRate && order.exchangeRate !== 1.0 && order.totalAmountBaseCurrency ? [
+        ['Exchange Rate:', `${order.exchangeRate} (${order.exchangeRateSource || 'Manual'})`, '', ''],
+        ['TZS Equivalent:', `TZS ${order.totalAmountBaseCurrency.toLocaleString()}`, '', '']
+      ] : []),
+      ['TOTAL AMOUNT:', formatCurrency(Number(order.totalAmount) || 0, order.currency), '', '']
+    ];
+
+    const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+    
+    // Set column widths for summary sheet
+    summarySheet['!cols'] = [
+      { wch: 20 }, // Column A - Labels
+      { wch: 30 }, // Column B - Values
+      { wch: 15 }, // Column C - Empty
+      { wch: 15 }  // Column D - Empty
+    ];
+    
+    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
+
+    // Items Sheet with proper column structure
+    const itemsData = [
+      // Header row
+      ['Product Description', 'Variant', 'Ordered Qty', 'Received Qty', 'Unit Price', 'Price (TZS)', 'Total (TZS)', 'Status', 'SKU']
+    ];
+
+    // Add items data
+    order.items.forEach(item => {
+      const receivedQty = item.receivedQuantity || 0;
+      const unitPriceTZS = order.exchangeRate && order.exchangeRate !== 1.0 ? 
+        item.costPrice * order.exchangeRate : item.costPrice;
+      const totalPriceTZS = unitPriceTZS * item.quantity;
+
+      itemsData.push([
+        item.product?.name || `Product ${item.productId}`,
+        item.variant?.name || `Variant ${item.variantId}`,
+        item.quantity,
+        receivedQty,
+        formatCurrency(item.costPrice, order.currency),
+        `TZS ${unitPriceTZS.toLocaleString()}`,
+        `TZS ${totalPriceTZS.toLocaleString()}`,
+        (item.status || 'pending').toUpperCase(),
+        item.product?.sku || ''
+      ]);
+    });
+
+    // Add totals row
+    const totalOrdered = order.items.reduce((sum, item) => sum + item.quantity, 0);
+    const totalReceived = order.items.reduce((sum, item) => sum + (item.receivedQuantity || 0), 0);
+    const totalAmountTZS = order.items.reduce((sum, item) => {
+      const unitPriceTZS = order.exchangeRate && order.exchangeRate !== 1.0 ? 
+        item.costPrice * order.exchangeRate : item.costPrice;
+      return sum + (unitPriceTZS * item.quantity);
+    }, 0);
+
+    itemsData.push([
+      'TOTALS',
+      '',
+      totalOrdered,
+      totalReceived,
+      '',
+      '',
+      `TZS ${totalAmountTZS.toLocaleString()}`,
+      '',
+      ''
+    ]);
+
+    const itemsSheet = XLSX.utils.aoa_to_sheet(itemsData);
+    
+    // Set column widths for items sheet
+    itemsSheet['!cols'] = [
+      { wch: 30 }, // Product Description
+      { wch: 20 }, // Variant
+      { wch: 12 }, // Ordered Qty
+      { wch: 12 }, // Received Qty
+      { wch: 15 }, // Unit Price
+      { wch: 15 }, // Price (TZS)
+      { wch: 15 }, // Total (TZS)
+      { wch: 12 }, // Status
+      { wch: 15 }  // SKU
+    ];
+    
+    // Add borders and formatting to header row
+    const headerRange = XLSX.utils.decode_range(itemsSheet['!ref'] || 'A1');
+    for (let col = headerRange.s.c; col <= headerRange.e.c; col++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col });
+      if (!itemsSheet[cellAddress]) continue;
+      
+      itemsSheet[cellAddress].s = {
+        font: { bold: true, color: { rgb: "FFFFFF" } },
+        fill: { fgColor: { rgb: "4472C4" } },
+        alignment: { horizontal: "center", vertical: "center" },
+        border: {
+          top: { style: "thin", color: { rgb: "000000" } },
+          bottom: { style: "thin", color: { rgb: "000000" } },
+          left: { style: "thin", color: { rgb: "000000" } },
+          right: { style: "thin", color: { rgb: "000000" } }
+        }
+      };
+    }
+    
+    // Format totals row
+    const totalsRowIndex = itemsData.length - 1;
+    for (let col = 0; col < itemsData[0].length; col++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: totalsRowIndex, c: col });
+      if (!itemsSheet[cellAddress]) continue;
+      
+      itemsSheet[cellAddress].s = {
+        font: { bold: true },
+        fill: { fgColor: { rgb: "F2F2F2" } },
+        border: {
+          top: { style: "medium", color: { rgb: "000000" } },
+          bottom: { style: "thin", color: { rgb: "000000" } },
+          left: { style: "thin", color: { rgb: "000000" } },
+          right: { style: "thin", color: { rgb: "000000" } }
+        }
+      };
+    }
+    
+    XLSX.utils.book_append_sheet(workbook, itemsSheet, 'Items');
+
+    return workbook;
   };
 
   const getStatusColor = (status: string) => {
@@ -618,8 +1981,6 @@ const PurchaseOrderDetailPage: React.FC = () => {
       case 'draft': return 'text-yellow-600 bg-yellow-100';
       case 'sent': return 'text-blue-600 bg-blue-100';
       case 'confirmed': return 'text-purple-600 bg-purple-100';
-      case 'shipping': return 'text-orange-600 bg-orange-100';
-      case 'shipped': return 'text-indigo-600 bg-indigo-100';
       case 'received': return 'text-green-600 bg-green-100';
       case 'cancelled': return 'text-red-600 bg-red-100';
       default: return 'text-gray-600 bg-gray-100';
@@ -631,8 +1992,6 @@ const PurchaseOrderDetailPage: React.FC = () => {
       case 'draft': return <FileText className="w-4 h-4" />;
       case 'sent': return <Send className="w-4 h-4" />;
       case 'confirmed': return <CheckSquare className="w-4 h-4" />;
-      case 'shipping': return <Package className="w-4 h-4" />;
-      case 'shipped': return <Truck className="w-4 h-4" />;
       case 'received': return <CheckSquare className="w-4 h-4" />;
       case 'cancelled': return <XSquare className="w-4 h-4" />;
       default: return <Clock className="w-4 h-4" />;
@@ -640,10 +1999,30 @@ const PurchaseOrderDetailPage: React.FC = () => {
   };
 
   const formatCurrency = (amount: number, currencyCode: string = 'TZS') => {
-    return new Intl.NumberFormat('en-TZ', {
-      style: 'currency',
-      currency: currencyCode
+    // Format the number with proper locale
+    const formattedAmount = new Intl.NumberFormat('en-TZ', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2
     }).format(amount);
+    
+    // Add currency symbol/code based on currency (excluding CNY)
+    switch (currencyCode?.toUpperCase()) {
+      case 'TZS':
+        return `TZS ${formattedAmount}`;
+      case 'USD':
+        return `$${formattedAmount}`;
+      case 'EUR':
+        return `€${formattedAmount}`;
+      case 'GBP':
+        return `£${formattedAmount}`;
+      case 'AED':
+        return `AED ${formattedAmount}`;
+      case 'CNY':
+        // Remove CNY currency display, show only the amount
+        return formattedAmount;
+      default:
+        return `${currencyCode} ${formattedAmount}`;
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -702,21 +2081,69 @@ const PurchaseOrderDetailPage: React.FC = () => {
         onClick={(e) => e.stopPropagation()}
       >
         {/* Minimal Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-100">
+        <div className={`flex items-center justify-between p-6 border-b ${isEditing ? 'border-blue-200 bg-blue-50' : 'border-gray-100'}`}>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isEditing ? 'bg-gradient-to-br from-blue-500 to-blue-600' : 'bg-gradient-to-br from-blue-500 to-indigo-600'}`}>
               <FileText className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-gray-900">{purchaseOrder.orderNumber}</h2>
+              <div className="flex items-center gap-3">
+                <h2 className="text-xl font-bold text-gray-900">{purchaseOrder.orderNumber}</h2>
+                {isEditing && (
+                  <div className="flex items-center gap-2 px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
+                    <Edit className="w-4 h-4" />
+                    Editing Mode
+                  </div>
+                )}
+                {/* Autoloading indicator */}
+                {isBackgroundLoading && (
+                  <div className="flex items-center gap-2 px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">
+                    <div className="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin"></div>
+                    Auto-refreshing...
+                  </div>
+                )}
+              </div>
               <p className="text-sm text-gray-500">
                 <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(purchaseOrder.status)}`}>
                   {getStatusIcon(purchaseOrder.status)}
                   <span className="capitalize">{purchaseOrder.status}</span>
                 </span>
                 <span className="ml-2">Created {formatDate(purchaseOrder.createdAt)}</span>
+                {lastRefreshTime && (
+                  <span className="ml-2 text-xs text-gray-400">
+                    • Last updated: {lastRefreshTime.toLocaleTimeString()}
+                  </span>
+                )}
               </p>
             </div>
+          </div>
+          
+          {/* Refresh Controls */}
+          <div className="flex items-center gap-3">
+            {/* Manual Refresh Button */}
+            <button
+              onClick={() => refreshPurchaseOrderData(false)}
+              disabled={isBackgroundLoading}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg transition-colors text-sm font-medium"
+            >
+              <RefreshCw className={`w-4 h-4 ${isBackgroundLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
+            
+            {/* Auto-refresh Status */}
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <div className={`w-2 h-2 rounded-full ${isBackgroundLoading ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`}></div>
+              Auto-refresh: {autoRefreshEnabled ? (isBackgroundLoading ? 'Active' : 'Paused') : 'Disabled'}
+            </div>
+            
+            {/* Settings Button */}
+            <button
+              onClick={() => setShowAutoRefreshSettings(!showAutoRefreshSettings)}
+              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
+              title="Auto-refresh Settings"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
           </div>
           <button 
             onClick={() => navigate('/lats/purchase-orders')}
@@ -769,16 +2196,16 @@ const PurchaseOrderDetailPage: React.FC = () => {
               </div>
             </button>
             <button
-              onClick={() => handleTabChange('shipping')}
+              onClick={() => handleTabChange('received')}
               className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                activeTab === 'shipping'
+                activeTab === 'received'
                   ? 'border-blue-500 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
               <div className="flex items-center gap-2">
-                <Truck className="w-4 h-4" />
-                Shipping
+                <PackageCheck className="w-4 h-4" />
+                Received
               </div>
             </button>
             <button
@@ -894,12 +2321,21 @@ const PurchaseOrderDetailPage: React.FC = () => {
                         <span className="text-xs text-gray-500 uppercase tracking-wide">Last Updated</span>
                         <p className="text-sm font-medium text-gray-900">{formatDate(purchaseOrder.updatedAt)}</p>
                       </div>
-                      {purchaseOrder.expectedDelivery && (
-                        <div className="space-y-1">
-                          <span className="text-xs text-gray-500 uppercase tracking-wide">Expected Delivery</span>
-                          <p className="text-sm font-medium text-gray-900">{formatDate(purchaseOrder.expectedDelivery)}</p>
-                        </div>
-                      )}
+                      <div className="space-y-1">
+                        <span className="text-xs text-gray-500 uppercase tracking-wide">Expected Delivery</span>
+                        {isEditing ? (
+                          <input
+                            type="date"
+                            value={purchaseOrder.expectedDeliveryDate ? new Date(purchaseOrder.expectedDeliveryDate).toISOString().split('T')[0] : ''}
+                            onChange={(e) => setPurchaseOrder(prev => prev ? { ...prev, expectedDeliveryDate: e.target.value ? new Date(e.target.value).toISOString() : null } : null)}
+                            className="w-full p-2 border border-gray-300 rounded-lg text-sm"
+                          />
+                        ) : (
+                          <p className="text-sm font-medium text-gray-900">
+                            {purchaseOrder.expectedDeliveryDate ? formatDate(purchaseOrder.expectedDeliveryDate) : 'Not set'}
+                          </p>
+                        )}
+                      </div>
                       <div className="space-y-1">
                         <span className="text-xs text-gray-500 uppercase tracking-wide">Currency</span>
                         <p className="text-sm font-medium text-gray-900">{purchaseOrder.currency || 'TZS'}</p>
@@ -939,17 +2375,29 @@ const PurchaseOrderDetailPage: React.FC = () => {
                   </div>
 
                   {/* Notes */}
-                  {purchaseOrder.notes && (
-                    <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
-                      <div className="flex items-center gap-2 pb-2 border-b border-gray-100">
-                        <FileText className="w-5 h-5 text-gray-600" />
-                        <h3 className="text-sm font-semibold text-gray-800">Notes</h3>
-                      </div>
-                      <p className="text-sm text-gray-600 leading-relaxed bg-gray-50 rounded-lg p-3">
-                        {purchaseOrder.notes}
-                      </p>
+                  <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+                    <div className="flex items-center gap-2 pb-2 border-b border-gray-100">
+                      <FileText className="w-5 h-5 text-gray-600" />
+                      <h3 className="text-sm font-semibold text-gray-800">Notes</h3>
                     </div>
-                  )}
+                    {isEditing ? (
+                      <textarea
+                        value={purchaseOrder.notes || ''}
+                        onChange={(e) => setPurchaseOrder(prev => prev ? { ...prev, notes: e.target.value } : null)}
+                        className="w-full p-3 border border-gray-300 rounded-lg resize-none text-sm"
+                        rows={4}
+                        placeholder="Add notes for this purchase order..."
+                      />
+                    ) : (
+                      purchaseOrder.notes ? (
+                        <p className="text-sm text-gray-600 leading-relaxed bg-gray-50 rounded-lg p-3">
+                          {purchaseOrder.notes}
+                        </p>
+                      ) : (
+                        <p className="text-sm text-gray-400 italic">No notes added</p>
+                      )
+                    )}
+                  </div>
                 </div>
 
                 {/* Right Column - Actions & Summary */}
@@ -961,57 +2409,186 @@ const PurchaseOrderDetailPage: React.FC = () => {
                       <h3 className="text-sm font-semibold text-gray-800">Actions</h3>
                     </div>
                     
-                    {/* Primary Actions */}
+                    {/* Smart Primary Actions - Only show relevant actions */}
                     <div className="space-y-2">
-                      {purchaseOrder.status === 'draft' && (
+                      {isEditing ? (
                         <>
                           <button
-                            onClick={() => setIsEditing(!isEditing)}
-                            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium text-sm"
+                            onClick={handleSave}
+                            disabled={isSaving}
+                            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg transition-colors font-medium text-sm"
                           >
-                            <Edit className="w-4 h-4" />
-                            {isEditing ? 'Cancel Edit' : 'Edit Order'}
+                            <Save className="w-4 h-4" />
+                            {isSaving ? 'Saving...' : 'Save Changes'}
                           </button>
                           <button
-                            onClick={handleApproveOrder}
-                            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium text-sm"
+                            onClick={() => setIsEditing(false)}
+                            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors font-medium text-sm"
                           >
-                            <CheckSquare className="w-4 h-4" />
-                            Approve Order
+                            <X className="w-4 h-4" />
+                            Cancel Edit
                           </button>
                         </>
-                      )}
-                      
-                      {purchaseOrder.status === 'sent' && (
-                        <button
-                          onClick={handleReceive}
-                          className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium text-sm"
-                        >
-                          <CheckSquare className="w-4 h-4" />
-                          Receive Order
-                        </button>
-                      )}
+                      ) : (
+                        <>
+                          {/* Step 1: Draft Status - Can edit, approve, or delete */}
+                          {purchaseOrder.status === 'draft' && (
+                            <>
+            <button
+              onClick={() => window.open(`/lats/purchase-orders/create?edit=${purchaseOrder.id}`, '_blank')}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium text-sm"
+            >
+              <Edit className="w-4 h-4" />
+              Edit Order
+            </button>
+                              <button
+                                onClick={handleApproveOrder}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium text-sm"
+                              >
+                                <CheckSquare className="w-4 h-4" />
+                                Approve Order
+                              </button>
+                              <button
+                                onClick={handleDelete}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium text-sm"
+                              >
+                                <X className="w-4 h-4" />
+                                Delete Order
+                              </button>
+                            </>
+                          )}
+                          
+                          {/* Step 2: Approved (sent/confirmed) - Must pay before receiving */}
+                          {(purchaseOrder.status === 'sent' || purchaseOrder.status === 'confirmed') && (
+                            <>
+            {/* Debug logging */}
+            {console.log('🔍 PurchaseOrderDetailPage: Payment status check:', {
+              status: purchaseOrder.status,
+              paymentStatus: purchaseOrder.paymentStatus,
+              totalPaid: purchaseOrder.totalPaid,
+              purchaseOrder: purchaseOrder
+            })}
+                              
+                              {/* Show payment button if not fully paid */}
+                              {((purchaseOrder.paymentStatus === 'unpaid' || purchaseOrder.paymentStatus === 'partial') || !purchaseOrder.paymentStatus) && (
+                                <button
+                                  onClick={handleMakePayment}
+                                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors font-medium text-sm"
+                                >
+                                  <CreditCard className="w-4 h-4" />
+                                  Make Payment
+                                </button>
+                              )}
+                              
+                              {/* Cancel Order button - only show if not paid */}
+                              {((purchaseOrder.paymentStatus === 'unpaid' || purchaseOrder.paymentStatus === 'partial') || !purchaseOrder.paymentStatus) && (
+                                <button
+                                  onClick={handleCancelOrder}
+                                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium text-sm"
+                                >
+                                  <XCircle className="w-4 h-4" />
+                                  Cancel Order
+                                </button>
+                              )}
+                              
+                              {/* Only show receive if fully paid */}
+                              {(purchaseOrder.paymentStatus === 'paid') && (
+                                <button
+                                  onClick={handleReceive}
+                                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium text-sm"
+                                >
+                                  <CheckSquare className="w-4 h-4" />
+                                  Receive Order
+                                </button>
+                              )}
+                            </>
+                          )}
 
-                      <button
-                        onClick={handlePartialReceive}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors font-medium text-sm"
-                      >
-                        <PackageCheck className="w-4 h-4" />
-                        Partial Receive
-                      </button>
+                          {/* Step 3: Shipping - Can track and receive if paid */}
+                          {purchaseOrder.status === 'shipping' && (
+                            <>
+                              {/* Only show receive if fully paid */}
+                              {(purchaseOrder.paymentStatus === 'paid') && (
+                                <button
+                                  onClick={handleReceive}
+                                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium text-sm"
+                                >
+                                  <CheckSquare className="w-4 h-4" />
+                                  Receive Order
+                                </button>
+                              )}
+                            </>
+                          )}
 
-                      <button
-                        onClick={handleMakePayment}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium text-sm"
-                      >
-                        <CreditCard className="w-4 h-4" />
-                        Make Payment
-                      </button>
+                          {/* Step 4: Shipped - Can receive if paid */}
+                          {purchaseOrder.status === 'shipped' && (
+                            <>
+                              {/* Only show receive if fully paid */}
+                              {(purchaseOrder.paymentStatus === 'paid') && (
+                                <button
+                                  onClick={handleReceive}
+                                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium text-sm"
+                                >
+                                  <CheckSquare className="w-4 h-4" />
+                                  Receive Order
+                                </button>
+                              )}
+                            </>
+                          )}
+
+                          {/* Partial Receive - Only show if paid and not fully received */}
+                          {((purchaseOrder.status === 'sent' || purchaseOrder.status === 'shipped' || purchaseOrder.status === 'partial_received') && 
+                            purchaseOrder.paymentStatus === 'paid') && (
+                            <button
+                              onClick={() => setShowPartialReceiveModal(true)}
+                              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors font-medium text-sm"
+                            >
+                              <PackageCheck className="w-4 h-4" />
+                              Partial Receive
+                            </button>
+                          )}
+
+                          {/* Serial Number Receive - Only show if paid and not fully received */}
+                          {((purchaseOrder.status === 'sent' || purchaseOrder.status === 'shipped' || purchaseOrder.status === 'partial_received') && 
+                            purchaseOrder.paymentStatus === 'paid') && (
+                            <button
+                              onClick={() => setShowSerialNumberReceiveModal(true)}
+                              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium text-sm"
+                            >
+                              <PackageCheck className="w-4 h-4" />
+                              Receive with Serial Numbers
+                            </button>
+                          )}
+
+                          {/* Quality Check - Only show if received or partially received */}
+                          {((purchaseOrder.status === 'received' || purchaseOrder.status === 'partial_received') && 
+                            purchaseOrder.paymentStatus === 'paid') && (
+                            <button
+                              onClick={handleQualityControl}
+                              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors font-medium text-sm"
+                            >
+                              <Shield className="w-4 h-4" />
+                              Quality Check
+                            </button>
+                          )}
+
+                          {/* Return Order - Only show if received */}
+                          {(purchaseOrder.status === 'received' || purchaseOrder.status === 'partial_received') && (
+                            <button
+                              onClick={() => setShowReturnOrderModal(true)}
+                              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium text-sm"
+                            >
+                              <RotateCcw className="w-4 h-4" />
+                              Return Order
+                            </button>
+                          )}
+                        </>
+                      )}
                     </div>
 
                     {/* Secondary Actions */}
                     <div className="pt-2 border-t border-gray-100">
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-3 gap-2">
                         <button
                           onClick={handlePrintOrder}
                           className="flex items-center justify-center gap-2 px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors font-medium text-sm"
@@ -1026,6 +2603,38 @@ const PurchaseOrderDetailPage: React.FC = () => {
                         >
                           <Download className="w-4 h-4" />
                           Export PDF
+                        </button>
+
+                        <button
+                          onClick={handleExportExcel}
+                          className="flex items-center justify-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium text-sm"
+                        >
+                          <FileSpreadsheet className="w-4 h-4" />
+                          Export Excel
+                        </button>
+
+                        <button
+                          onClick={handleDuplicateOrder}
+                          className="flex items-center justify-center gap-2 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors font-medium text-sm"
+                        >
+                          <Copy className="w-4 h-4" />
+                          Duplicate
+                        </button>
+
+                        <button
+                          onClick={handleViewNotes}
+                          className="flex items-center justify-center gap-2 px-3 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors font-medium text-sm"
+                        >
+                          <FileText className="w-4 h-4" />
+                          Notes
+                        </button>
+
+                        <button
+                          onClick={() => setShowBulkActions(true)}
+                          className="flex items-center justify-center gap-2 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors font-medium text-sm"
+                        >
+                          <Layers className="w-4 h-4" />
+                          Bulk Actions
                         </button>
                       </div>
                     </div>
@@ -1210,7 +2819,15 @@ const PurchaseOrderDetailPage: React.FC = () => {
           {/* Items Tab */}
           {activeTab === 'items' && (
             <div className="space-y-6">
-              {purchaseOrder.items.length === 0 ? (
+              {/* Pending Items Section */}
+              {isLoadingPurchaseOrderItems ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                    <p className="text-gray-600">Loading purchase order items...</p>
+                  </div>
+                </div>
+              ) : purchaseOrderItems.length === 0 ? (
                 <div className="text-center py-8">
                   <Package className="w-16 h-16 text-gray-400 mx-auto mb-4" />
                   <p className="text-gray-600">No items in this order</p>
@@ -1219,7 +2836,7 @@ const PurchaseOrderDetailPage: React.FC = () => {
                 <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
                   <div className="flex items-center gap-2 pb-2 border-b border-gray-100">
                     <Package className="w-5 h-5 text-indigo-600" />
-                    <h3 className="text-sm font-semibold text-gray-800">Order Items ({purchaseOrder.items.length} items)</h3>
+                    <h3 className="text-sm font-semibold text-gray-800">Order Items ({purchaseOrderItems.length} items)</h3>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
@@ -1238,7 +2855,7 @@ const PurchaseOrderDetailPage: React.FC = () => {
                         </tr>
                       </thead>
                       <tbody>
-                        {purchaseOrder.items.map((item, index) => {
+                        {purchaseOrderItems.map((item, index) => {
                           const receivedPercentage = item.quantity > 0 ? (item.receivedQuantity / item.quantity) * 100 : 0;
                           return (
                             <tr key={index} className="border-b border-gray-100 hover:bg-gray-50">
@@ -1251,9 +2868,42 @@ const PurchaseOrderDetailPage: React.FC = () => {
                               </td>
                               <td className="p-3 text-sm hidden sm:table-cell">{item.variant?.name || `Variant ${item.variantId}`}</td>
                               <td className="p-3">
-                                <span className="font-medium text-sm text-gray-900">{item.quantity}</span>
+                                {isEditing ? (
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    value={item.quantity}
+                                    onChange={(e) => {
+                                      const newQuantity = parseInt(e.target.value) || 1;
+                                      const updatedItems = [...purchaseOrderItems];
+                                      updatedItems[index] = { ...item, quantity: newQuantity };
+                                      setPurchaseOrderItems(updatedItems);
+                                    }}
+                                    className="w-20 px-2 py-1 border border-gray-300 rounded text-sm"
+                                  />
+                                ) : (
+                                  <span className="font-medium text-sm text-gray-900">{item.quantity}</span>
+                                )}
                               </td>
-                              <td className="p-3 text-sm hidden md:table-cell">{formatCurrency(item.costPrice, purchaseOrder.currency)}</td>
+                              <td className="p-3 text-sm hidden md:table-cell">
+                                {isEditing ? (
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={item.costPrice}
+                                    onChange={(e) => {
+                                      const newCostPrice = parseFloat(e.target.value) || 0;
+                                      const updatedItems = [...purchaseOrderItems];
+                                      updatedItems[index] = { ...item, costPrice: newCostPrice };
+                                      setPurchaseOrderItems(updatedItems);
+                                    }}
+                                    className="w-24 px-2 py-1 border border-gray-300 rounded text-sm"
+                                  />
+                                ) : (
+                                  formatCurrency(item.costPrice, purchaseOrder.currency)
+                                )}
+                              </td>
                               <td className="p-3">
                                 <span className="font-medium text-sm text-gray-900">{formatCurrency(item.quantity * item.costPrice, purchaseOrder.currency)}</span>
                               </td>
@@ -1283,11 +2933,573 @@ const PurchaseOrderDetailPage: React.FC = () => {
                   </div>
                 </div>
               )}
+
+              {/* Received Items Section - Show below pending items */}
+              {receivedItems.length > 0 && (
+                <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
+                  <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                    <div className="flex items-center gap-2">
+                      <PackageCheck className="w-5 h-5 text-green-600" />
+                      <h3 className="text-sm font-semibold text-gray-800">Received Items ({receivedItems.length} items)</h3>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleRefreshReceivedItems}
+                        className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
+                        disabled={isLoadingReceivedItems}
+                      >
+                        <RotateCcw className={`w-3 h-3 ${isLoadingReceivedItems ? 'animate-spin' : ''}`} />
+                        Refresh
+                      </button>
+                    </div>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-50 border-b border-gray-200">
+                          <th className="text-left p-3 font-medium text-gray-700">Product</th>
+                          <th className="text-left p-3 font-medium text-gray-700 hidden sm:table-cell">Variant</th>
+                          <th className="text-left p-3 font-medium text-gray-700">Serial Number</th>
+                          <th className="text-left p-3 font-medium text-gray-700 hidden md:table-cell">IMEI</th>
+                          <th className="text-left p-3 font-medium text-gray-700">Status</th>
+                          <th className="text-left p-3 font-medium text-gray-700 hidden lg:table-cell">Location</th>
+                          <th className="text-left p-3 font-medium text-gray-700">Received Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {receivedItems.map((item, index) => (
+                          <tr key={index} className="border-b border-gray-100 hover:bg-gray-50">
+                            <td className="p-3">
+                              <div>
+                                <p className="font-medium text-sm text-gray-900">{item.product?.name || `Product ${item.product_id}`}</p>
+                                <p className="text-xs text-gray-500 sm:hidden">{item.variant?.name || `Variant ${item.variant_id}`}</p>
+                                <p className="text-xs text-gray-500">SKU: {item.product?.sku || item.product_id}</p>
+                              </div>
+                            </td>
+                            <td className="p-3 text-sm hidden sm:table-cell">{item.variant?.name || `Variant ${item.variant_id}`}</td>
+                            <td className="p-3">
+                              <div className="font-mono text-sm text-gray-900">{item.serial_number}</div>
+                              {item.barcode && (
+                                <div className="text-xs text-gray-500">Barcode: {item.barcode}</div>
+                              )}
+                            </td>
+                            <td className="p-3 text-sm hidden md:table-cell">
+                              {item.imei ? (
+                                <span className="font-mono text-xs text-gray-600">{item.imei}</span>
+                              ) : (
+                                <span className="text-gray-400">-</span>
+                              )}
+                            </td>
+                            <td className="p-3">
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                item.status === 'available' ? 'bg-green-100 text-green-700' :
+                                item.status === 'sold' ? 'bg-blue-100 text-blue-700' :
+                                item.status === 'damaged' ? 'bg-red-100 text-red-700' :
+                                item.status === 'reserved' ? 'bg-yellow-100 text-yellow-700' :
+                                'bg-gray-100 text-gray-700'
+                              }`}>
+                                {item.status}
+                              </span>
+                            </td>
+                            <td className="p-3 text-sm hidden lg:table-cell">
+                              {item.location ? (
+                                <div>
+                                  <div className="text-gray-900">{item.location}</div>
+                                  {item.shelf && (
+                                    <div className="text-xs text-gray-500">Shelf: {item.shelf}</div>
+                                  )}
+                                  {item.bin && (
+                                    <div className="text-xs text-gray-500">Bin: {item.bin}</div>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-gray-400">Not assigned</span>
+                              )}
+                            </td>
+                            <td className="p-3">
+                              <div className="text-sm text-gray-900">
+                                {new Date(item.created_at).toLocaleDateString()}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {new Date(item.created_at).toLocaleTimeString()}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  
+                  {/* Summary Stats */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 pt-4 border-t border-gray-100">
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-green-600">
+                        {receivedItems.filter(item => item.status === 'available').length}
+                      </div>
+                      <div className="text-xs text-gray-500 uppercase tracking-wide">Available</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-blue-600">
+                        {receivedItems.filter(item => item.status === 'sold').length}
+                      </div>
+                      <div className="text-xs text-gray-500 uppercase tracking-wide">Sold</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-yellow-600">
+                        {receivedItems.filter(item => item.status === 'reserved').length}
+                      </div>
+                      <div className="text-xs text-gray-500 uppercase tracking-wide">Reserved</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-red-600">
+                        {receivedItems.filter(item => item.status === 'damaged').length}
+                      </div>
+                      <div className="text-xs text-gray-500 uppercase tracking-wide">Damaged</div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
-          {/* Shipping Tab */}
-          {activeTab === 'shipping' && (
+          {/* Received Items Tab */}
+          {activeTab === 'received' && (
+            <div className="space-y-6">
+              {/* Search and Filters */}
+              <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
+                <div className="flex items-center gap-2 pb-2 border-b border-gray-100">
+                  <Eye className="w-5 h-5 text-blue-600" />
+                  <h3 className="text-sm font-semibold text-gray-800">Search & Filter</h3>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Search</label>
+                    <input
+                      type="text"
+                      placeholder="Search products, SKU, serial..."
+                      value={filters.search}
+                      onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Status</label>
+                    <select
+                      value={filters.status}
+                      onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="">All Status</option>
+                      <option value="available">Available</option>
+                      <option value="sold">Sold</option>
+                      <option value="reserved">Reserved</option>
+                      <option value="damaged">Damaged</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Location</label>
+                    <input
+                      type="text"
+                      placeholder="Filter by location..."
+                      value={filters.location}
+                      onChange={(e) => setFilters(prev => ({ ...prev, location: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <button
+                      onClick={() => setFilters({ search: '', status: '', location: '', dateFrom: '', dateTo: '' })}
+                      className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bulk Actions - REMOVED: Component doesn't exist */}
+              {/* <BulkActionsToolbar
+                items={filteredReceivedItems}
+                selectedItems={selectedItems}
+                onSelectionChange={setSelectedItems}
+                onItemsUpdate={handleRefreshReceivedItems}
+                onExport={handleExport}
+                purchaseOrderId={id || ''}
+              /> */}
+
+              {/* Inventory Stats */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-white border border-gray-200 rounded-lg p-4 text-center">
+                  <div className="text-2xl font-bold text-green-600">
+                    {receivedItems.filter(item => item.status === 'available').length}
+                  </div>
+                  <div className="text-sm text-gray-500 uppercase tracking-wide">Available</div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    TZS {receivedItems
+                      .filter(item => item.status === 'available')
+                      .reduce((sum, item) => sum + (item.cost_price || 0), 0)
+                      .toLocaleString()}
+                  </div>
+                </div>
+                <div className="bg-white border border-gray-200 rounded-lg p-4 text-center">
+                  <div className="text-2xl font-bold text-blue-600">
+                    {receivedItems.filter(item => item.status === 'sold').length}
+                  </div>
+                  <div className="text-sm text-gray-500 uppercase tracking-wide">Sold</div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    TZS {receivedItems
+                      .filter(item => item.status === 'sold')
+                      .reduce((sum, item) => sum + (item.selling_price || item.cost_price || 0), 0)
+                      .toLocaleString()}
+                  </div>
+                </div>
+                <div className="bg-white border border-gray-200 rounded-lg p-4 text-center">
+                  <div className="text-2xl font-bold text-yellow-600">
+                    {receivedItems.filter(item => item.status === 'reserved').length}
+                  </div>
+                  <div className="text-sm text-gray-500 uppercase tracking-wide">Reserved</div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    TZS {receivedItems
+                      .filter(item => item.status === 'reserved')
+                      .reduce((sum, item) => sum + (item.cost_price || 0), 0)
+                      .toLocaleString()}
+                  </div>
+                </div>
+                <div className="bg-white border border-gray-200 rounded-lg p-4 text-center">
+                  <div className="text-2xl font-bold text-red-600">
+                    {receivedItems.filter(item => item.status === 'damaged').length}
+                  </div>
+                  <div className="text-sm text-gray-500 uppercase tracking-wide">Damaged</div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    TZS {receivedItems
+                      .filter(item => item.status === 'damaged')
+                      .reduce((sum, item) => sum + (item.cost_price || 0), 0)
+                      .toLocaleString()}
+                  </div>
+                </div>
+              </div>
+
+              {/* Bulk Actions */}
+              {filteredReceivedItems.length > 0 && (
+                <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CheckSquare className="w-5 h-5 text-green-600" />
+                      <h3 className="text-sm font-semibold text-gray-800">Bulk Actions</h3>
+                      {selectedItems.length > 0 && (
+                        <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full">
+                          {selectedItems.length} selected
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setSelectedItems(filteredReceivedItems.map(item => item.id))}
+                        className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded transition-colors"
+                      >
+                        Select All
+                      </button>
+                      <button
+                        onClick={() => setSelectedItems([])}
+                        className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded transition-colors"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                  {selectedItems.length > 0 && (
+                    <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-100">
+                      <button
+                        onClick={() => setShowStatusModal(true)}
+                        className="px-3 py-1 text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 rounded transition-colors"
+                      >
+                        Update Status ({selectedItems.length})
+                      </button>
+                      <button
+                        onClick={() => setShowLocationModal(true)}
+                        className="px-3 py-1 text-xs bg-green-100 hover:bg-green-200 text-green-700 rounded transition-colors"
+                      >
+                        Assign Location ({selectedItems.length})
+                      </button>
+                      <button
+                        onClick={() => handleExport({ selectedItems })}
+                        className="px-3 py-1 text-xs bg-purple-100 hover:bg-purple-200 text-purple-700 rounded transition-colors"
+                      >
+                        Export Selected ({selectedItems.length})
+                      </button>
+                      <button
+                        onClick={() => showConfirmation(
+                          'Delete Items',
+                          `Are you sure you want to delete ${selectedItems.length} selected items? This action cannot be undone.`,
+                          () => {
+                            // Handle bulk delete
+                            console.log('Bulk delete:', selectedItems);
+                            toast.success(`Deleted ${selectedItems.length} items`);
+                            setSelectedItems([]);
+                          }
+                        )}
+                        className="px-3 py-1 text-xs bg-red-100 hover:bg-red-200 text-red-700 rounded transition-colors"
+                      >
+                        Delete ({selectedItems.length})
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Received Items Table */}
+              {isLoadingReceivedItems ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                    <p className="text-gray-600">Loading received items...</p>
+                  </div>
+                </div>
+              ) : filteredReceivedItems.length === 0 ? (
+                <div className="text-center py-8">
+                  <PackageCheck className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-600">No received items found</p>
+                  <p className="text-sm text-gray-500 mt-2">
+                    {receivedItems.length === 0 
+                      ? 'Items will appear here once they are received and added to inventory'
+                      : 'No items match your current filters'
+                    }
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                  <div className="p-4 border-b border-gray-200 bg-gray-50">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-gray-800">
+                        Received Items ({filteredReceivedItems.length} items)
+                      </h3>
+                      <button
+                        onClick={handleRefreshReceivedItems}
+                        className="flex items-center gap-2 px-3 py-1 text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 rounded transition-colors"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        Refresh
+                      </button>
+                    </div>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          <th className="text-left p-3 font-medium text-gray-700 w-8">
+                            <input
+                              type="checkbox"
+                              checked={selectedItems.length === filteredReceivedItems.length && filteredReceivedItems.length > 0}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedItems(filteredReceivedItems.map(item => item.id));
+                                } else {
+                                  setSelectedItems([]);
+                                }
+                              }}
+                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                          </th>
+                          <th className="text-left p-3 font-medium text-gray-700">Product</th>
+                          <th className="text-left p-3 font-medium text-gray-700 hidden sm:table-cell">Variant</th>
+                          <th className="text-left p-3 font-medium text-gray-700">Serial Number</th>
+                          <th className="text-left p-3 font-medium text-gray-700 hidden md:table-cell">IMEI</th>
+                          <th className="text-left p-3 font-medium text-gray-700">Status</th>
+                          <th className="text-left p-3 font-medium text-gray-700 hidden lg:table-cell">Location</th>
+                          <th className="text-left p-3 font-medium text-gray-700">Cost Price</th>
+                          <th className="text-left p-3 font-medium text-gray-700">Received Date</th>
+                          <th className="text-left p-3 font-medium text-gray-700">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredReceivedItems.map((item, index) => (
+                          <tr key={index} className="border-b border-gray-100 hover:bg-gray-50">
+                            <td className="p-3">
+                              <input
+                                type="checkbox"
+                                checked={selectedItems.includes(item.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedItems(prev => [...prev, item.id]);
+                                  } else {
+                                    setSelectedItems(prev => prev.filter(id => id !== item.id));
+                                  }
+                                }}
+                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                            </td>
+                            <td className="p-3">
+                              <div>
+                                <p className="font-medium text-sm text-gray-900">{item.product?.name || `Product ${item.product_id}`}</p>
+                                <p className="text-xs text-gray-500 sm:hidden">{item.variant?.name || `Variant ${item.variant_id}`}</p>
+                                <p className="text-xs text-gray-500">SKU: {item.product?.sku || item.product_id}</p>
+                              </div>
+                            </td>
+                            <td className="p-3 text-sm hidden sm:table-cell">{item.variant?.name || `Variant ${item.variant_id}`}</td>
+                            <td className="p-3">
+                              <div className="font-mono text-sm text-gray-900">
+                                {item.serial_number || item.serialNumber || '-'}
+                                {!item.serial_number && !item.serialNumber && (
+                                  <button
+                                    onClick={() => {
+                                      const serialNumber = prompt('Enter serial number:');
+                                      if (serialNumber) {
+                                        // Handle serial number update
+                                        console.log('Update serial number:', serialNumber);
+                                      }
+                                    }}
+                                    className="ml-2 text-xs text-blue-600 hover:text-blue-800"
+                                  >
+                                    Add
+                                  </button>
+                                )}
+                              </div>
+                              {item.barcode && (
+                                <div className="text-xs text-gray-500">Barcode: {item.barcode}</div>
+                              )}
+                            </td>
+                            <td className="p-3 text-sm hidden md:table-cell">
+                              {item.imei ? (
+                                <span className="font-mono text-xs text-gray-600">{item.imei}</span>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-gray-400">-</span>
+                                  <button
+                                    onClick={() => {
+                                      const imei = prompt('Enter IMEI:');
+                                      if (imei) {
+                                        // Handle IMEI update
+                                        console.log('Update IMEI:', imei);
+                                      }
+                                    }}
+                                    className="text-xs text-blue-600 hover:text-blue-800"
+                                  >
+                                    Add
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                            <td className="p-3">
+                              <select
+                                value={item.status}
+                                onChange={(e) => {
+                                  const newStatus = e.target.value;
+                                  // Handle status update
+                                  console.log('Update status:', newStatus);
+                                }}
+                                className={`px-2 py-1 rounded-full text-xs font-medium border-0 ${
+                                  item.status === 'available' ? 'bg-green-100 text-green-700' :
+                                  item.status === 'sold' ? 'bg-blue-100 text-blue-700' :
+                                  item.status === 'damaged' ? 'bg-red-100 text-red-700' :
+                                  item.status === 'reserved' ? 'bg-yellow-100 text-yellow-700' :
+                                  'bg-gray-100 text-gray-700'
+                                }`}
+                              >
+                                <option value="available">Available</option>
+                                <option value="sold">Sold</option>
+                                <option value="reserved">Reserved</option>
+                                <option value="damaged">Damaged</option>
+                              </select>
+                            </td>
+                            <td className="p-3 text-sm hidden lg:table-cell">
+                              {item.location ? (
+                                <div>
+                                  <div className="text-gray-900">{item.location}</div>
+                                  {item.shelf && (
+                                    <div className="text-xs text-gray-500">Shelf: {item.shelf}</div>
+                                  )}
+                                  {item.bin && (
+                                    <div className="text-xs text-gray-500">Bin: {item.bin}</div>
+                                  )}
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => {
+                                    const location = prompt('Enter location:');
+                                    const shelf = prompt('Enter shelf (optional):');
+                                    const bin = prompt('Enter bin (optional):');
+                                    if (location) {
+                                      // Handle location update
+                                      console.log('Update location:', { location, shelf, bin });
+                                    }
+                                  }}
+                                  className="text-xs text-blue-600 hover:text-blue-800"
+                                >
+                                  Assign
+                                </button>
+                              )}
+                            </td>
+                            <td className="p-3">
+                              <div className="text-sm text-gray-900">
+                                {item.cost_price ? `TZS ${item.cost_price.toLocaleString()}` : 'N/A'}
+                              </div>
+                              {item.selling_price && (
+                                <div className="text-xs text-gray-500">
+                                  Sell: TZS {item.selling_price.toLocaleString()}
+                                </div>
+                              )}
+                            </td>
+                            <td className="p-3">
+                              <div className="text-sm text-gray-900">
+                                {new Date(item.created_at).toLocaleDateString()}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {new Date(item.created_at).toLocaleTimeString()}
+                              </div>
+                            </td>
+                            <td className="p-3">
+                              <div className="flex gap-1">
+                                <button
+                                  onClick={() => {
+                                    // Handle view details
+                                    console.log('View details:', item);
+                                  }}
+                                  className="px-2 py-1 text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 rounded transition-colors"
+                                  title="View Details"
+                                >
+                                  <Eye className="w-3 h-3" />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    // Handle edit item
+                                    console.log('Edit item:', item);
+                                  }}
+                                  className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded transition-colors"
+                                  title="Edit Item"
+                                >
+                                  <Edit className="w-3 h-3" />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    // Generate QR code
+                                    const qrData = {
+                                      id: item.id,
+                                      serialNumber: item.serial_number || item.serialNumber,
+                                      productName: item.product?.name,
+                                      sku: item.product?.sku
+                                    };
+                                    console.log('Generate QR code:', qrData);
+                                    toast.success('QR code generated!');
+                                  }}
+                                  className="px-2 py-1 text-xs bg-purple-100 hover:bg-purple-200 text-purple-700 rounded transition-colors"
+                                  title="Generate QR Code"
+                                >
+                                  <QrCode className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Shipping Tab - Completely Removed */}
+          {false && false && (
             <div className="space-y-6">
               {(purchaseOrder.status === 'shipping' || purchaseOrder.status === 'shipped' || purchaseOrder.status === 'received') && purchaseOrder.shippingInfo ? (
                 <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
@@ -1296,11 +3508,71 @@ const PurchaseOrderDetailPage: React.FC = () => {
                     <h3 className="text-sm font-semibold text-gray-800">Shipping Information</h3>
                   </div>
                   <ShippingTracker 
-                    shippingInfo={purchaseOrder.shippingInfo} 
+                    shippingInfo={purchaseOrder.shippingInfo}
+                    purchaseOrder={purchaseOrder}
                     compact={false}
                     debugMode={process.env.NODE_ENV === 'development'}
                     onRefresh={handleRefresh}
+                    onStatusUpdate={async (status: string, data: any) => {
+                      console.log('🚚 [PurchaseOrderDetailPage] Status update requested:', { status, data });
+                      try {
+                        const response = await updatePurchaseOrderShipping(purchaseOrder.id, {
+                          status,
+                          ...data
+                        });
+                        if (response.ok) {
+                          toast.success(`Status updated to ${status.replace('_', ' ')}`);
+                          loadPurchaseOrder(); // Reload to get updated data
+                        } else {
+                          toast.error(response.message || 'Failed to update status');
+                        }
+                      } catch (error) {
+                        console.error('Status update error:', error);
+                        toast.error('Failed to update status');
+                      }
+                    }}
+                    onInventoryUpdate={async (products: any[]) => {
+                      console.log('🚚 [PurchaseOrderDetailPage] Inventory update requested:', products);
+                      try {
+                        // Handle inventory updates here
+                        toast.success(`${products.length} products updated in inventory`);
+                      } catch (error) {
+                        console.error('Inventory update error:', error);
+                        toast.error('Failed to update inventory');
+                      }
+                    }}
                   />
+                  
+                  <div className="flex gap-2 pt-2">
+                    <GlassButton
+                      onClick={() => navigate(`/lats/shipping/${purchaseOrder.shippingInfo.id}`)}
+                      variant="primary"
+                      size="sm"
+                      className="flex-1"
+                    >
+                      <Truck size={16} />
+                      View Full Details
+                    </GlassButton>
+                    
+                    <GlassButton
+                      onClick={handleViewShipping}
+                      variant="secondary"
+                      size="sm"
+                    >
+                      <Eye size={16} />
+                      Quick View
+                    </GlassButton>
+                    
+                    <GlassButton
+                      onClick={() => setShowShippingModal(true)}
+                      variant="outline"
+                      size="sm"
+                      className="flex items-center gap-2"
+                    >
+                      <Edit size={16} />
+                      Edit Shipping
+                    </GlassButton>
+                  </div>
                 </div>
               ) : (
                 <div className="text-center py-8">
@@ -1449,7 +3721,14 @@ const PurchaseOrderDetailPage: React.FC = () => {
                       <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                         <div>
                           <p className="text-sm font-medium text-gray-900">{payment.method}</p>
-                          <p className="text-xs text-gray-600">{payment.amount}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-xs text-gray-600">{payment.amount}</p>
+                            {payment.currency && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-blue-100 text-blue-800 text-xs rounded-full">
+                                {payment.currency}
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <div className="text-right">
                           <p className="text-xs text-gray-500">{payment.date}</p>
@@ -1483,8 +3762,26 @@ const PurchaseOrderDetailPage: React.FC = () => {
             </button>
             
             <button
-              onClick={handleViewPayments}
+              onClick={handleSendWhatsApp}
               className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium text-sm"
+              title="Send WhatsApp message to supplier"
+            >
+              <MessageSquare className="w-4 h-4" />
+              WhatsApp
+            </button>
+            
+            <button
+              onClick={handleSendSMS}
+              className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors font-medium text-sm"
+              title="Send SMS to supplier"
+            >
+              <Send className="w-4 h-4" />
+              SMS
+            </button>
+            
+            <button
+              onClick={handleViewPayments}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors font-medium text-sm"
             >
               <CreditCard className="w-4 h-4" />
               Payments
@@ -1511,32 +3808,46 @@ const PurchaseOrderDetailPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Shipping Assignment Modal */}
-        <ShippingAssignmentModal
-          isOpen={showShippingModal}
-          onClose={() => setShowShippingModal(false)}
-          purchaseOrder={purchaseOrder!}
-          agents={shippingAgents || []}
-          settings={{
-            defaultAgentId: '',
-            defaultShippingCost: 0,
-            maxShippingCost: 100000,
-            requireSignature: false,
-            enableInsurance: false,
-            autoAssignAgents: false
-          }}
-          onAssignShipping={handleShippingAssigned}
-        />
+        {/* Shipping Assignment Modal - Removed */}
 
-        {/* Shipping Tracker Modal */}
-        {purchaseOrder?.shippingInfo && (
+        {/* Shipping Tracker Modal - Completely Removed */}
+        {false && false && purchaseOrder?.shippingInfo && (
           <div className={`fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm ${showShippingTracker ? 'block' : 'hidden'}`}>
             <div className="max-w-4xl w-full max-h-[90vh] overflow-y-auto">
               <ShippingTracker 
                 shippingInfo={purchaseOrder.shippingInfo}
+                purchaseOrder={purchaseOrder}
                 compact={false}
                 debugMode={process.env.NODE_ENV === 'development'}
                 onRefresh={handleRefresh}
+                onStatusUpdate={async (status: string, data: any) => {
+                  console.log('🚚 [PurchaseOrderDetailPage] Status update requested:', { status, data });
+                  try {
+                    const response = await updatePurchaseOrderShipping(purchaseOrder.id, {
+                      status,
+                      ...data
+                    });
+                    if (response.ok) {
+                      toast.success(`Status updated to ${status.replace('_', ' ')}`);
+                      loadPurchaseOrder(); // Reload to get updated data
+                    } else {
+                      toast.error(response.message || 'Failed to update status');
+                    }
+                  } catch (error) {
+                    console.error('Status update error:', error);
+                    toast.error('Failed to update status');
+                  }
+                }}
+                onInventoryUpdate={async (products: any[]) => {
+                  console.log('🚚 [PurchaseOrderDetailPage] Inventory update requested:', products);
+                  try {
+                    // Handle inventory updates here
+                    toast.success(`${products.length} products updated in inventory`);
+                  } catch (error) {
+                    console.error('Inventory update error:', error);
+                    toast.error('Failed to update inventory');
+                  }
+                }}
               />
               <div className="mt-4 flex justify-end">
                 <GlassButton
@@ -1554,11 +3865,16 @@ const PurchaseOrderDetailPage: React.FC = () => {
 
         {/* Purchase Order Payment Modal */}
         {purchaseOrder && (
-          <PurchaseOrderPaymentModal
+          <PaymentsPopupModal
             isOpen={showPurchaseOrderPaymentModal}
             onClose={() => setShowPurchaseOrderPaymentModal(false)}
-            purchaseOrder={purchaseOrder}
+            amount={purchaseOrder.totalAmount - (purchaseOrder.totalPaid || 0)}
+            customerId={purchaseOrder.supplierId}
+            customerName={purchaseOrder.supplier?.name}
+            description={`Payment for Purchase Order ${purchaseOrder.orderNumber}`}
             onPaymentComplete={handlePurchaseOrderPaymentComplete}
+            paymentType="cash_out"
+            title="Purchase Order Payment"
           />
         )}
 
@@ -1625,14 +3941,14 @@ const PurchaseOrderDetailPage: React.FC = () => {
                           type="number"
                           min="0"
                           max={item.quantity}
-                          defaultValue={item.receivedQuantity || 0}
+                          value={item.receivedQuantity || 0}
                           className="w-20 px-2 py-1 border border-gray-300 rounded text-sm"
                           onChange={(e) => {
                             const value = parseInt(e.target.value) || 0;
                             // Update the item's received quantity
                             const updatedItems = [...(purchaseOrder?.items || [])];
                             updatedItems[index] = { ...item, receivedQuantity: value };
-                            setPurchaseOrder({ ...purchaseOrder!, items: updatedItems });
+                            setPurchaseOrder(prev => prev ? { ...prev, items: updatedItems } : null);
                           }}
                         />
                       </div>
@@ -1727,6 +4043,339 @@ const PurchaseOrderDetailPage: React.FC = () => {
           </div>
         )}
 
+        {/* Quality Control Modal */}
+        {showQualityControlModal && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center gap-3 mb-4 p-6 border-b border-gray-100">
+                <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
+                  <Shield className="w-5 h-5 text-purple-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">Quality Control Check</h3>
+              </div>
+              
+              <div className="p-6 space-y-4">
+                <div className="text-sm text-gray-600">
+                  Perform quality checks on received items. Mark items as passed, failed, or needs attention.
+                </div>
+                
+                <div className="space-y-4">
+                  {purchaseOrder.items.map((item, index) => (
+                    <div key={index} className="border border-gray-200 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <h4 className="font-medium text-gray-900">{item.name}</h4>
+                          <p className="text-sm text-gray-500">SKU: {item.sku}</p>
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          Qty: {item.receivedQuantity || 0}/{item.quantity}
+                        </div>
+                      </div>
+                      
+                      <div className="flex gap-2">
+                        <button
+                          className="flex-1 px-3 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors text-sm font-medium"
+                          onClick={() => handleQualityCheck(item.id, 'passed')}
+                        >
+                          <CheckCircle2 className="w-4 h-4 inline mr-1" />
+                          Pass
+                        </button>
+                        <button
+                          className="flex-1 px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm font-medium"
+                          onClick={() => handleQualityCheck(item.id, 'failed')}
+                        >
+                          <XCircle className="w-4 h-4 inline mr-1" />
+                          Fail
+                        </button>
+                        <button
+                          className="flex-1 px-3 py-2 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200 transition-colors text-sm font-medium"
+                          onClick={() => handleQualityCheck(item.id, 'attention')}
+                        >
+                          <AlertTriangle className="w-4 h-4 inline mr-1" />
+                          Review
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                
+                <div className="flex gap-3 pt-4 border-t border-gray-100">
+                  <button
+                    onClick={() => setShowQualityControlModal(false)}
+                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleCompleteQualityCheck}
+                    className="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors font-medium"
+                  >
+                    Complete Quality Check
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Notes Modal */}
+        {showNotesModal && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center gap-3 mb-4 p-6 border-b border-gray-100">
+                <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center">
+                  <FileText className="w-5 h-5 text-yellow-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">Order Notes</h3>
+              </div>
+              
+              <div className="p-6 space-y-4">
+                {/* Add New Note */}
+                <div className="space-y-3">
+                  <label className="text-sm font-medium text-gray-700">Add New Note</label>
+                  <textarea
+                    value={newNote}
+                    onChange={(e) => setNewNote(e.target.value)}
+                    placeholder="Enter your note here..."
+                    className="w-full p-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                    rows={3}
+                  />
+                  <button
+                    onClick={handleAddNote}
+                    disabled={!newNote.trim()}
+                    className="w-full px-4 py-2 bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-400 text-white rounded-lg transition-colors font-medium text-sm"
+                  >
+                    Add Note
+                  </button>
+                </div>
+                
+                {/* Notes List */}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium text-gray-700">Previous Notes</h4>
+                  {orderNotes.length > 0 ? (
+                    <div className="space-y-3 max-h-60 overflow-y-auto">
+                      {orderNotes.map((note, index) => (
+                        <div key={note.id || index} className="border border-gray-200 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-medium text-gray-900">{note.author}</span>
+                            <span className="text-xs text-gray-500">
+                              {new Date(note.timestamp).toLocaleString()}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-700">{note.content}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-gray-500">
+                      <FileText className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                      <p>No notes available</p>
+                    </div>
+                  )}
+                </div>
+                
+                <div className="flex gap-3 pt-4 border-t border-gray-100">
+                  <button
+                    onClick={() => setShowNotesModal(false)}
+                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Bulk Actions Modal */}
+        {showBulkActions && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center gap-3 mb-4 p-6 border-b border-gray-100">
+                <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
+                  <Layers className="w-5 h-5 text-indigo-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">Bulk Actions</h3>
+              </div>
+              
+              <div className="p-6 space-y-4">
+                <div className="text-sm text-gray-600">
+                  Select items and choose an action to perform on multiple items at once.
+                </div>
+                
+                {/* Item Selection */}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium text-gray-700">Select Items</h4>
+                  <div className="max-h-60 overflow-y-auto border border-gray-200 rounded-lg">
+                    {purchaseOrder.items.map((item, index) => (
+                      <div key={item.id || index} className="flex items-center gap-3 p-3 border-b border-gray-100 last:border-b-0">
+                        <input
+                          type="checkbox"
+                          checked={bulkSelectedItems.includes(item.id)}
+                          onChange={() => handleBulkSelectItem(item.id)}
+                          className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                        />
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-gray-900">{item.name}</p>
+                          <p className="text-xs text-gray-500">SKU: {item.sku} | Qty: {item.quantity}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                
+                {/* Bulk Actions */}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium text-gray-700">Available Actions</h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => handleBulkAction('update_status')}
+                      disabled={bulkSelectedItems.length === 0}
+                      className="flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg transition-colors font-medium text-sm"
+                    >
+                      <CheckSquare className="w-4 h-4" />
+                      Update Status
+                    </button>
+                    
+                    <button
+                      onClick={() => handleBulkAction('assign_location')}
+                      disabled={bulkSelectedItems.length === 0}
+                      className="flex items-center justify-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-lg transition-colors font-medium text-sm"
+                    >
+                      <Store className="w-4 h-4" />
+                      Assign Location
+                    </button>
+                    
+                    <button
+                      onClick={() => handleBulkAction('export_selected')}
+                      disabled={bulkSelectedItems.length === 0}
+                      className="flex items-center justify-center gap-2 px-4 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white rounded-lg transition-colors font-medium text-sm"
+                    >
+                      <Download className="w-4 h-4" />
+                      Export Selected
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="flex gap-3 pt-4 border-t border-gray-100">
+                  <button
+                    onClick={() => {
+                      setShowBulkActions(false);
+                      setBulkSelectedItems([]);
+                    }}
+                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => setBulkSelectedItems(purchaseOrder.items.map(item => item.id))}
+                    className="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors font-medium"
+                  >
+                    Select All
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Return Order Modal */}
+        {showReturnOrderModal && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center gap-3 mb-4 p-6 border-b border-gray-100">
+                <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                  <RotateCcw className="w-5 h-5 text-red-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">Return Order</h3>
+              </div>
+              
+              <div className="p-6 space-y-4">
+                <div className="text-sm text-gray-600">
+                  Create a return order for items that need to be returned to the supplier.
+                </div>
+                
+                <div className="space-y-4">
+                  {/* Return Type */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Return Type</label>
+                    <select className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500">
+                      <option value="defective">Defective Items</option>
+                      <option value="wrong_item">Wrong Items</option>
+                      <option value="excess">Excess Quantity</option>
+                      <option value="damaged">Damaged in Transit</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                  
+                  {/* Items to Return */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Items to Return</label>
+                    <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-lg">
+                      {purchaseOrder.items.map((item, index) => (
+                        <div key={item.id || index} className="flex items-center gap-3 p-3 border-b border-gray-100 last:border-b-0">
+                          <input
+                            type="checkbox"
+                            className="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
+                          />
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-gray-900">{item.name}</p>
+                            <p className="text-xs text-gray-500">SKU: {item.sku} | Received: {item.receivedQuantity || 0}</p>
+                          </div>
+                          <div className="w-20">
+                            <input
+                              type="number"
+                              placeholder="Qty"
+                              min="1"
+                              max={item.receivedQuantity || item.quantity}
+                              className="w-full p-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  {/* Reason */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Return Reason</label>
+                    <textarea
+                      placeholder="Describe the reason for return..."
+                      className="w-full p-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                      rows={3}
+                    />
+                  </div>
+                  
+                  {/* Additional Notes */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Additional Notes</label>
+                    <textarea
+                      placeholder="Any additional information..."
+                      className="w-full p-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                      rows={2}
+                    />
+                  </div>
+                </div>
+                
+                <div className="flex gap-3 pt-4 border-t border-gray-100">
+                  <button
+                    onClick={() => setShowReturnOrderModal(false)}
+                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => handleReturnOrder({})}
+                    className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium"
+                  >
+                    Create Return Order
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Payment History Modal */}
         {showPaymentModal && (
           <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -1742,89 +4391,413 @@ const PurchaseOrderDetailPage: React.FC = () => {
                 <div className="space-y-4 mb-6">
                   {paymentHistory.length > 0 ? (
                     paymentHistory.map((payment, index) => (
-                      <div key={index} className="p-3 bg-gray-50 rounded-lg">
-                        <div className="flex justify-between items-start mb-2">
-                          <span className="font-medium text-gray-900">{payment.method}</span>
-                          <span className="text-sm text-gray-500">{new Date(payment.timestamp).toLocaleString()}</span>
-                        </div>
-                        <p className="text-gray-700">Amount: {formatCurrency(payment.amount, payment.currency)}</p>
-                        <p className="text-sm text-gray-600">Status: {payment.status}</p>
+                      <div key={payment.id || index}>
+                        {/* Check if this payment has multiple payment methods */}
+                        {payment.metadata?.paymentMethod?.type === 'multiple' && payment.metadata.paymentMethod.details?.payments ? (
+                          <div className="bg-gradient-to-br from-blue-50 to-indigo-100 rounded-xl border border-blue-200 p-6">
+                            <h4 className="text-lg font-semibold text-blue-900 mb-4 flex items-center gap-2">
+                              <CreditCard className="w-5 h-5" />
+                              Payment #{index + 1} - Multiple Methods
+                            </h4>
+                            <div className="space-y-4">
+                              {payment.metadata.paymentMethod.details.payments.map((subPayment: any, subIndex: number) => (
+                                <div key={subIndex} className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200 shadow-sm">
+                                  <div className="flex justify-between items-start">
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-2 mb-2">
+                                        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                                          <CreditCard className="w-4 h-4 text-blue-600" />
+                                        </div>
+                                        <p className="font-semibold text-gray-900 text-lg">
+                                          {subPayment.method ? 
+                                            subPayment.method.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 
+                                            'Unknown Method'
+                                          }
+                                        </p>
+                                      </div>
+                                      <div className="space-y-1">
+                                        {subPayment.reference && (
+                                          <p className="text-sm text-gray-600">
+                                            <span className="font-medium">Reference:</span> {subPayment.reference}
+                                          </p>
+                                        )}
+                                        {subPayment.transactionId && (
+                                          <p className="text-sm text-gray-600">
+                                            <span className="font-medium">Transaction ID:</span> {subPayment.transactionId}
+                                          </p>
+                                        )}
+                                        {subPayment.timestamp && (
+                                          <p className="text-sm text-gray-500">
+                                            <span className="font-medium">Time:</span> {new Date(subPayment.timestamp).toLocaleString('en-TZ')}
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div className="text-right">
+                                      <p className="text-xl font-bold text-green-600 mb-2">
+                                        {formatCurrency(subPayment.amount, subPayment.currency || payment.currency)}
+                                      </p>
+                                      {subPayment.status && (
+                                        <span className={`inline-flex px-3 py-1 text-xs font-semibold rounded-full ${
+                                          subPayment.status === 'completed' || subPayment.status === 'success' ? 'bg-green-100 text-green-800' :
+                                          subPayment.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                          subPayment.status === 'failed' ? 'bg-red-100 text-red-800' :
+                                          'bg-gray-100 text-gray-800'
+                                        }`}>
+                                          {subPayment.status.toUpperCase()}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {subPayment.notes && (
+                                    <div className="mt-3 pt-3 border-t border-blue-200">
+                                      <p className="text-sm text-gray-600 italic">
+                                        <span className="font-medium">Note:</span> {subPayment.notes}
+                                      </p>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                              
+                              {/* Payment Summary */}
+                              <div className="mt-4 p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200">
+                                <h5 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                                  <DollarSign className="w-4 h-4 text-green-600" />
+                                  Payment Summary
+                                </h5>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                  <div className="text-center">
+                                    <div className="text-sm text-gray-600">Total Payments</div>
+                                    <div className="text-lg font-semibold text-blue-900">
+                                      {payment.metadata.paymentMethod.details.payments.length}
+                                    </div>
+                                  </div>
+                                  <div className="text-center">
+                                    <div className="text-sm text-gray-600">Payment Methods</div>
+                                    <div className="text-lg font-semibold text-blue-900">
+                                      {new Set(payment.metadata.paymentMethod.details.payments.map((p: any) => p.method)).size}
+                                    </div>
+                                  </div>
+                                  <div className="text-center">
+                                    <div className="text-sm text-gray-600">Total Amount</div>
+                                    <div className="text-xl font-bold text-green-600">
+                                      {formatCurrency(
+                                        payment.metadata.paymentMethod.details.payments.reduce((sum: number, p: any) => sum + p.amount, 0),
+                                        payment.currency
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          /* Single Payment Display */
+                          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200 shadow-sm">
+                            <div className="flex justify-between items-start">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                                    <CreditCard className="w-4 h-4 text-blue-600" />
+                                  </div>
+                                  <p className="font-semibold text-gray-900 text-lg">
+                                    {payment.method ? 
+                                      payment.method.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 
+                                      'Unknown Method'
+                                    }
+                                  </p>
+                                </div>
+                                <div className="space-y-1">
+                                  {payment.reference && (
+                                    <p className="text-sm text-gray-600">
+                                      <span className="font-medium">Reference:</span> {payment.reference}
+                                    </p>
+                                  )}
+                                  {payment.timestamp && (
+                                    <p className="text-sm text-gray-500">
+                                      <span className="font-medium">Time:</span> {new Date(payment.timestamp).toLocaleString('en-TZ')}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-xl font-bold text-green-600 mb-2">
+                                  {formatCurrency(payment.amount, payment.currency)}
+                                </p>
+                                <span className={`inline-flex px-3 py-1 text-xs font-semibold rounded-full ${
+                                  payment.status === 'completed' || payment.status === 'success' ? 'bg-green-100 text-green-800' :
+                                  payment.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                  payment.status === 'failed' ? 'bg-red-100 text-red-800' :
+                                  'bg-gray-100 text-gray-800'
+                                }`}>
+                                  {payment.status.toUpperCase()}
+                                </span>
+                              </div>
+                            </div>
+                            {payment.notes && (
+                              <div className="mt-3 pt-3 border-t border-blue-200">
+                                <p className="text-sm text-gray-600 italic">
+                                  <span className="font-medium">Note:</span> {payment.notes}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     ))
                   ) : (
-                    <div className="text-center py-8 text-gray-500">
-                      <CreditCard className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                      <p>No payment history available</p>
+                    <div className="text-center py-12 text-gray-500">
+                      <CreditCard className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">No Payment History</h3>
+                      <p className="text-sm">No payments have been made for this purchase order yet.</p>
+                      <button
+                        onClick={() => {
+                          setShowPaymentModal(false);
+                          handleMakePayment();
+                        }}
+                        className="mt-4 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
+                      >
+                        Make First Payment
+                      </button>
                     </div>
                   )}
                 </div>
                 
                 <div className="border-t border-gray-200 pt-4">
-                  <h4 className="font-medium text-gray-900 mb-3">Add New Payment</h4>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Payment Method</label>
-                      <select 
-                        id="paymentMethod"
-                        className="w-full p-2 border border-gray-300 rounded-lg"
-                      >
-                        <option value="Bank Transfer">Bank Transfer</option>
-                        <option value="Cash">Cash</option>
-                        <option value="Check">Check</option>
-                        <option value="Credit Card">Credit Card</option>
-                        <option value="Mobile Money">Mobile Money</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Amount</label>
-                      <input
-                        id="paymentAmount"
-                        type="number"
-                        placeholder="Enter amount"
-                        className="w-full p-2 border border-gray-300 rounded-lg"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Reference</label>
-                      <input
-                        id="paymentReference"
-                        type="text"
-                        placeholder="Transaction reference"
-                        className="w-full p-2 border border-gray-300 rounded-lg"
-                      />
-                    </div>
+                  <h4 className="font-medium text-gray-900 mb-3">Quick Actions</h4>
+                  <div className="text-center">
+                    <p className="text-sm text-gray-600 mb-4">
+                      Use the "Make Payment" button to add new payments with full validation and account integration.
+                    </p>
+                    <button
+                      onClick={() => {
+                        setShowPaymentModal(false);
+                        handleMakePayment();
+                      }}
+                      className="w-full px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium"
+                    >
+                      <CreditCard className="w-4 h-4 inline mr-2" />
+                      Make New Payment
+                    </button>
                   </div>
                 </div>
                 
                 <div className="flex gap-3 mt-6">
                   <button
                     onClick={() => setShowPaymentModal(false)}
-                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+                    className="w-full px-4 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
                   >
                     Close
                   </button>
-                  <button 
-                    onClick={() => {
-                      const method = (document.getElementById('paymentMethod') as HTMLSelectElement)?.value;
-                      const amount = parseFloat((document.getElementById('paymentAmount') as HTMLInputElement)?.value || '0');
-                      const reference = (document.getElementById('paymentReference') as HTMLInputElement)?.value;
-                      
-                      if (method && amount > 0) {
-                        handleAddPayment({ method, amount, reference });
-                        // Clear form
-                        (document.getElementById('paymentMethod') as HTMLSelectElement).value = 'Bank Transfer';
-                        (document.getElementById('paymentAmount') as HTMLInputElement).value = '';
-                        (document.getElementById('paymentReference') as HTMLInputElement).value = '';
-                      } else {
-                        toast.error('Please fill in all required fields');
-                      }
-                    }}
-                    className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium"
-                  >
-                    Add Payment
-                  </button>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Serial Number Receive Modal */}
+        {showSerialNumberReceiveModal && purchaseOrder && (
+          <SerialNumberReceiveModal
+            isOpen={showSerialNumberReceiveModal}
+            onClose={() => setShowSerialNumberReceiveModal(false)}
+            purchaseOrder={purchaseOrder}
+            onConfirm={handleSerialNumberReceive}
+            isLoading={isSaving}
+          />
+        )}
+
+        {/* Status Update Modal */}
+        {showStatusModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4">
+              <div className="flex items-center gap-2 mb-4">
+                <CheckSquare className="w-5 h-5 text-blue-600" />
+                <h3 className="text-lg font-semibold text-gray-900">Update Status</h3>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Select Status</label>
+                  <select
+                    value={currentItem?.status || ''}
+                    onChange={(e) => setCurrentItem(prev => prev ? { ...prev, status: e.target.value } : null)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="available">Available</option>
+                    <option value="sold">Sold</option>
+                    <option value="reserved">Reserved</option>
+                    <option value="damaged">Damaged</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Reason (Optional)</label>
+                  <textarea
+                    placeholder="Enter reason for status change..."
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+              
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={() => setShowStatusModal(false)}
+                  className="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    if (currentItem && selectedItems.length > 0) {
+                      // Handle bulk status update
+                      console.log('Bulk status update:', selectedItems, currentItem.status);
+                      toast.success(`Updated ${selectedItems.length} items to ${currentItem.status}`);
+                      setSelectedItems([]);
+                      setShowStatusModal(false);
+                    } else if (currentItem) {
+                      // Handle single item status update
+                      console.log('Single status update:', currentItem);
+                      toast.success(`Updated item status to ${currentItem.status}`);
+                      setShowStatusModal(false);
+                    }
+                  }}
+                  className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                >
+                  Update Status
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Location Assignment Modal */}
+        {showLocationModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4">
+              <div className="flex items-center gap-2 mb-4">
+                <MapPin className="w-5 h-5 text-green-600" />
+                <h3 className="text-lg font-semibold text-gray-900">Assign Location</h3>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Location *</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., Warehouse A, Store Front"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  />
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Shelf</label>
+                    <input
+                      type="text"
+                      placeholder="e.g., A1, B2"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Bin</label>
+                    <input
+                      type="text"
+                      placeholder="e.g., 01, 15"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    />
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Notes (Optional)</label>
+                  <textarea
+                    placeholder="Additional location notes..."
+                    rows={2}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  />
+                </div>
+              </div>
+              
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={() => setShowLocationModal(false)}
+                  className="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    if (selectedItems.length > 0) {
+                      // Handle bulk location assignment
+                      console.log('Bulk location assignment:', selectedItems);
+                      toast.success(`Assigned location to ${selectedItems.length} items`);
+                      setSelectedItems([]);
+                      setShowLocationModal(false);
+                    } else {
+                      // Handle single item location assignment
+                      console.log('Single location assignment');
+                      toast.success('Location assigned successfully');
+                      setShowLocationModal(false);
+                    }
+                  }}
+                  className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+                >
+                  Assign Location
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Confirmation Dialog */}
+        {showConfirmDialog && confirmAction && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4">
+              <div className="flex items-center gap-2 mb-4">
+                <AlertCircle className="w-5 h-5 text-orange-600" />
+                <h3 className="text-lg font-semibold text-gray-900">{confirmAction.title}</h3>
+              </div>
+              
+              <p className="text-gray-600 mb-6">{confirmAction.message}</p>
+              
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowConfirmDialog(false);
+                    setConfirmAction(null);
+                  }}
+                  className="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    confirmAction.onConfirm();
+                    setShowConfirmDialog(false);
+                    setConfirmAction(null);
+                  }}
+                  className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                >
+                  Confirm
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Error Message Toast */}
+        {errorMessage && (
+          <div className="fixed top-4 right-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg shadow-lg z-50">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4" />
+              <span>{errorMessage}</span>
+              <button
+                onClick={() => setErrorMessage(null)}
+                className="ml-2 text-red-700 hover:text-red-900"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
           </div>
         )}

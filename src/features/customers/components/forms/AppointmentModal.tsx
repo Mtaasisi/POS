@@ -4,6 +4,7 @@ import GlassCard from '../../../../features/shared/components/ui/GlassCard';
 import GlassButton from '../../../../features/shared/components/ui/GlassButton';
 import { Customer } from '../../../../types';
 import { Appointment, CreateAppointmentData, UpdateAppointmentData } from '../../../../lib/customerApi';
+import { toast } from 'react-hot-toast';
 
 interface AppointmentModalProps {
   isOpen: boolean;
@@ -78,9 +79,19 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({
       }
 
       await onSave(formData);
+      
+      // Show success message
+      if (mode === 'create') {
+        toast.success('Appointment scheduled successfully!');
+      } else {
+        toast.success('Appointment updated successfully!');
+      }
+      
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save appointment');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to save appointment';
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }

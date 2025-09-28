@@ -5,6 +5,8 @@ import GlassCard from '../../shared/components/ui/GlassCard';
 import GlassButton from '../../shared/components/ui/GlassButton';
 import { MessageSquare, Send, AlertCircle, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { supabase } from '../../../lib/supabaseClient';
+import { useAuth } from '../../../context/AuthContext';
 
 interface WhatsAppMessageModalProps {
   isOpen: boolean;
@@ -19,6 +21,7 @@ const WhatsAppMessageModal: React.FC<WhatsAppMessageModalProps> = ({
   customer,
   onMessageSent
 }) => {
+  const { currentUser } = useAuth();
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [instanceStatus, setInstanceStatus] = useState<{
@@ -62,7 +65,49 @@ const WhatsAppMessageModal: React.FC<WhatsAppMessageModalProps> = ({
       );
 
       if (result.success) {
-        toast.success('WhatsApp message sent successfully!');
+        // Log the WhatsApp message to the database
+        const phoneNumber = customer.phone.replace(/\D/g, '');
+        
+        // Log to customer_communications table
+        const { error: commError } = await supabase
+          .from('customer_communications')
+          .insert({
+            customer_id: customer.id,
+            type: 'whatsapp',
+            message: message.trim(),
+            status: 'sent',
+            phone_number: phoneNumber,
+            sent_by: currentUser?.id,
+            sent_at: new Date().toISOString()
+          });
+
+        if (commError) {
+          console.error('Error logging WhatsApp communication:', commError);
+        }
+
+        // Also log to whatsapp_messages table if it exists
+        try {
+          const { error: whatsappError } = await supabase
+            .from('whatsapp_messages')
+            .insert({
+              chat_id: phoneNumber,
+              sender_id: currentUser?.id || 'system',
+              sender_name: currentUser?.name || 'Staff',
+              type: 'text',
+              content: message.trim(),
+              direction: 'outbound',
+              status: 'sent',
+              timestamp: new Date().toISOString()
+            });
+
+          if (whatsappError) {
+            console.warn('WhatsApp messages table not available:', whatsappError);
+          }
+        } catch (error) {
+          console.warn('WhatsApp messages table not available');
+        }
+
+        toast.success('WhatsApp message sent and logged successfully!');
         setMessage('');
         onMessageSent?.();
         onClose();

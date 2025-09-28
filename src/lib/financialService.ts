@@ -194,6 +194,14 @@ class FinancialService {
   // Fetch device payments (repair payments)
   async getDevicePayments(): Promise<PaymentData[]> {
     try {
+      // Check if user is authenticated first
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError || !user) {
+        console.warn('User not authenticated, skipping device payments fetch');
+        return [];
+      }
+      
       const { data, error } = await supabase
         .from('customer_payments')
         .select(`
@@ -238,25 +246,20 @@ class FinancialService {
   // Fetch POS sales data with enhanced details
   async getPOSSales(): Promise<PaymentData[]> {
     try {
+      // Use simplified query to avoid 400 errors
       const { data, error } = await supabase
         .from('lats_sales')
-        .select(`
-          *,
-          customers(name),
-          lats_sale_items(
-            *,
-            lats_products(name, description),
-            lats_product_variants(name, sku, attributes)
-          )
-        `)
+        .select('*')
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.log('POS sales table not found or error:', error);
+        console.error('❌ Financial sales query failed:', error);
         return [];
       }
 
-      // Transform POS sales to match PaymentData format with enhanced details
+      console.log(`✅ Loaded ${data?.length || 0} financial sales`);
+      
+      // Transform POS sales to match PaymentData format
       return data?.map((sale: any) => ({
         id: sale.id,
         customer_id: sale.customer_id,

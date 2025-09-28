@@ -33,7 +33,7 @@ const debouncedSearchQuery = useDebounce(searchQuery, SEARCH_DEBOUNCE_MS);
 const filteredProducts = useMemo(() => {
   let filtered = products;
   
-  // Use debounced search query for better performance
+  // Use debounced search query for better performance with enhanced variant search
   if (debouncedSearchQuery.trim()) {
     const query = debouncedSearchQuery.toLowerCase();
     filtered = filtered.filter(product => {
@@ -43,7 +43,13 @@ const filteredProducts = useMemo(() => {
       
       return (product.name?.toLowerCase() || '').includes(query) ||
              (mainVariant?.sku?.toLowerCase() || '').includes(query) ||
-             (category.toLowerCase() || '').includes(query);
+             (category.toLowerCase() || '').includes(query) ||
+             // Enhanced variant search - search through all variant names and SKUs
+             (product.variants && product.variants.some(variant => 
+               variant.name?.toLowerCase().includes(query) ||
+               variant.sku?.toLowerCase().includes(query) ||
+               variant.barcode?.toLowerCase().includes(query)
+             ));
     });
   }
   

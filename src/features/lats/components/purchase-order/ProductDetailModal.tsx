@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   X, Package, Tag, Hash, ShoppingCart, 
-  CheckCircle, Camera, Barcode, ArrowUpDown
+  CheckCircle, Camera, QrCode, ArrowUpDown
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import GlassCard from '../../../shared/components/ui/GlassCard';
@@ -509,9 +509,9 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
                     {product.barcode && (
                       <div className="flex items-center gap-3">
-                        <Barcode className="w-5 h-5 text-gray-500" />
+                        <QrCode className="w-5 h-5 text-gray-500" />
                         <div>
-                          <span className="text-sm text-gray-600">Barcode:</span>
+                          <span className="text-sm text-gray-600">QrCode:</span>
                           <div className="font-medium text-gray-900 font-mono">{product.barcode}</div>
                         </div>
                       </div>

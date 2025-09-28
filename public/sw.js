@@ -1,36 +1,7 @@
+// Service Worker for LATS POS System
+// Provides offline functionality and caching
 
-// Completely disabled service worker for development
-console.log('Service worker disabled for development');
-
-// Don't register any event listeners in development
-if (false) {
-  self.addEventListener('install', () => {
-    console.log('Service worker disabled for development');
-    self.skipWaiting();
-  });
-
-  self.addEventListener('activate', () => {
-    console.log('Service worker disabled for development');
-    self.clients.claim();
-  });
-
-  // Explicitly ignore TypeScript file requests
-  self.addEventListener('fetch', (event) => {
-    const url = new URL(event.request.url);
-    
-    // Ignore TypeScript file requests
-    if (url.pathname.endsWith('.ts') || url.pathname.endsWith('.tsx')) {
-      console.log('Ignoring TypeScript file request:', url.pathname);
-      event.respondWith(new Response('TypeScript files should not be requested directly', { status: 404 }));
-      return;
-    }
-    
-    // Let all other requests pass through normally
-    return;
-  });
-}
-
-const CACHE_NAME = 'lats-chance-v1.0.0';
+const CACHE_NAME = 'lats-pos-v1.0.0';
 const STATIC_CACHE = 'lats-static-v1.0.0';
 const DYNAMIC_CACHE = 'lats-dynamic-v1.0.0';
 
@@ -38,60 +9,47 @@ const DYNAMIC_CACHE = 'lats-dynamic-v1.0.0';
 const STATIC_FILES = [
   '/',
   '/index.html',
-  '/static/js/bundle.js',
-  '/static/css/main.css',
   '/manifest.json',
-  '/favicon.svg',
-  '/icons/icon-192x192.png',
-  '/icons/icon-512x512.png'
-];
-
-// API endpoints to cache
-const API_CACHE = [
-  '/api/dashboard',
-  '/api/inventory',
-  '/api/customers',
-  '/api/appointments'
+  '/offline.html',
+  // Add other critical static files
 ];
 
 // Install event - cache static files
 self.addEventListener('install', (event) => {
-  console.log('Service Worker: Installing...');
-  
+
   event.waitUntil(
     caches.open(STATIC_CACHE)
       .then((cache) => {
-        console.log('Service Worker: Caching static files');
+
         return cache.addAll(STATIC_FILES);
       })
       .then(() => {
-        console.log('Service Worker: Static files cached');
+
         return self.skipWaiting();
       })
       .catch((error) => {
-        console.error('Service Worker: Error caching static files', error);
+        console.error('Service Worker: Installation failed', error);
       })
   );
 });
 
 // Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
-  console.log('Service Worker: Activating...');
-  
+
   event.waitUntil(
     caches.keys()
       .then((cacheNames) => {
         return Promise.all(
           cacheNames.map((cacheName) => {
             if (cacheName !== STATIC_CACHE && cacheName !== DYNAMIC_CACHE) {
-              console.log('Service Worker: Deleting old cache', cacheName);
+
               return caches.delete(cacheName);
             }
           })
         );
       })
       .then(() => {
-        console.log('Service Worker: Activated');
+
         return self.clients.claim();
       })
   );
@@ -102,177 +60,106 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Handle API requests
-  if (url.pathname.startsWith('/api/')) {
-    event.respondWith(handleApiRequest(request));
+  // Skip non-GET requests
+  if (request.method !== 'GET') {
     return;
   }
 
-  // Handle static file requests
-  if (request.method === 'GET') {
-    event.respondWith(handleStaticRequest(request));
+  // Skip external requests
+  if (url.origin !== location.origin) {
     return;
   }
-});
 
-// Handle API requests with network-first strategy
-async function handleApiRequest(request) {
-  try {
-    // Try network first
-    const networkResponse = await fetch(request);
-    
-    if (networkResponse.ok) {
-      // Only cache GET requests - POST requests cannot be cached
-      if (request.method === 'GET') {
-        try {
-          const cache = await caches.open(DYNAMIC_CACHE);
-          await cache.put(request, networkResponse.clone());
-        } catch (cacheError) {
-          console.log('Service Worker: Failed to cache response', cacheError);
-        }
-      }
-      return networkResponse;
-    }
-    
-    throw new Error('Network response not ok');
-  } catch (error) {
-    console.log('Service Worker: Network failed, trying cache', error);
-    
-    // Only try cache for GET requests
-    if (request.method === 'GET') {
-      const cachedResponse = await caches.match(request);
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-    }
-    
-    // Return offline response for API calls
-    return new Response(
-      JSON.stringify({
-        error: 'Offline mode - data not available',
-        message: 'Please check your internet connection'
-      }),
-      {
-        status: 503,
-        statusText: 'Service Unavailable',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      }
+  // Handle different types of requests
+  if (request.destination === 'document') {
+    // Handle page requests
+    event.respondWith(
+      caches.match(request)
+        .then((cachedResponse) => {
+          if (cachedResponse) {
+            return cachedResponse;
+          }
+          return fetch(request)
+            .then((networkResponse) => {
+              // Cache successful responses
+              if (networkResponse.status === 200) {
+                const responseClone = networkResponse.clone();
+                caches.open(DYNAMIC_CACHE)
+                  .then((cache) => {
+                    cache.put(request, responseClone);
+                  });
+              }
+              return networkResponse;
+            })
+            .catch(() => {
+              // Return offline page for navigation requests
+              return caches.match('/offline.html');
+            });
+        })
+    );
+  } else if (request.destination === 'image' || request.destination === 'script' || request.destination === 'style') {
+    // Handle static assets
+    event.respondWith(
+      caches.match(request)
+        .then((cachedResponse) => {
+          if (cachedResponse) {
+            return cachedResponse;
+          }
+          return fetch(request)
+            .then((networkResponse) => {
+              // Cache successful responses
+              if (networkResponse.status === 200) {
+                const responseClone = networkResponse.clone();
+                caches.open(DYNAMIC_CACHE)
+                  .then((cache) => {
+                    cache.put(request, responseClone);
+                  });
+              }
+              return networkResponse;
+            });
+        })
+    );
+  } else if (url.pathname.startsWith('/api/')) {
+    // Handle API requests
+    event.respondWith(
+      fetch(request)
+        .then((networkResponse) => {
+          // Cache successful API responses for a short time
+          if (networkResponse.status === 200) {
+            const responseClone = networkResponse.clone();
+            caches.open(DYNAMIC_CACHE)
+              .then((cache) => {
+                cache.put(request, responseClone);
+              });
+          }
+          return networkResponse;
+        })
+        .catch(() => {
+          // Return cached API response if available
+          return caches.match(request);
+        })
     );
   }
-}
+});
 
-// Handle static file requests with cache-first strategy
-async function handleStaticRequest(request) {
-  try {
-    // Try cache first
-    const cachedResponse = await caches.match(request);
-    if (cachedResponse) {
-      return cachedResponse;
-    }
-    
-    // Fallback to network
-    const networkResponse = await fetch(request);
-    
-    // Only cache successful responses that are not partial content
-    if (networkResponse.ok && networkResponse.status !== 206) {
-      // Check if response is cacheable
-      const contentType = networkResponse.headers.get('content-type');
-      const isCacheable = contentType && (
-        contentType.includes('text/') ||
-        contentType.includes('application/') ||
-        contentType.includes('image/') ||
-        contentType.includes('font/')
-      );
-      
-      if (isCacheable) {
-        try {
-          const cache = await caches.open(STATIC_CACHE);
-          await cache.put(request, networkResponse.clone());
-        } catch (cacheError) {
-          console.log('Service Worker: Failed to cache response', cacheError);
-        }
-      }
-    }
-    
-    return networkResponse;
-  } catch (error) {
-    console.log('Service Worker: Cache and network failed', error);
-    
-    // Return offline page for navigation requests
-    if (request.destination === 'document') {
-      return caches.match('/offline.html');
-    }
-    
-    return new Response('Offline', {
-      status: 503,
-      statusText: 'Service Unavailable'
-    });
-  }
-}
-
-// Background sync for offline data
+// Background sync for offline actions
 self.addEventListener('sync', (event) => {
-  console.log('Service Worker: Background sync triggered', event.tag);
-  
+
   if (event.tag === 'background-sync') {
-    event.waitUntil(syncOfflineData());
+    event.waitUntil(
+      // Handle background sync tasks
+      handleBackgroundSync()
+    );
   }
 });
 
-// Sync offline data when connection is restored
-async function syncOfflineData() {
-  try {
-    console.log('Service Worker: Syncing offline data...');
-    
-    // Get offline data from IndexedDB or localStorage
-    const offlineData = await getOfflineData();
-    
-    if (offlineData && offlineData.length > 0) {
-      // Sync each offline action
-      for (const data of offlineData) {
-        try {
-          await fetch(data.url, {
-            method: data.method,
-            headers: data.headers,
-            body: data.body
-          });
-          
-          // Remove synced data
-          await removeOfflineData(data.id);
-        } catch (error) {
-          console.error('Service Worker: Error syncing data', error);
-        }
-      }
-    }
-    
-    console.log('Service Worker: Offline data sync completed');
-  } catch (error) {
-    console.error('Service Worker: Background sync failed', error);
-  }
-}
-
-// Get offline data (placeholder - implement with IndexedDB)
-async function getOfflineData() {
-  // This would typically use IndexedDB to store offline actions
-  return [];
-}
-
-// Remove offline data (placeholder - implement with IndexedDB)
-async function removeOfflineData(id) {
-  // This would typically remove data from IndexedDB
-  return Promise.resolve();
-}
-
-// Push notification handling
+// Push notifications
 self.addEventListener('push', (event) => {
-  console.log('Service Worker: Push notification received', event);
-  
+
   const options = {
-    body: event.data ? event.data.text() : 'New notification from LATS CHANCE',
+    body: event.data ? event.data.text() : 'New notification from LATS POS',
     icon: '/icons/icon-192x192.png',
-    badge: '/icons/icon-72x72.png',
+    badge: '/icons/badge-72x72.png',
     vibrate: [100, 50, 100],
     data: {
       dateOfArrival: Date.now(),
@@ -282,38 +169,49 @@ self.addEventListener('push', (event) => {
       {
         action: 'explore',
         title: 'View Details',
-        icon: '/icons/icon-96x96.png'
+        icon: '/icons/checkmark.png'
       },
       {
         action: 'close',
         title: 'Close',
-        icon: '/icons/icon-96x96.png'
+        icon: '/icons/xmark.png'
       }
     ]
   };
-  
+
   event.waitUntil(
-    self.registration.showNotification('LATS CHANCE', options)
+    self.registration.showNotification('LATS POS System', options)
   );
 });
 
-// Notification click handling
+// Notification click handler
 self.addEventListener('notificationclick', (event) => {
-  console.log('Service Worker: Notification clicked', event);
-  
+
   event.notification.close();
-  
+
   if (event.action === 'explore') {
     event.waitUntil(
-      clients.openWindow('/dashboard')
+      clients.openWindow('/')
     );
   }
 });
 
-// Message handling for communication with main thread
+// Helper function for background sync
+async function handleBackgroundSync() {
+  try {
+    // Handle any pending offline actions
+
+    // You can implement specific sync logic here
+    // For example, sync offline sales, upload pending data, etc.
+    
+  } catch (error) {
+    console.error('Service Worker: Background sync failed', error);
+  }
+}
+
+// Message handler for communication with main thread
 self.addEventListener('message', (event) => {
-  console.log('Service Worker: Message received', event.data);
-  
+
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Image as ImageIcon, Package } from 'lucide-react';
 import { ProductImage } from '../lib/robustImageService';
+import { ImageUrlSanitizer } from '../lib/imageUrlSanitizer';
 
 interface SimpleImageDisplayProps {
   images: ProductImage[];
@@ -29,6 +30,19 @@ export const SimpleImageDisplay: React.FC<SimpleImageDisplayProps> = ({
 
   // Get primary image or first image
   const primaryImage = safeImages.length > 0 ? (safeImages.find(img => img.isPrimary) || safeImages[0]) : null;
+  
+  // Sanitize the image URL to prevent 431 errors
+  const sanitizedResult = primaryImage ? ImageUrlSanitizer.sanitizeImageUrl(primaryImage.url, productName) : null;
+  const sanitizedImageUrl = sanitizedResult?.url || null;
+  
+  // Log when fallback is used for debugging
+  if (sanitizedResult?.method === 'fallback' && primaryImage) {
+    console.warn('🖼️ Image URL sanitized to fallback:', {
+      productName,
+      originalUrl: primaryImage.url.substring(0, 100) + '...',
+      reason: 'URL too large or invalid'
+    });
+  }
 
   // Size classes
   const sizeClasses = {
@@ -46,8 +60,8 @@ export const SimpleImageDisplay: React.FC<SimpleImageDisplayProps> = ({
     xl: 'w-12 h-12'
   };
 
-  // If no images or image failed to load, show fallback
-  if (!primaryImage || imageError) {
+  // If no images, no sanitized URL, or image failed to load, show fallback
+  if (!primaryImage || !sanitizedImageUrl || imageError) {
     if (!showFallback) return null;
     
     return (
@@ -60,7 +74,12 @@ export const SimpleImageDisplay: React.FC<SimpleImageDisplayProps> = ({
     );
   }
 
-  const handleImageError = () => {
+  const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    console.warn('🖼️ Image failed to load:', {
+      productName,
+      imageUrl: e.currentTarget.src,
+      error: 'Image load failed'
+    });
     setImageError(true);
     setIsLoading(false);
   };
@@ -83,7 +102,7 @@ export const SimpleImageDisplay: React.FC<SimpleImageDisplayProps> = ({
 
       {/* Image */}
       <img
-        src={primaryImage.url}
+        src={sanitizedImageUrl}
         alt={productName}
         className="w-full h-full object-cover"
         onError={handleImageError}

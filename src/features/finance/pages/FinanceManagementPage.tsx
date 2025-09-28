@@ -270,7 +270,7 @@ const FinanceManagementPage: React.FC = () => {
               className="text-sm bg-gradient-to-r from-blue-500 to-purple-600 text-white"
             >
               <Wallet size={16} />
-              Manage Accounts
+              Payment Management
             </GlassButton>
           </div>
         </div>

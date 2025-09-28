@@ -346,13 +346,133 @@
     min-height: 44px;
     font-size: 15px;
   }
+  
+  /* Enhanced mobile product grid */
+  .mobile-product-card {
+    margin-bottom: 8px;
+  }
+  
+  .mobile-product-card img {
+    height: 120px;
+    object-fit: cover;
+  }
+  
+  /* Mobile navigation improvements */
+  .mobile-nav-item {
+    padding: 6px 4px;
+    min-height: 56px;
+  }
+  
+  .mobile-nav-item span {
+    font-size: 10px;
+  }
 }
 
 @media (max-width: 480px) {
   .mobile-product-grid {
     grid-template-columns: 1fr;
-    gap: 8px;
+    gap: 12px;
     padding: 8px;
+  }
+  
+  /* Single column layout for very small screens */
+  .mobile-product-card {
+    margin-bottom: 12px;
+  }
+  
+  .mobile-product-card img {
+    height: 140px;
+  }
+  
+  /* Compact navigation */
+  .mobile-nav-item {
+    padding: 4px 2px;
+    min-height: 52px;
+  }
+  
+  .mobile-nav-item span {
+    font-size: 9px;
+  }
+  
+  /* Adjust button sizes */
+  .mobile-button {
+    min-height: 40px;
+    font-size: 14px;
+    padding: 10px 16px;
+  }
+  
+  /* Compact input fields */
+  .mobile-input {
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: 15px;
+  }
+}
+
+/* Ultra small screens (iPhone SE, etc.) */
+@media (max-width: 375px) {
+  .mobile-product-grid {
+    padding: 6px;
+    gap: 6px;
+  }
+  
+  .mobile-product-card {
+    margin-bottom: 8px;
+  }
+  
+  .mobile-product-card img {
+    height: 100px;
+  }
+  
+  .mobile-nav-item {
+    padding: 3px 1px;
+    min-height: 48px;
+  }
+  
+  .mobile-nav-item span {
+    font-size: 8px;
+  }
+}
+
+/* Landscape mobile adjustments */
+@media (max-width: 768px) and (orientation: landscape) {
+  .mobile-product-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    padding: 8px;
+  }
+  
+  .mobile-product-card img {
+    height: 80px;
+  }
+  
+  .mobile-nav {
+    padding: 4px 0;
+  }
+  
+  .mobile-nav-item {
+    min-height: 48px;
+    padding: 4px 2px;
+  }
+}
+
+/* Touch device optimizations */
+@media (hover: none) and (pointer: coarse) {
+  .mobile-product-card:hover {
+    transform: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+  
+  .mobile-product-card:active {
+    transform: scale(0.98);
+  }
+  
+  .mobile-button:hover {
+    background: initial;
+  }
+  
+  .mobile-button:active {
+    transform: scale(0.95);
   }
 }
 

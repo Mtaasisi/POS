@@ -6,7 +6,7 @@ import { Users, Monitor, Package } from 'lucide-react';
 const GroupedDevicesTab: React.FC = () => {
   const { currentUser } = useAuth();
 
-  if (!currentUser || !['admin', 'technician'].includes(currentUser.role)) {
+  if (!currentUser || !['admin'].includes(currentUser.role)) {
     return (
       <GlassCard className="p-6">
         <div className="text-center">

@@ -302,7 +302,7 @@ const AddExternalProductModal: React.FC<AddExternalProductModalProps> = ({
                 
                 <div>
                   <label className="block text-gray-700 mb-2 font-medium">
-                    SKU/Barcode/Serial <span className="text-red-500">*</span>
+                    SKU/QrCode/Serial <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
                     <input

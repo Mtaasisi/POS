@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
 import { useCustomers } from '../../../context/CustomersContext';
 import { Customer, LoyaltyLevel } from '../../../types';
@@ -19,10 +19,12 @@ import { toast } from 'react-hot-toast';
 import BulkSMSModal from '../components/BulkSMSModal';
 import ExcelImportModal from '../components/ExcelImportModal';
 import CustomerUpdateImportModal from '../components/CustomerUpdateImportModal';
+import CustomerDetailModal from '../components/CustomerDetailModal';
 import DropdownPortal from '../../../features/shared/components/ui/DropdownPortal';
 import { smsService } from '../../../services/smsService';
 import { fetchAllCustomers, fetchCustomersPaginated, searchCustomers, searchCustomersFast, searchCustomersBackground, getBackgroundSearchManager, fetchAllAppointments } from '../../../lib/customerApi';
 import { formatCurrency } from '../../../lib/customerApi';
+import { fetchCustomerStats, CustomerStats } from '../../../lib/customerStatsApi';
 import AddCustomerModal from '../components/forms/AddCustomerModal';
 import { supabase } from '../../../lib/supabaseClient';
 import useFinancialData from '../../../hooks/useFinancialData';
@@ -59,11 +61,13 @@ const getInitialPrefs = () => {
 const CustomersPage = () => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { markCustomerAsRead } = useCustomers();
   const { summary, loading: financialLoading } = useFinancialData();
   // Restore preferences from localStorage
   const prefs = getInitialPrefs();
   const [searchQuery, setSearchQuery] = useState(prefs.searchQuery ?? '');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(prefs.searchQuery ?? '');
   const [loyaltyFilter, setLoyaltyFilter] = useState<LoyaltyLevel | 'all'>(prefs.loyaltyFilter ?? 'all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>(prefs.statusFilter ?? 'all');
   const [showInactive, setShowInactive] = useState(prefs.showInactive ?? false);
@@ -75,12 +79,15 @@ const CustomersPage = () => {
   const [showExcelImport, setShowExcelImport] = useState(false);
   const [showCustomerUpdateImport, setShowCustomerUpdateImport] = useState(false);
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
+  const [showCustomerDetailModal, setShowCustomerDetailModal] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [sortBy, setSortBy] = useState(prefs.sortBy ?? 'name');
   const [pageLoading, setPageLoading] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
   
   // Background search state
   const [isBackgroundSearching, setIsBackgroundSearching] = useState(false);
@@ -101,6 +108,21 @@ const CustomersPage = () => {
   const [tagFilterMulti, setTagFilterMulti] = useState<string[]>([]);
   const [referralFilterMulti, setReferralFilterMulti] = useState<string[]>([]);
   const [birthdayFilter, setBirthdayFilter] = useState(false);
+  
+  // New filter states
+  const [genderFilter, setGenderFilter] = useState<Array<'male' | 'female' | 'other'>>([]);
+  const [minSpent, setMinSpent] = useState('');
+  const [maxSpent, setMaxSpent] = useState('');
+  const [minPoints, setMinPoints] = useState('');
+  const [maxPoints, setMaxPoints] = useState('');
+  const [cityFilter, setCityFilter] = useState<string[]>([]);
+  const [minPurchases, setMinPurchases] = useState('');
+  const [maxPurchases, setMaxPurchases] = useState('');
+  // Date range filters
+  const [joinDateFrom, setJoinDateFrom] = useState('');
+  const [joinDateTo, setJoinDateTo] = useState('');
+  const [lastVisitFrom, setLastVisitFrom] = useState('');
+  const [lastVisitTo, setLastVisitTo] = useState('');
 
 
   // Appointments state
@@ -116,12 +138,31 @@ const CustomersPage = () => {
   const [totalDevices, setTotalDevices] = useState(0);
   const [devicesInRepair, setDevicesInRepair] = useState(0);
 
+  // Database statistics state
+  const [dbStats, setDbStats] = useState<CustomerStats>({
+    totalCustomers: 0,
+    activeCustomers: 0,
+    todaysBirthdays: 0,
+    totalRevenue: 0,
+    totalDevices: 0
+  });
+  const [dbStatsLoading, setDbStatsLoading] = useState(true);
+
   // Birthday management state
   const [showBirthdayNotification, setShowBirthdayNotification] = useState(true);
   const [showBirthdayMessageSender, setShowBirthdayMessageSender] = useState(false);
       const [showBirthdayCalendar, setShowBirthdayCalendar] = useState(false);
     const [showBirthdayRewards, setShowBirthdayRewards] = useState(false);
     const [showAllBirthdays, setShowAllBirthdays] = useState(false);
+
+  // Debounce search query for better performance
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300); // Reduced to 300ms for better responsiveness
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   // Persist preferences to localStorage on change
   useEffect(() => {
@@ -148,65 +189,31 @@ const CustomersPage = () => {
           setPageLoading(true);
         }
         
+        // Set search loading state when searching (only if we have enough characters)
+        if (debouncedSearchQuery.trim() && debouncedSearchQuery.trim().length >= 2) {
+          setSearchLoading(true);
+        } else {
+          setSearchLoading(false);
+        }
+        
         // Cancel any existing background search
         if (currentSearchJobId) {
           const searchManager = getBackgroundSearchManager();
           searchManager.cancelSearchJob(currentSearchJobId);
         }
         
-        if (searchQuery.trim()) {
-          // Use background search for better UX
-          setIsBackgroundSearching(true);
-          setSearchStatus('pending');
-          setSearchProgress(0);
-          
-          const jobId = await searchCustomersBackground(
-            searchQuery,
-            currentPage,
-            50,
-            (status) => {
-              setSearchStatus(status);
-              if (status === 'processing') {
-                // Simulate progress for better UX
-                const progressInterval = setInterval(() => {
-                  setSearchProgress(prev => {
-                    if (prev >= 90) {
-                      clearInterval(progressInterval);
-                      return 90;
-                    }
-                    return prev + 10;
-                  });
-                }, 200);
-              }
-            },
-            (result) => {
-              // Check if the search was cancelled
-              if (result.cancelled) {
-                console.log('🚫 Search was cancelled, not updating results');
-                setIsBackgroundSearching(false);
-                setCurrentSearchJobId(null);
-                return;
-              }
-              
-              setCustomers(result.customers);
-              setTotalCount(result.totalCount);
-              setTotalPages(result.totalPages);
-              setHasNextPage(result.hasNextPage);
-              setHasPreviousPage(result.hasPreviousPage);
-              setSearchProgress(100);
-              setSearchStatus('completed');
-              setIsBackgroundSearching(false);
-              setCurrentSearchJobId(null);
-            },
-            (error) => {
-              setError(error || 'Search failed');
-              setSearchStatus('failed');
-              setIsBackgroundSearching(false);
-              setCurrentSearchJobId(null);
-            }
-          );
-          
-          setCurrentSearchJobId(jobId);
+        if (debouncedSearchQuery.trim() && debouncedSearchQuery.trim().length >= 2) {
+          // Use direct search for better performance and typing experience
+          const result = await searchCustomers(debouncedSearchQuery, currentPage, 50);
+          setCustomers(result.customers);
+          setTotalCount(result.total);
+          setTotalPages(result.totalPages);
+          setHasNextPage(currentPage < result.totalPages);
+          setHasPreviousPage(currentPage > 1);
+          setIsBackgroundSearching(false);
+          setSearchStatus('completed');
+          setSearchProgress(100);
+          setCurrentSearchJobId(null);
         } else {
           // Use regular pagination when no search query
           const result = await fetchCustomersPaginated(currentPage, 50);
@@ -216,11 +223,13 @@ const CustomersPage = () => {
           setHasNextPage(result.hasNextPage);
           setHasPreviousPage(result.hasPreviousPage);
         }
-      } catch (err: any) {
-        setError(err.message || 'Failed to load customers');
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to load customers';
+        setError(errorMessage);
       } finally {
         setLoading(false);
         setPageLoading(false);
+        setSearchLoading(false);
       }
     };
     loadCustomers();
@@ -232,7 +241,7 @@ const CustomersPage = () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [currentPage, searchQuery]);
+  }, [currentPage, debouncedSearchQuery]);
 
   // Reset modal states on component mount
   useEffect(() => {
@@ -292,16 +301,33 @@ const CustomersPage = () => {
     fetchDeviceStats();
   }, []);
 
+  // Fetch database statistics
+  useEffect(() => {
+    const fetchDatabaseStats = async () => {
+      try {
+        setDbStatsLoading(true);
+        const stats = await fetchCustomerStats();
+        setDbStats(stats);
+      } catch (error) {
+        console.error('Error fetching database statistics:', error);
+      } finally {
+        setDbStatsLoading(false);
+      }
+    };
+
+    fetchDatabaseStats();
+  }, []);
+
   // Calculate statistics from current page data and financial data
   const stats = useMemo(() => {
     // Ensure customers is an array to prevent undefined errors
     if (!customers || !Array.isArray(customers)) {
       return {
-        totalCustomers: 0,
+        totalCustomers: dbStats.totalCustomers,
         pageCustomers: 0,
-        activeCustomers: 0,
+        activeCustomers: dbStats.activeCustomers,
         vipCustomers: 0,
-        totalRevenue: 0,
+        totalRevenue: dbStats.totalRevenue,
         deviceRevenue: 0,
         posRevenue: 0,
         totalPoints: 0,
@@ -309,17 +335,14 @@ const CustomersPage = () => {
         goldCustomers: 0,
         silverCustomers: 0,
         bronzeCustomers: 0,
-        totalDevices,
-        devicesInRepair
+        totalDevices: dbStats.totalDevices,
+        devicesInRepair,
+        todaysBirthdays: dbStats.todaysBirthdays
       };
     }
     
     const pageCustomers = customers.length;
-    const activeCustomers = customers.filter(c => c.isActive).length;
     const vipCustomers = customers.filter(c => c.colorTag === 'vip').length;
-    
-    // Use financial data for revenue calculations instead of current page data
-    const totalRevenue = summary?.totalRevenue || 0;
     
     // For now, set device and POS revenue to 0 - this should be fetched separately
     const deviceRevenue = 0;
@@ -332,11 +355,11 @@ const CustomersPage = () => {
     const bronzeCustomers = customers.filter(c => c.loyaltyLevel === 'bronze').length;
 
     return {
-      totalCustomers: totalCount, // Use total count from pagination
+      totalCustomers: dbStats.totalCustomers, // Use database stats
       pageCustomers, // Customers on current page
-      activeCustomers,
+      activeCustomers: dbStats.activeCustomers, // Use database stats
       vipCustomers,
-      totalRevenue,
+      totalRevenue: dbStats.totalRevenue, // Use database stats
       deviceRevenue,
       posRevenue,
       totalPoints,
@@ -344,10 +367,11 @@ const CustomersPage = () => {
       goldCustomers,
       silverCustomers,
       bronzeCustomers,
-      totalDevices,
-      devicesInRepair
+      totalDevices: dbStats.totalDevices, // Use database stats
+      devicesInRepair,
+      todaysBirthdays: dbStats.todaysBirthdays // Use database stats
     };
-  }, [customers, totalCount, summary]);
+  }, [customers, dbStats, devicesInRepair]);
 
   // Calculate appointments statistics
   const appointmentStats = useMemo(() => {
@@ -398,59 +422,10 @@ const CustomersPage = () => {
 
   // Calculate today's birthdays and upcoming birthdays
   const todaysBirthdays = useMemo(() => {
-    // Ensure customers is an array to prevent undefined errors
-    if (!customers || !Array.isArray(customers)) {
-      return [];
-    }
-    
-    const today = new Date();
-    const currentMonth = today.getMonth() + 1; // getMonth() returns 0-11
-    const currentDay = today.getDate();
-    
-    return customers.filter(customer => {
-      if (!customer.birthMonth || !customer.birthDay) return false;
-      
-      let customerMonth: number;
-      let customerDay: number;
-      
-      // Handle different month formats
-      if (typeof customer.birthMonth === 'string') {
-        if (customer.birthMonth.trim() === '') return false;
-        
-        // Check if it's a numeric month (1-12)
-        const numericMonth = parseInt(customer.birthMonth);
-        if (!isNaN(numericMonth) && numericMonth >= 1 && numericMonth <= 12) {
-          customerMonth = numericMonth;
-        } else {
-          // Convert month name to number
-          const monthNames = [
-            'january', 'february', 'march', 'april', 'may', 'june',
-            'july', 'august', 'september', 'october', 'november', 'december'
-          ];
-          customerMonth = monthNames.indexOf(customer.birthMonth.toLowerCase()) + 1;
-        }
-      } else {
-        return false;
-      }
-      
-      // Handle different day formats
-      if (typeof customer.birthDay === 'string') {
-        if (customer.birthDay.trim() === '') return false;
-        
-        // Extract day from formats like "14 00:00:00" or "14"
-        const dayMatch = customer.birthDay.match(/^(\d+)/);
-        if (dayMatch) {
-          customerDay = parseInt(dayMatch[1]);
-        } else {
-          customerDay = parseInt(customer.birthDay);
-        }
-      } else {
-        customerDay = parseInt(customer.birthDay);
-      }
-      
-      return customerMonth === currentMonth && customerDay === currentDay;
-    });
-  }, [customers]);
+    // For now, return empty array since we're using database stats
+    // The actual birthday customers list would need to be fetched separately if needed
+    return [];
+  }, []);
 
   // Calculate upcoming birthdays (next 7 days)
   const upcomingBirthdays = useMemo(() => {
@@ -574,7 +549,22 @@ const CustomersPage = () => {
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, loyaltyFilterMulti, statusFilterMulti, tagFilterMulti, referralFilterMulti, birthdayFilter, showInactive, sortBy]);
+  }, [debouncedSearchQuery, loyaltyFilterMulti, statusFilterMulti, tagFilterMulti, referralFilterMulti, birthdayFilter, showInactive, sortBy]);
+
+  // Handle customerId parameter from URL
+  useEffect(() => {
+    const customerId = searchParams.get('customerId');
+    if (customerId && customers.length > 0) {
+      const customer = customers.find(c => c.id === customerId);
+      if (customer) {
+        setSelectedCustomer(customer);
+        setShowCustomerDetailModal(true);
+        markCustomerAsRead(customerId);
+        // Clean up the URL parameter
+        navigate('/customers', { replace: true });
+      }
+    }
+  }, [searchParams, customers, markCustomerAsRead, navigate]);
 
   // Clean filter implementation - now works with server-side search
   const filteredCustomers = useMemo(() => {
@@ -624,7 +614,117 @@ const CustomersPage = () => {
       );
     }
 
+    // Gender filter
+    if (genderFilter.length > 0) {
+      filtered = filtered.filter(customer => 
+        customer.gender && genderFilter.includes(customer.gender)
+      );
+    }
 
+    // Spending range filter
+    if (minSpent && minSpent.trim() !== '') {
+      const minAmount = parseFloat(minSpent);
+      if (!isNaN(minAmount) && minAmount >= 0) {
+        filtered = filtered.filter(customer => 
+          (customer.totalSpent || 0) >= minAmount
+        );
+      }
+    }
+    if (maxSpent && maxSpent.trim() !== '') {
+      const maxAmount = parseFloat(maxSpent);
+      if (!isNaN(maxAmount) && maxAmount >= 0) {
+        filtered = filtered.filter(customer => 
+          (customer.totalSpent || 0) <= maxAmount
+        );
+      }
+    }
+
+    // Points range filter
+    if (minPoints && minPoints.trim() !== '') {
+      const minPts = parseInt(minPoints);
+      if (!isNaN(minPts) && minPts >= 0) {
+        filtered = filtered.filter(customer => 
+          (customer.points || 0) >= minPts
+        );
+      }
+    }
+    if (maxPoints && maxPoints.trim() !== '') {
+      const maxPts = parseInt(maxPoints);
+      if (!isNaN(maxPts) && maxPts >= 0) {
+        filtered = filtered.filter(customer => 
+          (customer.points || 0) <= maxPts
+        );
+      }
+    }
+
+    // City filter
+    if (cityFilter.length > 0) {
+      filtered = filtered.filter(customer => 
+        customer.city && cityFilter.includes(customer.city)
+      );
+    }
+
+    // Purchase count range filter
+    if (minPurchases && minPurchases.trim() !== '') {
+      const minPurch = parseInt(minPurchases);
+      if (!isNaN(minPurch) && minPurch >= 0) {
+        filtered = filtered.filter(customer => 
+          (customer.totalPurchases || 0) >= minPurch
+        );
+      }
+    }
+    if (maxPurchases && maxPurchases.trim() !== '') {
+      const maxPurch = parseInt(maxPurchases);
+      if (!isNaN(maxPurch) && maxPurch >= 0) {
+        filtered = filtered.filter(customer => 
+          (customer.totalPurchases || 0) <= maxPurch
+        );
+      }
+    }
+
+    // Join date range filter
+    if (joinDateFrom && joinDateFrom.trim() !== '') {
+      const fromDate = new Date(joinDateFrom);
+      if (!isNaN(fromDate.getTime())) {
+        filtered = filtered.filter(customer => {
+          if (!customer.joinedDate) return false;
+          const joinDate = new Date(customer.joinedDate);
+          return !isNaN(joinDate.getTime()) && joinDate >= fromDate;
+        });
+      }
+    }
+    if (joinDateTo && joinDateTo.trim() !== '') {
+      const toDate = new Date(joinDateTo);
+      if (!isNaN(toDate.getTime())) {
+        filtered = filtered.filter(customer => {
+          if (!customer.joinedDate) return false;
+          const joinDate = new Date(customer.joinedDate);
+          return !isNaN(joinDate.getTime()) && joinDate <= toDate;
+        });
+      }
+    }
+
+    // Last visit date range filter
+    if (lastVisitFrom && lastVisitFrom.trim() !== '') {
+      const fromDate = new Date(lastVisitFrom);
+      if (!isNaN(fromDate.getTime())) {
+        filtered = filtered.filter(customer => {
+          if (!customer.lastVisit) return false;
+          const lastVisitDate = new Date(customer.lastVisit);
+          return !isNaN(lastVisitDate.getTime()) && lastVisitDate >= fromDate;
+        });
+      }
+    }
+    if (lastVisitTo && lastVisitTo.trim() !== '') {
+      const toDate = new Date(lastVisitTo);
+      if (!isNaN(toDate.getTime())) {
+        filtered = filtered.filter(customer => {
+          if (!customer.lastVisit) return false;
+          const lastVisitDate = new Date(customer.lastVisit);
+          return !isNaN(lastVisitDate.getTime()) && lastVisitDate <= toDate;
+        });
+      }
+    }
 
     // Inactive filter
     if (showInactive) {
@@ -655,13 +755,24 @@ const CustomersPage = () => {
     });
   }, [
     customers, 
-    searchQuery, 
+    debouncedSearchQuery, 
     loyaltyFilterMulti, 
     statusFilterMulti, 
     tagFilterMulti, 
     referralFilterMulti, 
     birthdayFilter, 
- 
+    genderFilter,
+    minSpent,
+    maxSpent,
+    minPoints,
+    maxPoints,
+    cityFilter,
+    minPurchases,
+    maxPurchases,
+    joinDateFrom,
+    joinDateTo,
+    lastVisitFrom,
+    lastVisitTo,
     showInactive, 
     sortBy
   ]);
@@ -759,8 +870,9 @@ const CustomersPage = () => {
               // Bulk SMS completed
       
     } catch (error) {
-      console.error('BulkSMS Error:', error);
-      toast.error('Failed to send bulk SMS. Please try again.');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      console.error('BulkSMS Error:', errorMessage);
+      toast.error(`Failed to send bulk SMS: ${errorMessage}`);
     } finally {
       setSendingSMS(false);
       setShowBulkSMS(false);
@@ -923,10 +1035,10 @@ const CustomersPage = () => {
   if (loading) {
     return (
       <div className="p-4 sm:p-6 max-w-7xl mx-auto">
-        <div className="flex items-center justify-center h-64">
+        <div className="flex items-center justify-center h-32">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading customers...</p>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400 mx-auto mb-3 opacity-60"></div>
+            <p className="text-gray-500 text-sm">Loading customers...</p>
           </div>
         </div>
       </div>
@@ -994,9 +1106,9 @@ const CustomersPage = () => {
                   </GlassButton>
                   <GlassButton
                     onClick={() => {
-                      console.log('Update Existing button clicked');
+
                       setShowCustomerUpdateImport(true);
-                      console.log('showCustomerUpdateImport set to true');
+
                     }}
                     icon={<RefreshCw size={18} />}
                     className="bg-gradient-to-r from-orange-500 to-red-600 text-white"
@@ -1063,13 +1175,44 @@ const CustomersPage = () => {
       {/* Conditional Content Based on Active Tab */}
       {activeTab === 'customers' ? (
         <>
+          {/* Statistics Dashboard Header */}
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">Customer Statistics</h2>
+            <button
+              onClick={async () => {
+                try {
+                  setDbStatsLoading(true);
+                  const stats = await fetchCustomerStats();
+                  setDbStats(stats);
+                } catch (error) {
+                  console.error('Error refreshing statistics:', error);
+                  toast.error('Failed to refresh statistics');
+                } finally {
+                  setDbStatsLoading(false);
+                }
+              }}
+              disabled={dbStatsLoading}
+              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <RefreshCw className={`w-4 h-4 ${dbStatsLoading ? 'animate-spin' : ''}`} />
+              Refresh Stats
+            </button>
+          </div>
+          
           {/* Statistics Dashboard */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             <GlassCard className="bg-gradient-to-br from-blue-50 to-blue-100">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-blue-600">Total Customers</p>
-                  <p className="text-2xl font-bold text-blue-900">{stats.totalCustomers}</p>
+                  {dbStatsLoading ? (
+                    <div className="flex items-center gap-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                      <p className="text-2xl font-bold text-blue-900">Loading...</p>
+                    </div>
+                  ) : (
+                    <p className="text-2xl font-bold text-blue-900">{stats.totalCustomers}</p>
+                  )}
                 </div>
                 <div className="p-3 bg-blue-50/20 rounded-full">
                   <Users className="w-6 h-6 text-blue-600" />
@@ -1081,7 +1224,14 @@ const CustomersPage = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-green-600">Active Customers</p>
-                  <p className="text-2xl font-bold text-green-900">{stats.activeCustomers}</p>
+                  {dbStatsLoading ? (
+                    <div className="flex items-center gap-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600"></div>
+                      <p className="text-2xl font-bold text-green-900">Loading...</p>
+                    </div>
+                  ) : (
+                    <p className="text-2xl font-bold text-green-900">{stats.activeCustomers}</p>
+                  )}
                 </div>
                 <div className="p-3 bg-green-50/20 rounded-full">
                   <UserCheck className="w-6 h-6 text-green-600" />
@@ -1093,7 +1243,7 @@ const CustomersPage = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-purple-600">Total Revenue</p>
-                  {financialLoading ? (
+                  {dbStatsLoading ? (
                     <div className="flex items-center gap-2">
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-600"></div>
                       <p className="text-2xl font-bold text-purple-900">Loading...</p>
@@ -1112,7 +1262,14 @@ const CustomersPage = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-amber-600">Total Devices</p>
-                  <p className="text-2xl font-bold text-amber-900">{stats.totalDevices}</p>
+                  {dbStatsLoading ? (
+                    <div className="flex items-center gap-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-amber-600"></div>
+                      <p className="text-2xl font-bold text-amber-900">Loading...</p>
+                    </div>
+                  ) : (
+                    <p className="text-2xl font-bold text-amber-900">{stats.totalDevices}</p>
+                  )}
                 </div>
                 <div className="p-3 bg-amber-50/20 rounded-full">
                   <Activity className="w-6 h-6 text-amber-600" />
@@ -1127,7 +1284,14 @@ const CustomersPage = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-pink-600">Today's Birthdays</p>
-                  <p className="text-2xl font-bold text-pink-900">{todaysBirthdays.length}</p>
+                  {dbStatsLoading ? (
+                    <div className="flex items-center gap-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-pink-600"></div>
+                      <p className="text-2xl font-bold text-pink-900">Loading...</p>
+                    </div>
+                  ) : (
+                    <p className="text-2xl font-bold text-pink-900">{stats.todaysBirthdays}</p>
+                  )}
                 </div>
                 <div className="p-3 bg-pink-50/20 rounded-full">
                   <Gift className="w-6 h-6 text-pink-600" />
@@ -1315,7 +1479,9 @@ const CustomersPage = () => {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              navigate(`/customers/${customer.id}`);
+                              setSelectedCustomer(customer);
+                              setShowCustomerDetailModal(true);
+                              markCustomerAsRead(customer.id);
                             }}
                             className="p-1 text-gray-500 hover:text-green-600 transition-colors"
                             title="View Details"
@@ -1482,12 +1648,40 @@ const CustomersPage = () => {
         onReferralFilterChange={setReferralFilterMulti}
         birthdayFilter={birthdayFilter}
         onBirthdayFilterChange={setBirthdayFilter}
-
+        whatsappFilter={false}
         showInactive={showInactive}
         onShowInactiveChange={setShowInactive}
         sortBy={sortBy}
         onSortByChange={setSortBy}
         customers={customers}
+        searchLoading={searchLoading}
+        filteredCount={filteredCustomers.length}
+        // New filters
+        genderFilter={genderFilter}
+        onGenderFilterChange={setGenderFilter}
+        minSpent={minSpent}
+        onMinSpentChange={setMinSpent}
+        maxSpent={maxSpent}
+        onMaxSpentChange={setMaxSpent}
+        minPoints={minPoints}
+        onMinPointsChange={setMinPoints}
+        maxPoints={maxPoints}
+        onMaxPointsChange={setMaxPoints}
+        cityFilter={cityFilter}
+        onCityFilterChange={setCityFilter}
+        minPurchases={minPurchases}
+        onMinPurchasesChange={setMinPurchases}
+        maxPurchases={maxPurchases}
+        onMaxPurchasesChange={setMaxPurchases}
+        // Date range filters
+        joinDateFrom={joinDateFrom}
+        onJoinDateFromChange={setJoinDateFrom}
+        joinDateTo={joinDateTo}
+        onJoinDateToChange={setJoinDateTo}
+        lastVisitFrom={lastVisitFrom}
+        onLastVisitFromChange={setLastVisitFrom}
+        lastVisitTo={lastVisitTo}
+        onLastVisitToChange={setLastVisitTo}
       />
 
       {/* Background Search Indicator */}
@@ -1553,10 +1747,10 @@ const CustomersPage = () => {
       {viewMode === 'list' ? (
         <GlassCard>
           {pageLoading && (
-            <div className="flex items-center justify-center py-8">
-              <div className="flex items-center gap-2 text-blue-600">
-                <RefreshCw className="w-5 h-5 animate-spin" />
-                <span>Loading customers...</span>
+            <div className="flex items-center justify-center py-4">
+              <div className="flex items-center gap-2 text-gray-500 text-sm opacity-70">
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>Loading...</span>
               </div>
             </div>
           )}
@@ -1590,7 +1784,8 @@ const CustomersPage = () => {
                       key={customer.id}
                       className="border-b border-gray-200/30 hover:bg-blue-50 cursor-pointer transition-colors"
                       onClick={() => {
-                        navigate(`/customers/${customer.id}`);
+                        setSelectedCustomer(customer);
+                        setShowCustomerDetailModal(true);
                         markCustomerAsRead(customer.id);
                       }}
                     >
@@ -1616,8 +1811,8 @@ const CustomersPage = () => {
                       <td className="py-4 px-4">
                         <div className="space-y-1">
                           <div className="flex items-center gap-1 text-sm">
-                            <Phone className="w-3 h-3 text-gray-500" />
-                            <span className="text-gray-900">{customer.phone}</span>
+                            <Phone className="w-3 h-3 text-blue-500" />
+                            <span className="text-blue-600 font-medium">{customer.phone}</span>
                           </div>
 
                           {customer.referralSource && (
@@ -1700,7 +1895,9 @@ const CustomersPage = () => {
                           <button
                             onClick={e => { 
                               e.stopPropagation(); 
-                              navigate(`/customers/${customer.id}`);
+                              setSelectedCustomer(customer);
+                              setShowCustomerDetailModal(true);
+                              markCustomerAsRead(customer.id);
                               markCustomerAsRead(customer.id);
                             }}
                             className="p-1 text-gray-500 hover:text-blue-600 transition-colors"
@@ -1709,7 +1906,7 @@ const CustomersPage = () => {
                             <Eye size={16} />
                           </button>
                                             <button
-                    onClick={e => { e.stopPropagation(); navigate(`/customers/${customer.id}`); }}
+                    onClick={e => { e.stopPropagation(); setSelectedCustomer(customer); setShowCustomerDetailModal(true); markCustomerAsRead(customer.id); }}
                     className="p-1 text-gray-500 hover:text-green-600 transition-colors"
                     title="View Customer"
                   >
@@ -1735,10 +1932,10 @@ const CustomersPage = () => {
         /* Grid View */
         <div>
           {pageLoading && (
-            <div className="flex items-center justify-center py-8">
-              <div className="flex items-center gap-2 text-blue-600">
-                <RefreshCw className="w-5 h-5 animate-spin" />
-                <span>Loading customers...</span>
+            <div className="flex items-center justify-center py-4">
+              <div className="flex items-center gap-2 text-gray-500 text-sm opacity-70">
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>Loading...</span>
               </div>
             </div>
           )}
@@ -1749,7 +1946,8 @@ const CustomersPage = () => {
               <GlassCard
                 key={customer.id}
                 onClick={() => {
-                  navigate(`/customers/${customer.id}`);
+                  setSelectedCustomer(customer);
+                  setShowCustomerDetailModal(true);
                   markCustomerAsRead(customer.id);
                 }}
                 className="cursor-pointer hover:scale-105 transition-transform duration-300"
@@ -1768,8 +1966,8 @@ const CustomersPage = () => {
                 <h3 className="font-semibold text-gray-900">{customer.name}</h3>
                 <p className="text-sm text-gray-600 mb-1">{customer.city}</p>
                 <div className="flex items-center gap-2 text-sm mb-1">
-                  <Phone className="w-4 h-4 text-gray-500" />
-                  <span className="text-gray-700">{customer.phone}</span>
+                  <Phone className="w-4 h-4 text-blue-500" />
+                  <span className="text-blue-600 font-medium">{customer.phone}</span>
                 </div>
                 
 
@@ -1853,24 +2051,25 @@ const CustomersPage = () => {
                   return null;
                 })()}
                 <div className="flex items-center justify-end gap-2 mt-2">
-                  <button
-                    onClick={e => { 
-                      e.stopPropagation(); 
-                      navigate(`/customers/${customer.id}`);
-                      markCustomerAsRead(customer.id);
-                    }}
-                    className="p-1 text-gray-500 hover:text-blue-600 transition-colors"
-                    title="View Details"
-                  >
-                    <Eye size={16} />
-                  </button>
-                  <button
-                    onClick={e => { e.stopPropagation(); navigate(`/customers/${customer.id}`); }}
-                    className="p-1 text-gray-500 hover:text-green-600 transition-colors"
-                    title="View Customer"
-                  >
-                    <Edit size={16} />
-                  </button>
+                          <button
+                            onClick={e => { 
+                              e.stopPropagation(); 
+                              setSelectedCustomer(customer);
+                              setShowCustomerDetailModal(true);
+                              markCustomerAsRead(customer.id);
+                            }}
+                            className="p-1 text-gray-500 hover:text-blue-600 transition-colors"
+                            title="View Details"
+                          >
+                            <Eye size={16} />
+                          </button>
+                          <button
+                            onClick={e => { e.stopPropagation(); setSelectedCustomer(customer); setShowCustomerDetailModal(true); markCustomerAsRead(customer.id); }}
+                            className="p-1 text-gray-500 hover:text-green-600 transition-colors"
+                            title="Edit Customer"
+                          >
+                            <Edit size={16} />
+                          </button>
                   <button
                     onClick={e => { e.stopPropagation(); navigate(`/sms-control?customer=${customer.id}`); }}
                     className="p-1 text-gray-500 hover:text-purple-600 transition-colors"
@@ -1892,7 +2091,7 @@ const CustomersPage = () => {
           <div className="flex items-center justify-between">
             <div className="text-sm text-gray-600">
               Showing {((currentPage - 1) * 50) + 1} to {Math.min(currentPage * 50, totalCount)} of {totalCount} customers
-              {pageLoading && <span className="ml-2 text-blue-600">Loading...</span>}
+              {pageLoading && <span className="ml-2 text-gray-500 text-xs opacity-70">Loading...</span>}
             </div>
             <div className="flex items-center gap-2">
               <GlassButton
@@ -1961,7 +2160,9 @@ const CustomersPage = () => {
         onClose={() => setShowAddCustomerModal(false)}
         onCustomerCreated={(customer) => {
           setShowAddCustomerModal(false);
-          navigate(`/customers/${customer.id}`);
+          setSelectedCustomer(customer);
+          setShowCustomerDetailModal(true);
+          markCustomerAsRead(customer.id);
         }}
       />
 
@@ -2017,7 +2218,11 @@ const CustomersPage = () => {
               </div>
               <BirthdayCalendar
                 customers={customers}
-                onCustomerClick={(customer) => navigate(`/customers/${customer.id}`)}
+                onCustomerClick={(customer) => {
+                  setSelectedCustomer(customer);
+                  setShowCustomerDetailModal(true);
+                  markCustomerAsRead(customer.id);
+                }}
               />
             </GlassCard>
           </div>
@@ -2040,7 +2245,7 @@ const CustomersPage = () => {
               <BirthdayRewards
                 todaysBirthdays={todaysBirthdays}
                 onApplyReward={(customerId, rewardType) => {
-                  console.log(`Applied ${rewardType} to customer ${customerId}`);
+
                   toast.success('Birthday reward applied successfully!');
                 }}
               />
@@ -2101,7 +2306,7 @@ const CustomersPage = () => {
                             {customer.birthMonth} {customer.birthDay}
                           </p>
                           {customer.phone && (
-                            <p className="text-xs text-gray-400 mt-1">
+                            <p className="text-xs text-blue-500 font-medium mt-1">
                               📞 {customer.phone}
                             </p>
                           )}
@@ -2121,7 +2326,7 @@ const CustomersPage = () => {
                           </button>
                         )}
                         <button 
-                          onClick={() => navigate(`/customers/${customer.id}`)}
+                          onClick={() => { setSelectedCustomer(customer); setShowCustomerDetailModal(true); markCustomerAsRead(customer.id); }}
                           className="flex items-center justify-center w-10 h-10 bg-gradient-to-br from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-600 hover:text-gray-800 rounded-lg transition-all duration-300 shadow-sm hover:shadow-md transform hover:scale-105"
                           title="View customer details"
                         >
@@ -2184,6 +2389,23 @@ const CustomersPage = () => {
             </GlassCard>
           </div>
         </div>
+      )}
+
+
+      {/* Customer Detail Modal */}
+      {selectedCustomer && (
+        <CustomerDetailModal
+          isOpen={showCustomerDetailModal}
+          onClose={() => {
+            setShowCustomerDetailModal(false);
+            setSelectedCustomer(null);
+          }}
+          customer={selectedCustomer}
+          onEdit={(customer) => {
+            // Handle edit if needed
+
+          }}
+        />
       )}
     </div>
   );

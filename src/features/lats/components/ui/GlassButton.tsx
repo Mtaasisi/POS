@@ -1,6 +1,7 @@
 // GlassButton component for LATS module
 import React from 'react';
 import { LATS_CLASSES } from '../../tokens';
+import { usePOSClickSounds } from '../../hooks/usePOSClickSounds';
 
 interface GlassButtonProps {
   children: React.ReactNode;
@@ -17,6 +18,8 @@ interface GlassButtonProps {
   className?: string;
   title?: string;
   'aria-label'?: string;
+  enableClickSound?: boolean;
+  soundType?: 'click' | 'cart-add' | 'payment' | 'delete' | 'success' | 'error';
 }
 
 const GlassButton: React.FC<GlassButtonProps> = ({
@@ -33,8 +36,24 @@ const GlassButton: React.FC<GlassButtonProps> = ({
   type = 'button',
   className = '',
   title,
-  'aria-label': ariaLabel
+  'aria-label': ariaLabel,
+  enableClickSound = true,
+  soundType = 'click'
 }) => {
+  const { playSound } = usePOSClickSounds();
+
+  const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (disabled || loading) {
+      e.preventDefault();
+      return;
+    }
+    
+    if (enableClickSound) {
+      playSound(soundType);
+    }
+    
+    onClick?.(e);
+  };
   // Base classes
   const baseClasses = [
     'inline-flex items-center justify-center',
@@ -127,14 +146,6 @@ const GlassButton: React.FC<GlassButtonProps> = ({
     className
   ].filter(Boolean).join(' ');
 
-  // Handle click
-  const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
-    if (disabled || loading) {
-      e.preventDefault();
-      return;
-    }
-    onClick?.(e);
-  };
 
   // Render icon
   const renderIcon = () => {

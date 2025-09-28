@@ -3,6 +3,7 @@ import { toast } from 'react-hot-toast';
 import GlassCard from '../../../../features/shared/components/ui/GlassCard';
 import GlassButton from '../../../../features/shared/components/ui/GlassButton';
 import { X, Save, Settings, Search } from 'lucide-react';
+import { useBodyScrollLock } from '../../../../hooks/useBodyScrollLock';
 
 // Import settings tabs
 import GeneralSettingsTab from './GeneralSettingsTab';
@@ -164,6 +165,9 @@ const POSSettingsModal = forwardRef<POSSettingsModalRef, POSSettingsModalProps>(
     useImperativeHandle(ref, () => ({
       saveCurrentTabSettings
     }));
+
+    // Prevent body scroll when modal is open
+    useBodyScrollLock(isOpen);
 
     if (!isOpen) return null;
 

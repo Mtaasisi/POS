@@ -6,7 +6,8 @@ import {
   X, Search, Filter, SortAsc, Eye, Edit, Trash2, CheckSquare, 
   Send, Truck, Package, AlertCircle, RefreshCw, Clock, FileText,
   XSquare, ShoppingCart, Calendar, User, DollarSign, TrendingUp,
-  List, Grid, ChevronDown, ChevronUp, Ship, PackageCheck, MapPin
+  List, Grid, ChevronDown, ChevronUp, Ship, PackageCheck, MapPin,
+  Printer, MessageSquare, ArrowLeft, Star, Archive, CreditCard
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useInventoryStore } from '../../stores/useInventoryStore';
@@ -57,8 +58,34 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ isOpen, onC
   // Load purchase orders when modal opens
   useEffect(() => {
     if (isOpen) {
+      console.log('🔍 OrderManagementModal: Loading purchase orders...');
       loadPurchaseOrders();
     }
+  }, [isOpen, loadPurchaseOrders]);
+
+  // Auto-refresh purchase orders every 30 seconds when modal is open
+  useEffect(() => {
+    if (!isOpen) return;
+    
+    const interval = setInterval(() => {
+      console.log('🔄 OrderManagementModal: Auto-refreshing purchase orders...');
+      loadPurchaseOrders();
+    }, 30000); // Refresh every 30 seconds
+    
+    return () => clearInterval(interval);
+  }, [isOpen, loadPurchaseOrders]);
+
+  // Refresh when window regains focus (e.g., after making payment in another tab)
+  useEffect(() => {
+    if (!isOpen) return;
+    
+    const handleFocus = () => {
+      console.log('🔄 OrderManagementModal: Window focused, refreshing purchase orders...');
+      loadPurchaseOrders();
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
   }, [isOpen, loadPurchaseOrders]);
 
   // Enhanced order filtering and sorting
@@ -242,6 +269,20 @@ const OrderManagementModal: React.FC<OrderManagementModalProps> = ({ isOpen, onC
                 </span>
               </div>
             </div>
+            
+            {/* Refresh Button */}
+            <button
+              onClick={() => {
+                console.log('🔄 Manual refresh triggered');
+                loadPurchaseOrders();
+              }}
+              className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200"
+              title="Refresh purchase orders"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Refresh
+            </button>
+            
             <button
               onClick={onClose}
               className="p-2 hover:bg-red-50 hover:text-red-600 rounded-full transition-all duration-200 group"
@@ -528,7 +569,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
     shippingStatus: order.shippingStatus || 'pending'
   });
 
-  // Available status transitions based on current status
+  // Smart button visibility - only show next available actions
   const getAvailableStatuses = (currentStatus: OrderStatus): OrderStatus[] => {
     switch (currentStatus) {
       case 'draft': return ['sent', 'cancelled'];
@@ -536,10 +577,321 @@ const OrderCard: React.FC<OrderCardProps> = ({
       case 'confirmed': return ['shipping', 'cancelled'];
       case 'shipping': return ['shipped', 'received', 'cancelled'];
       case 'shipped': return ['received'];
-      case 'received': return [];
-      case 'cancelled': return [];
+      case 'received': return []; // No further actions needed
+      case 'cancelled': return []; // No further actions needed
       default: return [];
     }
+  };
+
+  // Get smart action buttons based on proper workflow sequence: Approve → Pay → Receive
+  const getSmartActionButtons = (order: EnhancedPurchaseOrder) => {
+    const actions = [];
+    const currentStatus = order.status as OrderStatus;
+    const paymentStatus = order.paymentStatus || 'unpaid';
+    
+    // Debug logging
+    console.log('🔍 OrderManagementModal: Order data:', {
+      id: order.id,
+      status: currentStatus,
+      paymentStatus: paymentStatus,
+      totalAmount: order.totalAmount,
+      totalPaid: order.totalPaid,
+      order: order
+    });
+
+    // Always show View Details
+    actions.push({
+      type: 'view',
+      label: 'View',
+      icon: <Eye className="w-4 h-4" />,
+      color: 'bg-blue-600 hover:bg-blue-700',
+      onClick: () => window.open(`/lats/purchase-orders/${order.id}`, '_blank')
+    });
+
+    // Workflow sequence: Draft → Approve → Pay → Receive
+    switch (currentStatus) {
+      case 'draft':
+        // Step 1: Draft - Primary actions
+        actions.push({
+          type: 'edit',
+          label: 'Edit',
+          icon: <Edit className="w-4 h-4" />,
+          color: 'bg-purple-600 hover:bg-purple-700',
+          onClick: () => window.open(`/lats/purchase-orders/create?edit=${order.id}`, '_blank')
+        });
+        actions.push({
+          type: 'approve',
+          label: 'Approve',
+          icon: <CheckSquare className="w-4 h-4" />,
+          color: 'bg-green-600 hover:bg-green-700',
+          onClick: () => onStatusUpdate(order.id, 'sent')
+        });
+        
+        // Plan B buttons for Draft
+        actions.push({
+          type: 'duplicate',
+          label: 'Duplicate',
+          icon: <FileText className="w-4 h-4" />,
+          color: 'bg-blue-600 hover:bg-blue-700',
+          onClick: () => window.open(`/lats/purchase-orders/${order.id}?action=duplicate`, '_blank')
+        });
+        actions.push({
+          type: 'print',
+          label: 'Print',
+          icon: <Printer className="w-4 h-4" />,
+          color: 'bg-gray-600 hover:bg-gray-700',
+          onClick: () => window.open(`/lats/purchase-orders/${order.id}?action=print`, '_blank')
+        });
+        actions.push({
+          type: 'delete',
+          label: 'Delete',
+          icon: <Trash2 className="w-4 h-4" />,
+          color: 'bg-red-600 hover:bg-red-700',
+          onClick: () => onDelete(order.id)
+        });
+        break;
+      
+      case 'sent':
+        // Step 2: Approved - Primary actions
+        if (paymentStatus === 'unpaid' || paymentStatus === 'partial' || !paymentStatus) {
+          actions.push({
+            type: 'pay',
+            label: 'Pay',
+            icon: <CreditCard className="w-4 h-4" />,
+            color: 'bg-orange-600 hover:bg-orange-700',
+            onClick: () => window.open(`/lats/purchase-orders/${order.id}?action=pay`, '_blank')
+          });
+        }
+        if (paymentStatus === 'paid') {
+          actions.push({
+            type: 'receive',
+            label: 'Receive',
+            icon: <CheckSquare className="w-4 h-4" />,
+            color: 'bg-green-600 hover:bg-green-700',
+            onClick: () => onStatusUpdate(order.id, 'received')
+          });
+        }
+        
+        // Plan B buttons for Sent
+        actions.push({
+          type: 'resend',
+          label: 'Resend',
+          icon: <Send className="w-4 h-4" />,
+          color: 'bg-blue-600 hover:bg-blue-700',
+          onClick: () => window.open(`/lats/purchase-orders/${order.id}?action=resend`, '_blank')
+        });
+        actions.push({
+          type: 'modify',
+          label: 'Modify',
+          icon: <Edit className="w-4 h-4" />,
+          color: 'bg-purple-600 hover:bg-purple-700',
+          onClick: () => window.open(`/lats/purchase-orders/create?edit=${order.id}`, '_blank')
+        });
+        actions.push({
+          type: 'cancel',
+          label: 'Cancel',
+          icon: <XSquare className="w-4 h-4" />,
+          color: 'bg-red-600 hover:bg-red-700',
+          onClick: () => onStatusUpdate(order.id, 'cancelled')
+        });
+        break;
+      
+      case 'confirmed':
+        // Step 2.5: Confirmed by supplier - Primary actions
+        if (paymentStatus === 'unpaid' || paymentStatus === 'partial' || !paymentStatus) {
+          actions.push({
+            type: 'pay',
+            label: 'Pay',
+            icon: <CreditCard className="w-4 h-4" />,
+            color: 'bg-orange-600 hover:bg-orange-700',
+            onClick: () => window.open(`/lats/purchase-orders/${order.id}?action=pay`, '_blank')
+          });
+        }
+        if (paymentStatus === 'paid') {
+          actions.push({
+            type: 'receive',
+            label: 'Receive',
+            icon: <CheckSquare className="w-4 h-4" />,
+            color: 'bg-green-600 hover:bg-green-700',
+            onClick: () => onStatusUpdate(order.id, 'received')
+          });
+        }
+        
+        // Plan B buttons for Confirmed
+        actions.push({
+          type: 'contact',
+          label: 'Contact',
+          icon: <MessageSquare className="w-4 h-4" />,
+          color: 'bg-blue-600 hover:bg-blue-700',
+          onClick: () => window.open(`/lats/purchase-orders/${order.id}?action=contact`, '_blank')
+        });
+        actions.push({
+          type: 'modify',
+          label: 'Modify',
+          icon: <Edit className="w-4 h-4" />,
+          color: 'bg-purple-600 hover:bg-purple-700',
+          onClick: () => window.open(`/lats/purchase-orders/create?edit=${order.id}`, '_blank')
+        });
+        actions.push({
+          type: 'cancel',
+          label: 'Cancel',
+          icon: <XSquare className="w-4 h-4" />,
+          color: 'bg-red-600 hover:bg-red-700',
+          onClick: () => onStatusUpdate(order.id, 'cancelled')
+        });
+        break;
+      
+      case 'shipping':
+        // Step 3: Shipping - Primary actions
+        if (order.trackingNumber) {
+          actions.push({
+            type: 'track',
+            label: 'Track',
+            icon: <Truck className="w-4 h-4" />,
+            color: 'bg-indigo-600 hover:bg-indigo-700',
+            onClick: () => window.open(`https://tracking.com/${order.trackingNumber}`, '_blank')
+          });
+        }
+        if (paymentStatus === 'paid') {
+          actions.push({
+            type: 'receive',
+            label: 'Receive',
+            icon: <CheckSquare className="w-4 h-4" />,
+            color: 'bg-green-600 hover:bg-green-700',
+            onClick: () => onStatusUpdate(order.id, 'received')
+          });
+        }
+        
+        // Plan B buttons for Shipping
+        actions.push({
+          type: 'contact',
+          label: 'Contact',
+          icon: <MessageSquare className="w-4 h-4" />,
+          color: 'bg-blue-600 hover:bg-blue-700',
+          onClick: () => window.open(`/lats/purchase-orders/${order.id}?action=contact`, '_blank')
+        });
+        actions.push({
+          type: 'delay',
+          label: 'Delay',
+          icon: <Clock className="w-4 h-4" />,
+          color: 'bg-yellow-600 hover:bg-yellow-700',
+          onClick: () => window.open(`/lats/purchase-orders/${order.id}?action=delay`, '_blank')
+        });
+        actions.push({
+          type: 'cancel',
+          label: 'Cancel',
+          icon: <XSquare className="w-4 h-4" />,
+          color: 'bg-red-600 hover:bg-red-700',
+          onClick: () => onStatusUpdate(order.id, 'cancelled')
+        });
+        break;
+      
+      case 'shipped':
+        // Step 4: Shipped - Primary actions
+        if (order.trackingNumber) {
+          actions.push({
+            type: 'track',
+            label: 'Track',
+            icon: <Truck className="w-4 h-4" />,
+            color: 'bg-indigo-600 hover:bg-indigo-700',
+            onClick: () => window.open(`https://tracking.com/${order.trackingNumber}`, '_blank')
+          });
+        }
+        if (paymentStatus === 'paid') {
+          actions.push({
+            type: 'receive',
+            label: 'Receive',
+            icon: <CheckSquare className="w-4 h-4" />,
+            color: 'bg-green-600 hover:bg-green-700',
+            onClick: () => onStatusUpdate(order.id, 'received')
+          });
+        }
+        
+        // Plan B buttons for Shipped
+        actions.push({
+          type: 'contact',
+          label: 'Contact',
+          icon: <MessageSquare className="w-4 h-4" />,
+          color: 'bg-blue-600 hover:bg-blue-700',
+          onClick: () => window.open(`/lats/purchase-orders/${order.id}?action=contact`, '_blank')
+        });
+        actions.push({
+          type: 'delay',
+          label: 'Delay',
+          icon: <Clock className="w-4 h-4" />,
+          color: 'bg-yellow-600 hover:bg-yellow-700',
+          onClick: () => window.open(`/lats/purchase-orders/${order.id}?action=delay`, '_blank')
+        });
+        actions.push({
+          type: 'return',
+          label: 'Return',
+          icon: <ArrowLeft className="w-4 h-4" />,
+          color: 'bg-red-600 hover:bg-red-700',
+          onClick: () => window.open(`/lats/purchase-orders/${order.id}?action=return`, '_blank')
+        });
+        break;
+      
+      case 'received':
+        // Step 5: Received - Primary actions
+        actions.push({
+          type: 'receipt',
+          label: 'Receipt',
+          icon: <FileText className="w-4 h-4" />,
+          color: 'bg-gray-600 hover:bg-gray-700',
+          onClick: () => window.open(`/lats/purchase-orders/${order.id}/receipt`, '_blank')
+        });
+        
+        // Plan B buttons for Received
+        actions.push({
+          type: 'invoice',
+          label: 'Invoice',
+          icon: <FileText className="w-4 h-4" />,
+          color: 'bg-blue-600 hover:bg-blue-700',
+          onClick: () => window.open(`/lats/purchase-orders/${order.id}/invoice`, '_blank')
+        });
+        actions.push({
+          type: 'return',
+          label: 'Return',
+          icon: <ArrowLeft className="w-4 h-4" />,
+          color: 'bg-red-600 hover:bg-red-700',
+          onClick: () => window.open(`/lats/purchase-orders/${order.id}?action=return`, '_blank')
+        });
+        actions.push({
+          type: 'review',
+          label: 'Review',
+          icon: <Star className="w-4 h-4" />,
+          color: 'bg-yellow-600 hover:bg-yellow-700',
+          onClick: () => window.open(`/lats/purchase-orders/${order.id}?action=review`, '_blank')
+        });
+        break;
+      
+      case 'cancelled':
+        // Plan B buttons for Cancelled
+        actions.push({
+          type: 'restore',
+          label: 'Restore',
+          icon: <RefreshCw className="w-4 h-4" />,
+          color: 'bg-green-600 hover:bg-green-700',
+          onClick: () => onStatusUpdate(order.id, 'draft')
+        });
+        actions.push({
+          type: 'duplicate',
+          label: 'Duplicate',
+          icon: <FileText className="w-4 h-4" />,
+          color: 'bg-blue-600 hover:bg-blue-700',
+          onClick: () => window.open(`/lats/purchase-orders/${order.id}?action=duplicate`, '_blank')
+        });
+        actions.push({
+          type: 'archive',
+          label: 'Archive',
+          icon: <Archive className="w-4 h-4" />,
+          color: 'bg-gray-600 hover:bg-gray-700',
+          onClick: () => window.open(`/lats/purchase-orders/${order.id}?action=archive`, '_blank')
+        });
+        break;
+    }
+
+    return actions;
   };
 
   const availableStatuses = getAvailableStatuses(order.status as OrderStatus);
@@ -744,9 +1096,9 @@ const OrderCard: React.FC<OrderCardProps> = ({
             </div>
           )}
 
-          {/* Action Buttons */}
+          {/* Smart Action Buttons */}
           <div className="flex gap-2 pt-3 border-t border-gray-100">
-            {/* Status Update Buttons */}
+            {/* Status Update Buttons - Only show next available actions */}
             {availableStatuses.length > 0 && (
               <div className="flex gap-1 flex-wrap">
                 {availableStatuses.map(status => (
@@ -763,34 +1115,18 @@ const OrderCard: React.FC<OrderCardProps> = ({
               </div>
             )}
 
-            {/* Standard Actions */}
+            {/* Smart Action Buttons - Only show relevant actions */}
             <div className="flex gap-1 ml-auto">
-              <button
-                onClick={() => window.open(`/lats/purchase-orders/${order.id}`, '_blank')}
-                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                title="View Details"
-              >
-                <Eye className="w-4 h-4" />
-              </button>
-              
-              {order.status === 'draft' && (
-                <>
-                  <button
-                    onClick={() => window.open(`/lats/purchase-orders/${order.id}/edit`, '_blank')}
-                    className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
-                    title="Edit Order"
-                  >
-                    <Edit className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => onDelete(order.id)}
-                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    title="Delete Order"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </>
-              )}
+              {getSmartActionButtons(order).map((action, index) => (
+                <button
+                  key={`${action.type}-${index}`}
+                  onClick={action.onClick}
+                  className={`p-2 text-white rounded-lg transition-colors ${action.color}`}
+                  title={action.label}
+                >
+                  {action.icon}
+                </button>
+              ))}
             </div>
           </div>
         </div>

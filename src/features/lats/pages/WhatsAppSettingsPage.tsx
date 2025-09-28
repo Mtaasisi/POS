@@ -257,10 +257,10 @@ const WhatsAppSettingsPage: React.FC = () => {
             error.message?.includes('Failed to fetch') ||
             error.message?.includes('Proxy request failed')) {
           setInstanceState({ stateInstance: 'notAuthorized' });
-          toast.warning('Could not check instance state. Please verify your connection.');
+          toast.error('Could not check instance state. Please verify your connection.');
         } else if (error.message?.includes('CORS') || error.message?.includes('Access-Control-Allow-Origin')) {
           setInstanceState({ stateInstance: 'notAuthorized' });
-          toast.warning('CORS issue detected. Please start the development proxy server with: npm run dev:proxy');
+          toast.error('CORS issue detected. Please start the development proxy server with: npm run dev:proxy');
         } else if (error.message?.includes('403') || error.message?.includes('Forbidden')) {
           setInstanceState({ stateInstance: 'notAuthorized' });
           toast.error('403 Forbidden Error - Please check your Green API credentials', {
@@ -297,7 +297,7 @@ Current instance details:
           });
         } else {
           setInstanceState({ stateInstance: 'notAuthorized' });
-          toast.warning('Could not check instance state. Please verify your connection.');
+          toast.error('Could not check instance state. Please verify your connection.');
         }
       }
 

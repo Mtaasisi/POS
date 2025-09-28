@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
 import GlassCard from '../../../features/shared/components/ui/GlassCard';
-import GlassButton from '../../../features/shared/components/ui/GlassButton';
+import GlassButton from '../components/ui/GlassButton';
 import SearchBar from '../../../features/shared/components/ui/SearchBar';
 import GlassSelect from '../../../features/shared/components/ui/GlassSelect';
 import { BackButton } from '../../../features/shared/components/ui/BackButton';
@@ -23,6 +23,7 @@ import { toast } from 'react-hot-toast';
 import StockAdjustModal from '../components/inventory/StockAdjustModal';
 import EnhancedStockAdjustModal from '../components/inventory/EnhancedStockAdjustModal';
 import CategoryFormModal from '../components/inventory/CategoryFormModal';
+import ProductExcelImportModal from '../components/ProductExcelImportModal';
 
 import SupplierForm from '../components/inventory/SupplierForm';
 
@@ -186,6 +187,9 @@ const UnifiedInventoryPage: React.FC = () => {
 
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [selectedBrand, setSelectedBrand] = useState('all');
+  
+  // Excel import modal state
+  const [showExcelImportModal, setShowExcelImportModal] = useState(false);
   const [showLowStockOnly, setShowLowStockOnly] = useState(false);
   const [showFeaturedOnly, setShowFeaturedOnly] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
@@ -479,17 +483,19 @@ const UnifiedInventoryPage: React.FC = () => {
   const filteredProducts = useMemo(() => {
     let filtered = products;
 
-    // Apply search filter
+    // Apply search filter with enhanced variant search
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(product => 
         product.name.toLowerCase().includes(query) ||
         product.description?.toLowerCase().includes(query) ||
+        product.category?.name.toLowerCase().includes(query) ||
+        // Enhanced variant search - search through variant names, SKUs, and barcodes
         product.variants?.some(variant => 
-          variant.sku?.toLowerCase().includes(query)
-        ) ||
-
-        product.category?.name.toLowerCase().includes(query)
+          variant.name?.toLowerCase().includes(query) ||
+          variant.sku?.toLowerCase().includes(query) ||
+          variant.barcode?.toLowerCase().includes(query)
+        )
       );
     }
 
@@ -683,101 +689,22 @@ const UnifiedInventoryPage: React.FC = () => {
     }
   };
 
-  // Handle import functionality
+  // Handle import functionality - opens Excel import modal
   const handleImport = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.csv,.xlsx,.xls';
-    input.onchange = async (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-      
-      try {
-        toast.loading('Importing products...');
-        
-        const reader = new FileReader();
-        reader.onload = async (event) => {
-          try {
-            const content = event.target?.result as string;
-            const lines = content.split('\n');
-            const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-            const data = lines.slice(1).filter(line => line.trim());
-            
-            let importedCount = 0;
-            let errorCount = 0;
-            
-            for (const line of data) {
-              try {
-                const values = line.split(',').map(v => v.trim().replace(/"/g, ''));
-                const productData: any = {};
-                
-                headers.forEach((header, index) => {
-                  productData[header.toLowerCase()] = values[index] || '';
-                });
-                
-                const product = {
-                  name: productData.name || productData.product_name,
-                  description: productData.description || productData.desc,
-                  categoryId: null,
+    setShowExcelImportModal(true);
+  };
 
-                  supplierId: null,
-                  images: [],
-          
-                  variants: [{
-                    sku: productData.sku || productData.product_code,
-                    name: productData.name || productData.product_name,
-                    attributes: {},
-                    costPrice: parseFloat(productData.cost || productData.cost_price || '0'),
-                    sellingPrice: parseFloat(productData.price || productData.selling_price || '0'),
-                    quantity: parseInt(productData.stock || productData.quantity || '0'),
-                    minQuantity: parseInt(productData.min_stock || '0'),
-                    maxQuantity: parseInt(productData.max_stock || '100'),
-                    barcode: productData.barcode || productData.upc || ''
-                  }]
-                };
-                
-                const result = await createProduct(product);
-                if (result.ok) {
-                  importedCount++;
-                } else {
-                  errorCount++;
-                }
-              } catch (error) {
-                errorCount++;
-                console.error('Error importing product:', error);
-              }
-            }
-            
-            toast.dismiss();
-            if (errorCount === 0) {
-              toast.success(`Successfully imported ${importedCount} products!`);
-            } else {
-              toast.success(`Imported ${importedCount} products with ${errorCount} errors`);
-            }
-            
-            await Promise.all([
-              loadProducts({ page: 1, limit: 50 }),
-              loadCategories(),
-      
-              loadSuppliers()
-            ]);
-            
-          } catch (error) {
-            toast.dismiss();
-            toast.error('Failed to parse import file');
-            console.error('Import parsing error:', error);
-          }
-        };
-        
-        reader.readAsText(file);
-        
-      } catch (error) {
-        toast.dismiss();
-        toast.error('Failed to import products');
-        console.error('Import error:', error);
-      }
-    };
-    input.click();
+  // Handle Excel import completion
+  const handleExcelImportComplete = async (importedProducts: Product[]) => {
+    setShowExcelImportModal(false);
+    toast.success(`Successfully imported ${importedProducts.length} products!`);
+    
+    // Refresh the data
+    await Promise.all([
+      loadProducts({ page: 1, limit: 50 }),
+      loadCategories(),
+      loadSuppliers()
+    ]);
   };
 
   // Handle export functionality
@@ -1455,6 +1382,13 @@ const UnifiedInventoryPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Excel Import Modal */}
+      <ProductExcelImportModal
+        isOpen={showExcelImportModal}
+        onClose={() => setShowExcelImportModal(false)}
+        onImportComplete={handleExcelImportComplete}
+      />
     </PageErrorBoundary>
   );
 };

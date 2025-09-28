@@ -7,6 +7,7 @@ import {
   CheckCircle, AlertTriangle, XCircle, CalendarDays, User, Building
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { fetchAllAppointments } from '../../../lib/customerApi/appointments';
 
 interface CalendarViewTabProps {
   isActive: boolean;
@@ -40,6 +41,7 @@ const CalendarViewTab: React.FC<CalendarViewTabProps> = ({ isActive }) => {
 
   useEffect(() => {
     if (isActive) {
+      console.log('📅 CalendarViewTab activated, loading events...');
       loadCalendarEvents();
     }
   }, [isActive, currentDate]);
@@ -47,81 +49,88 @@ const CalendarViewTab: React.FC<CalendarViewTabProps> = ({ isActive }) => {
   const loadCalendarEvents = async () => {
     setLoading(true);
     try {
-      // Mock calendar events
-      const mockEvents: CalendarEvent[] = [
-        {
-          id: '1',
-          title: 'iPhone Screen Replacement',
-          type: 'appointment',
-          start: '2024-01-15T10:00:00',
-          end: '2024-01-15T11:00:00',
-          allDay: false,
-          customerName: 'John Doe',
-          customerPhone: '+255 123 456 789',
-          customerEmail: 'john@example.com',
-          serviceType: 'iPhone Screen Replacement',
-          technicianName: 'Mike Johnson',
-          location: 'Main Workshop',
-          status: 'scheduled',
-          priority: 'medium',
-          notes: 'Customer prefers morning appointments',
-          color: 'blue'
-        },
-        {
-          id: '2',
-          title: 'Laptop Diagnostics',
-          type: 'appointment',
-          start: '2024-01-15T14:30:00',
-          end: '2024-01-15T15:15:00',
-          allDay: false,
-          customerName: 'Sarah Smith',
-          customerPhone: '+255 987 654 321',
-          customerEmail: 'sarah@example.com',
-          serviceType: 'Laptop Diagnostics',
-          technicianName: 'Lisa Brown',
-          location: 'Main Workshop',
-          status: 'confirmed',
-          priority: 'high',
-          notes: 'Urgent - customer needs laptop for work',
-          color: 'green'
-        },
-        {
-          id: '3',
-          title: 'Data Recovery',
-          type: 'appointment',
-          start: '2024-01-16T09:00:00',
-          end: '2024-01-16T11:00:00',
-          allDay: false,
-          customerName: 'Alex Wilson',
-          customerPhone: '+255 555 123 456',
-          customerEmail: 'alex@example.com',
-          serviceType: 'Data Recovery',
-          technicianName: 'David Lee',
-          location: 'Data Recovery Lab',
-          status: 'in-progress',
-          priority: 'urgent',
-          notes: 'Important business data',
-          color: 'red'
-        },
-        {
-          id: '4',
-          title: 'Team Meeting',
-          type: 'meeting',
-          start: '2024-01-15T16:00:00',
-          end: '2024-01-15T17:00:00',
-          allDay: false,
-          location: 'Conference Room',
-          status: 'scheduled',
-          priority: 'medium',
-          notes: 'Weekly team meeting',
-          color: 'purple'
-        }
-      ];
+      console.log('🔄 Loading calendar events from database...');
+      const appointmentsData = await fetchAllAppointments();
       
-      setEvents(mockEvents);
+      // Transform appointments to calendar events
+      const calendarEvents: CalendarEvent[] = appointmentsData.map(appointment => {
+        // Parse appointment date and time with validation
+        let appointmentDate: Date;
+        let endDate: Date;
+        
+        try {
+          // Ensure we have valid date and time
+          const dateStr = appointment.appointment_date || new Date().toISOString().split('T')[0];
+          const timeStr = appointment.appointment_time || '09:00:00';
+          
+          appointmentDate = new Date(`${dateStr}T${timeStr}`);
+          
+          // Validate the date
+          if (isNaN(appointmentDate.getTime())) {
+            console.warn('Invalid appointment date:', appointment.appointment_date, 'using current date');
+            appointmentDate = new Date();
+          }
+          
+          endDate = new Date(appointmentDate.getTime() + (appointment.duration_minutes || 60) * 60000);
+          
+          // Validate the end date
+          if (isNaN(endDate.getTime())) {
+            endDate = new Date(appointmentDate.getTime() + 60 * 60000); // Default 1 hour
+          }
+        } catch (error) {
+          console.warn('Error parsing appointment date/time:', error, 'using current date');
+          appointmentDate = new Date();
+          endDate = new Date(appointmentDate.getTime() + 60 * 60000);
+        }
+        
+        // Get color based on status
+        let color = 'blue';
+        switch (appointment.status) {
+          case 'scheduled':
+            color = 'blue';
+            break;
+          case 'confirmed':
+            color = 'green';
+            break;
+          case 'in-progress':
+            color = 'yellow';
+            break;
+          case 'completed':
+            color = 'purple';
+            break;
+          case 'cancelled':
+            color = 'red';
+            break;
+          default:
+            color = 'gray';
+        }
+        
+        return {
+          id: appointment.id,
+          title: `${appointment.customer_name} - ${appointment.service_type}`,
+          type: 'appointment' as const,
+          start: appointmentDate.toISOString(),
+          end: endDate.toISOString(),
+          allDay: false,
+          customerName: appointment.customer_name,
+          customerPhone: appointment.customer_phone,
+          customerEmail: appointment.customer_email,
+          serviceType: appointment.service_type,
+          technicianName: appointment.technician_name,
+          location: appointment.location,
+          status: appointment.status as 'scheduled' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled',
+          priority: (appointment.priority || 'medium') as 'low' | 'medium' | 'high' | 'urgent',
+          notes: appointment.notes,
+          color: color
+        };
+      });
+      
+      setEvents(calendarEvents);
+      console.log('✅ Calendar events loaded successfully:', calendarEvents.length, 'events');
     } catch (error) {
-      console.error('Error loading calendar events:', error);
+      console.error('❌ Error loading calendar events:', error);
       toast.error('Failed to load calendar events');
+      setEvents([]);
     } finally {
       setLoading(false);
     }
@@ -149,8 +158,18 @@ const CalendarViewTab: React.FC<CalendarViewTabProps> = ({ isActive }) => {
   const getEventsForDate = (date: Date) => {
     const dateStr = date.toISOString().split('T')[0];
     return events.filter(event => {
-      const eventDate = new Date(event.start).toISOString().split('T')[0];
-      return eventDate === dateStr;
+      try {
+        const eventDate = new Date(event.start);
+        if (isNaN(eventDate.getTime())) {
+          console.warn('Invalid event start date:', event.start);
+          return false;
+        }
+        const eventDateStr = eventDate.toISOString().split('T')[0];
+        return eventDateStr === dateStr;
+      } catch (error) {
+        console.warn('Error parsing event date:', error, event.start);
+        return false;
+      }
     });
   };
 
@@ -198,12 +217,26 @@ const CalendarViewTab: React.FC<CalendarViewTabProps> = ({ isActive }) => {
     });
   };
 
+  const goToToday = () => {
+    setCurrentDate(new Date());
+  };
+
   const formatTime = (dateString: string) => {
-    return new Date(dateString).toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
-    });
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) {
+        console.warn('Invalid date string for formatting:', dateString);
+        return 'Invalid Time';
+      }
+      return date.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch (error) {
+      console.warn('Error formatting time:', error, dateString);
+      return 'Invalid Time';
+    }
   };
 
   if (!isActive) return null;
@@ -241,6 +274,13 @@ const CalendarViewTab: React.FC<CalendarViewTabProps> = ({ isActive }) => {
             icon={<ChevronRight size={18} />}
             variant="secondary"
           />
+          <GlassButton
+            onClick={goToToday}
+            variant="secondary"
+            size="sm"
+          >
+            Today
+          </GlassButton>
         </div>
         
         <div className="flex gap-2">
@@ -264,6 +304,15 @@ const CalendarViewTab: React.FC<CalendarViewTabProps> = ({ isActive }) => {
             size="sm"
           >
             Day
+          </GlassButton>
+          <GlassButton
+            onClick={loadCalendarEvents}
+            icon={<RefreshCw size={16} />}
+            variant="secondary"
+            size="sm"
+            disabled={loading}
+          >
+            {loading ? 'Loading...' : 'Refresh'}
           </GlassButton>
         </div>
       </div>
@@ -289,13 +338,13 @@ const CalendarViewTab: React.FC<CalendarViewTabProps> = ({ isActive }) => {
             return (
               <div
                 key={index}
-                className={`min-h-[120px] p-2 border border-gray-200 rounded-lg ${
+                className={`min-h-[120px] p-2 border border-gray-200 rounded-lg transition-colors hover:bg-gray-50 ${
                   isCurrentMonth ? 'bg-white' : 'bg-gray-50'
-                } ${isToday ? 'ring-2 ring-blue-500' : ''}`}
+                } ${isToday ? 'ring-2 ring-blue-500 bg-blue-50' : ''}`}
               >
                 <div className={`text-sm font-medium mb-1 ${
                   isCurrentMonth ? 'text-gray-900' : 'text-gray-400'
-                } ${isToday ? 'text-blue-600' : ''}`}>
+                } ${isToday ? 'text-blue-600 font-bold' : ''}`}>
                   {day.getDate()}
                 </div>
                 
@@ -303,8 +352,9 @@ const CalendarViewTab: React.FC<CalendarViewTabProps> = ({ isActive }) => {
                   {dayEvents.slice(0, 3).map(event => (
                     <div
                       key={event.id}
-                      className={`p-1 rounded text-xs cursor-pointer border-l-4 ${getPriorityColor(event.priority)} ${getStatusColor(event.status)}`}
+                      className={`p-1 rounded text-xs cursor-pointer border-l-4 transition-all hover:shadow-sm ${getPriorityColor(event.priority)} ${getStatusColor(event.status)}`}
                       onClick={() => setSelectedEvent(event)}
+                      title={`${event.title} - ${formatTime(event.start)}`}
                     >
                       <div className="font-medium truncate">{event.title}</div>
                       <div className="text-xs opacity-75">
@@ -313,7 +363,7 @@ const CalendarViewTab: React.FC<CalendarViewTabProps> = ({ isActive }) => {
                     </div>
                   ))}
                   {dayEvents.length > 3 && (
-                    <div className="text-xs text-gray-500 text-center">
+                    <div className="text-xs text-gray-500 text-center font-medium">
                       +{dayEvents.length - 3} more
                     </div>
                   )}
@@ -326,13 +376,13 @@ const CalendarViewTab: React.FC<CalendarViewTabProps> = ({ isActive }) => {
 
       {/* Event Details Modal */}
       {selectedEvent && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900">Event Details</h3>
               <button
                 onClick={() => setSelectedEvent(null)}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-gray-400 hover:text-gray-600 transition-colors"
               >
                 <XCircle size={20} />
               </button>
@@ -384,7 +434,10 @@ const CalendarViewTab: React.FC<CalendarViewTabProps> = ({ isActive }) => {
             
             <div className="flex gap-2 mt-6">
               <GlassButton
-                onClick={() => {/* TODO: Edit event */}}
+                onClick={() => {
+                  toast('Edit functionality coming soon');
+                  setSelectedEvent(null);
+                }}
                 icon={<Edit size={14} />}
                 size="sm"
               >

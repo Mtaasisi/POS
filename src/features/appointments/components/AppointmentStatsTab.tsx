@@ -6,6 +6,7 @@ import {
   CheckCircle, XCircle, AlertTriangle, ArrowUpRight, ArrowDownRight
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { getAppointmentStats, fetchAllAppointments } from '../../../lib/customerApi/appointments';
 
 interface AppointmentStatsTabProps {
   isActive: boolean;
@@ -59,52 +60,93 @@ const AppointmentStatsTab: React.FC<AppointmentStatsTabProps> = ({ isActive }) =
   const loadAppointmentStats = async () => {
     setLoading(true);
     try {
-      // Mock appointment statistics
-      const mockStats: AppointmentStats = {
+      console.log('📊 Loading appointment statistics from database...');
+      const [statsData, appointmentsData] = await Promise.all([
+        getAppointmentStats(),
+        fetchAllAppointments()
+      ]);
+      
+      // Calculate additional stats from appointments data
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const thisWeek = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      
+      // Count appointments by time period
+      const todayCount = appointmentsData.filter(apt => {
+        const aptDate = new Date(apt.appointment_date);
+        return aptDate >= today;
+      }).length;
+      
+      const thisWeekCount = appointmentsData.filter(apt => {
+        const aptDate = new Date(apt.appointment_date);
+        return aptDate >= thisWeek;
+      }).length;
+      
+      const thisMonthCount = appointmentsData.filter(apt => {
+        const aptDate = new Date(apt.appointment_date);
+        return aptDate >= thisMonth;
+      }).length;
+      
+      // Calculate growth (simplified)
+      const growth = thisMonthCount > 0 ? ((todayCount / thisMonthCount) * 100 - 100) : 0;
+      
+      // Group by status
+      const byStatus = appointmentsData.reduce((acc, apt) => {
+        const existing = acc.find(item => item.status === apt.status);
+        if (existing) {
+          existing.count++;
+        } else {
+          acc.push({ status: apt.status, count: 1 });
+        }
+        return acc;
+      }, [] as { status: string; count: number }[]);
+      
+      // Group by service type
+      const byService = appointmentsData.reduce((acc, apt) => {
+        const existing = acc.find(item => item.service === apt.service_type);
+        if (existing) {
+          existing.count++;
+        } else {
+          acc.push({ service: apt.service_type, count: 1 });
+        }
+        return acc;
+      }, [] as { service: string; count: number }[]);
+      
+      const stats: AppointmentStats = {
         overview: {
-          total: 1247,
-          today: 5,
-          thisWeek: 28,
-          thisMonth: 156,
-          growth: 12.5
+          total: statsData.total || 0,
+          today: todayCount,
+          thisWeek: thisWeekCount,
+          thisMonth: thisMonthCount,
+          growth: Math.round(growth)
         },
-        byStatus: [
-          { status: 'Scheduled', count: 45, percentage: 36.0, trend: 8.5 },
-          { status: 'Confirmed', count: 32, percentage: 25.6, trend: 12.3 },
-          { status: 'In Progress', count: 18, percentage: 14.4, trend: -2.1 },
-          { status: 'Completed', count: 25, percentage: 20.0, trend: 15.7 },
-          { status: 'Cancelled', count: 5, percentage: 4.0, trend: -5.2 }
-        ],
-        byService: [
-          { service: 'iPhone Screen Replacement', count: 28, revenue: 2240000, percentage: 22.4 },
-          { service: 'Laptop Diagnostics', count: 22, revenue: 330000, percentage: 17.6 },
-          { service: 'Data Recovery', count: 15, revenue: 1125000, percentage: 12.0 },
-          { service: 'Virus Removal', count: 20, revenue: 400000, percentage: 16.0 },
-          { service: 'Windows Installation', count: 18, revenue: 450000, percentage: 14.4 },
-          { service: 'Other Services', count: 22, revenue: 1100000, percentage: 17.6 }
-        ],
-        byTechnician: [
-          { technician: 'Mike Johnson', appointments: 45, completed: 42, rating: 4.8 },
-          { technician: 'Lisa Brown', appointments: 38, completed: 36, rating: 4.9 },
-          { technician: 'David Lee', appointments: 32, completed: 30, rating: 4.7 },
-          { technician: 'Sarah Wilson', appointments: 28, completed: 26, rating: 4.6 },
-          { technician: 'Alex Chen', appointments: 25, completed: 23, rating: 4.5 }
-        ],
-        trends: [
-          { date: 'Mon', appointments: 8, completed: 7, cancelled: 1 },
-          { date: 'Tue', appointments: 12, completed: 11, cancelled: 1 },
-          { date: 'Wed', appointments: 6, completed: 5, cancelled: 1 },
-          { date: 'Thu', appointments: 15, completed: 14, cancelled: 1 },
-          { date: 'Fri', appointments: 10, completed: 9, cancelled: 1 },
-          { date: 'Sat', appointments: 18, completed: 17, cancelled: 1 },
-          { date: 'Sun', appointments: 7, completed: 6, cancelled: 1 }
-        ]
+        byStatus,
+        byService,
+        byTechnician: [], // Will be populated if technician data is available
+        trends: [] // Will be populated with historical data if needed
       };
       
-      setStats(mockStats);
+      setStats(stats);
+      console.log('✅ Appointment statistics loaded successfully');
     } catch (error) {
       console.error('Error loading appointment stats:', error);
       toast.error('Failed to load appointment statistics');
+      
+      // Set default stats on error
+      setStats({
+        overview: {
+          total: 0,
+          today: 0,
+          thisWeek: 0,
+          thisMonth: 0,
+          growth: 0
+        },
+        byStatus: [],
+        byService: [],
+        byTechnician: [],
+        trends: []
+      });
     } finally {
       setLoading(false);
     }

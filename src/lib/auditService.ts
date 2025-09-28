@@ -145,6 +145,30 @@ export const logSystemEvent = async (
 };
 
 /**
+ * Get audit logs for a specific entity
+ */
+export const getEntityAuditLogs = async (entityType: string, entityId: string): Promise<AuditLog[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('audit_logs')
+      .select('*')
+      .eq('entity_type', entityType)
+      .eq('entity_id', entityId)
+      .order('timestamp', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching entity audit logs:', error);
+      return [];
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching entity audit logs:', error);
+    return [];
+  }
+};
+
+/**
  * Get audit statistics
  */
 export const getAuditStatistics = async () => {

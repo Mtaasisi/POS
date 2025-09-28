@@ -108,17 +108,17 @@ const ProductCard: React.FC<ProductCardProps> = ({
   const handleEdit = () => {
     window.location.href = `/lats/products/${product.id}/edit`;
   };
-  const handleView = () => onView?.(product);
+  const handleView = () => {
+    // Product detail page removed - no action needed
+    console.log('Product detail page has been removed');
+  };
   const handleAdjustStock = () => primaryVariant && onAdjustStock?.(primaryVariant);
   const handleToggleActive = () => onToggleActive?.(product);
 
-  // Handle card click to view product
+  // Handle card click - product detail page removed
   const handleCardClick = (e: React.MouseEvent) => {
-    // Don't trigger if clicking on action buttons
-    if ((e.target as Element).closest('button')) {
-      return;
-    }
-    onView?.(product);
+    // Product detail page has been removed - no navigation needed
+    console.log('Product detail page has been removed');
   };
 
   // Render compact variant

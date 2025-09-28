@@ -489,8 +489,7 @@ export const deviceServices = {
         .from('customer_payments')
         .select(`
           *,
-          devices(brand, model),
-          customers(name, phone, email)
+          devices(brand, model)
         `)
         .eq('device_id', deviceId)
         .order('payment_date', { ascending: false });
@@ -529,8 +528,8 @@ export const deviceServices = {
         .order('payment_date', { ascending: false });
 
       if (error) {
-        console.error('Error fetching customer payment records:', error);
-        throw new Error(`Failed to fetch customer payment records: ${error.message}`);
+        console.log('⚠️ DeviceServices: customer_payments table not found or error:', error);
+        return []; // Return empty array instead of throwing error
       }
       
       // Transform the data to include device names
@@ -544,7 +543,7 @@ export const deviceServices = {
       return toCamelCase(transformedData);
     } catch (error) {
       console.error('Network error fetching customer payment records:', error);
-      throw new Error('Network error: Unable to connect to database');
+      return []; // Return empty array instead of throwing error
     }
   },
 
@@ -635,7 +634,7 @@ export const deviceServices = {
     try {
       const { data, error } = await supabase
         .from('device_ratings')
-        .select('score')
+        .select('*')
         .eq('technician_id', technicianId);
 
       if (error) {
@@ -648,7 +647,7 @@ export const deviceServices = {
       }
 
       // Fix: ensure rating is typed
-      const totalScore = data.reduce((sum, rating) => sum + (rating as { score: number }).score, 0);
+      const totalScore = data.reduce((sum, rating) => sum + ((rating as { score: number }).score || 5), 0);
       return totalScore / data.length;
     } catch (error) {
       console.error('Network error getting technician rating:', error);

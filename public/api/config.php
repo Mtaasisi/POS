@@ -15,9 +15,9 @@ putenv('SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiO
 
 // Set other environment variables
 putenv('APP_ENV=production');
-putenv('DEBUG_MODE=true');
-putenv('DEBUG_LOGGING=true');
-putenv('DEBUG_WEBHOOK=true');
+putenv('DEBUG_MODE=false');
+putenv('DEBUG_LOGGING=false');
+putenv('DEBUG_WEBHOOK=false');
 
 // Log that config was loaded
 error_log("WhatsApp config: Configuration loaded successfully");

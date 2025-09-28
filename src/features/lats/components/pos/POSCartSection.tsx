@@ -39,6 +39,7 @@ interface POSCartSectionProps {
   totalAmount: number;
   discountAmount: number;
   finalAmount: number;
+  onEditCustomer?: (customer: Customer) => void;
 }
 
 const POSCartSection: React.FC<POSCartSectionProps> = ({
@@ -56,7 +57,8 @@ const POSCartSection: React.FC<POSCartSectionProps> = ({
   dynamicPricingEnabled = false,
   totalAmount,
   discountAmount,
-  finalAmount
+  finalAmount,
+  onEditCustomer
 }) => {
   return (
     <div className="lg:w-[450px] flex-shrink-0">
@@ -118,6 +120,15 @@ const POSCartSection: React.FC<POSCartSectionProps> = ({
                   >
                     <User className="w-5 h-5" />
                   </button>
+                  {onEditCustomer && (
+                    <button
+                      onClick={() => onEditCustomer(selectedCustomer)}
+                      className="p-2 text-green-500 hover:text-green-700 hover:bg-green-50 rounded-lg transition-all duration-200"
+                      title="Edit customer information"
+                    >
+                      <Edit3 className="w-5 h-5" />
+                    </button>
+                  )}
                   <button
                     onClick={onRemoveCustomer}
                     className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-all duration-200"
@@ -236,8 +247,9 @@ const POSCartSection: React.FC<POSCartSectionProps> = ({
             {/* Process Payment Button */}
             <button
               onClick={onProcessPayment}
-              disabled={cartItems.length === 0}
+              disabled={cartItems.length === 0 || !selectedCustomer}
               className="w-full bg-green-500 hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200 shadow-lg hover:shadow-xl"
+              title={!selectedCustomer ? "Please select a customer first" : cartItems.length === 0 ? "Add items to cart first" : "Process payment"}
             >
               Process Payment
             </button>

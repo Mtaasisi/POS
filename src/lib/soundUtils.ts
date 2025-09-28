@@ -44,18 +44,28 @@ export class SoundManager {
     try {
       // Only create AudioContext if it doesn't exist and user has interacted
       if (this.canCreateAudioContext()) {
-        this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+        if (!AudioContext) {
+          console.warn('Web Audio API not supported in this browser');
+          this.isInitialized = true;
+          return;
+        }
+
+        this.audioContext = new AudioContext();
+        console.log(`AudioContext created with state: ${this.audioContext.state}`);
         
         // Resume the context if it's suspended
         if (this.audioContext.state === 'suspended') {
+          console.log('Resuming suspended AudioContext...');
           await this.audioContext.resume();
+          console.log(`AudioContext resumed, new state: ${this.audioContext.state}`);
         }
         
         this.isInitialized = true;
-        // Reduced logging to prevent console spam
+        console.log('✅ AudioContext initialized successfully');
       }
     } catch (error) {
-      // Silently handle AudioContext creation errors to prevent console spam
+      console.error('Error creating AudioContext:', error);
       this.isInitialized = true; // Mark as initialized to prevent retries
     }
   }
@@ -66,10 +76,19 @@ export class SoundManager {
   static markUserInteracted() {
     if (!this.userInteracted) {
       this.userInteracted = true;
-      // Reduced logging to prevent console spam
+      console.log('✅ User interaction detected');
       // Trigger initialization after user interaction
       this.initialize();
     }
+  }
+
+  /**
+   * Force mark user interaction (for testing purposes)
+   */
+  static forceUserInteraction() {
+    this.userInteracted = true;
+    console.log('✅ User interaction forced for testing');
+    this.initialize();
   }
 
   /**
@@ -182,6 +201,190 @@ export class SoundManager {
       
       oscillator.start(this.audioContext.currentTime);
       oscillator.stop(this.audioContext.currentTime + 0.3);
+    }
+  }
+
+  /**
+   * Play a click sound for button interactions
+   */
+  static async playClickSound() {
+    try {
+      // Mark user interaction on first sound play
+      this.markUserInteracted();
+      await this.initialize();
+      
+      if (!this.audioContext) {
+        console.warn('AudioContext not available for click sound');
+        return;
+      }
+
+      // Resume context if suspended
+      if (this.audioContext.state === 'suspended') {
+        await this.audioContext.resume();
+      }
+
+      if (this.audioContext.state === 'running') {
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        // Click sound (short, crisp tone)
+        oscillator.frequency.setValueAtTime(1000, this.audioContext.currentTime);
+        oscillator.type = 'square';
+        
+        gainNode.gain.setValueAtTime(0.1, this.audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.05);
+        
+        oscillator.start(this.audioContext.currentTime);
+        oscillator.stop(this.audioContext.currentTime + 0.05);
+        
+        console.log('✅ Click sound played successfully');
+      } else {
+        console.warn(`AudioContext state is ${this.audioContext.state}, cannot play click sound`);
+      }
+    } catch (error) {
+      console.error('Error playing click sound:', error);
+    }
+  }
+
+  /**
+   * Play a cart add sound for adding items to cart
+   */
+  static async playCartAddSound() {
+    try {
+      // Mark user interaction on first sound play
+      this.markUserInteracted();
+      await this.initialize();
+      
+      if (!this.audioContext) {
+        console.warn('AudioContext not available for cart add sound');
+        return;
+      }
+
+      // Resume context if suspended
+      if (this.audioContext.state === 'suspended') {
+        await this.audioContext.resume();
+      }
+
+      if (this.audioContext.state === 'running') {
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        // Cart add sound (pleasant chime)
+        oscillator.frequency.setValueAtTime(800, this.audioContext.currentTime);
+        oscillator.frequency.setValueAtTime(1000, this.audioContext.currentTime + 0.05);
+        oscillator.type = 'sine';
+        
+        gainNode.gain.setValueAtTime(0.15, this.audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.1);
+        
+        oscillator.start(this.audioContext.currentTime);
+        oscillator.stop(this.audioContext.currentTime + 0.1);
+        
+        console.log('✅ Cart add sound played successfully');
+      } else {
+        console.warn(`AudioContext state is ${this.audioContext.state}, cannot play cart add sound`);
+      }
+    } catch (error) {
+      console.error('Error playing cart add sound:', error);
+    }
+  }
+
+  /**
+   * Play a payment sound for successful transactions
+   */
+  static async playPaymentSound() {
+    try {
+      // Mark user interaction on first sound play
+      this.markUserInteracted();
+      await this.initialize();
+      
+      if (!this.audioContext) {
+        console.warn('AudioContext not available for payment sound');
+        return;
+      }
+
+      // Resume context if suspended
+      if (this.audioContext.state === 'suspended') {
+        await this.audioContext.resume();
+      }
+
+      if (this.audioContext.state === 'running') {
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        // Payment sound (cash register-like chime)
+        oscillator.frequency.setValueAtTime(523, this.audioContext.currentTime); // C5
+        oscillator.frequency.setValueAtTime(659, this.audioContext.currentTime + 0.1); // E5
+        oscillator.frequency.setValueAtTime(784, this.audioContext.currentTime + 0.2); // G5
+        oscillator.frequency.setValueAtTime(1047, this.audioContext.currentTime + 0.3); // C6
+        
+        gainNode.gain.setValueAtTime(0.2, this.audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.4);
+        
+        oscillator.start(this.audioContext.currentTime);
+        oscillator.stop(this.audioContext.currentTime + 0.4);
+        
+        console.log('✅ Payment sound played successfully');
+      } else {
+        console.warn(`AudioContext state is ${this.audioContext.state}, cannot play payment sound`);
+      }
+    } catch (error) {
+      console.error('Error playing payment sound:', error);
+    }
+  }
+
+  /**
+   * Play a delete/remove sound
+   */
+  static async playDeleteSound() {
+    try {
+      // Mark user interaction on first sound play
+      this.markUserInteracted();
+      await this.initialize();
+      
+      if (!this.audioContext) {
+        console.warn('AudioContext not available for delete sound');
+        return;
+      }
+
+      // Resume context if suspended
+      if (this.audioContext.state === 'suspended') {
+        await this.audioContext.resume();
+      }
+
+      if (this.audioContext.state === 'running') {
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        // Delete sound (descending tone)
+        oscillator.frequency.setValueAtTime(600, this.audioContext.currentTime);
+        oscillator.frequency.setValueAtTime(400, this.audioContext.currentTime + 0.1);
+        oscillator.type = 'sawtooth';
+        
+        gainNode.gain.setValueAtTime(0.15, this.audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.2);
+        
+        oscillator.start(this.audioContext.currentTime);
+        oscillator.stop(this.audioContext.currentTime + 0.2);
+        
+        console.log('✅ Delete sound played successfully');
+      } else {
+        console.warn(`AudioContext state is ${this.audioContext.state}, cannot play delete sound`);
+      }
+    } catch (error) {
+      console.error('Error playing delete sound:', error);
     }
   }
 

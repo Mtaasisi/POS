@@ -51,17 +51,17 @@ const PointsManagementModal: React.FC<PointsManagementModalProps> = ({
   const loadPointsHistory = async () => {
     setLoadingHistory(true);
     try {
-      const { data, error } = await supabase
-        .from('customer_notes')
+      // First try to fetch from points_transactions table
+      const { data: transactionsData, error: transactionsError } = await supabase
+        .from('points_transactions')
         .select('*')
         .eq('customer_id', customerId)
-        .or('content.ilike.%points%')
         .order('created_at', { ascending: false })
         .limit(20);
 
-      if (!error && data) {
-        // Get unique user IDs from the notes
-        const userIds = [...new Set(data.map(note => note.created_by))];
+      if (!transactionsError && transactionsData && transactionsData.length > 0) {
+        // Get unique user IDs from the transactions
+        const userIds = [...new Set(transactionsData.map(t => t.created_by))];
         
         // Fetch user information for all unique users
         const { data: usersData, error: usersError } = await supabase
@@ -76,26 +76,70 @@ const PointsManagementModal: React.FC<PointsManagementModalProps> = ({
           });
         }
 
-        const history: PointsHistoryEntry[] = data
-          .filter(note => note.content.includes('points'))
-          .map(note => {
-            const pointsMatch = note.content.match(/(\d+)\s+points?/i);
-            const points = pointsMatch ? parseInt(pointsMatch[1]) : 0;
-            const isSubtracted = note.content.includes('subtracted') || note.content.includes('deducted');
-            const isRedeemed = note.content.includes('redeemed');
-            const isAuto = note.content.includes('loyalty points for new device');
-            
-            return {
-              id: note.id,
-              points: isSubtracted ? -points : points,
-              reason: note.content,
-              type: isRedeemed ? 'redeemed' : isAuto ? 'auto' : isSubtracted ? 'subtracted' : 'added',
-              createdBy: note.created_by,
-              createdByUser: usersMap.get(note.created_by) || 'Unknown User',
-              createdAt: note.created_at
-            };
-          });
+        const history: PointsHistoryEntry[] = transactionsData.map(transaction => {
+          const isSubtracted = transaction.points_change < 0;
+          const isRedeemed = transaction.transaction_type === 'redeemed';
+          const isAuto = transaction.transaction_type === 'earned';
+          
+          return {
+            id: transaction.id,
+            points: transaction.points_change,
+            reason: transaction.reason,
+            type: isRedeemed ? 'redeemed' : isAuto ? 'auto' : isSubtracted ? 'subtracted' : 'added',
+            createdBy: transaction.created_by,
+            createdByUser: usersMap.get(transaction.created_by) || 'Unknown User',
+            createdAt: transaction.created_at
+          };
+        });
         setPointsHistory(history);
+      } else {
+        // Fallback to customer_notes if points_transactions table doesn't exist or is empty
+        const { data, error } = await supabase
+          .from('customer_notes')
+          .select('*')
+          .eq('customer_id', customerId)
+          .or('content.ilike.%points%')
+          .order('created_at', { ascending: false })
+          .limit(20);
+
+        if (!error && data) {
+          // Get unique user IDs from the notes
+          const userIds = [...new Set(data.map(note => note.created_by))];
+          
+          // Fetch user information for all unique users
+          const { data: usersData, error: usersError } = await supabase
+            .from('auth_users')
+            .select('id, name')
+            .in('id', userIds);
+
+          const usersMap = new Map();
+          if (!usersError && usersData) {
+            usersData.forEach(user => {
+              usersMap.set(user.id, user.name);
+            });
+          }
+
+          const history: PointsHistoryEntry[] = data
+            .filter(note => note.content.includes('points'))
+            .map(note => {
+              const pointsMatch = note.content.match(/(\d+)\s+points?/i);
+              const points = pointsMatch ? parseInt(pointsMatch[1]) : 0;
+              const isSubtracted = note.content.includes('subtracted') || note.content.includes('deducted');
+              const isRedeemed = note.content.includes('redeemed');
+              const isAuto = note.content.includes('loyalty points for new device');
+              
+              return {
+                id: note.id,
+                points: isSubtracted ? -points : points,
+                reason: note.content,
+                type: isRedeemed ? 'redeemed' : isAuto ? 'auto' : isSubtracted ? 'subtracted' : 'added',
+                createdBy: note.created_by,
+                createdByUser: usersMap.get(note.created_by) || 'Unknown User',
+                createdAt: note.created_at
+              };
+            });
+          setPointsHistory(history);
+        }
       }
     } catch (error) {
       console.error('Error loading points history:', error);
@@ -121,7 +165,11 @@ const PointsManagementModal: React.FC<PointsManagementModalProps> = ({
     setIsLoading(true);
     try {
       const adjustment = operation === 'add' ? Math.abs(pointsToAdjust) : -Math.abs(pointsToAdjust);
-      const newPoints = currentPoints + adjustment;
+      const newPoints = Math.max(0, currentPoints + adjustment); // Ensure points don't go negative
+      
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      const userId = user?.id || 'system';
       
       // Update customer points in database
       const { error: updateError } = await supabase
@@ -131,6 +179,29 @@ const PointsManagementModal: React.FC<PointsManagementModalProps> = ({
 
       if (updateError) throw updateError;
 
+      // Log points transaction
+      const transactionType = operation === 'add' ? 'adjusted' : 'adjusted';
+      const { error: transactionError } = await supabase
+        .from('points_transactions')
+        .insert({
+          customer_id: customerId,
+          points_change: adjustment,
+          transaction_type: transactionType,
+          reason: reason.trim(),
+          created_by: userId,
+          metadata: { 
+            operation: operation,
+            previous_points: currentPoints,
+            new_points: newPoints,
+            adjustment_amount: Math.abs(pointsToAdjust)
+          }
+        });
+
+      if (transactionError) {
+        console.error('Error logging points transaction:', transactionError);
+        // Don't fail the operation if transaction logging fails
+      }
+
       // Add note about points adjustment
       const noteContent = `${operation === 'add' ? 'Added' : 'Subtracted'} ${Math.abs(pointsToAdjust)} points - ${reason}`;
       const { error: noteError } = await supabase
@@ -138,7 +209,7 @@ const PointsManagementModal: React.FC<PointsManagementModalProps> = ({
         .insert({
           id: `note-${Date.now()}`,
           content: noteContent,
-          created_by: (await supabase.auth.getUser()).data.user?.id || 'system',
+          created_by: userId,
           created_at: new Date().toISOString(),
           customer_id: customerId
         });

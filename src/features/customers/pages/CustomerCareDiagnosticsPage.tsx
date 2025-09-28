@@ -10,6 +10,7 @@ import {
 } from '../../../lib/diagnosticsApi';
 import GlassCard from '../../../features/shared/components/ui/GlassCard';
 import GlassButton from '../../../features/shared/components/ui/GlassButton';
+import DiagnosticStatusBadge from '../components/DiagnosticStatusBadge';
 import { 
   ArrowLeft, 
   Search, 
@@ -422,7 +423,7 @@ const CustomerCareDiagnosticsPage: React.FC = () => {
 
       {/* Stats Cards */}
       {stats && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
           <GlassCard className="p-4">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-blue-100 rounded-lg">
@@ -614,12 +615,10 @@ const CustomerCareDiagnosticsPage: React.FC = () => {
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-3">
                     <h3 className="text-lg font-semibold text-gray-900">{request.title}</h3>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(request.status)}`}>
-                      {getStatusText(request.status)}
-                    </span>
+                    <DiagnosticStatusBadge status={request.status} />
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-4">
                     <div className="flex items-center gap-2">
                       <User className="h-4 w-4 text-gray-500" />
                       <span className="text-sm text-gray-600">
@@ -704,7 +703,7 @@ const CustomerCareDiagnosticsPage: React.FC = () => {
                 {/* Request Info */}
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-3">Request Information</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                     <div>
                       <p className="text-sm text-gray-600">Title</p>
                       <p className="font-medium">{selectedRequest.title}</p>
@@ -713,9 +712,7 @@ const CustomerCareDiagnosticsPage: React.FC = () => {
                       <p className="text-sm text-gray-600">Status</p>
                       <div className="flex items-center gap-2">
                         {getStatusIcon(selectedRequest.status)}
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(selectedRequest.status)}`}>
-                          {getStatusText(selectedRequest.status)}
-                        </span>
+                        <DiagnosticStatusBadge status={selectedRequest.status} />
                       </div>
                     </div>
                     <div>
@@ -756,7 +753,7 @@ const CustomerCareDiagnosticsPage: React.FC = () => {
                                'Pending'}
                             </span>
                           </div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-600">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-gray-600">
                             {device.serial_number && (
                               <div>
                                 <span className="font-medium">Serial:</span> {device.serial_number}

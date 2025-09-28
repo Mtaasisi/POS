@@ -7,19 +7,15 @@ const CACHE_EXPIRY = 5 * 60 * 1000; // 5 minutes
 export async function getCacheDB() {
   return openDB(DB_NAME, 4, {
     upgrade(db, oldVersion, newVersion) {
-      console.log(`Upgrading IndexedDB from version ${oldVersion} to ${newVersion}`);
-      
       // Always create all required object stores
       for (const store of STORE_NAMES) {
         if (!db.objectStoreNames.contains(store)) {
-          console.log(`Creating object store: ${store}`);
           db.createObjectStore(store, { keyPath: 'id' });
         }
       }
       
       // Create cache metadata store if it doesn't exist
       if (!db.objectStoreNames.contains('cache_metadata')) {
-        console.log('Creating cache_metadata object store');
         db.createObjectStore('cache_metadata', { keyPath: 'store' });
       }
     },
@@ -148,7 +144,7 @@ export async function clearAllCache() {
     await tx.objectStore('cache_metadata').clear();
     
     await tx.done;
-    console.log('All cache cleared successfully');
+
   } catch (error) {
     console.warn('Failed to clear all cache:', error);
   }
@@ -158,7 +154,7 @@ export async function resetCacheDatabase() {
   try {
     // Delete the database completely
     await deleteDB(DB_NAME);
-    console.log('Cache database reset successfully');
+
   } catch (error) {
     console.warn('Failed to reset cache database:', error);
   }
@@ -179,14 +175,14 @@ export async function initializeCache() {
     const db = await getCacheDB();
     const tx = db.transaction('cache_metadata', 'readonly');
     await tx.objectStore('cache_metadata').get('test');
-    console.log('Cache initialized successfully');
+
   } catch (error) {
     console.warn('Cache initialization failed, resetting database:', error);
     try {
       await resetCacheDatabase();
       // Try to initialize again
       await getCacheDB();
-      console.log('Cache reset and reinitialized successfully');
+
     } catch (resetError) {
       console.error('Failed to reset cache database:', resetError);
     }
@@ -198,7 +194,7 @@ if (typeof window !== 'undefined') {
   (window as any).resetCleanAppCache = async () => {
     try {
       await resetCacheDatabase();
-      console.log('Cache reset successfully. Please refresh the page.');
+
     } catch (error) {
       console.error('Failed to reset cache:', error);
     }
@@ -207,7 +203,7 @@ if (typeof window !== 'undefined') {
   (window as any).clearCleanAppCache = async () => {
     try {
       await clearAllCache();
-      console.log('Cache cleared successfully.');
+
     } catch (error) {
       console.error('Failed to clear cache:', error);
     }

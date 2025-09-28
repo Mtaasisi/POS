@@ -25,7 +25,16 @@ interface SearchResult {
 
 const GlobalSearchPage: React.FC = () => {
   const { currentUser } = useAuth();
-  const { devices } = useDevices();
+  
+  // Safely access devices context with error handling for HMR
+  let devices: any[] = [];
+  try {
+    const devicesContext = useDevices();
+    devices = devicesContext?.devices || [];
+  } catch (error) {
+    console.warn('Devices context not available during HMR:', error);
+  }
+  
   const { customers } = useCustomers();
   const navigate = useNavigate();
   const location = useLocation();

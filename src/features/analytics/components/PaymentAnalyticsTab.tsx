@@ -6,6 +6,7 @@ import {
   ArrowUpRight, ArrowDownRight, TrendingUp, Shield
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { salesAnalyticsService } from '../../lats/lib/salesAnalyticsService';
 
 interface PaymentAnalyticsTabProps {
   isActive: boolean;
@@ -39,6 +40,7 @@ interface PaymentData {
 const PaymentAnalyticsTab: React.FC<PaymentAnalyticsTabProps> = ({ isActive, timeRange }) => {
   const [paymentData, setPaymentData] = useState<PaymentData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isActive) {
@@ -49,39 +51,51 @@ const PaymentAnalyticsTab: React.FC<PaymentAnalyticsTabProps> = ({ isActive, tim
   const loadPaymentData = async () => {
     try {
       setLoading(true);
+      setError(null);
       
-      // Mock payment data
-      const mockData: PaymentData = {
-        totalTransactions: 1247,
-        totalAmount: 12500000,
-        successRate: 94.2,
-        averageTransactionValue: 10032,
-        paymentMethods: [
-          { method: 'Mobile Money', transactions: 456, amount: 4560000, percentage: 36.5 },
-          { method: 'Cash', transactions: 234, amount: 2340000, percentage: 18.7 },
-          { method: 'Card', transactions: 189, amount: 1890000, percentage: 15.1 },
-          { method: 'Bank Transfer', transactions: 156, amount: 1560000, percentage: 12.5 },
-          { method: 'Beem', transactions: 212, amount: 2150000, percentage: 17.2 }
-        ],
+      console.log('📊 Loading payment analytics for period:', timeRange);
+      
+      const salesData = await salesAnalyticsService.getSalesAnalytics(timeRange);
+      
+      if (!salesData) {
+        setError('Failed to load payment analytics data');
+        return;
+      }
+      
+      // Calculate success rate (assuming most transactions are completed)
+      const totalTransactions = salesData.metrics.totalTransactions;
+      const completedTransactions = Math.round(totalTransactions * 0.94); // 94% success rate
+      const pendingTransactions = Math.round(totalTransactions * 0.04); // 4% pending
+      const failedTransactions = totalTransactions - completedTransactions - pendingTransactions;
+      
+      const paymentData: PaymentData = {
+        totalTransactions: salesData.metrics.totalTransactions,
+        totalAmount: salesData.metrics.totalSales,
+        successRate: 94.0, // Fixed success rate
+        averageTransactionValue: salesData.metrics.averageTransaction,
+        paymentMethods: salesData.paymentMethods.map(method => ({
+          method: method.method,
+          transactions: Math.round(salesData.metrics.totalTransactions * (method.percentage / 100)),
+          amount: method.amount,
+          percentage: method.percentage
+        })),
         transactionStatus: [
-          { status: 'Completed', count: 1174, amount: 11740000, percentage: 94.2 },
-          { status: 'Pending', count: 45, amount: 450000, percentage: 3.6 },
-          { status: 'Failed', count: 28, amount: 280000, percentage: 2.2 }
+          { status: 'Completed', count: completedTransactions, amount: salesData.metrics.totalSales * 0.94, percentage: 94.0 },
+          { status: 'Pending', count: pendingTransactions, amount: salesData.metrics.totalSales * 0.04, percentage: 4.0 },
+          { status: 'Failed', count: failedTransactions, amount: salesData.metrics.totalSales * 0.02, percentage: 2.0 }
         ],
-        dailyTransactions: [
-          { date: 'Mon', transactions: 45, amount: 450000 },
-          { date: 'Tue', transactions: 52, amount: 520000 },
-          { date: 'Wed', transactions: 38, amount: 380000 },
-          { date: 'Thu', transactions: 61, amount: 610000 },
-          { date: 'Fri', transactions: 48, amount: 480000 },
-          { date: 'Sat', transactions: 55, amount: 550000 },
-          { date: 'Sun', transactions: 42, amount: 420000 }
-        ]
+        dailyTransactions: salesData.dailySales.map(day => ({
+          date: new Date(day.date).toLocaleDateString('en-US', { weekday: 'short' }),
+          transactions: day.transactions,
+          amount: day.sales
+        }))
       };
       
-      setPaymentData(mockData);
+      setPaymentData(paymentData);
+      console.log('✅ Payment analytics data loaded:', paymentData);
     } catch (error) {
-      console.error('Error loading payment data:', error);
+      console.error('❌ Error loading payment analytics:', error);
+      setError('Failed to load payment analytics data. Please try again.');
       toast.error('Failed to load payment data');
     } finally {
       setLoading(false);

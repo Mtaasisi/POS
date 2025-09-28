@@ -10,11 +10,16 @@ export const handleSupabaseAuthError = async (
   error: any,
   retryFunction?: () => Promise<any>
 ): Promise<boolean> => {
-  // Check if this is an authentication error
+  // Check if this is an authentication error (including 403 Forbidden)
   if (error?.status === 401 || 
+      error?.status === 403 ||
       error?.message?.includes('401') || 
+      error?.message?.includes('403') ||
       error?.message?.includes('Unauthorized') ||
-      error?.message?.includes('JWT')) {
+      error?.message?.includes('Forbidden') ||
+      error?.message?.includes('JWT') ||
+      error?.message?.includes('bad_jwt') ||
+      error?.message?.includes('missing sub claim')) {
     
     console.log('🔐 Detected authentication error, attempting session refresh...');
     

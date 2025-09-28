@@ -842,8 +842,8 @@ const SMSControlCenterPage: React.FC = () => {
     // Insert a fake old log
     const { error } = await supabase.from('sms_logs').insert({
       id: crypto.randomUUID(),
-      recipient_phone: '255700000000',
-      message_content: 'Test old log',
+      phone_number: '255700000000',
+      message: 'Test old log',
       status: 'sent',
       provider: 'test-provider',
       created_at: new Date(Date.now() - 366 * 24 * 60 * 60 * 1000).toISOString()
@@ -913,7 +913,7 @@ const SMSControlCenterPage: React.FC = () => {
         <div className="flex gap-2">
           <GlassButton 
             variant="secondary" 
-            onClick={() => navigate('/sms-logs')}
+            onClick={() => navigate('/sms?tab=logs')}
           >
             Simple Logs
           </GlassButton>
@@ -1293,8 +1293,8 @@ const SMSControlCenterPage: React.FC = () => {
                       {log.status}
                     </span>
                   </div>
-                  <div className="text-sm font-medium">{log.recipient_phone}</div>
-                  <p className="text-sm text-gray-600 line-clamp-2">{log.message_content}</p>
+                  <div className="text-sm font-medium">{log.phone_number}</div>
+                  <p className="text-sm text-gray-600 line-clamp-2">{log.message}</p>
                   {log.error_message && (
                     <div className="text-xs text-rose-600 bg-rose-50 p-2 rounded">
                       Error: {log.error_message}

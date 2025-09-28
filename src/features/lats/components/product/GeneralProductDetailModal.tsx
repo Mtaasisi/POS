@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   X, Package, Tag, Hash, DollarSign, Edit, Star, MapPin, Calendar, 
   TrendingUp, TrendingDown, BarChart3, CheckCircle, Battery, Monitor, Camera, 
@@ -136,7 +137,7 @@ const GeneralProductDetailModal: React.FC<GeneralProductDetailModalProps> = ({
   // Generate QR Code for product
   const handleGenerateQRCode = () => {
     try {
-      const productUrl = `${window.location.origin}/lats/products/${product.id}`;
+      const productUrl = `${window.location.origin}/lats/products/${product.id}/edit`;
       const qrData = `Product: ${product.name}\nSKU: ${primaryVariant?.sku || 'N/A'}\nPrice: ${format.money(primaryVariant?.sellingPrice || 0)}\nDetails: ${productUrl}`;
       const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrData)}`;
       setQrCodeUrl(qrUrl);
@@ -191,7 +192,7 @@ const GeneralProductDetailModal: React.FC<GeneralProductDetailModalProps> = ({
   // Share product
   const handleShareProduct = async () => {
     try {
-      const productUrl = `${window.location.origin}/lats/products/${product.id}`;
+      const productUrl = `${window.location.origin}/lats/products/${product.id}/edit`;
       const shareData = {
         title: `Product: ${product.name}`,
         text: `Check out this product: ${product.name} - ${format.money(primaryVariant?.sellingPrice || 0)}`,
@@ -279,8 +280,8 @@ const GeneralProductDetailModal: React.FC<GeneralProductDetailModalProps> = ({
     setShowStockAdjustment(false);
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+  return createPortal(
+    <div className="fixed inset-0 flex items-center justify-center p-2 sm:p-4 overflow-y-auto" style={{ zIndex: 99999 }}>
       {/* Backdrop */}
       <div 
         className="absolute inset-0 bg-black/30 backdrop-blur-sm"
@@ -289,125 +290,129 @@ const GeneralProductDetailModal: React.FC<GeneralProductDetailModalProps> = ({
       
       {/* Modal */}
       <div 
-        className="relative bg-white rounded-2xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden"
+        className="relative bg-white rounded-lg sm:rounded-xl shadow-2xl max-w-5xl w-full max-h-[90vh] sm:max-h-[85vh] overflow-hidden flex flex-col my-2 sm:my-4"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Minimal Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-100">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center">
-              <Package className="w-5 h-5 text-white" />
+        <div className="flex items-center justify-between p-3 sm:p-4 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
+              <Package className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-gray-900">{product.name}</h2>
-              <p className="text-sm text-gray-500">{primaryVariant?.sku || 'No SKU'}</p>
+              <h2 className="text-base sm:text-lg font-bold text-gray-900">{product.name}</h2>
+              <p className="text-xs text-gray-500">{primaryVariant?.sku || 'No SKU'}</p>
             </div>
           </div>
           <button 
             onClick={onClose}
-            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
+            className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Tab Navigation */}
         <div className="border-b border-gray-200 bg-white">
-          <div className="flex space-x-8 px-6">
+          <div className="flex w-full">
             <button
               onClick={() => setActiveTab('overview')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+              className={`flex-1 py-2 sm:py-3 px-3 sm:px-4 border-b-2 font-medium text-sm transition-colors ${
                 activeTab === 'overview'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  ? 'border-blue-500 text-blue-600 bg-blue-50'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50'
               }`}
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-center justify-center gap-2">
                 <Info className="w-4 h-4" />
-                Overview
-                      </div>
+                <span className="hidden sm:inline">Overview</span>
+                <span className="sm:hidden">Info</span>
+              </div>
             </button>
             <button
               onClick={() => setActiveTab('analytics')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+              className={`flex-1 py-2 sm:py-3 px-3 sm:px-4 border-b-2 font-medium text-sm transition-colors ${
                 activeTab === 'analytics'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  ? 'border-blue-500 text-blue-600 bg-blue-50'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50'
               }`}
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-center justify-center gap-2">
                 <BarChart3 className="w-4 h-4" />
-                Analytics
-                    </div>
+                <span className="hidden sm:inline">Analytics</span>
+                <span className="sm:hidden">Stats</span>
+              </div>
             </button>
             <button
               onClick={() => setActiveTab('variants')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+              className={`flex-1 py-2 sm:py-3 px-3 sm:px-4 border-b-2 font-medium text-sm transition-colors ${
                 activeTab === 'variants'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  ? 'border-blue-500 text-blue-600 bg-blue-50'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50'
               }`}
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-center justify-center gap-2">
                 <Layers className="w-4 h-4" />
-                Variants
-                  </div>
+                <span>Variants</span>
+              </div>
             </button>
             <button
               onClick={() => setActiveTab('details')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+              className={`flex-1 py-2 sm:py-3 px-3 sm:px-4 border-b-2 font-medium text-sm transition-colors ${
                 activeTab === 'details'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  ? 'border-blue-500 text-blue-600 bg-blue-50'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50'
               }`}
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-center justify-center gap-2">
                 <FileText className="w-4 h-4" />
-                Details & Location
-                      </div>
+                <span className="hidden sm:inline">Details & Location</span>
+                <span className="sm:hidden">Details</span>
+              </div>
             </button>
-                      </div>
-                    </div>
+          </div>
+        </div>
 
         {/* Content */}
-        <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+          <div className="p-3 sm:p-4">
           {/* Overview Tab */}
           {activeTab === 'overview' && (
             <>
               {/* Financial Overview - Minimal Design */}
               {analytics && (
-                <div className="mb-6">
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200 rounded-xl p-4">
+                <div className="mb-4">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200 rounded-lg p-3">
                       <div className="text-xs font-medium text-emerald-700 uppercase tracking-wide mb-1">Total Value</div>
-                      <div className="text-lg font-bold text-emerald-900">{format.money(analytics.totalRetailValue)}</div>
+                      <div className="text-base font-bold text-emerald-900">{format.money(analytics.totalRetailValue)}</div>
                       </div>
 
-                    <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-xl p-4">
+                    <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-lg p-3">
                       <div className="text-xs font-medium text-blue-700 uppercase tracking-wide mb-1">Profit</div>
-                      <div className="text-lg font-bold text-blue-900">{format.money(analytics.potentialProfit)}</div>
+                      <div className="text-base font-bold text-blue-900">{format.money(analytics.potentialProfit)}</div>
                     </div>
 
-                    <div className="bg-gradient-to-br from-orange-50 to-orange-100 border border-orange-200 rounded-xl p-4">
+                    <div className="bg-gradient-to-br from-orange-50 to-orange-100 border border-orange-200 rounded-lg p-3">
                       <div className="text-xs font-medium text-orange-700 uppercase tracking-wide mb-1">Margin</div>
-                      <div className="text-lg font-bold text-orange-900">{analytics.profitMargin.toFixed(1)}%</div>
+                      <div className="text-base font-bold text-orange-900">{analytics.profitMargin.toFixed(1)}%</div>
                     </div>
 
-                    <div className="bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 rounded-xl p-4">
+                    <div className="bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 rounded-lg p-3">
                       <div className="text-xs font-medium text-purple-700 uppercase tracking-wide mb-1">Investment</div>
-                      <div className="text-lg font-bold text-purple-900">{format.money(analytics.totalCostValue)}</div>
+                      <div className="text-base font-bold text-purple-900">{format.money(analytics.totalCostValue)}</div>
                 </div>
               </div>
             </div>
           )}
 
           {/* Main Content Layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
             {/* Left Column - Product Image & Basic Info */}
-            <div className="space-y-6">
+            <div className="space-y-4 sm:space-y-6">
               {/* Product Image */}
-              <div className="space-y-4">
-                <div className="aspect-square relative rounded-xl overflow-hidden bg-gray-50 border border-gray-200">
+              <div className="space-y-3">
+                <div className="aspect-square relative rounded-lg overflow-hidden bg-gray-50 border border-gray-200">
                   {images.length > 0 ? (
                     <img
                       src={images[selectedImageIndex]?.url || images[0]?.url}
@@ -1651,11 +1656,12 @@ const GeneralProductDetailModal: React.FC<GeneralProductDetailModalProps> = ({
               )}
             </div>
           </div>
+          </div>
         </div>
 
         {/* QR Code Modal */}
-        {showQRModal && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+        {showQRModal && createPortal(
+          <div className="fixed inset-0 flex items-center justify-center p-4" style={{ zIndex: 100000 }}>
             <div 
               className="absolute inset-0 bg-black/30 backdrop-blur-sm"
               onClick={() => setShowQRModal(false)}
@@ -1703,7 +1709,7 @@ const GeneralProductDetailModal: React.FC<GeneralProductDetailModalProps> = ({
                   
                   <GlassButton
                     onClick={() => {
-                      navigator.clipboard.writeText(`${window.location.origin}/lats/products/${product.id}`);
+                      navigator.clipboard.writeText(`${window.location.origin}/lats/products/${product.id}/edit`);
                       toast.success('Product link copied!');
                     }}
                     className="flex-1"
@@ -1714,7 +1720,8 @@ const GeneralProductDetailModal: React.FC<GeneralProductDetailModalProps> = ({
                 </div>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
 
         {/* Enhanced Stock Adjustment Modal */}
@@ -1740,7 +1747,8 @@ const GeneralProductDetailModal: React.FC<GeneralProductDetailModalProps> = ({
           />
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

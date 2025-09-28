@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { runNetworkDiagnostics, getQUICProtocolInfo, generateNetworkReport } from '../utils/networkDiagnostics';
-import { NetworkDiagnosticResult } from '../utils/networkDiagnostics';
+import { X, Wifi, WifiOff, RefreshCw, AlertTriangle, CheckCircle } from 'lucide-react';
+import { checkNetworkHealth } from '../utils/networkErrorHandler';
+import { checkConnectionHealth } from '../lib/supabaseClient';
 
 interface NetworkTroubleshootingModalProps {
   isOpen: boolean;
@@ -8,257 +9,249 @@ interface NetworkTroubleshootingModalProps {
   error?: string;
 }
 
-export const NetworkTroubleshootingModal: React.FC<NetworkTroubleshootingModalProps> = ({
-  isOpen,
-  onClose,
-  error
-}) => {
-  const [diagnostics, setDiagnostics] = useState<NetworkDiagnosticResult | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'diagnostics' | 'solutions'>('overview');
+interface NetworkTest {
+  name: string;
+  status: 'pending' | 'running' | 'success' | 'error';
+  message: string;
+  details?: string;
+}
+
+export function NetworkTroubleshootingModal({ 
+  isOpen, 
+  onClose, 
+  error 
+}: NetworkTroubleshootingModalProps) {
+  const [tests, setTests] = useState<NetworkTest[]>([
+    { name: 'Internet Connection', status: 'pending', message: 'Checking internet connectivity...' },
+    { name: 'Supabase Connection', status: 'pending', message: 'Testing database connection...' },
+    { name: 'Network Latency', status: 'pending', message: 'Measuring response times...' },
+  ]);
+  const [isRunning, setIsRunning] = useState(false);
+  const [overallStatus, setOverallStatus] = useState<'pending' | 'success' | 'error'>('pending');
+
+  const runTests = async () => {
+    setIsRunning(true);
+    setOverallStatus('pending');
+    
+    // Test 1: Internet Connection
+    setTests(prev => prev.map(test => 
+      test.name === 'Internet Connection' 
+        ? { ...test, status: 'running', message: 'Testing internet connectivity...' }
+        : test
+    ));
+
+    try {
+      const networkHealth = await checkNetworkHealth();
+      setTests(prev => prev.map(test => 
+        test.name === 'Internet Connection' 
+          ? { 
+              ...test, 
+              status: networkHealth.healthy ? 'success' : 'error',
+              message: networkHealth.healthy 
+                ? `Connected (${networkHealth.latency}ms)` 
+                : `Connection failed: ${networkHealth.error}`,
+              details: networkHealth.healthy 
+                ? `Latency: ${networkHealth.latency}ms` 
+                : networkHealth.error
+            }
+          : test
+      ));
+    } catch (err) {
+      setTests(prev => prev.map(test => 
+        test.name === 'Internet Connection' 
+          ? { ...test, status: 'error', message: 'Internet connection test failed' }
+          : test
+      ));
+    }
+
+    // Test 2: Supabase Connection
+    setTests(prev => prev.map(test => 
+      test.name === 'Supabase Connection' 
+        ? { ...test, status: 'running', message: 'Testing database connection...' }
+        : test
+    ));
+
+    try {
+      const supabaseHealth = await checkConnectionHealth();
+      setTests(prev => prev.map(test => 
+        test.name === 'Supabase Connection' 
+          ? { 
+              ...test, 
+              status: supabaseHealth.healthy ? 'success' : 'error',
+              message: supabaseHealth.healthy 
+                ? `Database connected (${supabaseHealth.responseTime}ms)` 
+                : `Database connection failed: ${supabaseHealth.error}`,
+              details: supabaseHealth.healthy 
+                ? `Response time: ${supabaseHealth.responseTime}ms` 
+                : supabaseHealth.error
+            }
+          : test
+      ));
+    } catch (err) {
+      setTests(prev => prev.map(test => 
+        test.name === 'Supabase Connection' 
+          ? { ...test, status: 'error', message: 'Database connection test failed' }
+          : test
+      ));
+    }
+
+    // Test 3: Network Latency
+    setTests(prev => prev.map(test => 
+      test.name === 'Network Latency' 
+        ? { ...test, status: 'running', message: 'Measuring response times...' }
+        : test
+    ));
+
+    try {
+      const startTime = Date.now();
+      const response = await fetch('https://httpbin.org/get', {
+        method: 'GET',
+        signal: AbortSignal.timeout(5000)
+      });
+      const latency = Date.now() - startTime;
+      
+      setTests(prev => prev.map(test => 
+        test.name === 'Network Latency' 
+          ? { 
+              ...test, 
+              status: 'success',
+              message: `Good latency: ${latency}ms`,
+              details: latency < 500 ? 'Excellent' : latency < 1000 ? 'Good' : 'Slow'
+            }
+          : test
+      ));
+    } catch (err) {
+      setTests(prev => prev.map(test => 
+        test.name === 'Network Latency' 
+          ? { ...test, status: 'error', message: 'Latency test failed' }
+          : test
+      ));
+    }
+
+    // Determine overall status
+    const allTests = tests.map(test => test.status);
+    const hasErrors = allTests.includes('error');
+    const allComplete = allTests.every(status => status === 'success' || status === 'error');
+    
+    if (allComplete) {
+      setOverallStatus(hasErrors ? 'error' : 'success');
+    }
+
+    setIsRunning(false);
+  };
 
   useEffect(() => {
     if (isOpen) {
-      runDiagnostics();
+      runTests();
     }
   }, [isOpen]);
 
-  const runDiagnostics = async () => {
-    setLoading(true);
-    try {
-      const result = await runNetworkDiagnostics();
-      setDiagnostics(result);
-    } catch (err) {
-      console.error('Failed to run diagnostics:', err);
-    } finally {
-      setLoading(false);
+  const getStatusIcon = (status: NetworkTest['status']) => {
+    switch (status) {
+      case 'pending':
+        return <div className="w-4 h-4 rounded-full bg-gray-300" />;
+      case 'running':
+        return <RefreshCw className="w-4 h-4 text-blue-500 animate-spin" />;
+      case 'success':
+        return <CheckCircle className="w-4 h-4 text-green-500" />;
+      case 'error':
+        return <AlertTriangle className="w-4 h-4 text-red-500" />;
     }
   };
 
-  const quicInfo = getQUICProtocolInfo();
+  const getStatusColor = (status: NetworkTest['status']) => {
+    switch (status) {
+      case 'pending':
+        return 'text-gray-500';
+      case 'running':
+        return 'text-blue-500';
+      case 'success':
+        return 'text-green-500';
+      case 'error':
+        return 'text-red-500';
+    }
+  };
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden">
-        {/* Header */}
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-6 border-b">
-          <h2 className="text-xl font-semibold text-gray-900">
-            Network Troubleshooting
-          </h2>
+          <div className="flex items-center space-x-2">
+            <Wifi className="w-5 h-5 text-blue-500" />
+            <h2 className="text-lg font-semibold">Network Troubleshooting</h2>
+          </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
+            className="text-gray-400 hover:text-gray-600 transition-colors"
           >
-            ✕
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Tabs */}
-        <div className="flex border-b">
-          <button
-            onClick={() => setActiveTab('overview')}
-            className={`px-6 py-3 font-medium ${
-              activeTab === 'overview'
-                ? 'text-blue-600 border-b-2 border-blue-600'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Overview
-          </button>
-          <button
-            onClick={() => setActiveTab('diagnostics')}
-            className={`px-6 py-3 font-medium ${
-              activeTab === 'diagnostics'
-                ? 'text-blue-600 border-b-2 border-blue-600'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Diagnostics
-          </button>
-          <button
-            onClick={() => setActiveTab('solutions')}
-            className={`px-6 py-3 font-medium ${
-              activeTab === 'solutions'
-                ? 'text-blue-600 border-b-2 border-blue-600'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Solutions
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="p-6 overflow-y-auto max-h-[60vh]">
-          {activeTab === 'overview' && (
-            <div className="space-y-4">
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <h3 className="font-medium text-yellow-800 mb-2">
-                  QUIC Protocol Error Detected
-                </h3>
-                <p className="text-yellow-700 text-sm">
-                  {error || 'A network protocol error has occurred. This is usually caused by network instability or browser configuration issues.'}
-                </p>
+        <div className="p-6 space-y-4">
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <div className="flex items-center space-x-2">
+                <AlertTriangle className="w-5 h-5 text-red-500" />
+                <h3 className="font-medium text-red-800">Error Detected</h3>
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h4 className="font-medium text-gray-900 mb-2">Quick Fixes</h4>
-                  <ul className="text-sm text-gray-600 space-y-1">
-                    <li>• Refresh the page</li>
-                    <li>• Clear browser cache</li>
-                    <li>• Try a different browser</li>
-                    <li>• Check your internet connection</li>
-                  </ul>
-                </div>
-
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h4 className="font-medium text-gray-900 mb-2">Advanced Solutions</h4>
-                  <ul className="text-sm text-gray-600 space-y-1">
-                    <li>• Disable QUIC protocol</li>
-                    <li>• Use a different network</li>
-                    <li>• Try a VPN</li>
-                    <li>• Contact support</li>
-                  </ul>
-                </div>
-              </div>
+              <p className="text-red-700 text-sm mt-1">{error}</p>
             </div>
           )}
 
-          {activeTab === 'diagnostics' && (
-            <div className="space-y-4">
-              {loading ? (
-                <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-                  <p className="mt-2 text-gray-600">Running diagnostics...</p>
-                </div>
-              ) : diagnostics ? (
-                <div className="space-y-4">
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <h4 className="font-medium text-blue-900 mb-2">Connection Status</h4>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <span className="text-gray-600">Status:</span>
-                        <span className={`ml-2 font-medium ${
-                          diagnostics.online ? 'text-green-600' : 'text-red-600'
-                        }`}>
-                          {diagnostics.online ? 'Online' : 'Offline'}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-gray-600">Quality:</span>
-                        <span className="ml-2 font-medium text-gray-900">
-                          {diagnostics.connectionQuality}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-gray-600">Type:</span>
-                        <span className="ml-2 font-medium text-gray-900">
-                          {diagnostics.details.effectiveType}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-gray-600">Speed:</span>
-                        <span className="ml-2 font-medium text-gray-900">
-                          {diagnostics.details.downlink} Mbps
-                        </span>
-                      </div>
-                    </div>
+          <div className="space-y-3">
+            {tests.map((test, index) => (
+              <div key={index} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                {getStatusIcon(test.status)}
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-medium text-gray-900">{test.name}</h3>
+                    <span className={`text-sm ${getStatusColor(test.status)}`}>
+                      {test.status === 'running' ? 'Testing...' : 
+                       test.status === 'success' ? 'OK' : 
+                       test.status === 'error' ? 'Failed' : 'Pending'}
+                    </span>
                   </div>
-
-                  {diagnostics.issues.length > 0 && (
-                    <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                      <h4 className="font-medium text-red-900 mb-2">Issues Detected</h4>
-                      <ul className="text-sm text-red-700 space-y-1">
-                        {diagnostics.issues.map((issue, index) => (
-                          <li key={index}>• {issue}</li>
-                        ))}
-                      </ul>
-                    </div>
+                  <p className="text-sm text-gray-600 mt-1">{test.message}</p>
+                  {test.details && (
+                    <p className="text-xs text-gray-500 mt-1">{test.details}</p>
                   )}
-
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <h4 className="font-medium text-gray-900 mb-2">System Information</h4>
-                    <div className="text-sm text-gray-600 space-y-1">
-                      <p><strong>Platform:</strong> {diagnostics.details.platform}</p>
-                      <p><strong>Browser:</strong> {diagnostics.details.userAgent.split(' ').slice(-2).join(' ')}</p>
-                      <p><strong>QUIC Supported:</strong> {quicInfo.isSupported ? 'Yes' : 'No'}</p>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center py-8 text-gray-600">
-                  Failed to run diagnostics
-                </div>
-              )}
-            </div>
-          )}
-
-          {activeTab === 'solutions' && (
-            <div className="space-y-4">
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                <h4 className="font-medium text-green-900 mb-2">Immediate Actions</h4>
-                <div className="space-y-2 text-sm text-green-700">
-                  <button
-                    onClick={() => window.location.reload()}
-                    className="block w-full text-left hover:bg-green-100 p-2 rounded"
-                  >
-                    1. Refresh Page - Click here to reload
-                  </button>
-                  <button
-                    onClick={() => {
-                      localStorage.clear();
-                      sessionStorage.clear();
-                      window.location.reload();
-                    }}
-                    className="block w-full text-left hover:bg-green-100 p-2 rounded"
-                  >
-                    2. Clear Cache & Reload - Click here
-                  </button>
                 </div>
               </div>
+            ))}
+          </div>
 
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h4 className="font-medium text-blue-900 mb-2">Browser-Specific Solutions</h4>
-                <div className="space-y-3 text-sm text-blue-700">
-                  {quicInfo.recommendations.map((rec, index) => (
-                    <div key={index} className="p-2 bg-blue-100 rounded">
-                      {rec}
-                    </div>
-                  ))}
-                </div>
-              </div>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <h3 className="font-medium text-blue-800 mb-2">Troubleshooting Tips</h3>
+            <ul className="text-sm text-blue-700 space-y-1">
+              <li>• Check your internet connection</li>
+              <li>• Try refreshing the page</li>
+              <li>• Clear your browser cache</li>
+              <li>• Disable browser extensions temporarily</li>
+              <li>• Try a different network if possible</li>
+            </ul>
+          </div>
 
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h4 className="font-medium text-gray-900 mb-2">General Troubleshooting</h4>
-                <ol className="text-sm text-gray-600 space-y-2 list-decimal list-inside">
-                  <li>Check your internet connection</li>
-                  <li>Try using a different network (mobile hotspot, different WiFi)</li>
-                  <li>Disable VPN if you're using one</li>
-                  <li>Try a different browser</li>
-                  <li>Clear browser cache and cookies</li>
-                  <li>Restart your browser</li>
-                  <li>Check if your firewall is blocking the connection</li>
-                  <li>Contact your network administrator if on a corporate network</li>
-                </ol>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="flex justify-end p-6 border-t bg-gray-50">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
-          >
-            Close
-          </button>
+          <div className="flex space-x-3">
+            <button
+              onClick={runTests}
+              disabled={isRunning}
+              className="flex-1 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-2"
+            >
+              <RefreshCw className={`w-4 h-4 ${isRunning ? 'animate-spin' : ''}`} />
+              <span>{isRunning ? 'Running Tests...' : 'Run Tests Again'}</span>
+            </button>
+            <button
+              onClick={onClose}
+              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Close
+            </button>
+          </div>
         </div>
       </div>
     </div>
   );
-};
-
-export default NetworkTroubleshootingModal;
+}

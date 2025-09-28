@@ -72,7 +72,17 @@ interface TopBarProps {
 
 const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, isMenuOpen, isNavCollapsed }) => {
   const { currentUser, logout } = useAuth();
-  const { devices } = useDevices();
+  
+  // Safely access devices context with error handling for HMR
+  let devices: any[] = [];
+  try {
+    const devicesContext = useDevices();
+    devices = devicesContext.devices || [];
+  } catch (error) {
+    console.warn('Devices context not available during HMR:', error);
+    devices = [];
+  }
+  
   const { customers } = useCustomers();
   const navigate = useNavigate();
   const location = useLocation();
@@ -165,7 +175,7 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, isMenuOpen, isNavCollapse
   const getQuickActions = () => {
     const actions = [];
     
-    if (currentUser.role === 'admin' || currentUser.role === 'customer-care') {
+    if (currentUser.role === 'admin') {
       actions.push(
         { label: 'Add Customer', icon: <Users size={16} />, action: () => navigate('/customers') },
         { label: 'Add Device', icon: <Smartphone size={16} />, action: () => navigate('/devices/new') },
@@ -176,7 +186,9 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, isMenuOpen, isNavCollapse
     
     if (currentUser.role === 'customer-care') {
       actions.push(
-        { label: 'New Diagnostic', icon: <Stethoscope size={16} />, action: () => navigate('/diagnostics/new') }
+        { label: 'Add Device', icon: <Smartphone size={16} />, action: () => navigate('/devices/new') },
+        { label: 'New Diagnostic', icon: <Stethoscope size={16} />, action: () => navigate('/diagnostics/new') },
+        { label: 'Add Customer', icon: <Users size={16} />, action: () => navigate('/customers') }
       );
     }
     
@@ -226,246 +238,328 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, isMenuOpen, isNavCollapse
             </div>
           </div>
 
-          {/* Create Dropdown */}
-          <div className="relative" ref={createDropdownRef}>
-            <button
-              onClick={() => setShowCreateDropdown(!showCreateDropdown)}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-all duration-300 shadow-sm hover:shadow-md"
-            >
-              <span className="font-medium">Create</span>
-              <ChevronDown size={16} className={`transition-transform duration-200 ${showCreateDropdown ? 'rotate-180' : ''}`} />
-            </button>
-            
-            {/* Create Dropdown Menu - Image Style */}
-            {showCreateDropdown && (
-              <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
-                <div className="p-4 space-y-3">
-                  {/* New Device */}
-                  <button
-                    onClick={() => {
-                      navigate('/devices/new');
-                      setShowCreateDropdown(false);
-                    }}
-                    className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-blue-50 transition-colors group"
-                  >
-                    <div className="p-2 rounded-lg bg-blue-500 text-white">
-                      <Smartphone size={20} />
-                    </div>
-                    <div className="flex-1 text-left">
-                      <p className="font-medium text-gray-900">New Device</p>
-                      <p className="text-sm text-gray-600">Add device for repair</p>
-                    </div>
-                  </button>
-                  
-                  {/* Diagnostic Request */}
-                  <button
-                    onClick={() => {
-                      navigate('/diagnostics/new');
-                      setShowCreateDropdown(false);
-                    }}
-                    className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-green-50 transition-colors group"
-                  >
-                    <div className="p-2 rounded-lg bg-green-500 text-white">
-                      <Stethoscope size={20} />
-                    </div>
-                    <div className="flex-1 text-left">
-                      <p className="font-medium text-gray-900">Diagnostic Request</p>
-                      <p className="text-sm text-gray-600">Create device analysis</p>
-                    </div>
-                  </button>
-                  
-                  {/* Add Customer */}
-                  <button
-                    onClick={() => {
-                      navigate('/customers');
-                      setShowCreateDropdown(false);
-                    }}
-                    className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-purple-50 transition-colors group"
-                  >
-                    <div className="p-2 rounded-lg bg-purple-500 text-white">
-                      <Users size={20} />
-                    </div>
-                    <div className="flex-1 text-left">
-                      <p className="font-medium text-gray-900">Add Customer</p>
-                      <p className="text-sm text-gray-600">Register new customer</p>
-                    </div>
-                  </button>
-                  
-                  {/* Add Product */}
-                  <button
-                    onClick={() => {
-                      navigate('/lats/add-product');
-                      setShowCreateDropdown(false);
-                    }}
-                    className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-orange-50 transition-colors group"
-                  >
-                    <div className="p-2 rounded-lg bg-orange-500 text-white">
-                      <Package size={20} />
-                    </div>
-                    <div className="flex-1 text-left">
-                      <p className="font-medium text-gray-900">Add Product</p>
-                      <p className="text-sm text-gray-600">Add new inventory item</p>
-                    </div>
-                  </button>
-                  
-                  {/* New Sale */}
-                  <button
-                    onClick={() => {
-                      navigate('/pos');
-                      setShowCreateDropdown(false);
-                    }}
-                    className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-emerald-50 transition-colors group"
-                  >
-                    <div className="p-2 rounded-lg bg-emerald-500 text-white">
-                      <ShoppingCart size={20} />
-                    </div>
-                    <div className="flex-1 text-left">
-                      <p className="font-medium text-gray-900">New Sale</p>
-                      <p className="text-sm text-gray-600">Start POS transaction</p>
-                    </div>
-                  </button>
-                  
-                  {/* SMS Centre */}
-                  <button
-                    onClick={() => {
-                      navigate('/sms');
-                      setShowCreateDropdown(false);
-                    }}
-                    className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-indigo-50 transition-colors group"
-                  >
-                    <div className="p-2 rounded-lg bg-indigo-500 text-white">
-                      <MessageSquare size={20} />
-                    </div>
-                    <div className="flex-1 text-left">
-                      <p className="font-medium text-gray-900">SMS Centre</p>
-                      <p className="text-sm text-gray-600">Send messages to customers</p>
-                    </div>
-                  </button>
+          {/* Create Dropdown - Role-based */}
+          {currentUser?.role !== 'technician' && (
+            <div className="relative" ref={createDropdownRef}>
+              <button
+                onClick={() => setShowCreateDropdown(!showCreateDropdown)}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-all duration-300 shadow-sm hover:shadow-md"
+              >
+                <span className="font-medium">Create</span>
+                <ChevronDown size={16} className={`transition-transform duration-200 ${showCreateDropdown ? 'rotate-180' : ''}`} />
+              </button>
+              
+              {/* Create Dropdown Menu - Image Style */}
+              {showCreateDropdown && (
+                <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+                  <div className="p-4 space-y-3">
+                    {/* New Sale - Priority for Customer Care */}
+                    <button
+                      onClick={() => {
+                        navigate('/pos');
+                        setShowCreateDropdown(false);
+                      }}
+                      className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-emerald-50 transition-colors group"
+                    >
+                      <div className="p-2 rounded-lg bg-emerald-500 text-white">
+                        <ShoppingCart size={20} />
+                      </div>
+                      <div className="flex-1 text-left">
+                        <p className="font-medium text-gray-900">New Sale</p>
+                        <p className="text-sm text-gray-600">Start POS transaction</p>
+                      </div>
+                    </button>
+                    
+                    {/* New Device */}
+                    <button
+                      onClick={() => {
+                        navigate('/devices/new');
+                        setShowCreateDropdown(false);
+                      }}
+                      className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-blue-50 transition-colors group"
+                    >
+                      <div className="p-2 rounded-lg bg-blue-500 text-white">
+                        <Smartphone size={20} />
+                      </div>
+                      <div className="flex-1 text-left">
+                        <p className="font-medium text-gray-900">New Device</p>
+                        <p className="text-sm text-gray-600">Add device for repair</p>
+                      </div>
+                    </button>
+                    
+                    {/* Add Customer */}
+                    <button
+                      onClick={() => {
+                        navigate('/customers');
+                        setShowCreateDropdown(false);
+                      }}
+                      className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-purple-50 transition-colors group"
+                    >
+                      <div className="p-2 rounded-lg bg-purple-500 text-white">
+                        <Users size={20} />
+                      </div>
+                      <div className="flex-1 text-left">
+                        <p className="font-medium text-gray-900">Add Customer</p>
+                        <p className="text-sm text-gray-600">Register new customer</p>
+                      </div>
+                    </button>
+                    
+                    {/* Diagnostic Request */}
+                    <button
+                      onClick={() => {
+                        navigate('/diagnostics/new');
+                        setShowCreateDropdown(false);
+                      }}
+                      className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-green-50 transition-colors group"
+                    >
+                      <div className="p-2 rounded-lg bg-green-500 text-white">
+                        <Stethoscope size={20} />
+                      </div>
+                      <div className="flex-1 text-left">
+                        <p className="font-medium text-gray-900">Diagnostic Request</p>
+                        <p className="text-sm text-gray-600">Create device analysis</p>
+                      </div>
+                    </button>
+                    
+                    {/* Admin-only options */}
+                    {currentUser.role === 'admin' && (
+                      <>
+                        {/* Add Product */}
+                        <button
+                          onClick={() => {
+                            navigate('/lats/add-product');
+                            setShowCreateDropdown(false);
+                          }}
+                          className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-orange-50 transition-colors group"
+                        >
+                          <div className="p-2 rounded-lg bg-orange-500 text-white">
+                            <Package size={20} />
+                          </div>
+                          <div className="flex-1 text-left">
+                            <p className="font-medium text-gray-900">Add Product</p>
+                            <p className="text-sm text-gray-600">Add new inventory item</p>
+                          </div>
+                        </button>
+                      </>
+                    )}
+                    
+                    {/* SMS Centre - Available for admin and customer-care */}
+                    {(currentUser.role === 'admin' || currentUser.role === 'customer-care') && (
+                      <button
+                        onClick={() => {
+                          navigate('/sms');
+                          setShowCreateDropdown(false);
+                        }}
+                        className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-indigo-50 transition-colors group"
+                      >
+                        <div className="p-2 rounded-lg bg-indigo-500 text-white">
+                          <MessageSquare size={20} />
+                        </div>
+                        <div className="flex-1 text-left">
+                          <p className="font-medium text-gray-900">SMS Centre</p>
+                          <p className="text-sm text-gray-600">Send messages to customers</p>
+                        </div>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Technician Quick Actions */}
+          {currentUser?.role === 'technician' && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => navigate('/lats/spare-parts')}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-600 hover:bg-orange-700 text-white transition-all duration-300 shadow-sm hover:shadow-md"
+              >
+                <Package size={16} />
+                <span className="font-medium">Spare Parts</span>
+              </button>
+            </div>
+          )}
+
+          {/* Navigation Icons - Role-based */}
+          {currentUser?.role !== 'technician' && (
+            <div className="hidden lg:flex items-center gap-1">
+              {/* POS System - Priority for Customer Care */}
+              <div className="relative group">
+                <button 
+                  onClick={() => navigate('/pos')}
+                  className={`p-3 rounded-lg transition-all duration-300 backdrop-blur-sm border shadow-sm hover:scale-110 ${
+                    location.pathname.includes('/pos') 
+                      ? 'bg-emerald-500 text-white border-emerald-400' 
+                      : 'bg-white/30 hover:bg-white/50 border-white/30'
+                  }`}
+                  title="POS System"
+                >
+                  <ShoppingCart size={18} className={location.pathname.includes('/pos') ? 'text-white' : 'text-gray-700'} />
+                </button>
+                <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-white/95 backdrop-blur-sm border border-gray-200/50 text-gray-700 text-xs font-medium rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-50">
+                  POS System
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-white/95"></div>
                 </div>
               </div>
-            )}
-          </div>
-
-          {/* LATS Navigation Icons */}
-          <div className="hidden lg:flex items-center gap-1">
-            <div className="relative group">
-              <button 
-                onClick={() => navigate('/pos')}
-                className="p-3 rounded-lg bg-white/30 hover:bg-white/50 transition-all duration-300 backdrop-blur-sm border border-white/30 shadow-sm hover:scale-110"
-                title="POS System"
-              >
-                <ShoppingCart size={18} className="text-gray-700" />
-              </button>
-              <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-white/95 backdrop-blur-sm border border-gray-200/50 text-gray-700 text-xs font-medium rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-50">
-                POS System
-                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-white/95"></div>
+              
+              {/* Customer Management */}
+              <div className="relative group">
+                <button 
+                  onClick={() => navigate('/lats/customers')}
+                  className={`p-3 rounded-lg transition-all duration-300 backdrop-blur-sm border shadow-sm hover:scale-110 ${
+                    location.pathname.includes('/customers') 
+                      ? 'bg-purple-500 text-white border-purple-400' 
+                      : 'bg-white/30 hover:bg-white/50 border-white/30'
+                  }`}
+                  title="Customer Management"
+                >
+                  <Users size={18} className={location.pathname.includes('/customers') ? 'text-white' : 'text-gray-700'} />
+                </button>
+                <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-white/95 backdrop-blur-sm border border-gray-200/50 text-gray-700 text-xs font-medium rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-50">
+                  Customer Management
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-white/95"></div>
+                </div>
               </div>
-            </div>
-            
-
-            
-            <div className="relative group">
-              <button 
-                onClick={() => navigate('/lats/unified-inventory')}
-                className={`p-3 rounded-lg transition-all duration-300 backdrop-blur-sm border shadow-sm hover:scale-110 ${
-                  location.pathname.includes('/lats/unified-inventory') 
-                    ? 'bg-blue-500 text-white border-blue-400' 
-                    : 'bg-white/30 hover:bg-white/50 border-white/30'
-                }`}
-                title="Unified Inventory Management"
-              >
-                <Warehouse size={18} className={location.pathname.includes('/lats/unified-inventory') ? 'text-white' : 'text-gray-700'} />
-              </button>
-              <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-white/95 backdrop-blur-sm border border-gray-200/50 text-gray-700 text-xs font-medium rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-50">
-                Unified Inventory Management
-                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-white/95"></div>
+              
+              {/* Device Management */}
+              <div className="relative group">
+                <button 
+                  onClick={() => navigate('/devices')}
+                  className={`p-3 rounded-lg transition-all duration-300 backdrop-blur-sm border shadow-sm hover:scale-110 ${
+                    location.pathname.includes('/devices') 
+                      ? 'bg-blue-500 text-white border-blue-400' 
+                      : 'bg-white/30 hover:bg-white/50 border-white/30'
+                  }`}
+                  title="Device Management"
+                >
+                  <Smartphone size={18} className={location.pathname.includes('/devices') ? 'text-white' : 'text-gray-700'} />
+                </button>
+                <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-white/95 backdrop-blur-sm border border-gray-200/50 text-gray-700 text-xs font-medium rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-50">
+                  Device Management
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-white/95"></div>
+                </div>
               </div>
-            </div>
-            
-            <div className="relative group">
-              <button 
-                onClick={() => navigate('/lats/customers')}
-                className="p-3 rounded-lg bg-white/30 hover:bg-white/50 transition-all duration-300 backdrop-blur-sm border border-white/30 shadow-sm hover:scale-110"
-                title="Customer Management"
-              >
-                <Users size={18} className="text-gray-700" />
-              </button>
-              <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-white/95 backdrop-blur-sm border border-gray-200/50 text-gray-700 text-xs font-medium rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-50">
-                Customer Management
-                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-white/95"></div>
+              
+              {/* Diagnostic Requests */}
+              <div className="relative group">
+                <button 
+                  onClick={() => navigate('/diagnostics')}
+                  className={`p-3 rounded-lg transition-all duration-300 backdrop-blur-sm border shadow-sm hover:scale-110 ${
+                    location.pathname.includes('/diagnostics') 
+                      ? 'bg-green-500 text-white border-green-400' 
+                      : 'bg-white/30 hover:bg-white/50 border-white/30'
+                  }`}
+                  title="Diagnostic Requests"
+                >
+                  <Stethoscope size={18} className={location.pathname.includes('/diagnostics') ? 'text-white' : 'text-gray-700'} />
+                </button>
+                <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-white/95 backdrop-blur-sm border border-gray-200/50 text-gray-700 text-xs font-medium rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-50">
+                  Diagnostic Requests
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-white/95"></div>
+                </div>
               </div>
+              
+              {/* Admin-only features */}
+              {currentUser?.role === 'admin' && (
+                <>
+                  {/* Unified Inventory Management */}
+                  <div className="relative group">
+                    <button 
+                      onClick={() => navigate('/lats/unified-inventory')}
+                      className={`p-3 rounded-lg transition-all duration-300 backdrop-blur-sm border shadow-sm hover:scale-110 ${
+                        location.pathname.includes('/lats/unified-inventory') 
+                          ? 'bg-orange-500 text-white border-orange-400' 
+                          : 'bg-white/30 hover:bg-white/50 border-white/30'
+                      }`}
+                      title="Unified Inventory Management"
+                    >
+                      <Warehouse size={18} className={location.pathname.includes('/lats/unified-inventory') ? 'text-white' : 'text-gray-700'} />
+                    </button>
+                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-white/95 backdrop-blur-sm border border-gray-200/50 text-gray-700 text-xs font-medium rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-50">
+                      Unified Inventory Management
+                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-white/95"></div>
+                    </div>
+                  </div>
+                  
+                  {/* Sales Reports */}
+                  <div className="relative group">
+                    <button 
+                      onClick={() => navigate('/lats/sales-reports')}
+                      className={`p-3 rounded-lg transition-all duration-300 backdrop-blur-sm border shadow-sm hover:scale-110 ${
+                        location.pathname.includes('/lats/sales-reports') 
+                          ? 'bg-indigo-500 text-white border-indigo-400' 
+                          : 'bg-white/30 hover:bg-white/50 border-white/30'
+                      }`}
+                      title="Sales Reports"
+                    >
+                      <BarChart3 size={18} className={location.pathname.includes('/lats/sales-reports') ? 'text-white' : 'text-gray-700'} />
+                    </button>
+                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-white/95 backdrop-blur-sm border border-gray-200/50 text-gray-700 text-xs font-medium rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-50">
+                      Sales Reports
+                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-white/95"></div>
+                    </div>
+                  </div>
+                  
+                  {/* Customer Loyalty */}
+                  <div className="relative group">
+                    <button 
+                      onClick={() => navigate('/lats/loyalty')}
+                      className={`p-3 rounded-lg transition-all duration-300 backdrop-blur-sm border shadow-sm hover:scale-110 ${
+                        location.pathname.includes('/lats/loyalty') 
+                          ? 'bg-yellow-500 text-white border-yellow-400' 
+                          : 'bg-white/30 hover:bg-white/50 border-white/30'
+                      }`}
+                      title="Customer Loyalty"
+                    >
+                      <Crown size={18} className={location.pathname.includes('/lats/loyalty') ? 'text-white' : 'text-gray-700'} />
+                    </button>
+                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-white/95 backdrop-blur-sm border border-gray-200/50 text-gray-700 text-xs font-medium rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-50">
+                      Customer Loyalty
+                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-white/95"></div>
+                    </div>
+                  </div>
+                  
+                  {/* Payment Tracking */}
+                  <div className="relative group">
+                    <button 
+                      onClick={() => navigate('/finance/payments')}
+                      className={`p-3 rounded-lg transition-all duration-300 backdrop-blur-sm border shadow-sm hover:scale-110 ${
+                        location.pathname.includes('/finance/payments') 
+                          ? 'bg-teal-500 text-white border-teal-400' 
+                          : 'bg-white/30 hover:bg-white/50 border-white/30'
+                      }`}
+                      title="Payment Tracking"
+                    >
+                      <CreditCard size={18} className={location.pathname.includes('/finance/payments') ? 'text-white' : 'text-gray-700'} />
+                    </button>
+                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-white/95 backdrop-blur-sm border border-gray-200/50 text-gray-700 text-xs font-medium rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-50">
+                      Payment Tracking
+                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-white/95"></div>
+                    </div>
+                  </div>
+                  
+                  {/* LATS Dashboard */}
+                  <div className="relative group">
+                    <button 
+                      onClick={() => navigate('/lats')}
+                      className={`p-3 rounded-lg transition-all duration-300 backdrop-blur-sm border shadow-sm hover:scale-110 ${
+                        location.pathname.includes('/lats') && !location.pathname.includes('/customers') && !location.pathname.includes('/unified-inventory') && !location.pathname.includes('/sales-reports') && !location.pathname.includes('/loyalty')
+                          ? 'bg-gray-500 text-white border-gray-400' 
+                          : 'bg-white/30 hover:bg-white/50 border-white/30'
+                      }`}
+                      title="LATS Dashboard"
+                    >
+                      <LayoutDashboard size={18} className={location.pathname.includes('/lats') && !location.pathname.includes('/customers') && !location.pathname.includes('/unified-inventory') && !location.pathname.includes('/sales-reports') && !location.pathname.includes('/loyalty') ? 'text-white' : 'text-gray-700'} />
+                    </button>
+                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-white/95 backdrop-blur-sm border border-gray-200/50 text-gray-700 text-xs font-medium rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-50">
+                      LATS Dashboard
+                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-white/95"></div>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
-            
-            <div className="relative group">
-              <button 
-                onClick={() => navigate('/lats/sales-reports')}
-                className="p-3 rounded-lg bg-white/30 hover:bg-white/50 transition-all duration-300 backdrop-blur-sm border border-white/30 shadow-sm hover:scale-110"
-                title="Sales Reports"
-              >
-                <BarChart3 size={18} className="text-gray-700" />
-              </button>
-              <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-white/95 backdrop-blur-sm border border-gray-200/50 text-gray-700 text-xs font-medium rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-50">
-                Sales Reports
-                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-white/95"></div>
-              </div>
-            </div>
-            
-            <div className="relative group">
-              <button 
-                onClick={() => navigate('/lats/loyalty')}
-                className="p-3 rounded-lg bg-white/30 hover:bg-white/50 transition-all duration-300 backdrop-blur-sm border border-white/30 shadow-sm hover:scale-110"
-                title="Customer Loyalty"
-              >
-                <Crown size={18} className="text-gray-700" />
-              </button>
-              <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-white/95 backdrop-blur-sm border border-gray-200/50 text-gray-700 text-xs font-medium rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-50">
-                Customer Loyalty
-                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-white/95"></div>
-              </div>
-            </div>
-            
-            <div className="relative group">
-              <button 
-                onClick={() => navigate('/finance/payments')}
-                className="p-3 rounded-lg bg-white/30 hover:bg-white/50 transition-all duration-300 backdrop-blur-sm border border-white/30 shadow-sm hover:scale-110"
-                title="Payment Tracking"
-              >
-                <CreditCard size={18} className="text-gray-700" />
-              </button>
-              <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-white/95 backdrop-blur-sm border border-gray-200/50 text-gray-700 text-xs font-medium rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-50">
-                Payment Tracking
-                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-white/95"></div>
-              </div>
-            </div>
-            
-            <div className="relative group">
-              <button 
-                onClick={() => navigate('/lats/shipping')}
-                className="p-3 rounded-lg bg-white/30 hover:bg-white/50 transition-all duration-300 backdrop-blur-sm border border-white/30 shadow-sm hover:scale-110"
-                title="Shipping Tracking"
-              >
-                <MapPin size={18} className="text-gray-700" />
-              </button>
-              <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-white/95 backdrop-blur-sm border border-gray-200/50 text-gray-700 text-xs font-medium rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-50">
-                Shipping Tracking
-                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-white/95"></div>
-              </div>
-            </div>
-            
-            <div className="relative group">
-              <button 
-                onClick={() => navigate('/lats')}
-                className="p-3 rounded-lg bg-white/30 hover:bg-white/50 transition-all duration-300 backdrop-blur-sm border border-white/30 shadow-sm hover:scale-110"
-                title="LATS Dashboard"
-              >
-                <LayoutDashboard size={18} className="text-gray-700" />
-              </button>
-              <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-white/95 backdrop-blur-sm border border-gray-200/50 text-gray-700 text-xs font-medium rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-50">
-                LATS Dashboard
-                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-white/95"></div>
-              </div>
-            </div>
-          </div>
+          )}
 
           {/* Right Section - Status & Actions */}
           <div className="flex items-center gap-3">
@@ -474,18 +568,12 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, isMenuOpen, isNavCollapse
               <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-red-500'} animate-pulse`}></div>
             </div>
 
-            {/* Activity Pills */}
+            {/* Activity Pills - Role-based */}
             <div className="hidden lg:flex items-center gap-2">
               {activityCounts.activeDevices > 0 && (
                 <div className="flex items-center gap-2 px-3 py-2 rounded-full bg-blue-100 text-blue-700 backdrop-blur-sm border border-blue-200 shadow-sm">
                   <Smartphone size={14} />
                   <span className="text-xs font-semibold">{formatNumber(activityCounts.activeDevices)}</span>
-                </div>
-              )}
-              {activityCounts.newCustomers > 0 && (
-                <div className="flex items-center gap-2 px-3 py-2 rounded-full bg-green-100 text-green-700 backdrop-blur-sm border border-green-200 shadow-sm">
-                  <Users size={14} />
-                  <span className="text-xs font-semibold">{formatNumber(activityCounts.newCustomers)}</span>
                 </div>
               )}
               {activityCounts.overdueDevices > 0 && (
@@ -495,15 +583,41 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, isMenuOpen, isNavCollapse
                 </div>
               )}
               
-              {/* LATS Activity Counters */}
-              <div className="flex items-center gap-2 px-4 py-3 rounded-full bg-purple-100 text-purple-700 backdrop-blur-sm border border-purple-200 shadow-sm">
-                <Package size={14} />
-                <span className="text-xs font-semibold">1</span>
-              </div>
-              <div className="flex items-center gap-2 px-4 py-3 rounded-full bg-amber-100 text-amber-700 backdrop-blur-sm border border-amber-200 shadow-sm">
-                <TrendingUp size={14} />
-                <span className="text-xs font-semibold">3</span>
-              </div>
+              {/* Show customer count only for non-technicians */}
+              {currentUser?.role !== 'technician' && activityCounts.newCustomers > 0 && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-full bg-green-100 text-green-700 backdrop-blur-sm border border-green-200 shadow-sm">
+                  <Users size={14} />
+                  <span className="text-xs font-semibold">{formatNumber(activityCounts.newCustomers)}</span>
+                </div>
+              )}
+              
+              {/* Customer Care Activity Counters */}
+              {currentUser?.role === 'customer-care' && (
+                <>
+                  <div className="flex items-center gap-2 px-4 py-3 rounded-full bg-emerald-100 text-emerald-700 backdrop-blur-sm border border-emerald-200 shadow-sm">
+                    <ShoppingCart size={14} />
+                    <span className="text-xs font-semibold">POS</span>
+                  </div>
+                  <div className="flex items-center gap-2 px-4 py-3 rounded-full bg-blue-100 text-blue-700 backdrop-blur-sm border border-blue-200 shadow-sm">
+                    <Smartphone size={14} />
+                    <span className="text-xs font-semibold">Devices</span>
+                  </div>
+                </>
+              )}
+              
+              {/* Admin Activity Counters */}
+              {currentUser?.role === 'admin' && (
+                <>
+                  <div className="flex items-center gap-2 px-4 py-3 rounded-full bg-purple-100 text-purple-700 backdrop-blur-sm border border-purple-200 shadow-sm">
+                    <Package size={14} />
+                    <span className="text-xs font-semibold">1</span>
+                  </div>
+                  <div className="flex items-center gap-2 px-4 py-3 rounded-full bg-amber-100 text-amber-700 backdrop-blur-sm border border-amber-200 shadow-sm">
+                    <TrendingUp size={14} />
+                    <span className="text-xs font-semibold">3</span>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Notifications */}
@@ -725,6 +839,23 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, isMenuOpen, isNavCollapse
         {showCreateDropdown && (
           <div className="mt-3 p-4 bg-white rounded-lg shadow-lg border border-gray-200">
             <div className="space-y-3">
+              {/* New Sale - Priority for Customer Care */}
+              <button
+                onClick={() => {
+                  navigate('/pos');
+                  setShowCreateDropdown(false);
+                }}
+                className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-emerald-50 transition-colors"
+              >
+                <div className="p-2 rounded-lg bg-emerald-500 text-white">
+                  <ShoppingCart size={20} />
+                </div>
+                <div className="flex-1 text-left">
+                  <p className="font-medium text-gray-900">New Sale</p>
+                  <p className="text-sm text-gray-600">Start POS transaction</p>
+                </div>
+              </button>
+              
               <button
                 onClick={() => {
                   navigate('/devices/new');
@@ -738,22 +869,6 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, isMenuOpen, isNavCollapse
                 <div className="flex-1 text-left">
                   <p className="font-medium text-gray-900">New Device</p>
                   <p className="text-sm text-gray-600">Add device for repair</p>
-                </div>
-              </button>
-              
-              <button
-                onClick={() => {
-                  navigate('/diagnostics/new');
-                  setShowCreateDropdown(false);
-                }}
-                className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-green-50 transition-colors"
-              >
-                <div className="p-2 rounded-lg bg-green-500 text-white">
-                  <Stethoscope size={20} />
-                </div>
-                <div className="flex-1 text-left">
-                  <p className="font-medium text-gray-900">Diagnostic Request</p>
-                  <p className="text-sm text-gray-600">Create device analysis</p>
                 </div>
               </button>
               
@@ -775,51 +890,56 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, isMenuOpen, isNavCollapse
               
               <button
                 onClick={() => {
-                  navigate('/lats/add-product');
+                  navigate('/diagnostics/new');
                   setShowCreateDropdown(false);
                 }}
-                className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-orange-50 transition-colors"
+                className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-green-50 transition-colors"
               >
-                <div className="p-2 rounded-lg bg-orange-500 text-white">
-                  <Package size={20} />
+                <div className="p-2 rounded-lg bg-green-500 text-white">
+                  <Stethoscope size={20} />
                 </div>
                 <div className="flex-1 text-left">
-                  <p className="font-medium text-gray-900">Add Product</p>
-                  <p className="text-sm text-gray-600">Add new inventory item</p>
+                  <p className="font-medium text-gray-900">Diagnostic Request</p>
+                  <p className="text-sm text-gray-600">Create device analysis</p>
                 </div>
               </button>
               
-              <button
-                onClick={() => {
-                  navigate('/pos');
-                  setShowCreateDropdown(false);
-                }}
-                className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-emerald-50 transition-colors"
-              >
-                <div className="p-2 rounded-lg bg-emerald-500 text-white">
-                  <ShoppingCart size={20} />
-                </div>
-                <div className="flex-1 text-left">
-                  <p className="font-medium text-gray-900">New Sale</p>
-                  <p className="text-sm text-gray-600">Start POS transaction</p>
-                </div>
-              </button>
-              
-              <button
-                onClick={() => {
-                  navigate('/sms');
-                  setShowCreateDropdown(false);
-                }}
-                className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-indigo-50 transition-colors"
-              >
-                <div className="p-2 rounded-lg bg-indigo-500 text-white">
-                  <MessageSquare size={20} />
-                </div>
-                <div className="flex-1 text-left">
-                  <p className="font-medium text-gray-900">SMS Centre</p>
-                  <p className="text-sm text-gray-600">Send messages to customers</p>
-                </div>
-              </button>
+              {/* Admin-only options */}
+              {currentUser?.role === 'admin' && (
+                <>
+                  <button
+                    onClick={() => {
+                      navigate('/lats/add-product');
+                      setShowCreateDropdown(false);
+                    }}
+                    className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-orange-50 transition-colors"
+                  >
+                    <div className="p-2 rounded-lg bg-orange-500 text-white">
+                      <Package size={20} />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className="font-medium text-gray-900">Add Product</p>
+                      <p className="text-sm text-gray-600">Add new inventory item</p>
+                    </div>
+                  </button>
+                  
+                  <button
+                    onClick={() => {
+                      navigate('/sms');
+                      setShowCreateDropdown(false);
+                    }}
+                    className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-indigo-50 transition-colors"
+                  >
+                    <div className="p-2 rounded-lg bg-indigo-500 text-white">
+                      <MessageSquare size={20} />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className="font-medium text-gray-900">SMS Centre</p>
+                      <p className="text-sm text-gray-600">Send messages to customers</p>
+                    </div>
+                  </button>
+                </>
+              )}
             </div>
           </div>
         )}

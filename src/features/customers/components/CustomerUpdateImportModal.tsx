@@ -452,7 +452,7 @@ const CustomerUpdateImportModal: React.FC<CustomerUpdateImportModalProps> = Reac
       console.log(`⚠️ ${errors.length} validation errors found`);
       
       if (matchedCustomers.size === 0) {
-        toast.warning('No existing customers found to update. Make sure phone numbers match existing records.');
+        toast('No existing customers found to update. Make sure phone numbers match existing records.');
       } else {
         toast.success(`Found ${matchedCustomers.size} existing customers to update`);
       }

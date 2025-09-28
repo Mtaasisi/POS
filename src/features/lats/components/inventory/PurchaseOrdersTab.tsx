@@ -120,13 +120,6 @@ const PurchaseOrdersTab: React.FC<PurchaseOrdersTabProps> = ({
               Create Purchase Order
             </GlassButton>
             <GlassButton
-              onClick={() => navigate('/lats/purchase-order/create')}
-              icon={<FileText size={18} />}
-              className="bg-purple-600 hover:bg-purple-700 text-white"
-            >
-              Form-based PO
-            </GlassButton>
-            <GlassButton
               onClick={() => navigate('/lats/purchase-orders')}
               icon={<Eye size={18} />}
               variant="secondary"

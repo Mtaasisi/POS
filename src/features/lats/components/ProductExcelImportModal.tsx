@@ -4,6 +4,7 @@ import GlassCard from '../../../features/shared/components/ui/GlassCard';
 import GlassButton from '../../../features/shared/components/ui/GlassButton';
 import { Product, ProductFormData } from '../types/inventory';
 import { toast } from 'react-hot-toast';
+import { supabase } from '../../../lib/supabaseClient';
 
 interface ProductExcelImportModalProps {
   isOpen: boolean;
@@ -149,17 +150,95 @@ const ProductExcelImportModal: React.FC<ProductExcelImportModalProps> = ({
     setValidationErrors([]);
     
     try {
-      // TODO: Implement real Excel file processing
-      // This should use a library like xlsx to parse the actual Excel file
-      // and extract product data from the uploaded file
+      // Import xlsx dynamically to avoid bundle size issues
+      const XLSX = await import('xlsx');
       
-      toast.error('Excel import functionality needs to be implemented with real file processing');
-      setValidationErrors(['Excel import functionality is not yet implemented. Please add products manually.']);
+      // Read the Excel file
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: 'array' });
+      
+      // Get the first worksheet
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      
+      // Convert to JSON
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+      
+      if (jsonData.length < 2) {
+        throw new Error('Excel file must contain at least a header row and one data row');
+      }
+      
+      // Get headers (first row)
+      const headers = jsonData[0] as string[];
+      const expectedHeaders = ['name', 'description', 'category', 'price', 'cost', 'quantity', 'sku', 'barcode'];
+      
+      // Validate headers
+      const missingHeaders = expectedHeaders.filter(header => 
+        !headers.some(h => h?.toLowerCase().includes(header.toLowerCase()))
+      );
+      
+      if (missingHeaders.length > 0) {
+        throw new Error(`Missing required columns: ${missingHeaders.join(', ')}`);
+      }
+      
+      // Process data rows
+      const products = [];
+      const errors = [];
+      
+      for (let i = 1; i < jsonData.length; i++) {
+        const row = jsonData[i] as any[];
+        
+        try {
+          // Map row data to product object
+          const product = {
+            name: row[0] || '',
+            description: row[1] || '',
+            category: row[2] || '',
+            price: parseFloat(row[3]) || 0,
+            cost: parseFloat(row[4]) || 0,
+            quantity: parseInt(row[5]) || 0,
+            sku: row[6] || '',
+            barcode: row[7] || '',
+            // Optional fields
+            brand: row[8] || '',
+            model: row[9] || '',
+            color: row[10] || '',
+            size: row[11] || '',
+            weight: row[12] || '',
+            dimensions: row[13] || '',
+            supplier: row[14] || '',
+            notes: row[15] || ''
+          };
+          
+          // Validate required fields
+          if (!product.name) {
+            throw new Error(`Row ${i + 1}: Product name is required`);
+          }
+          if (product.price <= 0) {
+            throw new Error(`Row ${i + 1}: Price must be greater than 0`);
+          }
+          if (product.quantity < 0) {
+            throw new Error(`Row ${i + 1}: Quantity cannot be negative`);
+          }
+          
+          products.push(product);
+        } catch (error) {
+          errors.push(`Row ${i + 1}: ${error.message}`);
+        }
+      }
+      
+      if (errors.length > 0) {
+        setValidationErrors(errors);
+        toast.error(`Found ${errors.length} validation errors. Please fix them and try again.`);
+      } else {
+        setParsedProducts(products);
+        toast.success(`Successfully parsed ${products.length} products from Excel file`);
+      }
       
     } catch (error) {
       console.error('Error processing file:', error);
-      toast.error('Failed to process Excel file');
-      setValidationErrors(['Failed to process Excel file. Please check the file format.']);
+      toast.error(`Failed to process Excel file: ${error.message}`);
+      setValidationErrors([error.message]);
     } finally {
       setIsProcessing(false);
     }
@@ -186,26 +265,32 @@ const ProductExcelImportModal: React.FC<ProductExcelImportModalProps> = ({
         });
       } else {
         try {
-          // Here you would actually import the product to the database
-          // For now, we'll just simulate success
-          const importedProduct: Product = {
-            id: `imported-${Date.now()}-${i}`,
-            name: product.name,
-            sku: product.sku,
-            barcode: product.barcode,
-            categoryId: product.categoryId,
-            supplierId: product.supplierId,
-            condition: product.condition,
-            internalNotes: product.internalNotes,
-            price: product.price,
-            costPrice: product.costPrice,
-            stockQuantity: product.stockQuantity,
-            minStockLevel: product.minStockLevel,
-            images: [],
-            variants: [],
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          };
+          // Import product to database using Supabase
+          const { data: importedProduct, error: importError } = await supabase
+            .from('products')
+            .insert([{
+              name: product.name,
+              sku: product.sku,
+              barcode: product.barcode,
+              category_id: product.categoryId,
+              supplier_id: product.supplierId,
+              condition: product.condition,
+              internal_notes: product.internalNotes,
+              price: product.price,
+              cost_price: product.costPrice,
+              stock_quantity: product.stockQuantity,
+              min_stock_level: product.minStockLevel,
+              short_description: product.shortDescription,
+              is_active: product.isActive,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            }])
+            .select()
+            .single();
+          
+          if (importError) {
+            throw new Error(importError.message);
+          }
           
           results.push({
             success: true,
@@ -216,7 +301,7 @@ const ProductExcelImportModal: React.FC<ProductExcelImportModalProps> = ({
         } catch (error) {
           results.push({
             success: false,
-            error: 'Failed to import product',
+            error: error.message || 'Failed to import product',
             rowNumber: i + 1
           });
         }

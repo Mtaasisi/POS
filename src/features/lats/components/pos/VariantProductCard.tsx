@@ -332,10 +332,19 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
             {/* Product Info */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between mb-1">
-                <h3 className={`font-medium truncate text-sm ${hasNoVariants ? 'text-gray-500' : 'text-gray-900'}`}>{product.name}</h3>
+                <h3 className={`font-medium truncate text-base ${hasNoVariants ? 'text-gray-500' : 'text-gray-900'}`} title={product.name}>{product.name}</h3>
                 {getStockStatusBadge()}
               </div>
               <p className="text-xs text-gray-500 font-mono">{primaryVariant?.sku || 'N/A'}</p>
+              
+              {/* Category Display */}
+              {showCategory && (product.categoryName || product.category?.name) && (
+                <div className="mt-1">
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-purple-50 text-purple-700 border border-purple-200 font-medium">
+                    📦 {product.categoryName || product.category?.name}
+                  </span>
+                </div>
+              )}
               
               {/* Compact Specifications Display - Hidden */}
             </div>
@@ -343,7 +352,7 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
             {/* Price */}
             <div className="text-right">
               {showPrices && (
-                <div className={`font-semibold text-sm ${hasNoVariants ? 'text-gray-500' : theme.priceColor}`}>{getPriceDisplay()}</div>
+                <div className={`font-semibold text-base ${hasNoVariants ? 'text-gray-500' : theme.priceColor}`} title={getPriceDisplay()}>{getPriceDisplay()}</div>
               )}
               {showStockLevels && (
                 <div className="text-xs text-gray-500">Stock: {getTotalStock()}</div>
@@ -439,10 +448,10 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
             <div className="flex items-center justify-between text-sm">
               <div className="flex items-center gap-4">
                 {/* Shelf Information */}
-                {(product.shelfName || product.shelfCode || product.storeLocationName || product.storageRoomName) && (
+                {(product.shelfCode || product.shelfName || product.storeLocationName || product.storageRoomName) && (
                   <div className="flex items-center gap-2">
                     <span className="inline-flex items-center px-2 py-1 rounded-md bg-blue-50 text-blue-700 border border-blue-200 text-xs">
-                      📦 {product.shelfName || product.shelfCode || product.storeLocationName || product.storageRoomName || 'Shelf Info'}
+                      📦 {product.shelfCode || product.shelfName || product.storeLocationName || product.storageRoomName || 'Shelf Info'}
                     </span>
                   </div>
                 )}
@@ -450,9 +459,9 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
 
               </div>
               <div className="flex items-center gap-2">
-                {showCategory && (
-                  <span className="inline-flex items-center px-2 py-1 rounded-md bg-purple-50 text-purple-700 border border-purple-200 text-xs">
-                    {product.categoryName || 'Uncategorized'}
+                {showCategory && (product.categoryName || product.category?.name) && (
+                  <span className="inline-flex items-center px-2 py-1 rounded-md bg-purple-50 text-purple-700 border border-purple-200 text-xs font-medium">
+                    📦 {product.categoryName || product.category?.name}
                   </span>
                 )}
               </div>

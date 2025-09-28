@@ -1,6 +1,7 @@
 import { supabase } from './supabaseClient';
 import { toast } from 'react-hot-toast';
 import { emitSaleCompleted, emitStockUpdate } from '../features/lats/lib/data/eventBus';
+import { isSessionValid, clearAuthState } from './authUtils';
 
 export interface SaleItem {
   id: string;
@@ -50,15 +51,74 @@ export interface ProcessSaleResult {
 }
 
 class SaleProcessingService {
+  // Helper method to check and ensure authentication
+  private async ensureAuthentication(): Promise<{ success: boolean; user?: any; error?: string }> {
+    try {
+      // First check if session is valid
+      const isValid = await isSessionValid();
+      if (!isValid) {
+        console.log('⚠️ Session invalid, attempting to refresh...');
+        
+        // Try to refresh the session
+        const { data: { session }, error: refreshError } = await supabase.auth.refreshSession();
+        
+        if (refreshError || !session?.user) {
+          console.error('❌ Session refresh failed:', refreshError?.message);
+          await clearAuthState();
+          return { 
+            success: false, 
+            error: 'Session expired. Please log in again.' 
+          };
+        }
+        
+        console.log('✅ Session refreshed successfully');
+        return { success: true, user: session.user };
+      }
+
+      // Get current user
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError || !user) {
+        console.error('❌ Authentication failed:', authError?.message);
+        return { 
+          success: false, 
+          error: 'Authentication failed. Please log in again.' 
+        };
+      }
+
+      return { success: true, user };
+    } catch (error) {
+      console.error('❌ Authentication check failed:', error);
+      return { 
+        success: false, 
+        error: 'Authentication check failed. Please log in again.' 
+      };
+    }
+  }
+
   // Process a complete sale with all necessary operations
   async processSale(saleData: Omit<SaleData, 'id' | 'saleNumber' | 'createdAt'>): Promise<ProcessSaleResult> {
     try {
       console.log('🔄 Processing sale...', { itemCount: saleData.items.length, total: saleData.total });
       console.log('🔍 Sale data received:', JSON.stringify(saleData, null, 2));
 
-      // Validate customer information
-      if (!saleData.customerId && !saleData.customerName) {
-        return { success: false, error: 'Customer information is required for sale processing' };
+      // Check authentication using the helper method
+      console.log('🔐 Checking authentication before processing sale...');
+      const authResult = await this.ensureAuthentication();
+      
+      if (!authResult.success) {
+        console.error('❌ Authentication failed:', authResult.error);
+        return { 
+          success: false, 
+          error: authResult.error || 'Authentication required. Please log in to process sales.' 
+        };
+      }
+      
+      console.log('✅ User authenticated:', authResult.user?.email);
+
+      // Validate customer information - customer selection is required
+      if (!saleData.customerId) {
+        return { success: false, error: 'Please select a customer before creating a sale' };
       }
 
       // 1. Combined stock validation and cost calculation (ultra-optimized)
@@ -79,9 +139,10 @@ class SaleProcessingService {
       }
 
       // 4. Run post-sale operations in parallel (non-critical for transaction completion)
-      const [inventoryResult, receiptResult] = await Promise.allSettled([
+      const [inventoryResult, receiptResult, customerResult] = await Promise.allSettled([
         this.updateInventory(saleData.items),
-        this.generateReceipt(saleResult.sale!)
+        this.generateReceipt(saleResult.sale!),
+        this.updateCustomerStats(saleData)
       ]);
 
       // Handle inventory update result
@@ -96,6 +157,13 @@ class SaleProcessingService {
         console.warn('⚠️ Receipt generation failed:', receiptResult.reason);
       } else if (!receiptResult.value.success) {
         console.warn('⚠️ Receipt generation failed:', receiptResult.value.error);
+      }
+
+      // Handle customer update result
+      if (customerResult.status === 'rejected') {
+        console.warn('⚠️ Customer stats update failed:', customerResult.reason);
+      } else if (!customerResult.value.success) {
+        console.warn('⚠️ Customer stats update failed:', customerResult.value.error);
       }
 
       // 5. Send notifications asynchronously (don't wait for completion)
@@ -255,6 +323,7 @@ class SaleProcessingService {
         // Return items with default costs if query fails
         return items.map(item => ({
           ...item,
+          unitPrice: item.quantity > 0 ? item.totalPrice / item.quantity : 0,
           costPrice: 0,
           profit: item.totalPrice
         }));
@@ -268,9 +337,11 @@ class SaleProcessingService {
         const costPrice = costPriceMap.get(item.variantId) || 0;
         const totalCost = costPrice * item.quantity;
         const profit = item.totalPrice - totalCost;
+        const unitPrice = item.quantity > 0 ? item.totalPrice / item.quantity : 0;
 
         return {
           ...item,
+          unitPrice,
           costPrice,
           profit
         };
@@ -282,6 +353,7 @@ class SaleProcessingService {
       // Return items with default costs if calculation fails
       return items.map(item => ({
         ...item,
+        unitPrice: item.quantity > 0 ? item.totalPrice / item.quantity : 0,
         costPrice: 0,
         profit: item.totalPrice
       }));
@@ -294,32 +366,114 @@ class SaleProcessingService {
       // Generate sale number
       const saleNumber = this.generateSaleNumber();
 
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
-      const soldBy = user?.email || 'system';
+      // Check authentication using the helper method
+      console.log('🔐 Checking authentication before sale insert...');
+      const authResult = await this.ensureAuthentication();
+      
+      if (!authResult.success) {
+        console.error('❌ Authentication failed:', authResult.error);
+        return { 
+          success: false, 
+          error: authResult.error || 'Authentication required. Please log in to process sales.' 
+        };
+      }
+
+      console.log('✅ User authenticated:', authResult.user?.email);
+      const soldBy = authResult.user?.email || 'system';
+      
+      // Get user name from user metadata or email
+      const cashierName = authResult.user?.user_metadata?.name || 
+                         authResult.user?.user_metadata?.full_name || 
+                         authResult.user?.email?.split('@')[0] || 
+                         'System User';
 
       // Create sale record - matching exact database structure
-      const { data: sale, error: saleError } = await supabase
+      // Ensure paymentMethod.amount matches total to avoid constraint violations
+      const paymentMethodData = {
+        ...saleData.paymentMethod,
+        amount: saleData.total // Fix: Use total amount instead of potentially 0 value
+      };
+
+      const saleInsertData = {
+        sale_number: saleNumber,
+        customer_id: saleData.customerId, // Customer ID is required - validated above
+        total_amount: saleData.total,
+        payment_method: JSON.stringify(paymentMethodData),
+        status: saleData.paymentStatus || 'completed',
+        created_by: cashierName,
+        // Add optional columns if they exist
+        ...(saleData.subtotal !== undefined && { subtotal: saleData.subtotal }),
+        ...(saleData.discount !== undefined && { discount_amount: saleData.discount }),
+        ...(saleData.discountType && { discount_type: saleData.discountType }),
+        ...(saleData.discountValue !== undefined && { discount_value: saleData.discountValue }),
+        ...(saleData.customerName && { customer_name: saleData.customerName }),
+        ...(saleData.customerPhone && { customer_phone: saleData.customerPhone }),
+        ...(saleData.tax !== undefined && { tax: saleData.tax }),
+        ...(saleData.notes && { notes: saleData.notes })
+      };
+
+      console.log('🔍 Sale insert data:', JSON.stringify(saleInsertData, null, 2));
+
+      // Try to insert with minimal required fields first to test the connection
+      const minimalSaleData = {
+        sale_number: saleNumber,
+        customer_id: saleData.customerId,
+        total_amount: saleData.total,
+        payment_method: JSON.stringify(paymentMethodData),
+        status: saleData.paymentStatus || 'completed',
+        created_by: cashierName
+      };
+
+      console.log('🔍 Minimal sale insert data:', JSON.stringify(minimalSaleData, null, 2));
+
+      let sale: any;
+      let saleError: any;
+
+      const { data: saleData1, error: saleError1 } = await supabase
         .from('lats_sales')
-        .insert([{
-          sale_number: saleNumber,
-          customer_id: saleData.customerId || null,
-          subtotal: saleData.subtotal,
-          discount_amount: saleData.discount,
-          discount_type: saleData.discountType || 'fixed',
-          discount_value: saleData.discountValue || saleData.discount,
-          total_amount: saleData.total,
-          payment_method: saleData.paymentMethod.type,
-          status: saleData.paymentStatus,
-          notes: saleData.notes || null,
-          created_by: user?.id || null
-        }])
+        .insert([saleInsertData])
         .select()
         .single();
 
-      if (saleError) {
-        console.error('❌ Error creating sale:', saleError);
-        return { success: false, error: `Failed to create sale: ${saleError.message}` };
+      if (saleError1) {
+        console.error('❌ Error creating sale with full data:', saleError1);
+        console.error('❌ Sale insert data that failed:', JSON.stringify(saleInsertData, null, 2));
+        console.error('❌ Full error details:', {
+          message: saleError1.message,
+          details: saleError1.details,
+          hint: saleError1.hint,
+          code: saleError1.code
+        });
+
+        // Try with even more minimal data - just the absolute essentials
+        console.log('🔄 Trying with absolute minimal data...');
+        const absoluteMinimalData = {
+          sale_number: saleNumber,
+          customer_id: saleData.customerId,
+          total_amount: saleData.total,
+          status: 'completed',
+          created_by: 'System'
+        };
+
+        console.log('🔍 Absolute minimal sale insert data:', JSON.stringify(absoluteMinimalData, null, 2));
+
+        const { data: fallbackSale, error: fallbackError } = await supabase
+          .from('lats_sales')
+          .insert([absoluteMinimalData])
+          .select()
+          .single();
+
+        if (fallbackError) {
+          console.error('❌ Fallback insert also failed:', fallbackError);
+          return { success: false, error: `Failed to create sale: ${saleError1.message}. Fallback also failed: ${fallbackError.message}` };
+        }
+
+        console.log('✅ Fallback insert succeeded');
+        sale = fallbackSale;
+        saleError = null;
+      } else {
+        sale = saleData1;
+        saleError = null;
       }
 
       // Create sale items - matching exact database structure
@@ -349,11 +503,10 @@ class SaleProcessingService {
           product_id: item.productId,
           variant_id: item.variantId,
           quantity: item.quantity,
-          unit_price: item.unitPrice || 0, // Required field, default to 0 if null
-          total_price: item.totalPrice || 0, // Required field, default to 0 if null
-          cost_price: item.costPrice || 0, // Optional field, default to 0
-          profit: item.profit || 0, // Optional field, default to 0
-          external_product_id: null // Optional field
+          unit_price: item.unitPrice || 0, // Unit price field (matches database schema)
+          total_price: item.totalPrice || 0, // Total price field
+          cost_price: item.costPrice || 0, // Cost price field
+          profit: item.profit || 0 // Profit field
         };
       });
 
@@ -388,11 +541,65 @@ class SaleProcessingService {
     }
   }
 
+  // Update customer statistics after sale
+  private async updateCustomerStats(saleData: SaleData): Promise<{ success: boolean; error?: string }> {
+    try {
+      // Check authentication first
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError || !user) {
+        console.error('❌ Authentication failed for customer stats update:', authError?.message || 'User not authenticated');
+        return { success: false, error: 'Authentication required for customer stats update' };
+      }
+
+      // Only update if customer ID is provided
+      if (!saleData.customerId) {
+        console.log('ℹ️ No customer ID provided, skipping customer stats update');
+        return { success: true };
+      }
+
+      console.log('🔄 Updating customer stats for customer:', saleData.customerId);
+
+      // Calculate points earned (1 point per 1000 TZS)
+      const pointsEarned = Math.floor(saleData.total / 1000);
+
+      // Update customer record with new stats
+      const { error: updateError } = await supabase
+        .from('customers')
+        .update({
+          total_spent: supabase.raw(`total_spent + ${saleData.total}`),
+          total_orders: supabase.raw('total_orders + 1'),
+          points: supabase.raw(`points + ${pointsEarned}`),
+          last_visit: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', saleData.customerId);
+
+      if (updateError) {
+        console.error('❌ Error updating customer stats:', updateError);
+        return { success: false, error: `Failed to update customer stats: ${updateError.message}` };
+      }
+
+      console.log('✅ Customer stats updated successfully');
+      return { success: true };
+
+    } catch (error) {
+      console.error('❌ Error updating customer stats:', error);
+      return { success: false, error: 'Failed to update customer stats' };
+    }
+  }
+
   // Update inventory after sale (optimized with batched operations)
   private async updateInventory(items: SaleItem[]): Promise<{ success: boolean; error?: string }> {
     try {
-      // Get current user once for all stock movements
-      const { data: { user } } = await supabase.auth.getUser();
+      // Check authentication first
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError || !user) {
+        console.error('❌ Authentication failed for inventory update:', authError?.message || 'User not authenticated');
+        return { success: false, error: 'Authentication required for inventory update' };
+      }
+
       const userId = user?.id || 'system';
       
       // First, get current quantities for all variants
@@ -487,6 +694,14 @@ class SaleProcessingService {
   // Generate receipt
   private async generateReceipt(sale: SaleData): Promise<{ success: boolean; error?: string }> {
     try {
+      // Check authentication first
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError || !user) {
+        console.error('❌ Authentication failed for receipt generation:', authError?.message || 'User not authenticated');
+        return { success: false, error: 'Authentication required for receipt generation' };
+      }
+
       // Create receipt record
       const { error: receiptError } = await supabase
         .from('lats_receipts')
@@ -533,10 +748,10 @@ class SaleProcessingService {
         await this.sendSMSNotification(sale);
       }
 
-      // Send email receipt if customer email is provided
-      if (sale.customerEmail) {
-        await this.sendEmailReceipt(sale);
-      }
+      // Email service disabled - only SMS notifications are sent
+      // if (sale.customerEmail) {
+      //   await this.sendEmailReceipt(sale);
+      // }
 
     } catch (error) {
       console.error('❌ Error sending notifications:', error);
@@ -577,123 +792,123 @@ Payment: ${sale.paymentMethod.type.toUpperCase()}
 Thank you for choosing us!`;
   }
 
-  // Send email receipt
-  private async sendEmailReceipt(sale: SaleData): Promise<void> {
-    try {
-      const receiptContent = this.generateEmailReceipt(sale);
-      
-      // Use the email service  
-      const { emailService } = await import('../services/emailService');
-      
-      const result = await emailService.sendEmail({
-        to: sale.customerEmail!,
-        subject: `Receipt for Sale #${sale.saleNumber}`,
-        html: receiptContent
-      });
-      
-      if (result.success) {
-        console.log('📧 Email receipt sent successfully for sale:', sale.saleNumber);
-      } else {
-        console.error('❌ Failed to send email receipt:', result.error);
-      }
-    } catch (error) {
-      console.error('Error sending email receipt:', error);
-    }
-  }
+  // Email service disabled - function commented out
+  // private async sendEmailReceipt(sale: SaleData): Promise<void> {
+  //   try {
+  //     const receiptContent = this.generateEmailReceipt(sale);
+  //     
+  //     // Use the email service  
+  //     const { emailService } = await import('../services/emailService');
+  //     
+  //     const result = await emailService.sendEmail({
+  //       to: sale.customerEmail!,
+  //       subject: `Receipt for Sale #${sale.saleNumber}`,
+  //       html: receiptContent
+  //     });
+  //     
+  //     if (result.success) {
+  //       console.log('📧 Email receipt sent successfully for sale:', sale.saleNumber);
+  //     } else {
+  //       console.error('❌ Failed to send email receipt:', result.error);
+  //     }
+  //   } catch (error) {
+  //     console.error('Error sending email receipt:', error);
+  //   }
+  // }
 
-  // Generate email receipt
-  private generateEmailReceipt(sale: SaleData): string {
-    const itemsHtml = sale.items.map(item => `
-      <tr>
-        <td>${item.productName} - ${item.variantName}</td>
-        <td>${item.quantity}</td>
-        <td>${this.formatMoney(item.unitPrice)}</td>
-        <td>${this.formatMoney(item.totalPrice)}</td>
-      </tr>
-    `).join('');
+  // Email service disabled - function commented out
+  // private generateEmailReceipt(sale: SaleData): string {
+  //   const itemsHtml = sale.items.map(item => `
+  //     <tr>
+  //       <td>${item.productName} - ${item.variantName}</td>
+  //       <td>${item.quantity}</td>
+  //       <td>${this.formatMoney(item.unitPrice)}</td>
+  //       <td>${this.formatMoney(item.totalPrice)}</td>
+  //     </tr>
+  //   `).join('');
 
-    const discountRow = sale.discount > 0 ? `
-      <tr>
-        <td colspan="3" style="text-align: right; font-weight: bold;">Discount:</td>
-        <td>-${this.formatMoney(sale.discount)}</td>
-      </tr>
-    ` : '';
+  //   const discountRow = sale.discount > 0 ? `
+  //     <tr>
+  //       <td colspan="3" style="text-align: right; font-weight: bold;">Discount:</td>
+  //       <td>-${this.formatMoney(sale.discount)}</td>
+  //     </tr>
+  //   ` : '';
 
-    return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <title>Receipt - Sale #${sale.saleNumber}</title>
-        <style>
-          body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
-          .receipt { max-width: 600px; margin: 0 auto; border: 1px solid #ddd; padding: 20px; }
-          .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 20px; }
-          table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-          th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
-          th { background-color: #f5f5f5; font-weight: bold; }
-          .total { font-weight: bold; font-size: 1.2em; }
-          .footer { margin-top: 30px; text-align: center; color: #666; }
-        </style>
-      </head>
-      <body>
-        <div class="receipt">
-          <div class="header">
-            <h1>Sales Receipt</h1>
-            <p>Sale #${sale.saleNumber}</p>
-            <p>Date: ${new Date(sale.soldAt).toLocaleDateString()}</p>
-            <p>Time: ${new Date(sale.soldAt).toLocaleTimeString()}</p>
-          </div>
-          
-          <div>
-            <h3>Customer Information</h3>
-            <p><strong>Name:</strong> ${sale.customerName}</p>
-            ${sale.customerPhone ? `<p><strong>Phone:</strong> ${sale.customerPhone}</p>` : ''}
-            ${sale.customerEmail ? `<p><strong>Email:</strong> ${sale.customerEmail}</p>` : ''}
-          </div>
-          
-          <table>
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th>Qty</th>
-                <th>Price</th>
-                <th>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${itemsHtml}
-              ${discountRow}
-              <tr>
-                <td colspan="3" style="text-align: right; font-weight: bold;">Subtotal:</td>
-                <td>${this.formatMoney(sale.subtotal)}</td>
-              </tr>
-              <tr>
-                <td colspan="3" style="text-align: right; font-weight: bold;">Tax:</td>
-                <td>${this.formatMoney(sale.tax)}</td>
-              </tr>
-              <tr class="total">
-                <td colspan="3" style="text-align: right;">Total:</td>
-                <td>${this.formatMoney(sale.total)}</td>
-              </tr>
-            </tbody>
-          </table>
-          
-          <div>
-            <p><strong>Payment Method:</strong> ${sale.paymentMethod.type.toUpperCase()}</p>
-            <p><strong>Sold By:</strong> ${sale.soldBy}</p>
-            ${sale.notes ? `<p><strong>Notes:</strong> ${sale.notes}</p>` : ''}
-          </div>
-          
-          <div class="footer">
-            <p>Thank you for your purchase!</p>
-            <p>For any questions, please contact our support team.</p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
-  }
+  //   return `
+  //     <!DOCTYPE html>
+  //     <html>
+  //     <head>
+  //       <meta charset="utf-8">
+  //       <title>Receipt - Sale #${sale.saleNumber}</title>
+  //       <style>
+  //         body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+  //         .receipt { max-width: 600px; margin: 0 auto; border: 1px solid #ddd; padding: 20px; }
+  //         .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 20px; }
+  //         table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+  //         th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
+  //         th { background-color: #f5f5f5; font-weight: bold; }
+  //         .total { font-weight: bold; font-size: 1.2em; }
+  //         .footer { margin-top: 30px; text-align: center; color: #666; }
+  //       </style>
+  //     </head>
+  //     <body>
+  //       <div class="receipt">
+  //         <div class="header">
+  //           <h1>Sales Receipt</h1>
+  //           <p>Sale #${sale.saleNumber}</p>
+  //           <p>Date: ${new Date(sale.soldAt).toLocaleDateString()}</p>
+  //           <p>Time: ${new Date(sale.soldAt).toLocaleTimeString()}</p>
+  //         </div>
+  //         
+  //         <div>
+  //           <h3>Customer Information</h3>
+  //           <p><strong>Name:</strong> ${sale.customerName}</p>
+  //           ${sale.customerPhone ? `<p><strong>Phone:</strong> ${sale.customerPhone}</p>` : ''}
+  //           ${sale.customerEmail ? `<p><strong>Email:</strong> ${sale.customerEmail}</p>` : ''}
+  //         </div>
+  //         
+  //         <table>
+  //           <thead>
+  //             <tr>
+  //               <th>Item</th>
+  //               <th>Qty</th>
+  //               <th>Price</th>
+  //               <th>Total</th>
+  //             </tr>
+  //           </thead>
+  //           <tbody>
+  //             ${itemsHtml}
+  //             ${discountRow}
+  //             <tr>
+  //               <td colspan="3" style="text-align: right; font-weight: bold;">Subtotal:</td>
+  //               <td>${this.formatMoney(sale.subtotal)}</td>
+  //             </tr>
+  //             <tr>
+  //               <td colspan="3" style="text-align: right; font-weight: bold;">Tax:</td>
+  //               <td>${this.formatMoney(sale.tax)}</td>
+  //             </tr>
+  //             <tr class="total">
+  //               <td colspan="3" style="text-align: right;">Total:</td>
+  //               <td>${this.formatMoney(sale.total)}</td>
+  //             </tr>
+  //           </tbody>
+  //         </table>
+  //         
+  //         <div>
+  //           <p><strong>Payment Method:</strong> ${sale.paymentMethod.type.toUpperCase()}</p>
+  //           <p><strong>Sold By:</strong> ${sale.soldBy}</p>
+  //           ${sale.notes ? `<p><strong>Notes:</strong> ${sale.notes}</p>` : ''}
+  //         </div>
+  //         
+  //         <div class="footer">
+  //           <p>Thank you for your purchase!</p>
+  //           <p>For any questions, please contact our support team.</p>
+  //         </div>
+  //       </div>
+  //     </body>
+  //     </html>
+  //   `;
+  // }
 
   // Format money helper
   private formatMoney(amount: number): string {

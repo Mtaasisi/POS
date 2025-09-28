@@ -3,6 +3,7 @@ import GlassCard from '../../../../features/shared/components/ui/GlassCard';
 import { DollarSign, Percent, X, Keyboard } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import VirtualNumberKeyboard from './VirtualNumberKeyboard';
+import { useBodyScrollLock } from '../../../../hooks/useBodyScrollLock';
 
 interface POSDiscountModalProps {
   isOpen: boolean;
@@ -139,6 +140,9 @@ const POSDiscountModal: React.FC<POSDiscountModalProps> = ({
       return () => document.removeEventListener('keydown', handleKeyDown);
     }
   }, [isOpen, discountValue, discountType]);
+
+  // Prevent body scroll when modal is open
+  useBodyScrollLock(isOpen);
 
   if (!isOpen) return null;
 

@@ -1,75 +1,108 @@
-// Currency formatting utilities that remove trailing .00 and .0
-
-/**
- * Formats a number as currency without trailing .00 or .0
- * @param amount - The amount to format
- * @param currency - The currency code (default: 'TZS')
- * @param locale - The locale (default: 'en-TZ')
- * @returns Formatted currency string without trailing zeros
- */
-export function formatCurrencyClean(amount: number, currency: string = 'TZS', locale: string = 'en-TZ'): string {
-  // Use Intl.NumberFormat to get the formatted string
-  const formatted = new Intl.NumberFormat(locale, {
-    style: 'currency',
-    currency: currency,
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2
-  }).format(amount);
-  
-  // Remove trailing .00 and .0
-  return formatted.replace(/\.00$/, '').replace(/\.0$/, '');
+// Currency utilities for payments and general use
+export interface Currency {
+  code: string;
+  name: string;
+  symbol: string;
+  flag: string;
 }
 
-/**
- * Formats a number as currency with full numbers (no trailing zeros)
- * @param amount - The amount to format
- * @returns Formatted currency string with full numbers
- */
-export function formatCurrencyAbbreviated(amount: number): string {
-  return formatCurrencyClean(amount);
-}
+// Supported currencies with flags and symbols
+export const SUPPORTED_CURRENCIES: Currency[] = [
+  { code: 'TZS', name: 'Tanzanian Shilling', symbol: 'TZS', flag: '🇹🇿' },
+  { code: 'USD', name: 'US Dollar', symbol: '$', flag: '🇺🇸' },
+  { code: 'EUR', name: 'Euro', symbol: '€', flag: '🇪🇺' },
+  { code: 'GBP', name: 'British Pound', symbol: '£', flag: '🇬🇧' },
+  { code: 'AED', name: 'UAE Dirham', symbol: 'د.إ', flag: '🇦🇪' },
+  { code: 'KES', name: 'Kenyan Shilling', symbol: 'KSh', flag: '🇰🇪' },
+  { code: 'CNY', name: 'Chinese Yuan', symbol: '¥', flag: '🇨🇳' }
+];
+
+// Default currency (Tanzanian Shilling)
+export const DEFAULT_CURRENCY: Currency = SUPPORTED_CURRENCIES[0];
 
 /**
- * Formats a number as a simple string without currency symbol (no trailing zeros)
- * @param amount - The amount to format
- * @param locale - The locale (default: 'en-TZ')
- * @returns Formatted number string without trailing zeros
+ * Get currency by code
  */
-export function formatNumberClean(amount: number, locale: string = 'en-TZ'): string {
-  const formatted = new Intl.NumberFormat(locale, {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2
-  }).format(amount);
-  
-  // Remove trailing .00 and .0
-  return formatted.replace(/\.00$/, '').replace(/\.0$/, '');
-}
+export const getCurrencyByCode = (code: string): Currency | undefined => {
+  return SUPPORTED_CURRENCIES.find(currency => currency.code === code);
+};
 
 /**
- * Formats a percentage without trailing .0
- * @param value - The percentage value (0-100)
- * @returns Formatted percentage string without trailing zeros
+ * Format amount with currency symbol and flag
  */
-export function formatPercentageClean(value: number): string {
-  const formatted = value.toFixed(1);
-  return `${formatted.replace(/\.0$/, '')}%`;
-}
-
-/**
- * Formats file size without trailing .0
- * @param bytes - Size in bytes
- * @returns Formatted file size string without trailing zeros
- */
-export function formatFileSizeClean(bytes: number): string {
-  if (bytes >= 1024 * 1024) {
-    const mb = bytes / (1024 * 1024);
-    const formatted = mb.toFixed(2);
-    return `${formatted.replace(/\.00$/, '').replace(/\.0$/, '')} MB`;
-  } else if (bytes >= 1024) {
-    const kb = bytes / 1024;
-    const formatted = kb.toFixed(1);
-    return `${formatted.replace(/\.0$/, '')} KB`;
-  } else {
-    return `${bytes} B`;
+export const formatCurrency = (amount: number, currency: Currency): string => {
+  if (currency.code === 'TZS') {
+    return new Intl.NumberFormat('en-TZ', {
+      style: 'currency',
+      currency: 'TZS',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2
+    }).format(amount).replace(/\.00$/, '').replace(/\.0$/, '');
   }
-}
+  
+  if (currency.code === 'AED') {
+    return new Intl.NumberFormat('en-AE', {
+      style: 'currency',
+      currency: 'AED',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(amount);
+  }
+  
+  return `${currency.symbol}${amount.toLocaleString(undefined, { 
+    minimumFractionDigits: 2, 
+    maximumFractionDigits: 2 
+  })}`;
+};
+
+/**
+ * Format amount with currency flag and symbol (for display)
+ */
+export const formatCurrencyWithFlag = (amount: number, currency: Currency): string => {
+  const formatted = formatCurrency(amount, currency);
+  return `${currency.flag} ${formatted}`;
+};
+
+/**
+ * Format amount without trailing .00 or .0 (clean format)
+ */
+export const formatCurrencyClean = (amount: number, currency: Currency): string => {
+  if (currency.code === 'TZS') {
+    return new Intl.NumberFormat('en-TZ', {
+      style: 'currency',
+      currency: 'TZS',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2
+    }).format(amount).replace(/\.00$/, '').replace(/\.0$/, '');
+  }
+  
+  return `${currency.symbol}${amount.toLocaleString(undefined, { 
+    minimumFractionDigits: 0, 
+    maximumFractionDigits: 2 
+  })}`.replace(/\.00$/, '').replace(/\.0$/, '');
+};
+
+/**
+ * Get currency display text (flag + code + symbol)
+ */
+export const getCurrencyDisplay = (currency: Currency): string => {
+  return `${currency.flag} ${currency.code} (${currency.symbol})`;
+};
+
+/**
+ * Validate currency code
+ */
+export const isValidCurrencyCode = (code: string): boolean => {
+  return SUPPORTED_CURRENCIES.some(currency => currency.code === code);
+};
+
+/**
+ * Get currency options for select components
+ */
+export const getCurrencyOptions = () => {
+  return SUPPORTED_CURRENCIES.map(currency => ({
+    value: currency.code,
+    label: getCurrencyDisplay(currency),
+    currency
+  }));
+};

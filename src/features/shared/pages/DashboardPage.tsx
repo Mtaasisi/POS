@@ -8,7 +8,7 @@ import { useErrorHandler } from '../../../hooks/useErrorHandler';
 import {
   Smartphone, Users, Package, BarChart3, Settings, Plus, ArrowRight,
   TrendingUp, DollarSign, Activity, Target, Award, Calendar, Clock,
-  Bell, AlertTriangle, Zap, RefreshCw, MapPin
+  Bell, AlertTriangle, Zap, RefreshCw, MapPin, FileText
 } from 'lucide-react';
 import {
   NotificationWidget,
@@ -156,13 +156,6 @@ const DashboardPage: React.FC = () => {
       path: '/appointments'
     },
     {
-      title: 'Shipping Tracking',
-      description: 'Track shipments',
-      icon: MapPin,
-      color: 'from-teal-500 to-teal-600',
-      path: '/lats/shipping'
-    },
-    {
       title: 'Purchase Orders',
       description: 'Manage orders',
       icon: Package,
@@ -175,6 +168,13 @@ const DashboardPage: React.FC = () => {
       icon: DollarSign,
       color: 'from-emerald-500 to-emerald-600',
       path: '/finance/payments'
+    },
+    {
+      title: 'Ad Generator',
+      description: 'Create product ads',
+      icon: FileText,
+      color: 'from-rose-500 to-rose-600',
+      path: '/ad-generator'
     }
   ];
 

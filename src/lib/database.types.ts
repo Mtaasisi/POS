@@ -157,7 +157,7 @@ export interface Database {
           repair_count: number
           last_return_date: string | null
           diagnostic_checklist: any | null
-          repair_checklist: any | null
+          repair_price: number
           created_at: string
           updated_at: string
         }
@@ -178,7 +178,7 @@ export interface Database {
           repair_count?: number
           last_return_date?: string | null
           diagnostic_checklist?: any | null
-          repair_checklist?: any | null
+          repair_price?: number
           created_at?: string
           updated_at?: string
         }
@@ -199,8 +199,37 @@ export interface Database {
           repair_count?: number
           last_return_date?: string | null
           diagnostic_checklist?: any | null
-          repair_checklist?: any | null
+          repair_price?: number
           created_at?: string
+          updated_at?: string
+        }
+      }
+      device_price_history: {
+        Row: {
+          id: string
+          device_id: string
+          old_price: number
+          new_price: number
+          reason: string
+          updated_by: string | null
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          device_id: string
+          old_price?: number
+          new_price?: number
+          reason?: string
+          updated_by?: string | null
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          device_id?: string
+          old_price?: number
+          new_price?: number
+          reason?: string
+          updated_by?: string | null
           updated_at?: string
         }
       }
@@ -407,9 +436,11 @@ export interface Database {
           device_id: string | null
           payment_date: string
           payment_type: 'payment' | 'deposit' | 'refund'
-          status: 'completed' | 'pending' | 'failed'
+          status: 'completed' | 'pending' | 'failed' | 'approved'
           created_by: string | null
           created_at: string
+          updated_at: string
+          updated_by: string | null
         }
         Insert: {
           id: string
@@ -419,9 +450,11 @@ export interface Database {
           device_id?: string | null
           payment_date?: string
           payment_type: 'payment' | 'deposit' | 'refund'
-          status?: 'completed' | 'pending' | 'failed'
+          status?: 'completed' | 'pending' | 'failed' | 'approved'
           created_by?: string | null
           created_at?: string
+          updated_at?: string
+          updated_by?: string | null
         }
         Update: {
           id?: string
@@ -431,9 +464,11 @@ export interface Database {
           device_id?: string | null
           payment_date?: string
           payment_type?: 'payment' | 'deposit' | 'refund'
-          status?: 'completed' | 'pending' | 'failed'
+          status?: 'completed' | 'pending' | 'failed' | 'approved'
           created_by?: string | null
           created_at?: string
+          updated_at?: string
+          updated_by?: string | null
         }
       }
       finance_accounts: {

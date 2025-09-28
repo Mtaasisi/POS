@@ -251,11 +251,12 @@ export const DevicesProvider: React.FC<{ children: React.ReactNode }> = React.me
     return { ...newDevice, ...dbDevice };
   };
 
-  // Persist status update to DB
+  // Persist status update to DB with optimistic UI updates
   const updateDeviceStatus = async (deviceId: string, newStatus: DeviceStatus, signature: string) => {
     if (!currentUser) return false;
     const device = devices.find(d => d.id === deviceId);
     if (!device) return false;
+    
     const transition: Transition = {
       id: `t-${Date.now()}`,
       fromStatus: device.status,
@@ -264,210 +265,248 @@ export const DevicesProvider: React.FC<{ children: React.ReactNode }> = React.me
       timestamp: new Date().toISOString(),
       signature: signature
     };
-    // Insert transition into device_transitions table
-    await supabase.from('device_transitions').insert({
-      device_id: deviceId,
-      from_status: device.status,
-      to_status: newStatus,
-      performed_by: currentUser.id,
-      created_at: transition.timestamp,
-      signature: signature
-    });
-    const updatedDevice: Device = {
+    
+    // OPTIMISTIC UPDATE: Update UI immediately for fast response
+    const optimisticDevice: Device = {
       ...device,
       status: newStatus,
       updatedAt: new Date().toISOString(),
       transitions: [...(device.transitions || []), transition]
     };
-    const dbDevice = await updateDeviceInDb(deviceId, updatedDevice);
-    if (!dbDevice) return false;
-    setDevices(prev => prev.map(d => d.id === deviceId ? { ...updatedDevice, ...dbDevice } : d));
-
-    // --- Automatic SMS Trigger Logic ---
-    // 1. Check for trigger for this status
-    let triggers = [];
-    try {
-      const { data, error, status } = await supabase.from('sms_triggers').select('*').eq('trigger_type', newStatus);
-      if (error && status !== 406 && status !== 400) throw error;
-      triggers = data || [];
-    } catch (err) {
-      // Silently ignore errors for missing triggers
-      triggers = [];
-    }
-    if (triggers && triggers.length > 0) {
-      // 2. For each trigger, fetch template and customer phone
-      for (const trigger of triggers) {
-        // Fetch template
-        const { data: template, error: templateError } = await supabase
-          .from('communication_templates')
-          .select('*')
-          .eq('id', trigger.template_id)
-          .eq('is_active', true)
-          .single();
-        if (!template || templateError) continue;
-        // Fetch customer phone and data
-        const { data: customer, error: customerError } = await supabase
-          .from('customers')
-          .select('*')
-          .eq('id', device.customerId)
-          .single();
-        if (!customer || customerError || !customer.phone) continue;
-        // --- Check trigger conditions ---
-        if (trigger.condition) {
-          if (trigger.condition.brand && device.brand !== trigger.condition.brand) continue;
-          if (trigger.condition.customerTag && customer.customerTag !== trigger.condition.customerTag) continue;
+    
+    // Update UI state immediately
+    setDevices(prev => prev.map(d => d.id === deviceId ? optimisticDevice : d));
+    
+    // BACKGROUND PROCESSING: Handle database operations asynchronously
+    const processBackgroundUpdate = async () => {
+      try {
+        // Insert transition into device_transitions table
+        await supabase.from('device_transitions').insert({
+          device_id: deviceId,
+          from_status: device.status,
+          to_status: newStatus,
+          performed_by: currentUser.id,
+          created_at: transition.timestamp,
+          signature: signature
+        });
+        
+        // Update device in database
+        const dbDevice = await updateDeviceInDb(deviceId, optimisticDevice);
+        if (!dbDevice) {
+          // If database update fails, revert the optimistic update
+          setDevices(prev => prev.map(d => d.id === deviceId ? device : d));
+          toast.error('Failed to update status in database');
+          return false;
         }
-        // Try to auto-fill variables from device/customer
-        const variables: Record<string, string> = {};
-        let missingVariable = false;
-        if (template.variables && Array.isArray(template.variables)) {
-          for (const v of template.variables) {
-            const key = v as keyof typeof device;
-            const custKey = v as keyof typeof customer;
-            if (device[key] !== undefined) variables[v] = String(device[key]);
-            else if (customer[custKey] !== undefined) variables[v] = String(customer[custKey]);
-            else { missingVariable = true; variables[v] = ''; }
+        
+        // Update with actual database response
+        setDevices(prev => prev.map(d => d.id === deviceId ? { ...optimisticDevice, ...dbDevice } : d));
+
+        // --- Automatic SMS Trigger Logic ---
+        // 1. Check for trigger for this status
+        let triggers = [];
+        try {
+          const { data, error, status } = await supabase.from('sms_triggers').select('*').eq('trigger_type', newStatus);
+          if (error && status !== 406 && status !== 400) throw error;
+          triggers = data || [];
+        } catch (err) {
+          // Silently ignore errors for missing triggers
+          triggers = [];
+        }
+        if (triggers && triggers.length > 0) {
+          // 2. For each trigger, fetch template and customer phone
+          for (const trigger of triggers) {
+            // Fetch template
+            const { data: template, error: templateError } = await supabase
+              .from('communication_templates')
+              .select('*')
+              .eq('id', trigger.template_id)
+              .eq('is_active', true)
+              .single();
+            if (!template || templateError) continue;
+            // Fetch customer phone and data
+            const { data: customer, error: customerError } = await supabase
+              .from('customers')
+              .select('*')
+              .eq('id', device.customerId)
+              .single();
+            if (!customer || customerError || !customer.phone) continue;
+            // --- Check trigger conditions ---
+            if (trigger.condition) {
+              if (trigger.condition.brand && device.brand !== trigger.condition.brand) continue;
+              if (trigger.condition.customerTag && customer.customerTag !== trigger.condition.customerTag) continue;
+            }
+            // Try to auto-fill variables from device/customer
+            const variables: Record<string, string> = {};
+            let missingVariable = false;
+            if (template.variables && Array.isArray(template.variables)) {
+              for (const v of template.variables) {
+                const key = v as keyof typeof device;
+                const custKey = v as keyof typeof customer;
+                if (device[key] !== undefined) variables[v] = String(device[key]);
+                else if (customer[custKey] !== undefined) variables[v] = String(customer[custKey]);
+                else { missingVariable = true; variables[v] = ''; }
+              }
+            }
+            if (missingVariable) {
+              // Log as missing variable, skip sending
+              await supabase.from('sms_trigger_logs').insert({
+                trigger_id: trigger.id,
+                device_id: deviceId,
+                customer_id: device.customerId,
+                status: newStatus,
+                template_id: template.id,
+                recipient: customer.phone,
+                result: 'skipped',
+                error: 'Missing variable(s) for template'
+              });
+              continue;
+            }
+            // Send SMS
+            const result = await smsService.sendTemplateSMS(customer.phone, template.id, variables, device.customerId);
+            // Log trigger action
+            await supabase.from('sms_trigger_logs').insert({
+              trigger_id: trigger.id,
+              device_id: deviceId,
+              customer_id: device.customerId,
+              status: newStatus,
+              template_id: template.id,
+              recipient: customer.phone,
+              result: result.success ? 'sent' : 'failed',
+              error: result.error || null
+            });
           }
         }
-        if (missingVariable) {
-          // Log as missing variable, skip sending
-          await supabase.from('sms_trigger_logs').insert({
-            trigger_id: trigger.id,
-            device_id: deviceId,
-            customer_id: device.customerId,
-            status: newStatus,
-            template_id: template.id,
-            recipient: customer.phone,
-            result: 'skipped',
-            error: 'Missing variable(s) for template'
-          });
-          continue;
-        }
-        // Send SMS
-        const result = await smsService.sendTemplateSMS(customer.phone, template.id, variables, device.customerId);
-        // Log trigger action
-        await supabase.from('sms_trigger_logs').insert({
-          trigger_id: trigger.id,
-          device_id: deviceId,
-          customer_id: device.customerId,
-          status: newStatus,
-          template_id: template.id,
-          recipient: customer.phone,
-          result: result.success ? 'sent' : 'failed',
-          error: result.error || null
-        });
-      }
-    }
-    // --- End SMS Trigger Logic ---
+        // --- End SMS Trigger Logic ---
 
-    // --- Custom Notification Logic ---
-    if (newStatus === 'repair-complete') {
-      // Award points to technician for completing repair
-      if (device.assignedTo && currentUser?.role === 'technician') {
-        try {
-          // Update technician points in auth_users table
-          try {
-            const { data: technicianData, error: technicianError } = await supabase
-              .from('auth_users')
-              .select('points')
-              .eq('id', device.assignedTo)
-              .single();
-            
-            if (!technicianError && technicianData) {
-              const currentPoints = technicianData.points || 0;
-              const newPoints = currentPoints + 20;
-              
-              const { error: updateError } = await supabase
-                .from('auth_users')
-                .update({ points: newPoints })
-                .eq('id', device.assignedTo);
-              
-              if (!updateError) {
-                toast.success(`Repair completed! +20 points awarded. Total: ${newPoints} points`);
+        // --- Custom Notification Logic ---
+        if (newStatus === 'repair-complete') {
+          // Award points to technician for completing repair
+          if (device.assignedTo && currentUser?.role === 'technician') {
+            try {
+              // Update technician points in auth_users table
+              try {
+                const { data: technicianData, error: technicianError } = await supabase
+                  .from('auth_users')
+                  .select('points')
+                  .eq('id', device.assignedTo)
+                  .single();
                 
-                // Log points transaction
-                await supabase
-                  .from('points_transactions')
-                  .insert({
-                    user_id: device.assignedTo,
-                    points_change: 20,
-                    transaction_type: 'repair_completion',
-                    reason: `Repair completed for device ${device.brand} ${device.model}`,
-                    created_by: currentUser.id
-                  });
-              } else {
-                console.error('Error updating technician points:', updateError);
-                // Still show success message even if points update fails
+                if (!technicianError && technicianData) {
+                  const currentPoints = technicianData.points || 0;
+                  const newPoints = currentPoints + 20;
+                  
+                  const { error: updateError } = await supabase
+                    .from('auth_users')
+                    .update({ points: newPoints })
+                    .eq('id', device.assignedTo);
+                  
+                  if (!updateError) {
+                    toast.success(`Repair completed! +20 points awarded. Total: ${newPoints} points`);
+                    
+                    // Log points transaction in staff_points table
+                    try {
+                      await supabase
+                        .from('staff_points')
+                        .insert({
+                          user_id: device.assignedTo,
+                          points: 20,
+                          reason: `Repair completed for device ${device.brand} ${device.model}`,
+                          created_by: currentUser.id
+                        });
+                    } catch (pointsError) {
+                      console.warn('Could not log points transaction:', pointsError);
+                      // Don't fail the entire operation if points logging fails
+                    }
+                  } else {
+                    console.error('Error updating technician points:', updateError);
+                    // Still show success message even if points update fails
+                    toast.success('Repair completed successfully!');
+                  }
+                } else {
+                  console.error('Error fetching technician data:', technicianError);
+                  toast.success('Repair completed successfully!');
+                }
+              } catch (error) {
+                console.error('Error awarding points for repair completion:', error);
                 toast.success('Repair completed successfully!');
               }
-            } else {
-              console.error('Error fetching technician data:', technicianError);
-              toast.success('Repair completed successfully!');
+            } catch (error) {
+              console.error('Error awarding points for repair completion:', error);
             }
-          } catch (error) {
-            console.error('Error awarding points for repair completion:', error);
-            toast.success('Repair completed successfully!');
           }
-        } catch (error) {
-          console.error('Error awarding points for repair completion:', error);
+          
+          // Notify customer care (in-app and email)
+          toast.success('Device ready for handover. Customer care notified.');
+          // Example: send email to all customer care staff (stub, implement getAllCustomerCareEmails)
+          if (typeof emailService !== 'undefined' && emailService.sendEmail) {
+            const ccEmails = await getAllCustomerCareEmails();
+            if (ccEmails.length > 0) {
+              await emailService.sendEmail({
+                to: ccEmails.join(','),
+                subject: 'Device Ready for Handover',
+                content: `Device ${device.brand} ${device.model} (SN: ${device.serialNumber}) is ready for customer handover.`,
+              });
+            }
+          }
         }
-      }
-      
-      // Notify customer care (in-app and email)
-      toast.success('Device ready for handover. Customer care notified.');
-      // Example: send email to all customer care staff (stub, implement getAllCustomerCareEmails)
-      if (typeof emailService !== 'undefined' && emailService.sendEmail) {
-        const ccEmails = await getAllCustomerCareEmails();
-        if (ccEmails.length > 0) {
-          await emailService.sendEmail({
-            to: ccEmails.join(','),
-            subject: 'Device Ready for Handover',
-            content: `Device ${device.brand} ${device.model} (SN: ${device.serialNumber}) is ready for customer handover.`,
-          });
+        if (newStatus === 'done') {
+          // Notify customer (SMS/email)
+          const { data: customer, error: customerError } = await supabase
+            .from('customers')
+            .select('name, phone, email')
+            .eq('id', device.customerId)
+            .single();
+          if (!customerError && customer) {
+            if (customer.phone && smsService && smsService.sendDeviceReadySMS) {
+              await smsService.sendDeviceReadySMS(
+                customer.phone,
+                customer.name || 'Customer',
+                device.brand,
+                device.model,
+                device.id,
+                device.customerId
+              );
+            }
+            if (customer.email && typeof emailService !== 'undefined' && emailService.sendEmail) {
+              await emailService.sendEmail({
+                to: customer.email,
+                subject: 'Your Device is Ready for Pickup',
+                content: `Dear ${customer.name},\n\nYour device (${device.brand} ${device.model}, SN: ${device.serialNumber}) is ready for pickup.\n\nThank you.`
+              });
+            }
+          }
         }
-      }
-    }
-    if (newStatus === 'done') {
-      // Notify customer (SMS/email)
-      const { data: customer, error: customerError } = await supabase
-        .from('customers')
-        .select('name, phone, email')
-        .eq('id', device.customerId)
-        .single();
-      if (!customerError && customer) {
-        if (customer.phone && smsService && smsService.sendDeviceReadySMS) {
-          await smsService.sendDeviceReadySMS(
-            customer.phone,
-            customer.name || 'Customer',
-            device.brand,
-            device.model,
-            device.id,
-            device.customerId
-          );
-        }
-        if (customer.email && typeof emailService !== 'undefined' && emailService.sendEmail) {
-          await emailService.sendEmail({
-            to: customer.email,
-            subject: 'Your Device is Ready for Pickup',
-            content: `Dear ${customer.name},\n\nYour device (${device.brand} ${device.model}, SN: ${device.serialNumber}) is ready for pickup.\n\nThank you.`
-          });
-        }
-      }
-    }
-    // --- End Custom Notification Logic ---
+        // --- End Custom Notification Logic ---
 
-    // Log audit trail
-    await auditService.logDeviceStatusChange(
-      deviceId,
-      currentUser.id,
-      currentUser.role,
-      device.status,
-      newStatus,
-      signature
-    );
+        // Log audit trail
+        await auditService.logDeviceStatusChange(
+          deviceId,
+          currentUser.id,
+          currentUser.role,
+          device.status,
+          newStatus,
+          signature
+        );
 
-    // (Stub) Reminder system for overdue handovers would be implemented as a background job or scheduled check.
+        // (Stub) Reminder system for overdue handovers would be implemented as a background job or scheduled check.
 
+        return true;
+      } catch (error) {
+        console.error('Background status update failed:', error);
+        // Revert optimistic update on error
+        setDevices(prev => prev.map(d => d.id === deviceId ? device : d));
+        toast.error('Failed to update status');
+        return false;
+      }
+    };
+
+    // Start background processing (don't await)
+    processBackgroundUpdate().catch(error => {
+      console.error('Background processing error:', error);
+    });
+
+    // Return immediately for fast UI response
     return true;
   };
 
@@ -546,8 +585,94 @@ export const DevicesProvider: React.FC<{ children: React.ReactNode }> = React.me
     return true;
   };
 
-  const getDeviceById = (id: string) => {
-    return devices.find(device => device.id === id);
+  const getDeviceById = async (id: string) => {
+    // First try to get from local state
+    const localDevice = devices.find(device => device.id === id);
+    
+    // If found in local state, return it
+    if (localDevice) {
+      return localDevice;
+    }
+    
+    // If not found in local state, fetch from database
+    try {
+      const { data, error } = await supabase
+        .from('devices')
+        .select(`
+          id,
+          customer_id,
+          brand,
+          model,
+          serial_number,
+          issue_description,
+          status,
+          assigned_to,
+          expected_return_date,
+          created_at,
+          updated_at,
+          estimated_hours,
+          warranty_start,
+          warranty_end,
+          warranty_status,
+          repair_count,
+          last_return_date,
+          remarks:device_remarks(*),
+          transitions:device_transitions(*),
+          ratings:device_ratings(*)
+        `)
+        .eq('id', id)
+        .single();
+        
+      if (error) {
+        console.error('Error fetching device from database:', error);
+        return null;
+      }
+      
+      if (data) {
+        // Transform the data to match Device interface
+        const transformedDevice = {
+          ...data,
+          serialNumber: data.serial_number,
+          issueDescription: data.issue_description,
+          customerId: data.customer_id,
+          assignedTo: data.assigned_to,
+          expectedReturnDate: data.expected_return_date,
+          customerName: Array.isArray(data.customers) && data.customers.length > 0 ? data.customers[0]?.name || '' : '',
+          phoneNumber: Array.isArray(data.customers) && data.customers.length > 0 ? data.customers[0]?.phone || '' : '',
+          remarks: (data.remarks || []).map((remark: any) => ({
+            id: remark.id,
+            content: remark.content,
+            createdBy: remark.created_by,
+            createdAt: remark.created_at
+          })),
+          transitions: (data.transitions || []).map((transition: any) => ({
+            id: transition.id,
+            fromStatus: transition.from_status,
+            toStatus: transition.to_status,
+            performedBy: transition.performed_by,
+            timestamp: transition.created_at,
+            signature: transition.signature || ''
+          })),
+          ratings: (data.ratings || []).map((rating: any) => ({
+            id: rating.id,
+            deviceId: rating.device_id,
+            technicianId: rating.technician_id,
+            score: rating.score || 5, // Default to 5 if score column doesn't exist
+            comment: rating.comment,
+            createdAt: rating.created_at
+          })),
+          createdAt: data.created_at,
+          updatedAt: data.updated_at,
+        };
+        
+        return transformedDevice;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error fetching device from database:', error);
+      return null;
+    }
   };
 
   const getDevicesByStatus = (status: DeviceStatus) => {

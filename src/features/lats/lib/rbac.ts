@@ -35,24 +35,24 @@ const LATS_PERMISSIONS: Permission[] = [
   { resource: 'brands', action: 'delete', roles: ['admin'] },
 
   // Suppliers
-  { resource: 'suppliers', action: 'view', roles: ['admin', 'customer-care'] },
+  { resource: 'suppliers', action: 'view', roles: ['admin'] },
   { resource: 'suppliers', action: 'create', roles: ['admin'] },
   { resource: 'suppliers', action: 'edit', roles: ['admin'] },
   { resource: 'suppliers', action: 'delete', roles: ['admin'] },
 
   // Products
-  { resource: 'products', action: 'view', roles: ['admin', 'customer-care', 'technician'] },
+  { resource: 'products', action: 'view', roles: ['admin', 'technician'] },
   { resource: 'products', action: 'create', roles: ['admin'] },
   { resource: 'products', action: 'edit', roles: ['admin'] },
   { resource: 'products', action: 'delete', roles: ['admin'] },
 
   // Stock Management
-  { resource: 'stock', action: 'view', roles: ['admin', 'customer-care', 'technician'] },
+  { resource: 'stock', action: 'view', roles: ['admin', 'technician'] },
   { resource: 'stock', action: 'adjust', roles: ['admin', 'technician'] },
   { resource: 'stock', action: 'history', roles: ['admin'] },
 
   // Purchase Orders
-  { resource: 'purchase-orders', action: 'view', roles: ['admin', 'customer-care'] },
+  { resource: 'purchase-orders', action: 'view', roles: ['admin'] },
   { resource: 'purchase-orders', action: 'create', roles: ['admin'] },
   { resource: 'purchase-orders', action: 'edit', roles: ['admin'] },
   { resource: 'purchase-orders', action: 'delete', roles: ['admin'] },
@@ -84,8 +84,9 @@ const LATS_PERMISSIONS: Permission[] = [
   { resource: 'sales', action: 'refund', roles: ['admin'] },
 
   // Reports
-  { resource: 'reports', action: 'view', roles: ['admin'] },
-  { resource: 'reports', action: 'export', roles: ['admin'] },
+  { resource: 'reports', action: 'view', roles: ['admin', 'customer-care'] },
+  { resource: 'reports', action: 'export', roles: ['admin', 'customer-care'] },
+  { resource: 'reports', action: 'daily-close', roles: ['admin', 'customer-care'] },
 
   // Analytics
   { resource: 'analytics', action: 'view', roles: ['admin'] },
@@ -105,14 +106,13 @@ const LATS_ROUTE_PERMISSIONS: RoutePermission[] = [
   // Inventory routes
   { path: '/lats/inventory/management', roles: ['admin'] },
   { path: '/lats/inventory/new', roles: ['admin'] },
-  { path: '/lats/inventory/products', roles: ['admin', 'customer-care', 'technician'] },
-  { path: '/lats/inventory/products/:id', roles: ['admin', 'customer-care', 'technician'] },
+  { path: '/lats/inventory/products', roles: ['admin', 'technician'] },
   { path: '/lats/inventory/products/:id/edit', roles: ['admin'] },
-  { path: '/lats/inventory/purchase-orders', roles: ['admin', 'customer-care'] },
+  { path: '/lats/inventory/purchase-orders', roles: ['admin'] },
   { path: '/lats/inventory/purchase-orders/new', roles: ['admin'] },
 
   // Product routes
-  { path: '/lats/add-product', roles: ['admin', 'customer-care'] },
+  { path: '/lats/add-product', roles: ['admin'] },
 
   // Spare parts routes
   { path: '/lats/spare-parts', roles: ['admin', 'technician'] },
@@ -161,6 +161,20 @@ class RBACManager {
     }
 
     return routePermission.roles.includes(userRole);
+  }
+
+  /**
+   * Check if a user role has a specific permission
+   */
+  hasPermission(role: UserRole, resource: string, action: string): boolean {
+    const hierarchy = this.getRoleHierarchy();
+    const accessibleRoles = hierarchy[role] || [];
+    
+    return this.permissions.some(permission => 
+      permission.resource === resource &&
+      permission.action === action &&
+      permission.roles.some(r => accessibleRoles.includes(r))
+    );
   }
 
   /**

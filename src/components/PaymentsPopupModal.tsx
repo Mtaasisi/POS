@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { X, CheckCircle, Loader2, CreditCard, DollarSign, AlertCircle, CheckCircle2, Plus } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { X, Loader2, CreditCard, DollarSign, AlertCircle, CheckCircle2, Plus, Edit3 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { usePaymentMethods } from '../hooks/usePaymentMethods';
+import { usePaymentMethodsContext } from '../context/PaymentMethodsContext';
 import { usePaymentAccounts } from '../hooks/usePaymentAccounts';
 import PaymentMethodIcon from './PaymentMethodIcon';
+import { devicePriceService } from '../lib/devicePriceService';
 import { toast } from 'react-hot-toast';
+import { Currency, DEFAULT_CURRENCY, formatCurrencyWithFlag, SUPPORTED_CURRENCIES } from '../lib/currencyUtils';
 
 interface PaymentsPopupModalProps {
   isOpen: boolean;
@@ -15,6 +18,9 @@ interface PaymentsPopupModalProps {
   description?: string;
   onPaymentComplete: (paymentData: any, totalPaid?: number) => Promise<void>;
   title?: string;
+  deviceId?: string; // For price updates
+  allowPriceEdit?: boolean; // Enable price editing feature
+  paymentType?: 'cash_in' | 'cash_out'; // Dynamic payment type
 }
 
 interface PaymentEntry {
@@ -22,6 +28,7 @@ interface PaymentEntry {
   method: string;
   methodId: string;
   amount: number;
+  currency: string; // Added currency field
   account: string;
   accountId: string;
   reference?: string;
@@ -36,31 +43,44 @@ const PaymentsPopupModal: React.FC<PaymentsPopupModalProps> = ({
   customerName,
   description,
   onPaymentComplete,
-  title = "Payment"
+  deviceId,
+  allowPriceEdit = false,
+  paymentType = 'cash_in'
 }) => {
-  const { user } = useAuth();
-  const { paymentMethods, loading: methodsLoading } = usePaymentMethods();
+  const { currentUser } = useAuth();
+  const { paymentMethods, loading: methodsLoading } = usePaymentMethodsContext();
   const { paymentAccounts, loading: accountsLoading } = usePaymentAccounts();
   
   const [selectedMethod, setSelectedMethod] = useState('');
+  const [selectedCurrency, setSelectedCurrency] = useState<Currency>(DEFAULT_CURRENCY);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isMultipleMode, setIsMultipleMode] = useState(false);
   const [paymentEntries, setPaymentEntries] = useState<PaymentEntry[]>([]);
   const [customAmount, setCustomAmount] = useState('');
+  const [showPriceEdit, setShowPriceEdit] = useState(false);
+  const [newPrice, setNewPrice] = useState('');
+  const [priceEditReason, setPriceEditReason] = useState('');
+  const [isEditingAmount, setIsEditingAmount] = useState(false);
 
   // Reset form when modal opens
   useEffect(() => {
     if (isOpen) {
       setSelectedMethod('');
+      setSelectedCurrency(DEFAULT_CURRENCY);
       setIsProcessing(false);
       setIsMultipleMode(false);
       setPaymentEntries([]);
       setCustomAmount('');
+      setIsEditingAmount(false);
+      setShowPriceEdit(false);
+      setNewPrice('');
+      setPriceEditReason('');
     }
   }, [isOpen]);
 
   // Calculate totals
   const totalPaid = paymentEntries.reduce((sum, entry) => sum + entry.amount, 0);
+  const customerPaymentAmount = customAmount ? Number(customAmount) : totalPaid;
   const remainingAmount = amount - totalPaid;
 
   // Auto-select the first available account for the selected payment method
@@ -97,6 +117,7 @@ const PaymentsPopupModal: React.FC<PaymentsPopupModalProps> = ({
       method: method.name,
       methodId: method.id,
       amount: amount,
+      currency: selectedCurrency.code,
       account: account.name,
       accountId: account.id,
       reference: '',
@@ -142,6 +163,7 @@ const PaymentsPopupModal: React.FC<PaymentsPopupModalProps> = ({
         // Process multiple payments
         const paymentData = paymentEntries.map(entry => ({
           amount: entry.amount,
+          currency: entry.currency,
           paymentMethod: entry.method,
           paymentMethodId: entry.methodId,
           paymentAccountId: entry.accountId,
@@ -151,6 +173,7 @@ const PaymentsPopupModal: React.FC<PaymentsPopupModalProps> = ({
           timestamp: new Date().toISOString()
         }));
         
+        console.log('🔍 Multiple payments - totalPaid:', totalPaid, 'paymentEntries:', paymentEntries.map(p => p.amount));
         await onPaymentComplete(paymentData, totalPaid);
       } else {
         // Process single payment
@@ -164,6 +187,7 @@ const PaymentsPopupModal: React.FC<PaymentsPopupModalProps> = ({
 
         const paymentData = [{
           amount: amount,
+          currency: selectedCurrency.code,
           paymentMethod: method.name,
           paymentMethodId: method.id,
           paymentAccountId: account.id,
@@ -173,7 +197,10 @@ const PaymentsPopupModal: React.FC<PaymentsPopupModalProps> = ({
           timestamp: new Date().toISOString()
         }];
 
-        await onPaymentComplete(paymentData, totalPaid);
+        // For single payment, totalPaid should equal the amount
+        const singlePaymentTotalPaid = amount;
+        console.log('🔍 Single payment - totalPaid:', singlePaymentTotalPaid, 'amount:', amount);
+        await onPaymentComplete(paymentData, singlePaymentTotalPaid);
       }
       
       onClose();
@@ -187,27 +214,40 @@ const PaymentsPopupModal: React.FC<PaymentsPopupModalProps> = ({
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+  return createPortal(
+    <div className="fixed inset-0 flex items-center justify-center p-4" style={{ zIndex: 99999 }}>
       <div 
         className="absolute inset-0 bg-black/30 backdrop-blur-sm"
         onClick={onClose}
       />
       
       <div 
-        className="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden"
+        className="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-indigo-50">
+        <div className={`flex items-center justify-between p-6 border-b border-gray-100 ${
+          paymentType === 'cash_out' 
+            ? 'bg-gradient-to-r from-red-50 to-orange-50' 
+            : 'bg-gradient-to-r from-blue-50 to-indigo-50'
+        }`}>
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center">
+            <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+              paymentType === 'cash_out'
+                ? 'bg-gradient-to-br from-red-500 to-orange-600'
+                : 'bg-gradient-to-br from-blue-500 to-indigo-600'
+            }`}>
               <CreditCard className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-gray-900">Complete Your Payment</h2>
+              <h2 className="text-xl font-bold text-gray-900">
+                {paymentType === 'cash_out' ? 'Make Payment' : 'Complete Your Payment'}
+              </h2>
               <p className="text-sm text-gray-600">
-                {customerName ? `Thank you, ${customerName}!` : 'Secure payment processing'}
+                {paymentType === 'cash_out' 
+                  ? (customerName ? `Payment to ${customerName}` : 'Process outgoing payment')
+                  : (customerName ? `Thank you, ${customerName}!` : 'Secure payment processing')
+                }
               </p>
             </div>
           </div>
@@ -219,59 +259,231 @@ const PaymentsPopupModal: React.FC<PaymentsPopupModalProps> = ({
           </button>
         </div>
 
-        {/* Content */}
-        <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
+        {/* Content - Scrollable */}
+        <div className="flex-1 p-6 overflow-y-auto">
           {/* Payment Summary */}
-          <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
-            <div className="flex items-center gap-2 mb-3">
-              <DollarSign className="w-5 h-5 text-blue-600" />
-              <h3 className="text-sm font-semibold text-blue-800">Payment Summary</h3>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <span className="text-xs text-blue-600 uppercase tracking-wide">Total Amount</span>
-                <p className="text-lg font-bold text-blue-900">
-                  TZS {amount.toLocaleString()}
-                </p>
+          <div className={`mb-6 p-6 rounded-xl border ${
+            paymentType === 'cash_out'
+              ? 'bg-gradient-to-br from-red-50 to-orange-50 border-red-200'
+              : 'bg-gradient-to-br from-green-50 to-emerald-50 border-green-200'
+          }`}>
+            <div className="text-center">
+              <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${
+                paymentType === 'cash_out'
+                  ? 'bg-gradient-to-br from-red-500 to-orange-600'
+                  : 'bg-gradient-to-br from-green-500 to-emerald-600'
+              }`}>
+                <DollarSign className="w-8 h-8 text-white" />
               </div>
-              <div>
-                <span className="text-xs text-blue-600 uppercase tracking-wide">Remaining</span>
-                <p className="text-lg font-bold text-blue-900">
-                  TZS {remainingAmount.toLocaleString()}
-                </p>
+              <div className="flex items-center justify-center gap-3 mb-2">
+                <h3 className="text-lg font-bold text-gray-900">
+                  {paymentType === 'cash_out' ? 'Amount to Pay' : 'Total Amount Due'}
+                </h3>
+                <button
+                  onClick={() => {
+                    console.log('Edit button clicked, setting isEditingAmount to true');
+                    setIsEditingAmount(true);
+                  }}
+                  className="p-1 hover:bg-green-100 rounded-full transition-colors"
+                  title="Edit amount"
+                >
+                  <Edit3 className="w-4 h-4 text-green-600" />
+                </button>
               </div>
+              {isEditingAmount ? (
+                <div className="space-y-4">
+                  <div className="max-w-sm mx-auto">
+                    <div className="flex items-center bg-white border border-gray-300 rounded-lg focus-within:border-orange-500 transition-colors h-16">
+                      {/* Currency Selector */}
+                      <div className="flex items-center gap-2 px-4 py-4 border-r border-gray-200 h-full">
+                        <span className="text-lg">{selectedCurrency.flag}</span>
+                        <select
+                          value={selectedCurrency.code}
+                          onChange={(e) => {
+                            const newCurrency = SUPPORTED_CURRENCIES.find(c => c.code === e.target.value);
+                            if (newCurrency) {
+                              setSelectedCurrency(newCurrency);
+                            }
+                          }}
+                          className="bg-transparent border-none text-gray-700 text-base focus:outline-none focus:ring-0 cursor-pointer"
+                        >
+                          {SUPPORTED_CURRENCIES.map(currencyOption => (
+                            <option key={currencyOption.code} value={currencyOption.code}>
+                              {currencyOption.flag} {currencyOption.code}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      
+                      {/* Amount Input */}
+                      <div className="flex-1 px-4 py-4 h-full">
+                        <input
+                          type="text"
+                          value={customAmount ? Number(customAmount).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : ''}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/,/g, '');
+                            if (value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
+                              setCustomAmount(value);
+                            }
+                          }}
+                          className="w-full border-0 focus:outline-none focus:ring-0 text-3xl font-bold text-gray-900 placeholder-gray-400 bg-transparent h-full"
+                          placeholder="0.00"
+                          autoFocus
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex gap-2 justify-center">
+                    <button
+                      onClick={() => setIsEditingAmount(false)}
+                      className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition-colors"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => {
+                        setCustomAmount('');
+                        setIsEditingAmount(false);
+                      }}
+                      className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-3xl font-bold text-green-600 mb-2">
+                    {formatCurrencyWithFlag(customAmount ? Number(customAmount) : amount, selectedCurrency)}
+                  </p>
+                  {paymentType === 'cash_out' && (
+                    <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                      <div className="flex items-center gap-2 text-orange-700">
+                        <AlertCircle className="w-4 h-4" />
+                        <span className="text-sm font-medium">Account Balance Will Be Deducted</span>
+                      </div>
+                      <p className="text-xs text-orange-600 mt-1">
+                        The payment amount will be deducted from your selected payment account
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+              {isMultipleMode && (
+                <div className="mt-4 p-4 bg-gradient-to-br from-blue-50 to-indigo-100 rounded-xl border border-blue-200">
+                  <h4 className="text-lg font-semibold text-blue-900 mb-4 flex items-center gap-2">
+                    <CreditCard className="w-5 h-5" />
+                    Payment Breakdown
+                  </h4>
+                  <div className="space-y-4">
+                    {paymentEntries.length > 0 && (
+                      <div className="space-y-3">
+                        {paymentEntries.map((entry, index) => {
+                          const currency = SUPPORTED_CURRENCIES.find(c => c.code === entry.currency) || DEFAULT_CURRENCY;
+                          return (
+                            <div key={index} className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200 shadow-sm">
+                              <div className="flex justify-between items-start">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                                      <CreditCard className="w-4 h-4 text-blue-600" />
+                                    </div>
+                                    <p className="font-semibold text-gray-900 text-lg">
+                                      {entry.method ? 
+                                        entry.method.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 
+                                        'Unknown Method'
+                                      }
+                                    </p>
+                                  </div>
+                                  <div className="space-y-1">
+                                    {entry.reference && (
+                                      <p className="text-sm text-gray-600">
+                                        <span className="font-medium">Reference:</span> {entry.reference}
+                                      </p>
+                                    )}
+                                    {entry.notes && (
+                                      <p className="text-sm text-gray-600">
+                                        <span className="font-medium">Note:</span> {entry.notes}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-xl font-bold text-green-600 mb-2">
+                                    {formatCurrencyWithFlag(entry.amount, currency)}
+                                  </p>
+                                  <span className="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                                    READY
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    
+                    {/* Payment Summary */}
+                    <div className="mt-4 p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200">
+                      <h5 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                        <DollarSign className="w-4 h-4 text-green-600" />
+                        Payment Summary
+                      </h5>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="text-center">
+                          <div className="text-sm text-gray-600">Total Payments</div>
+                          <div className="text-lg font-semibold text-blue-900">
+                            {paymentEntries.length}
+                          </div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-sm text-gray-600">Paid Amount</div>
+                          <div className="text-lg font-semibold text-green-600">
+                            {formatCurrencyWithFlag(totalPaid, selectedCurrency)}
+                          </div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-sm text-gray-600">Remaining</div>
+                          <div className="text-lg font-semibold text-orange-600">
+                            {formatCurrencyWithFlag(remainingAmount, selectedCurrency)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
+
           {/* Payment Mode Toggle */}
           <div className="mb-6">
-            <div className="text-center mb-4">
-              <h4 className="text-lg font-semibold text-gray-900 mb-2">Choose Payment Method</h4>
-              <p className="text-sm text-gray-600">Select how you'd like to pay</p>
-            </div>
             <div className="flex items-center justify-center gap-4">
               <button
                 onClick={() => setIsMultipleMode(false)}
                 className={`px-6 py-3 rounded-xl font-medium text-sm transition-all duration-200 ${
                   !isMultipleMode 
-                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' 
+                    ? (paymentType === 'cash_out' ? 'bg-red-600 text-white shadow-lg shadow-red-500/30' : 'bg-blue-600 text-white shadow-lg shadow-blue-500/30')
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
-                💳 Single Payment
+                💳 Single {paymentType === 'cash_out' ? 'Payment' : 'Payment'}
               </button>
               <button
                 onClick={() => setIsMultipleMode(true)}
                 className={`px-6 py-3 rounded-xl font-medium text-sm transition-all duration-200 ${
                   isMultipleMode 
-                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' 
+                    ? (paymentType === 'cash_out' ? 'bg-red-600 text-white shadow-lg shadow-red-500/30' : 'bg-blue-600 text-white shadow-lg shadow-blue-500/30')
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
-                💰 Split Payment
+                💰 Split {paymentType === 'cash_out' ? 'Payment' : 'Payment'}
               </button>
             </div>
           </div>
+
 
           {/* Payment Methods */}
           {methodsLoading || accountsLoading ? (
@@ -286,38 +498,48 @@ const PaymentsPopupModal: React.FC<PaymentsPopupModalProps> = ({
                 <div className="space-y-4">
                   <div className="text-center mb-4">
                     <h5 className="text-md font-semibold text-gray-900 mb-2">How would you like to pay?</h5>
-                    <p className="text-sm text-gray-600">Select your preferred payment method</p>
                   </div>
-                  <div className="grid grid-cols-1 gap-3">
+                  <div className="grid grid-cols-2 gap-3">
                     {paymentMethods.map((method) => (
                       <button
                         key={method.id}
                         onClick={() => setSelectedMethod(method.id)}
-                        className={`p-4 rounded-xl border-2 transition-all duration-200 text-left ${
+                        className={`p-4 rounded-xl border-2 transition-all duration-200 ${
                           selectedMethod === method.id
                             ? 'border-blue-500 bg-blue-50 shadow-lg shadow-blue-500/20'
                             : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50/50'
                         }`}
                       >
                         <div className="flex items-center gap-4">
-                          <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
-                            selectedMethod === method.id ? 'bg-blue-100' : 'bg-gray-100'
-                          }`}>
-                            <PaymentMethodIcon 
-                              type={method.type} 
-                              name={method.name} 
-                              className="w-6 h-6" 
-                            />
-                          </div>
+                          <PaymentMethodIcon 
+                            type={method.type} 
+                            name={method.name} 
+                            className="w-16 h-16" 
+                          />
                           <div className="flex-1">
                             <p className="font-semibold text-gray-900">{method.name}</p>
-                            <p className="text-sm text-gray-600">
-                              Accept payments via {method.name}
-                            </p>
+                            {paymentType === 'cash_out' && (
+                              <div className="mt-1">
+                                {(() => {
+                                  const account = paymentAccounts.find(acc => acc.payment_method_id === method.id);
+                                  if (account) {
+                                    return (
+                                      <div className="text-xs text-gray-600">
+                                        <span className="font-medium">Balance:</span> {account.balance.toLocaleString()} {account.currency || 'TZS'}
+                                        {account.balance < amount && (
+                                          <span className="text-red-600 ml-1">⚠️ Insufficient</span>
+                                        )}
+                                      </div>
+                                    );
+                                  }
+                                  return null;
+                                })()}
+                              </div>
+                            )}
                           </div>
                           {selectedMethod === method.id && (
-                            <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center">
-                              <CheckCircle2 className="w-4 h-4 text-white" />
+                            <div className="w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center">
+                              <CheckCircle2 className="w-3 h-3 text-white" />
                             </div>
                           )}
                         </div>
@@ -385,23 +607,28 @@ const PaymentsPopupModal: React.FC<PaymentsPopupModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Payment Entries */}
-                  {paymentEntries.length > 0 && (
+                  {/* Payment Entries - Hidden */}
+                  {false && paymentEntries.length > 0 && (
                     <div className="space-y-3">
                       <h4 className="text-sm font-semibold text-gray-800 mb-3">Your Payment Methods</h4>
                       {paymentEntries.map((entry, index) => (
                         <div key={entry.id} className="p-4 bg-white border border-gray-200 rounded-xl shadow-sm">
                           <div className="flex items-center justify-between mb-4">
                             <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
                                 <PaymentMethodIcon 
                                   type={paymentMethods.find(m => m.id === entry.methodId)?.type || 'other'} 
                                   name={entry.method} 
-                                  className="w-5 h-5" 
+                                  className="w-10 h-10"
                                 />
                               </div>
                               <div>
-                                <p className="font-semibold text-gray-900">{entry.method}</p>
+                                <div className="flex items-center gap-2">
+                                  <p className="font-semibold text-gray-900">{entry.method}</p>
+                                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                                    {entry.currency}
+                                  </span>
+                                </div>
                                 <p className="text-sm text-gray-600">{entry.account}</p>
                               </div>
                             </div>
@@ -416,12 +643,25 @@ const PaymentsPopupModal: React.FC<PaymentsPopupModalProps> = ({
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
                               <label className="block text-sm font-medium text-gray-700 mb-2">Amount</label>
-                              <input
-                                type="number"
-                                value={entry.amount}
-                                onChange={(e) => updatePaymentEntry(index, 'amount', parseFloat(e.target.value) || 0)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                              />
+                              <div className="flex gap-2">
+                                <input
+                                  type="number"
+                                  value={entry.amount}
+                                  onChange={(e) => updatePaymentEntry(index, 'amount', parseFloat(e.target.value) || 0)}
+                                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                />
+                                <select
+                                  value={entry.currency}
+                                  onChange={(e) => updatePaymentEntry(index, 'currency', e.target.value)}
+                                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                                >
+                                  {SUPPORTED_CURRENCIES.map(currency => (
+                                    <option key={currency.code} value={currency.code}>
+                                      {currency.flag} {currency.code}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
                             </div>
                             <div>
                               <label className="block text-sm font-medium text-gray-700 mb-2">Reference</label>
@@ -453,44 +693,146 @@ const PaymentsPopupModal: React.FC<PaymentsPopupModalProps> = ({
             </div>
           )}
 
-          {/* Payment Summary */}
-          {paymentEntries.length > 0 && (
-            <div className="mt-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
-              <div className="flex items-center gap-2 mb-3">
-                <CheckCircle2 className="w-5 h-5 text-blue-600" />
-                <h4 className="text-sm font-semibold text-blue-800">Payment Summary</h4>
+
+          {/* Price Edit Section - Show when customer pays more than original amount */}
+          {allowPriceEdit && deviceId && customerPaymentAmount > amount && (
+            <div className="mt-6 p-5 bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl border border-amber-200">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center">
+                  <Edit3 className="w-5 h-5 text-white" />
+                </div>
+                <h4 className="text-lg font-semibold text-amber-800">Customer Paid More</h4>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <span className="text-xs text-blue-600 uppercase tracking-wide">Total Paid</span>
-                  <p className="text-lg font-bold text-blue-900">
-                    TZS {totalPaid.toLocaleString()}
-                  </p>
+              
+              <div className="space-y-4">
+                <div className="p-3 bg-white/50 rounded-lg">
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-gray-600">Original Price:</span>
+                      <p className="font-semibold text-gray-700">{formatCurrencyWithFlag(amount, selectedCurrency)}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Amount Paid:</span>
+                      <p className="font-semibold text-green-600">{formatCurrencyWithFlag(customerPaymentAmount, selectedCurrency)}</p>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-xs text-blue-600 uppercase tracking-wide">Remaining</span>
-                  <p className="text-lg font-bold text-blue-900">
-                    TZS {remainingAmount.toLocaleString()}
-                  </p>
-                </div>
+
+                {!showPriceEdit ? (
+                  <div className="space-y-3">
+                    <p className="text-sm text-amber-700">
+                      Customer paid <span className="font-semibold">{formatCurrencyWithFlag(customerPaymentAmount - amount, selectedCurrency)}</span> more than the original price.
+                    </p>
+                    <button
+                      onClick={() => {
+                        setNewPrice(customerPaymentAmount.toString());
+                        setShowPriceEdit(true);
+                      }}
+                      className="w-full px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-medium transition-colors"
+                    >
+                      Update Price to Match Payment
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-amber-800 mb-2">
+                        New Repair Price
+                      </label>
+                      <input
+                        type="number"
+                        value={newPrice}
+                        onChange={(e) => setNewPrice(e.target.value)}
+                        className="w-full px-3 py-2 border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                        placeholder="Enter new price"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-amber-800 mb-2">
+                        Reason for Price Change
+                      </label>
+                      <textarea
+                        value={priceEditReason}
+                        onChange={(e) => setPriceEditReason(e.target.value)}
+                        className="w-full px-3 py-2 border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                        rows={2}
+                        placeholder="e.g., Customer paid more, additional services provided..."
+                      />
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button
+                        onClick={async () => {
+                          if (!deviceId || !currentUser?.id) return;
+                          
+                          try {
+                            await devicePriceService.updateDeviceRepairPrice({
+                              deviceId,
+                              repairPrice: parseFloat(newPrice),
+                              updatedBy: currentUser?.id,
+                              reason: priceEditReason || 'Price adjusted to match customer payment'
+                            });
+                            
+                            toast.success('Device price updated successfully');
+                            setShowPriceEdit(false);
+                          } catch (error) {
+                            console.error('Error updating device price:', error);
+                            toast.error('Failed to update device price');
+                          }
+                        }}
+                        className="flex-1 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium transition-colors"
+                      >
+                        Update Price
+                      </button>
+                      <button
+                        onClick={() => setShowPriceEdit(false)}
+                        className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
+
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-between p-6 border-t border-gray-100 bg-gradient-to-r from-gray-50 to-blue-50">
+        {/* Fixed Footer */}
+        <div className={`flex items-center justify-between p-6 border-t border-gray-100 flex-shrink-0 ${
+          paymentType === 'cash_out'
+            ? 'bg-gradient-to-r from-gray-50 to-red-50'
+            : 'bg-gradient-to-r from-gray-50 to-blue-50'
+        }`}>
           <div className="text-sm text-gray-600">
             {remainingAmount > 0 ? (
               <span className="text-orange-600 flex items-center gap-1">
                 <AlertCircle className="w-4 h-4" />
-                TZS {remainingAmount.toLocaleString()} remaining
+                {paymentType === 'cash_out' ? 'Amount to pay' : 'Amount remaining'}: {remainingAmount.toLocaleString()} TZS
               </span>
             ) : (
               <span className="text-green-600 flex items-center gap-1">
                 <CheckCircle2 className="w-4 h-4" />
-                Payment complete
+                {paymentType === 'cash_out' ? 'Payment complete' : 'Payment complete'}
               </span>
+            )}
+            {paymentType === 'cash_out' && selectedMethod && (
+              <div className="mt-1 text-xs text-gray-500">
+                {(() => {
+                  const account = paymentAccounts.find(acc => acc.payment_method_id === selectedMethod);
+                  if (account) {
+                    const newBalance = account.balance - (isMultipleMode ? totalPaid : amount);
+                    return (
+                      <span>
+                        Account balance: {account.balance.toLocaleString()} → {newBalance.toLocaleString()} {account.currency || 'TZS'}
+                      </span>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
             )}
           </div>
           
@@ -504,7 +846,11 @@ const PaymentsPopupModal: React.FC<PaymentsPopupModalProps> = ({
             <button
               onClick={handlePayment}
               disabled={isProcessing || (isMultipleMode ? paymentEntries.length === 0 : !selectedMethod)}
-              className="px-8 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed text-white rounded-lg transition-all duration-200 text-sm font-semibold shadow-lg shadow-green-500/25 flex items-center gap-2"
+              className={`px-8 py-3 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed text-white rounded-lg transition-all duration-200 text-sm font-semibold flex items-center gap-2 ${
+                paymentType === 'cash_out'
+                  ? 'bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 shadow-lg shadow-red-500/25'
+                  : 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 shadow-lg shadow-green-500/25'
+              }`}
             >
               {isProcessing ? (
                 <>
@@ -514,14 +860,15 @@ const PaymentsPopupModal: React.FC<PaymentsPopupModalProps> = ({
               ) : (
                 <>
                   <CreditCard className="w-4 h-4" />
-                  Complete Payment
+                  {paymentType === 'cash_out' ? 'Make Payment' : 'Complete Payment'}
                 </>
               )}
             </button>
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

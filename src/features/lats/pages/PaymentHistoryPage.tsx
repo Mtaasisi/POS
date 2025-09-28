@@ -160,6 +160,7 @@ const PaymentHistoryPage: React.FC = () => {
                   <th className="text-left py-3 px-4 font-medium text-gray-700">Order ID</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-700">Provider</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-700">Amount</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-700">Currency</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-700">Status</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-700">Customer</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-700">Date</th>
@@ -186,6 +187,11 @@ const PaymentHistoryPage: React.FC = () => {
                       <div className="font-semibold text-gray-900">
                         {format.money(transaction.amount)}
                       </div>
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                        {transaction.currency || 'TZS'}
+                      </span>
                     </td>
                     <td className="py-3 px-4">
                       <GlassBadge variant={getStatusBadgeVariant(transaction.status)} size="sm">

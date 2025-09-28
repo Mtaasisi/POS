@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { X, Building, Grid3X3, Plus, Minus, ChevronRight, ChevronDown } from 'lucide-react';
+import { X, Building, LayoutGrid, Plus, Minus, ChevronRight, ChevronDown } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { storeLocationApi } from '../../../../features/settings/utils/storeLocationApi';
 import { storageRoomApi, StorageRoom as StorageRoomType } from '../../../../features/settings/utils/storageRoomApi';
 import { storeShelfApi } from '../../../../features/settings/utils/storeShelfApi';
 import GlassButton from '../../../../features/shared/components/ui/GlassButton';
+import { useBodyScrollLock } from '../../../../hooks/useBodyScrollLock';
 
 
 type StorageRoom = StorageRoomType;
@@ -691,6 +692,9 @@ const StorageRoomModal: React.FC<StorageRoomModalProps> = ({
     }
   };
 
+  // Prevent body scroll when modal is open
+  useBodyScrollLock(isOpen);
+
   // do not render if modal not open
   if (!isOpen) return null;
 
@@ -799,7 +803,7 @@ const StorageRoomModal: React.FC<StorageRoomModalProps> = ({
             {!storageRoom && (
               <div className="border-t pt-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Grid3X3 className="w-5 h-5 text-blue-500" />
+                  <LayoutGrid className="w-5 h-5 text-blue-500" />
                   <h4 className="text-sm font-semibold text-gray-800">
                     Shelf Layout Configuration
                   </h4>

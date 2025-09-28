@@ -81,29 +81,19 @@ export class RobustImageService {
       let imageUrl: string;
       let thumbnailUrl: string;
 
-      // Handle temporary products differently
-      if (productId.startsWith('temp-product-') || productId.startsWith('test-product-') || productId.startsWith('temp-sparepart-')) {
-        console.log('📝 Creating temporary image for product:', productId);
-        // For temporary products, use base64 encoding
+      // Always try to upload to storage first (even for temporary products)
+      try {
+        const uploadResult = await this.uploadToStorage(file, fileName);
+        imageUrl = uploadResult.url;
+        thumbnailUrl = uploadResult.thumbnailUrl;
+        console.log('✅ Uploaded to Supabase Storage:', imageUrl);
+      } catch (storageError) {
+        console.warn('Storage failed, using base64 fallback:', storageError);
+        // Fallback to base64 only if storage completely fails
         const compressedImage = await this.compressImage(file);
         imageUrl = compressedImage;
         thumbnailUrl = await this.createThumbnail(file, 200);
-        console.log('✅ Created temporary image');
-      } else {
-        // For real products, try storage first
-        try {
-          const uploadResult = await this.uploadToStorage(file, fileName);
-          imageUrl = uploadResult.url;
-          thumbnailUrl = uploadResult.thumbnailUrl;
-          console.log('✅ Uploaded to Supabase Storage:', imageUrl);
-        } catch (storageError) {
-          console.warn('Storage failed, using base64 fallback:', storageError);
-          // Fallback to base64 only if storage completely fails
-          const compressedImage = await this.compressImage(file);
-          imageUrl = compressedImage;
-          thumbnailUrl = await this.createThumbnail(file, 200);
-          console.log('⚠️ Using base64 fallback due to storage error');
-        }
+        console.log('⚠️ Using base64 fallback due to storage error');
       }
 
       // 6. Save to database (or create temporary record)
@@ -160,12 +150,47 @@ export class RobustImageService {
         return cached.data;
       }
 
-      // Query database
-      const { data, error } = await supabase
-        .from('product_images')
-        .select('*')
-        .eq('product_id', productId)
-        .order('is_primary', { ascending: false });
+      // Try to get images from product_images table first, fallback to lats_products.images
+      let data = null;
+      let error = null;
+      
+      try {
+        const result = await supabase
+          .from('product_images')
+          .select('*')
+          .eq('product_id', productId)
+          .order('is_primary', { ascending: false });
+        
+        data = result.data;
+        error = result.error;
+      } catch (e) {
+        // If product_images table doesn't exist, try to get images from lats_products
+        console.warn('product_images table not accessible, trying lats_products.images column');
+        const productResult = await supabase
+          .from('lats_products')
+          .select('images')
+          .eq('id', productId)
+          .single();
+        
+        if (productResult.data?.images && Array.isArray(productResult.data.images)) {
+          // Convert string array to ProductImage format
+          data = productResult.data.images.map((url: string, index: number) => ({
+            id: `fallback-${index}`,
+            image_url: url,
+            thumbnail_url: url,
+            file_name: `image-${index + 1}`,
+            file_size: 0,
+            is_primary: index === 0,
+            created_at: new Date().toISOString(),
+            mime_type: 'image/jpeg',
+            width: null,
+            height: null
+          }));
+          error = null;
+        } else {
+          error = productResult.error;
+        }
+      }
 
       if (error) {
         // Log the error but don't throw to prevent app crashes

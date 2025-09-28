@@ -1,6 +1,7 @@
 @import './styles/touch-friendly.css';
 @import './styles/general-settings.css';
 @import './styles/mobile.css';
+@import './styles/mobile-responsive.css';
 
 @tailwind base;
 @tailwind components;
@@ -128,6 +129,32 @@
 @media (max-width: 768px) {
   .modal-scrollable {
     -webkit-overflow-scrolling: touch;
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+  
+  /* Mobile-specific body adjustments */
+  body {
+    width: 100vw;
+    overflow-x: hidden;
+    position: relative;
+  }
+  
+  /* Mobile viewport fixes */
+  * {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+  }
+  
+  input, textarea, select {
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
   }
 }
 
@@ -404,6 +431,177 @@ body {
   .mobile-wallpaper {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   }
+}
+
+/* ===== COMPREHENSIVE MOBILE RESPONSIVENESS FIXES ===== */
+
+/* Mobile-first responsive design */
+@media (max-width: 768px) {
+  /* Container adjustments */
+  .container {
+    padding-left: 16px;
+    padding-right: 16px;
+    max-width: 100%;
+  }
+  
+  /* Grid system adjustments */
+  .grid {
+    gap: 12px;
+  }
+  
+  .grid-cols-1 {
+    grid-template-columns: 1fr;
+  }
+  
+  .grid-cols-2 {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  
+  .grid-cols-3 {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  
+  .grid-cols-4 {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  
+  /* Flex adjustments */
+  .flex-wrap {
+    flex-wrap: wrap;
+  }
+  
+  /* Text sizing */
+  .text-xs { font-size: 0.75rem; }
+  .text-sm { font-size: 0.875rem; }
+  .text-base { font-size: 1rem; }
+  .text-lg { font-size: 1.125rem; }
+  .text-xl { font-size: 1.25rem; }
+  .text-2xl { font-size: 1.5rem; }
+  .text-3xl { font-size: 1.875rem; }
+  
+  /* Padding adjustments */
+  .p-1 { padding: 4px; }
+  .p-2 { padding: 8px; }
+  .p-3 { padding: 12px; }
+  .p-4 { padding: 16px; }
+  .p-6 { padding: 24px; }
+  .p-8 { padding: 32px; }
+  
+  /* Margin adjustments */
+  .m-1 { margin: 4px; }
+  .m-2 { margin: 8px; }
+  .m-3 { margin: 12px; }
+  .m-4 { margin: 16px; }
+  .m-6 { margin: 24px; }
+  
+  /* Button adjustments */
+  .btn, button {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 12px 16px;
+    font-size: 16px;
+    border-radius: 8px;
+  }
+  
+  /* Input adjustments */
+  input, textarea, select {
+    min-height: 48px;
+    padding: 12px 16px;
+    font-size: 16px;
+    border-radius: 8px;
+  }
+  
+  /* Card adjustments */
+  .card {
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+  
+  /* Navigation adjustments */
+  .nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    background: white;
+    border-top: 1px solid #e5e7eb;
+    padding: 8px 0;
+  }
+  
+  /* Modal adjustments */
+  .modal {
+    width: 95vw;
+    max-width: 95vw;
+    margin: 20px auto;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+  
+  /* Sidebar adjustments */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: -100%;
+    width: 80vw;
+    height: 100vh;
+    z-index: 1000;
+    transition: left 0.3s ease;
+  }
+  
+  .sidebar.open {
+    left: 0;
+  }
+}
+
+/* Extra small screens */
+@media (max-width: 480px) {
+  .grid-cols-2 {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  
+  .grid-cols-3,
+  .grid-cols-4 {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  
+  .container {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  
+  .p-4 { padding: 12px; }
+  .p-6 { padding: 16px; }
+  .p-8 { padding: 20px; }
+  
+  .text-lg { font-size: 1rem; }
+  .text-xl { font-size: 1.125rem; }
+  .text-2xl { font-size: 1.25rem; }
+  .text-3xl { font-size: 1.5rem; }
+}
+
+/* Landscape mobile adjustments */
+@media (max-width: 768px) and (orientation: landscape) {
+  .modal {
+    max-height: 95vh;
+  }
+  
+  .nav {
+    padding: 4px 0;
+  }
+}
+
+/* High DPI displays */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  .text-xs { font-size: 0.75rem; }
+  .text-sm { font-size: 0.875rem; }
+  .text-base { font-size: 1rem; }
 }
 
 /* TopBar Styles */

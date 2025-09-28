@@ -18,13 +18,13 @@ export interface SanitizedImageResult {
 
 export class ImageUrlSanitizer {
   // Maximum safe URL length to prevent 431 errors
-  private static readonly MAX_SAFE_URL_LENGTH = 1500;
+  private static readonly MAX_SAFE_URL_LENGTH = 2000;
   
   // Maximum safe Base64 data URL length
   private static readonly MAX_SAFE_DATA_URL_LENGTH = 8000;
   
   // Maximum safe Base64 data in URL path
-  private static readonly MAX_SAFE_BASE64_IN_PATH = 1000;
+  private static readonly MAX_SAFE_BASE64_IN_PATH = 500;
 
   /**
    * Sanitize an image URL to prevent 431 errors
@@ -62,6 +62,15 @@ export class ImageUrlSanitizer {
         return this.createFallbackResult(originalLength, 'fallback');
       }
       
+      // Additional check for extremely large base64 strings
+      const base64Data = url.split(',')[1];
+      if (base64Data && base64Data.length > 100000) { // ~75KB of base64 data
+        console.warn('🚨 Base64 data too large, using fallback to prevent 431 error:', {
+          base64Length: base64Data.length
+        });
+        return this.createFallbackResult(originalLength, 'fallback');
+      }
+      
       return {
         url,
         isSanitized: false,
@@ -74,6 +83,12 @@ export class ImageUrlSanitizer {
     // Check for other problematic patterns
     if (this.hasProblematicPatterns(url)) {
       console.warn('🚨 Problematic URL pattern detected, using fallback');
+      return this.createFallbackResult(originalLength, 'fallback');
+    }
+    
+    // Check for base64 data in URL path (common cause of 431 errors)
+    if (this.hasBase64InUrlPath(url)) {
+      console.warn('🚨 Base64 data detected in URL path, using fallback to prevent 431 error');
       return this.createFallbackResult(originalLength, 'fallback');
     }
 
@@ -105,6 +120,13 @@ export class ImageUrlSanitizer {
   }
 
   /**
+   * Check if Base64 data is present in the URL path (alias for hasBase64InPath)
+   */
+  private static hasBase64InUrlPath(url: string): boolean {
+    return this.hasBase64InPath(url);
+  }
+
+  /**
    * Check for other problematic URL patterns
    */
   private static hasProblematicPatterns(url: string): boolean {
@@ -126,6 +148,7 @@ export class ImageUrlSanitizer {
 
     return false;
   }
+  
 
   /**
    * Create a fallback result
@@ -147,12 +170,25 @@ export class ImageUrlSanitizer {
    */
   private static generatePlaceholderUrl(): string {
     // Use a simple placeholder service that won't cause URL length issues
-    const placeholderText = 'Image+Too+Large';
-    const size = '300x300';
-    const color = 'f3f4f6';
-    const textColor = '6b7280';
+    // Create a local SVG placeholder instead of relying on external service
+    const placeholderText = 'Product Image';
+    const width = 300;
+    const height = 300;
+    const bgColor = '#f3f4f6';
+    const textColor = '#6b7280';
     
-    return `https://via.placeholder.com/${size}/${color}/${textColor}?text=${placeholderText}`;
+    // Create SVG data URI
+    const svg = `
+      <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+        <rect width="100%" height="100%" fill="${bgColor}"/>
+        <text x="50%" y="50%" font-family="Arial, sans-serif" font-size="14" 
+              fill="${textColor}" text-anchor="middle" dy=".3em">
+          ${placeholderText}
+        </text>
+      </svg>
+    `;
+    
+    return `data:image/svg+xml;base64,${btoa(svg)}`;
   }
 
   /**

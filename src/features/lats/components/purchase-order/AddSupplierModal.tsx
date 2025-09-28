@@ -7,6 +7,7 @@ import { SUPPORTED_CURRENCIES } from '../../lib/purchaseOrderUtils';
 import GlassCard from '../../../shared/components/ui/GlassCard';
 import GlassButton from '../../../shared/components/ui/GlassButton';
 import GlassInput from '../../../shared/components/ui/GlassInput';
+import { useBodyScrollLock } from '../../../../hooks/useBodyScrollLock';
 
 interface AddSupplierModalProps {
   isOpen: boolean;
@@ -107,6 +108,9 @@ const AddSupplierModal: React.FC<AddSupplierModalProps> = ({
       setIsSubmitting(false);
     }
   };
+
+  // Prevent body scroll when modal is open
+  useBodyScrollLock(isOpen);
 
   if (!isOpen) return null;
 

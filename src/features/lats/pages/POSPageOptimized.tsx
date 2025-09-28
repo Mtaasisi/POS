@@ -1,22 +1,22 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCustomers } from '../../../context/CustomersContext';
 import { useAuth } from '../../../context/AuthContext';
 import { rbacManager, type UserRole } from '../lib/rbac';
-import { User, X, Search, Plus, ChevronRight } from 'lucide-react';
-
+// import { useInventoryAlertPreferences } from '../../../../hooks/useInventoryAlertPreferences';
+// import { applyInventoryAlertsMigration } from '../../../../utils/applyInventoryAlertsMigration';
 import LATSBreadcrumb from '../components/ui/LATSBreadcrumb';
-import GlassCard from '../../shared/components/ui/GlassCard';
-import GlassButton from '../../shared/components/ui/GlassButton';
 import POSTopBar from '../components/pos/POSTopBar';
 import ProductSearchSection from '../components/pos/ProductSearchSection';
 import POSCartSection from '../components/pos/POSCartSection';
 import { useDynamicDataStore } from '../lib/data/dynamicDataStore';
 import { useInventoryStore } from '../stores/useInventoryStore';
 import AddExternalProductModal from '../components/pos/AddExternalProductModal';
-import { ProductImage } from '../../../lib/robustImageService';
 import DeliverySection from '../components/pos/DeliverySection';
 import AddCustomerModal from '../../../features/customers/components/forms/AddCustomerModal';
+import CustomerSelectionModal from '../components/pos/CustomerSelectionModal';
+import CustomerEditModal from '../components/pos/CustomerEditModal';
+import CustomerDetailModal from '../../../features/customers/components/CustomerDetailModal';
 import SalesAnalyticsModal from '../components/pos/SalesAnalyticsModal';
 import ZenoPayPaymentModal from '../components/pos/ZenoPayPaymentModal';
 import PaymentTrackingModal from '../components/pos/PaymentTrackingModal';
@@ -24,8 +24,10 @@ import PaymentsPopupModal from '../../../components/PaymentsPopupModal';
 import { supabase } from '../../../lib/supabaseClient';
 import { usePaymentMethodsContext } from '../../../context/PaymentMethodsContext';
 import { latsEventBus } from '../lib/data/eventBus';
+import PostClosureWarningModal from '../components/modals/PostClosureWarningModal';
+import DayOpeningModal from '../components/modals/DayOpeningModal';
+import DailyClosingModal from '../components/modals/DailyClosingModal';
 
-import POSBottomBar from '../components/pos/POSBottomBar';
 
 // Import lazy-loaded modal wrappers
 import { 
@@ -58,19 +60,19 @@ import {
 import { useDynamicDelivery } from '../hooks/useDynamicDelivery';
 
 // Helper function to convert old image format to new format
-const convertToProductImages = (imageUrls: string[]): ProductImage[] => {
-  if (!imageUrls || imageUrls.length === 0) return [];
-  
-  return imageUrls.map((imageUrl, index) => ({
-    id: `temp-${index}`,
-    url: imageUrl,
-    thumbnailUrl: imageUrl,
-    fileName: `product-image-${index + 1}`,
-    fileSize: 0,
-    isPrimary: index === 0,
-    uploadedAt: new Date().toISOString()
-  }));
-};
+// const convertToProductImages = (imageUrls: string[]): ProductImage[] => {
+//   if (!imageUrls || imageUrls.length === 0) return [];
+//   
+//   return imageUrls.map((imageUrl, index) => ({
+//     id: `temp-${index}`,
+//     url: imageUrl,
+//     thumbnailUrl: imageUrl,
+//     fileName: `product-image-${index + 1}`,
+//     fileSize: 0,
+//     isPrimary: index === 0,
+//     uploadedAt: new Date().toISOString()
+//   }));
+// };
 
 
 // Performance optimization constants
@@ -99,14 +101,39 @@ const useDebounce = (value: string, delay: number) => {
 const POSPageOptimized: React.FC = () => {
   const navigate = useNavigate();
   
-  // Get dynamic data from store (for sales and payments)
-  const { sales } = useDynamicDataStore();
+  // Get sales data from inventory store (real database data)
+  const { sales: dbSales } = useInventoryStore();
+  
+  // Calculate today's sales total
+  const todaysSales = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const todaySales = dbSales.filter(sale => sale.created_at?.startsWith(today));
+    const total = todaySales.reduce((sum, sale) => sum + (sale.total_amount || 0), 0);
+
+    return total;
+  }, [dbSales]);
   
   // Get customers from context
   const { customers } = useCustomers();
-  
+
   // Get authenticated user
   const { currentUser } = useAuth();
+  
+  // Inventory alert preferences from database (temporarily disabled)
+  // const {
+  //   preferences: alertPreferences,
+  //   loading: alertPreferencesLoading,
+  //   dismissAlertsForToday,
+  //   permanentlyDisableAlerts,
+  //   areAlertsDismissedForToday,
+  //   logAlertHistory,
+  //   isLowStockAlertsEnabled,
+  //   lowStockThreshold: dbLowStockThreshold,
+  //   showAlertsAsModal,
+  //   showAlertsAsNotification,
+  //   autoHideNotificationSeconds,
+  //   areAlertsPermanentlyDisabled
+  // } = useInventoryAlertPreferences();
 
   // Permission checks for current user
   const userRole = currentUser?.role as UserRole;
@@ -124,7 +151,7 @@ const POSPageOptimized: React.FC = () => {
   const canRefundSales = rbacManager.can(userRole, 'sales', 'refund');
 
   // Get payment methods from global context
-  const { paymentMethods: dbPaymentMethods, loading: paymentMethodsLoading } = usePaymentMethodsContext();
+  // const { paymentMethods: dbPaymentMethods, loading: paymentMethodsLoading } = usePaymentMethodsContext();
 
   // All POS settings hooks
   const { settings: generalSettings } = useGeneralSettings();
@@ -151,6 +178,64 @@ const POSPageOptimized: React.FC = () => {
     loadSales
   } = useInventoryStore();
 
+  // Transform products with category information
+  const products = useMemo(() => {
+    if (dbProducts.length === 0) {
+      return [];
+    }
+    
+    // If no categories loaded yet, return products without category info
+    if (categories.length === 0) {
+      return dbProducts.map(product => ({
+        ...product,
+        categoryName: 'Loading...',
+        category: undefined
+      }));
+    }
+    
+    return dbProducts.map(product => {
+      // Try multiple possible category field names - handle both camelCase and snake_case
+      const categoryId = product.categoryId || (product as any).category_id || (product as any).category?.id;
+      
+      // Find category by ID, with fallback to name matching if ID doesn't work
+      let categoryName = 'Unknown Category';
+      let foundCategory = null;
+      
+      if (categoryId && categories.length > 0) {
+        foundCategory = categories.find(c => c.id === categoryId);
+        if (foundCategory) {
+          categoryName = foundCategory.name;
+        }
+      }
+      
+      // If no category found by ID, try to find by name (for backward compatibility)
+      if (!foundCategory && product.name && categories.length > 0) {
+        // Try to match category by product name patterns
+        const productNameLower = product.name.toLowerCase();
+        foundCategory = categories.find(c => {
+          const categoryNameLower = c.name.toLowerCase();
+          return productNameLower.includes(categoryNameLower) || 
+                 categoryNameLower.includes(productNameLower);
+        });
+        if (foundCategory) {
+          categoryName = foundCategory.name;
+        }
+      }
+      
+      return {
+        ...product,
+        categoryName,
+        // Ensure category object is available for backward compatibility
+        category: product.category || (foundCategory ? {
+          id: foundCategory.id,
+          name: foundCategory.name,
+          description: foundCategory.description,
+          color: foundCategory.color
+        } : undefined)
+      };
+    });
+  }, [dbProducts, categories]);
+
   // Performance optimization: Cache data loading state
   const [dataLoaded, setDataLoaded] = useState(false);
   const [lastLoadTime, setLastLoadTime] = useState(0);
@@ -162,12 +247,13 @@ const POSPageOptimized: React.FC = () => {
 
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
   const debounceTime = searchFilterSettings?.search_debounce_time || SEARCH_DEBOUNCE_MS;
   const debouncedSearchQuery = useDebounce(searchQuery, debounceTime);
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [selectedBrand, setSelectedBrand] = useState<string>('');
   const [priceRange, setPriceRange] = useState({ min: '', max: '' });
-  const [stockFilter, setStockFilter] = useState<'all' | 'in-stock' | 'low-stock' | 'out-of-stock'>('all');
+  const [stockFilter, setStockFilter] = useState<'all' | 'in-stock' | 'low-stock' | 'out-of-stock'>('in-stock');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [sortBy, setSortBy] = useState<'name' | 'price' | 'stock' | 'recent' | 'sales'>('sales');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -176,21 +262,19 @@ const POSPageOptimized: React.FC = () => {
   const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   // Customer state
-  const [customerSearchQuery, setCustomerSearchQuery] = useState('');
+  const [customerName, setCustomerName] = useState('');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<any>(null);
   const [cartItems, setCartItems] = useState<any[]>([]);
   const [showSearchResults, setShowSearchResults] = useState(false);
-  const [showCustomerSearch, setShowCustomerSearch] = useState(false);
-  const [showCustomerSearchModal, setShowCustomerSearchModal] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [currentReceipt, setCurrentReceipt] = useState<any>(null);
   const [cashierName, setCashierName] = useState('');
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
-  // Barcode scanning state
+  // QrCode scanning state
   const [recentScans, setRecentScans] = useState<string[]>([]);
   const [scanHistory, setScanHistory] = useState<Array<{barcode: string, product: any, timestamp: Date}>>([]);
 
@@ -198,6 +282,8 @@ const POSPageOptimized: React.FC = () => {
   const [showAddExternalProductModal, setShowAddExternalProductModal] = useState(false);
   const [showDeliverySection, setShowDeliverySection] = useState(false);
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
+  const [showCustomerSelectionModal, setShowCustomerSelectionModal] = useState(false);
+  const [showCustomerEditModal, setShowCustomerEditModal] = useState(false);
   const [showDraftModal, setShowDraftModal] = useState(false);
   const [showDraftNotification, setShowDraftNotification] = useState(false);
   const [draftNotes, setDraftNotes] = useState('');
@@ -235,11 +321,11 @@ const POSPageOptimized: React.FC = () => {
     totalTransactions: 0
   });
 
-  // Barcode scanner state
-  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
+  // QrCode scanner state
+  const [showQrCodeScanner, setShowQrCodeScanner] = useState(false);
   const [scannerError, setScannerError] = useState<string>('');
   const [isScanning, setIsScanning] = useState(false);
-  const [scannedBarcodes, setScannedBarcodes] = useState<string[]>([]);
+  const [scannedQrCodes, setScannedQrCodes] = useState<string[]>([]);
 
   // Receipt state
   const [receiptTemplate, setReceiptTemplate] = useState({
@@ -264,6 +350,18 @@ const POSPageOptimized: React.FC = () => {
     type: 'low_stock' | 'out_of_stock';
   }>>([]);
   const [alertsDismissed, setAlertsDismissed] = useState(false);
+  const [alertsDismissedToday, setAlertsDismissedToday] = useState(false);
+  const [showAlertsAsNotification, setShowAlertsAsNotification] = useState(false);
+
+  // Daily closure state
+  const [isDailyClosed, setIsDailyClosed] = useState(false);
+  const [dailyClosureInfo, setDailyClosureInfo] = useState<{
+    closedAt?: string;
+    closedBy?: string;
+  } | null>(null);
+  const [showPostClosureWarning, setShowPostClosureWarning] = useState(false);
+  const [showDayOpeningModal, setShowDayOpeningModal] = useState(false);
+  const [showDailyClosingModal, setShowDailyClosingModal] = useState(false);
 
   // Stock adjustment
   const [showStockAdjustment, setShowStockAdjustment] = useState(false);
@@ -316,41 +414,41 @@ const POSPageOptimized: React.FC = () => {
   // Component-level permission check
   useEffect(() => {
     if (currentUser && !canAccessPOS) {
-      toast.error('You do not have permission to access the POS system');
       navigate('/dashboard');
       return;
     }
   }, [currentUser, canAccessPOS, navigate]);
 
-  // Show access denied if user doesn't have POS permissions
-  if (!currentUser || !canAccessPOS) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-50 to-orange-50">
-        <div className="text-center p-8">
-          <div className="text-red-600 mb-4">
-            <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-            </svg>
-          </div>
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">Access Denied</h3>
-          <p className="text-gray-600 mb-4">You don't have permission to access the POS system.</p>
-          <button
-            onClick={() => navigate('/dashboard')}
-            className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-          >
-            Go to Dashboard
-          </button>
-        </div>
-      </div>
-    );
-  }
+  // Check if user has permission to close daily sales
+  const canCloseDailySales = useMemo(() => {
+    if (!currentUser) return false;
+    return rbacManager.hasPermission(currentUser.role, 'reports', 'daily-close') || 
+           currentUser.role === 'admin' || 
+           currentUser.role === 'manager' ||
+           currentUser.role === 'owner';
+  }, [currentUser]);
+
+  // Check for dismissed alerts today from localStorage
+  useEffect(() => {
+    const today = new Date().toDateString();
+    const dismissedToday = localStorage.getItem('inventoryAlertsDismissedToday');
+    if (dismissedToday === today) {
+      setAlertsDismissedToday(true);
+    }
+  }, []);
+
+  // Check for low stock on data load
+  useEffect(() => {
+    if (dbProducts.length > 0) {
+      checkLowStock();
+    }
+  }, [dbProducts, lowStockThreshold]);
 
   // Load initial data with comprehensive error handling
   useEffect(() => {
     const loadInitialData = async () => {
       try {
-        console.log('Loading initial POS data...');
-        
+
         // Load data with individual error handling
         const results = await Promise.allSettled([
           loadProducts(),
@@ -377,13 +475,7 @@ const POSPageOptimized: React.FC = () => {
           toast.success('POS data loaded successfully');
         }
 
-        // Debug categories loading
-        console.log('🔍 POS Categories Debug:', {
-          categoriesCount: categories?.length || 0,
-          categories: categories?.map(cat => ({ id: cat.id, name: cat.name })) || [],
-          categoriesLoaded: !!categories && categories.length > 0,
-          categoriesData: categories
-        });
+        // Debug will be handled by the categories monitoring useEffect
 
         setDataLoaded(true);
         setLastLoadTime(Date.now());
@@ -400,34 +492,22 @@ const POSPageOptimized: React.FC = () => {
 
   // Monitor categories loading
   useEffect(() => {
-    console.log('🔍 Categories State Changed:', {
-      categoriesCount: categories?.length || 0,
-      categories: categories?.map(cat => ({ id: cat.id, name: cat.name })) || [],
-      categoriesLoaded: !!categories && categories.length > 0
-    });
+    if (categories && categories.length > 0) {
+      console.log('🔍 Categories loaded:', categories.length);
+      console.log('🔍 POS Categories Debug:', {
+        categoriesCount: categories.length,
+        categories: categories.slice(0, 3).map(cat => ({ id: cat.id, name: cat.name })),
+        categoriesLoaded: true,
+        categoriesData: categories
+      });
+    }
   }, [categories]);
 
-  // Test direct category loading
-  useEffect(() => {
-    const testCategoryLoading = async () => {
-      try {
-        console.log('🧪 Testing direct category loading...');
-        await loadCategories();
-        console.log('🧪 Direct category loading completed');
-      } catch (error) {
-        console.error('🧪 Direct category loading failed:', error);
-      }
-    };
-    
-    // Test after a short delay to see if it's a timing issue
-    const timer = setTimeout(testCategoryLoading, 2000);
-    return () => clearTimeout(timer);
-  }, []);
 
   // Listen for stock updates and refresh POS data after sales
   useEffect(() => {
     const handleStockUpdate = (event: any) => {
-      console.log('🔄 [POSPageOptimized] Stock update detected, refreshing products...', event);
+
       // Small delay to ensure database is updated
       setTimeout(() => {
         loadProducts();
@@ -435,7 +515,76 @@ const POSPageOptimized: React.FC = () => {
     };
 
     const handleSaleCompleted = (event: any) => {
-      console.log('🔄 [POSPageOptimized] Sale completed, refreshing products and sales...', event);
+
+      // Small delay to ensure database is updated
+      setTimeout(() => {
+        loadProducts();
+        loadSales();
+      }, 500);
+    };
+
+    // Subscribe to relevant events
+    window.addEventListener('stockUpdated', handleStockUpdate);
+    window.addEventListener('saleCompleted', handleSaleCompleted);
+
+    return () => {
+      window.removeEventListener('stockUpdated', handleStockUpdate);
+      window.removeEventListener('saleCompleted', handleSaleCompleted);
+    };
+  }, []);
+
+  // Load receipt history
+  useEffect(() => {
+    const loadReceiptHistory = async () => {
+      try {
+        // Implementation for loading receipt history
+
+      } catch (error) {
+        console.error('Error loading receipt history:', error);
+      }
+    };
+
+    loadReceiptHistory();
+  }, []);
+
+  // Show access denied if user doesn't have POS permissions
+  if (!currentUser || !canAccessPOS) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-50 to-orange-50">
+        <div className="text-center p-8">
+          <div className="text-red-600 mb-4">
+            <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+          </div>
+          <h3 className="text-xl font-semibold text-gray-900 mb-2">Access Denied</h3>
+          <p className="text-gray-600 mb-4">You don't have permission to access the POS system.</p>
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+          >
+            Go to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Main component return
+
+
+  // Listen for stock updates and refresh POS data after sales
+  useEffect(() => {
+    const handleStockUpdate = (event: any) => {
+
+      // Small delay to ensure database is updated
+      setTimeout(() => {
+        loadProducts();
+      }, 500);
+    };
+
+    const handleSaleCompleted = (event: any) => {
+
       // Small delay to ensure database is updated
       setTimeout(() => {
         loadProducts();
@@ -454,60 +603,8 @@ const POSPageOptimized: React.FC = () => {
     };
   }, [loadProducts, loadSales]);
 
-  // Search functionality
-  const [searchSuggestions, setSearchSuggestions] = useState<any[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  
-  // Customer search functionality
-  const handleCustomerSearch = (query: string) => {
-    if (query.trim()) {
-      const filteredCustomers = customers.filter(customer => 
-        customer.name.toLowerCase().includes(query.toLowerCase()) ||
-        customer.phone?.includes(query) ||
-        customer.email?.toLowerCase().includes(query.toLowerCase())
-      );
-      setSearchSuggestions(filteredCustomers);
-      setShowCustomerSearch(true);
-    } else {
-      setSearchSuggestions([]);
-      setShowCustomerSearch(false);
-    }
-  };
 
   // Customer selection functionality with error handling
-  const handleCustomerSelect = (customer: any) => {
-    try {
-      // Validate customer
-      if (!customer || !customer.id || !customer.name) {
-        toast.error('Invalid customer data. Please try again.');
-        return;
-      }
-
-      setSelectedCustomer(customer);
-      setShowCustomerSearch(false);
-      setCustomerSearchQuery('');
-      toast.success(`Customer selected: ${customer.name}`);
-    } catch (error) {
-      console.error('Error selecting customer:', error);
-      toast.error('Failed to select customer. Please try again.');
-    }
-  };
-
-  const handleClearCustomer = () => {
-    try {
-      if (!selectedCustomer) {
-        toast.success('No customer selected.');
-        return;
-      }
-      
-      setSelectedCustomer(null);
-      toast.success('Customer cleared');
-    } catch (error) {
-      console.error('Error clearing customer:', error);
-      toast.error('Failed to clear customer. Please try again.');
-    }
-  };
-
   const handleRemoveCustomer = () => {
     try {
       if (!selectedCustomer) {
@@ -523,10 +620,6 @@ const POSPageOptimized: React.FC = () => {
     }
   };
 
-  const handleShowCustomerSearch = () => {
-    setShowCustomerSearch(true);
-  };
-
   const handleShowCustomerDetails = () => {
     if (selectedCustomer) {
       setSelectedCustomerForDetails(selectedCustomer);
@@ -534,54 +627,27 @@ const POSPageOptimized: React.FC = () => {
     }
   };
 
-  const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const query = e.target.value;
-    setSearchQuery(query);
-    
-    if (query.trim()) {
-      // Generate search suggestions
-      const suggestions = dbProducts.filter(product => 
-        product.name?.toLowerCase().includes(query.toLowerCase()) ||
-        product.sku?.toLowerCase().includes(query.toLowerCase()) ||
-        product.category?.name?.toLowerCase().includes(query.toLowerCase())
-      ).slice(0, 5);
-      
-      setSearchSuggestions(suggestions);
-    } else {
-      setSearchSuggestions([]);
-    }
-  };
-
-  const handleSearchInputKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      if (searchQuery.trim()) {
-        handleUnifiedSearch(searchQuery.trim());
-      }
-    }
-  };
 
   const handleUnifiedSearch = (query: string) => {
     // Check if it's a barcode
     if (/^\d{8,}$/.test(query)) {
       // It's likely a barcode
-      startBarcodeScanner();
+      startQrCodeScanner();
     } else {
       // Regular search
       setShowSearchResults(true);
     }
   };
 
-  const startBarcodeScanner = () => {
+  const startQrCodeScanner = () => {
     try {
       // Check permissions
       if (!canSearchInventory) {
-        toast.error('You do not have permission to scan barcodes.');
         return;
       }
 
       if (!barcodeScannerSettings?.enable_barcode_scanner) {
-        toast.error('Barcode scanning is not enabled in settings.');
+        toast.error('QrCode scanning is not enabled in settings.');
         return;
       }
 
@@ -590,10 +656,10 @@ const POSPageOptimized: React.FC = () => {
         return;
       }
 
-      setShowBarcodeScanner(true);
+      setShowQrCodeScanner(true);
       setIsScanning(true);
       setScannerError('');
-      toast.success('Barcode scanner started. Scan a product barcode.');
+      toast.success('QrCode scanner started. Scan a product barcode.');
       
       // Start real barcode scanning
       // Note: In production, this would integrate with a real barcode scanner library
@@ -603,19 +669,19 @@ const POSPageOptimized: React.FC = () => {
     } catch (error) {
       console.error('Error starting barcode scanner:', error);
       toast.error('Failed to start barcode scanner. Please try again.');
-      setShowBarcodeScanner(false);
+      setShowQrCodeScanner(false);
       setIsScanning(false);
     }
   };
 
-  const handleBarcodeScanned = (barcode: string) => {
+  const handleQrCodeScanned = (barcode: string) => {
     try {
       // Validate barcode
       if (!barcode || barcode.trim() === '') {
         setScannerError('Invalid barcode');
         toast.error('Invalid barcode scanned. Please try again.');
         setIsScanning(false);
-        setShowBarcodeScanner(false);
+        setShowQrCodeScanner(false);
         return;
       }
 
@@ -631,7 +697,7 @@ const POSPageOptimized: React.FC = () => {
           addToCart(product);
         }
         toast.success(`Product added: ${product.name}`);
-        setScannedBarcodes(prev => [...prev, barcode]);
+        setScannedQrCodes(prev => [...prev, barcode]);
       } else {
         setScannerError('Product not found');
         toast.error(`Product not found for barcode: ${barcode}`);
@@ -642,22 +708,25 @@ const POSPageOptimized: React.FC = () => {
       toast.error('Failed to process barcode. Please try again.');
     } finally {
       setIsScanning(false);
-      setShowBarcodeScanner(false);
+      setShowQrCodeScanner(false);
     }
   };
 
-  const stopBarcodeScanner = () => {
-    setShowBarcodeScanner(false);
+  const stopQrCodeScanner = () => {
+    setShowQrCodeScanner(false);
     setIsScanning(false);
     setScannerError('');
-    toast('Barcode scanner stopped');
+    toast('QrCode scanner stopped');
   };
 
   // Inventory alerts functionality
   const checkLowStock = () => {
+    // Use local threshold for now
+    const threshold = lowStockThreshold || 5;
+    
     const lowStockProducts = dbProducts.filter(product => {
       const totalStock = product.variants?.reduce((sum, variant) => sum + ((variant as any).quantity || 0), 0) || 0;
-      return totalStock <= (lowStockThreshold || 5);
+      return totalStock <= threshold;
     });
     
     if (lowStockProducts.length > 0) {
@@ -679,8 +748,14 @@ const POSPageOptimized: React.FC = () => {
         )
       );
       
-      // Show modal if alerts haven't been dismissed OR if there are new alerts
-      if (!alertsDismissed || hasNewAlerts) {
+      // Show notification instead of blocking modal if dismissed today
+      if (alertsDismissedToday) {
+        setShowAlertsAsNotification(true);
+        // Auto-hide notification after 5 seconds
+        setTimeout(() => {
+          setShowAlertsAsNotification(false);
+        }, 5000);
+      } else if (!alertsDismissed || hasNewAlerts) {
         setShowInventoryAlerts(true);
         if (hasNewAlerts) {
           setAlertsDismissed(false); // Reset dismissed state for new alerts
@@ -692,11 +767,15 @@ const POSPageOptimized: React.FC = () => {
     }
   };
 
-  const handleCloseInventoryAlerts = () => {
+  const handleCloseInventoryAlerts = (dismissForToday = false) => {
     setShowInventoryAlerts(false);
     setAlertsDismissed(true);
-    // Optionally clear alerts after viewing
-    // setInventoryAlerts([]);
+    
+    if (dismissForToday) {
+      const today = new Date().toDateString();
+      localStorage.setItem('inventoryAlertsDismissedToday', today);
+      setAlertsDismissedToday(true);
+    }
   };
 
   const handleShowInventoryAlerts = () => {
@@ -704,12 +783,73 @@ const POSPageOptimized: React.FC = () => {
     setAlertsDismissed(false);
   };
 
+  // Migration handler for testing (temporarily disabled)
+  // const handleApplyMigration = async () => {
+  //   const success = await applyInventoryAlertsMigration();
+  //   if (success) {
+  //     toast.success('Database migration applied successfully!');
+  //   } else {
+  //     toast.error('Migration failed. Check console for details.');
+  //   }
+  // };
+
+  // Check for dismissed alerts today from localStorage
+  useEffect(() => {
+    const today = new Date().toDateString();
+    const dismissedToday = localStorage.getItem('inventoryAlertsDismissedToday');
+    if (dismissedToday === today) {
+      setAlertsDismissedToday(true);
+    }
+  }, []);
+
   // Check for low stock on data load
   useEffect(() => {
     if (dbProducts.length > 0) {
       checkLowStock();
     }
   }, [dbProducts, lowStockThreshold]);
+
+  // Check daily closure status
+  useEffect(() => {
+    const checkDailyClosureStatus = async () => {
+      try {
+        const today = new Date().toISOString().split('T')[0];
+
+        const { data, error } = await supabase
+          .from('daily_sales_closures')
+          .select('id, date, closed_at, closed_by')
+          .eq('date', today)
+          .maybeSingle();
+
+        if (error) {
+          console.error('❌ Error checking daily closure status:', error);
+          setIsDailyClosed(false);
+          return;
+        }
+
+        if (data && !error) {
+
+          setIsDailyClosed(true);
+          setDailyClosureInfo({
+            closedAt: data.closed_at,
+            closedBy: data.closed_by
+          });
+          // Show day opening modal when day is closed
+          setShowDayOpeningModal(true);
+        } else {
+
+          setIsDailyClosed(false);
+          setDailyClosureInfo(null);
+        }
+      } catch (err) {
+
+        setIsDailyClosed(false);
+        setDailyClosureInfo(null);
+      }
+    };
+
+    checkDailyClosureStatus();
+  }, []);
 
   // Stock adjustment functionality
   const handleStockAdjustment = (productId: string, adjustment: number, _reason: string) => {
@@ -768,7 +908,7 @@ const POSPageOptimized: React.FC = () => {
     try {
       // Load real receipt history from database
       // This would typically call a receipts API or query the sales table
-      const receipts = sales.map((sale, index) => ({
+      const receipts = dbSales.map((sale, index) => ({
         id: sale.id,
         saleId: sale.id,
         date: (sale as any).created_at || (sale as any).soldAt || new Date().toISOString(),
@@ -787,14 +927,13 @@ const POSPageOptimized: React.FC = () => {
     if (showReceiptHistory) {
       loadReceiptHistory();
     }
-  }, [showReceiptHistory, sales]);
+  }, [showReceiptHistory, dbSales]);
 
   // Cart functionality with error handling
   const addToCart = (product: any, variant?: any) => {
     try {
       // Check permissions
       if (!canAddToCart) {
-        toast.error('You do not have permission to add items to cart.');
         return;
       }
 
@@ -924,7 +1063,6 @@ const POSPageOptimized: React.FC = () => {
     try {
       // Check permissions
       if (!canSell || !canCreateSales) {
-        toast.error('You do not have permission to process sales.');
         return;
       }
 
@@ -946,10 +1084,31 @@ const POSPageOptimized: React.FC = () => {
         // Don't return, just show warning
       }
 
+      // Check for daily closure
+      if (isDailyClosed) {
+        setShowPostClosureWarning(true);
+        return;
+      }
+
       setShowPaymentModal(true);
     } catch (error) {
       console.error('Error in handleProcessPayment:', error);
       toast.error('Failed to initialize payment. Please try again.');
+    }
+  };
+
+  const handleRefreshData = async () => {
+    try {
+      await Promise.all([
+        loadProducts(),
+        loadSales(),
+        loadCategories(),
+        loadSuppliers()
+      ]);
+      toast.success('Data refreshed successfully');
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+      toast.error('Failed to refresh some data');
     }
   };
 
@@ -959,7 +1118,7 @@ const POSPageOptimized: React.FC = () => {
   const finalAmount = totalAmount - discountAmount;
 
   // Check if barcode scanner is enabled
-  const isBarcodeScannerEnabled = barcodeScannerSettings?.enable_barcode_scanner;
+  const isQrCodeScannerEnabled = barcodeScannerSettings?.enable_barcode_scanner;
 
   return (
     <div className="min-h-screen">
@@ -967,57 +1126,25 @@ const POSPageOptimized: React.FC = () => {
       <LATSBreadcrumb />
 
 
-      {/* Customer Care Help Text */}
-      {userRole === 'customer-care' && (
-        <div className="bg-blue-50 border-b border-blue-200 px-4 py-3">
-          <div className="max-w-7xl mx-auto">
-            <div className="flex items-start space-x-3">
-              <div className="flex-shrink-0">
-                <svg className="w-5 h-5 text-blue-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div className="flex-1">
-                <h4 className="text-sm font-medium text-blue-900 mb-1">Customer Care Access</h4>
-                <p className="text-sm text-blue-700">
-                  You can process sales, manage customers, and view inventory. 
-                  {!canRefund && " Refunds and inventory editing require administrator approval."}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* POS Top Bar */}
       <POSTopBar
         cartItemsCount={cartItems.length}
         totalAmount={totalAmount}
-        productsCount={dbProducts.length}
-        salesCount={sales.length}
         onProcessPayment={handleProcessPayment}
         onClearCart={clearCart}
-        onSearch={(query) => {
-          setSearchQuery(query);
-          if (query.trim()) {
-            setShowSearchResults(true);
-          } else {
-            setShowSearchResults(false);
-          }
-        }}
-        onScanBarcode={isBarcodeScannerEnabled ? startBarcodeScanner : () => {}}
+        onScanQrCode={isQrCodeScannerEnabled ? startQrCodeScanner : () => {}}
         onAddCustomer={() => {
-          setShowCustomerSearch(true);
+          setShowAddCustomerModal(true);
         }}
-        onAddProduct={userPermissionsSettings?.enable_product_creation && canViewInventory ? () => {
-          navigate('/lats/add-product');
-        } : () => {}}
         onViewReceipts={() => {
           alert('Receipts view coming soon!');
         }}
-        onViewSales={analyticsReportingSettings?.enable_analytics && canViewSales ? () => {
-          setShowSalesAnalytics(true);
-        } : () => {}}
+        onViewSales={async () => {
+          // Refresh sales data before navigating
+          await loadSales();
+          navigate('/lats/sales-reports');
+        }}
         onOpenPaymentTracking={() => {
           setShowPaymentTracking(true);
         }}
@@ -1025,13 +1152,35 @@ const POSPageOptimized: React.FC = () => {
         isProcessingPayment={isProcessingPayment}
         hasSelectedCustomer={!!selectedCustomer}
         draftCount={getAllDrafts().length}
+        // Bottom bar actions moved to top bar
+        onViewAnalytics={() => setShowSalesAnalytics(true)}
+        onPaymentTracking={() => setShowPaymentTracking(true)}
+        onCustomers={() => setShowAddCustomerModal(true)}
+        onReports={() => setShowSalesAnalytics(true)}
+        onRefreshData={handleRefreshData}
+        todaysSales={todaysSales}
+        isDailyClosed={isDailyClosed}
+        onCloseDay={() => setShowDailyClosingModal(true)}
+        canCloseDay={canCloseDailySales}
       />
 
-      <div className="p-4 sm:p-6 pb-20 max-w-full mx-auto space-y-6">
+      {/* Temporary Migration Button - Remove after migration is applied */}
+      {/* {currentUser?.role === 'admin' && (
+        <div className="fixed top-20 right-4 z-50">
+          <button
+            onClick={handleApplyMigration}
+            className="px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Apply DB Migration
+          </button>
+        </div>
+      )} */}
+
+      <div className="p-4 sm:p-6 pb-6 max-w-full mx-auto space-y-6">
         <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-200px)]">
           {/* Product Search Section */}
           <ProductSearchSection
-            products={dbProducts as any}
+            products={products as any}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
             isSearching={isSearching}
@@ -1054,7 +1203,7 @@ const POSPageOptimized: React.FC = () => {
             onAddToCart={addToCart}
             onAddExternalProduct={() => setShowAddExternalProductModal(true)}
             onSearch={handleUnifiedSearch}
-            onScanBarcode={startBarcodeScanner}
+            onScanQrCode={startQrCodeScanner}
             currentPage={currentPage}
             setCurrentPage={setCurrentPage}
             totalPages={totalPages}
@@ -1066,12 +1215,16 @@ const POSPageOptimized: React.FC = () => {
             cartItems={cartItems}
             selectedCustomer={selectedCustomer}
             onRemoveCustomer={handleRemoveCustomer}
-            onShowCustomerSearch={handleShowCustomerSearch}
+            onShowCustomerSearch={() => setShowCustomerSelectionModal(true)}
             onShowCustomerDetails={handleShowCustomerDetails}
             onUpdateCartItemQuantity={updateCartItemQuantity}
             onRemoveCartItem={removeCartItem}
-            onApplyDiscount={(type, value) => {
-              setManualDiscount(value);
+            onApplyDiscount={(_type, value) => {
+              // Calculate the actual discount amount based on type
+              const discountAmount = _type === 'percentage' 
+                ? (totalAmount * parseFloat(value.toString())) / 100
+                : parseFloat(value.toString());
+              setManualDiscount(discountAmount);
               setShowDiscountModal(false);
             }}
             onProcessPayment={handleProcessPayment}
@@ -1085,6 +1238,7 @@ const POSPageOptimized: React.FC = () => {
             totalAmount={totalAmount}
             discountAmount={discountAmount}
             finalAmount={finalAmount}
+            onEditCustomer={(_customer) => setShowCustomerEditModal(true)}
           />
         </div>
       </div>
@@ -1099,6 +1253,17 @@ const POSPageOptimized: React.FC = () => {
         }}
       />
 
+      <CustomerSelectionModal
+        isOpen={showCustomerSelectionModal}
+        onClose={() => setShowCustomerSelectionModal(false)}
+        onCustomerSelect={(customer) => {
+          setSelectedCustomer(customer);
+          setShowCustomerSelectionModal(false);
+          toast.success(`Customer "${customer.name}" selected!`);
+        }}
+        selectedCustomer={selectedCustomer}
+      />
+
       <AddCustomerModal
         isOpen={showAddCustomerModal}
         onClose={() => setShowAddCustomerModal(false)}
@@ -1106,6 +1271,16 @@ const POSPageOptimized: React.FC = () => {
           setSelectedCustomer(customer);
           setShowAddCustomerModal(false);
           toast.success(`New customer "${customer.name}" created and selected!`);
+        }}
+      />
+
+      <CustomerEditModal
+        isOpen={showCustomerEditModal}
+        onClose={() => setShowCustomerEditModal(false)}
+        customer={selectedCustomer}
+        onCustomerUpdated={(updatedCustomer) => {
+          setSelectedCustomer(updatedCustomer);
+          setShowCustomerEditModal(false);
         }}
       />
 
@@ -1129,8 +1304,7 @@ const POSPageOptimized: React.FC = () => {
         onPaymentComplete={async (payment) => {
           try {
             // Handle successful payment completion
-            console.log('ZenoPay payment completed successfully:', payment);
-            
+
             // Validate customer selection
             if (!selectedCustomer && !customerName) {
               toast.error('Please select a customer or enter customer name');
@@ -1226,12 +1400,24 @@ const POSPageOptimized: React.FC = () => {
             console.log('Processing payments:', {
               paymentCount: payments.length,
               totalPaid: totalPaid,
-              payments: payments.map(p => ({
+              payments: payments.map((p: any) => ({
                 method: p.paymentMethod,
                 amount: p.amount,
                 reference: p.reference
               }))
             });
+
+            // Validate totalPaid to ensure it matches the final amount
+            const validatedTotalPaid = totalPaid || finalAmount;
+            
+            // Validate that totalPaid matches finalAmount (with tolerance for rounding)
+            if (Math.abs(validatedTotalPaid - finalAmount) > 1) {
+              console.warn('⚠️ Payment amount mismatch:', {
+                totalPaid: validatedTotalPaid,
+                finalAmount: finalAmount,
+                difference: Math.abs(validatedTotalPaid - finalAmount)
+              });
+            }
 
             // Prepare sale data for database with multiple payments
             const saleData = {
@@ -1262,7 +1448,7 @@ const POSPageOptimized: React.FC = () => {
               paymentMethod: {
                 type: payments.length === 1 ? payments[0].paymentMethod : 'multiple',
                 details: {
-                  payments: payments.map(payment => ({
+                  payments: payments.map((payment: any) => ({
                     method: payment.paymentMethod,
                     amount: payment.amount,
                     accountId: payment.paymentAccountId,
@@ -1270,14 +1456,14 @@ const POSPageOptimized: React.FC = () => {
                     notes: payment.notes,
                     timestamp: payment.timestamp
                   })),
-                  totalPaid: totalPaid
+                  totalPaid: validatedTotalPaid
                 },
-                amount: totalPaid
+                amount: validatedTotalPaid // Fix: Use validated totalPaid instead of potentially 0
               },
               paymentStatus: 'completed' as const,
-              soldBy: 'POS User',
+              soldBy: cashierName || 'POS User',
               soldAt: new Date().toISOString(),
-              notes: payments.map(p => p.notes).filter(Boolean).join('; ') || undefined
+              notes: payments.map((p: any) => p.notes).filter(Boolean).join('; ') || undefined
             };
 
             // Process the sale using the service
@@ -1323,7 +1509,7 @@ const POSPageOptimized: React.FC = () => {
                 throw error; // This will be caught by the modal and show error toast
               } else {
                 // For non-critical errors, log them but don't fail the payment
-                console.warn('Non-critical error during payment processing:', error.message);
+
                 // Continue with successful payment flow
                 const displayAmount = totalPaid || finalAmount;
                 toast.success(`Payment of ${displayAmount.toLocaleString()} TZS processed successfully!`);
@@ -1335,7 +1521,6 @@ const POSPageOptimized: React.FC = () => {
           }
         }}
         title="Process POS Payment"
-        showCustomerInfo={true}
       />
 
       {/* Additional Modals */}
@@ -1353,7 +1538,6 @@ const POSPageOptimized: React.FC = () => {
               throw new Error('Invalid settings data');
             }
 
-            console.log('Saving POS settings...');
             await POSSettingsService.saveAllSettings(_settings);
             toast.success('Settings saved successfully');
           } catch (error) {
@@ -1364,7 +1548,7 @@ const POSPageOptimized: React.FC = () => {
               if (error.message.includes('network') || error.message.includes('fetch')) {
                 toast.error('Network error. Please check your connection and try again.');
               } else if (error.message.includes('permission') || error.message.includes('unauthorized')) {
-                toast.error('You do not have permission to save settings. Please contact your administrator.');
+                toast.error('Permission denied. Please check your access rights.');
               } else if (error.message.includes('validation')) {
                 toast.error('Invalid settings data. Please check your input and try again.');
               } else {
@@ -1414,15 +1598,15 @@ const POSPageOptimized: React.FC = () => {
         }}
       />
 
-      {/* Barcode Scanner Modal */}
-      {showBarcodeScanner && (
+      {/* QrCode Scanner Modal */}
+      {showQrCodeScanner && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-semibold mb-4">Barcode Scanner</h3>
+            <h3 className="text-lg font-semibold mb-4">QrCode Scanner</h3>
             <div className="text-center">
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
                 <div className="text-blue-600 text-2xl mb-2">📱</div>
-                <p className="text-blue-800 font-medium">External Barcode Scanner</p>
+                <p className="text-blue-800 font-medium">External QrCode Scanner</p>
                 <p className="text-blue-600 text-sm mt-1">Use your connected barcode scanner device to scan product barcodes</p>
               </div>
               <p className="text-gray-600 mb-4">Scanner is ready and waiting for input</p>
@@ -1434,7 +1618,7 @@ const POSPageOptimized: React.FC = () => {
             )}
             <div className="flex gap-2 justify-end">
               <button
-                onClick={stopBarcodeScanner}
+                onClick={stopQrCodeScanner}
                 className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
               >
                 Stop Scanner
@@ -1444,212 +1628,66 @@ const POSPageOptimized: React.FC = () => {
         </div>
       )}
 
-      {/* Customer Search Modal */}
-      {showCustomerSearch && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <GlassCard className="w-full max-w-2xl max-h-[90vh] overflow-hidden">
-            {/* Header */}
-            <div className="flex items-center justify-between p-6 border-b border-white/20">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-                  <User className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-900">Search Customers</h2>
-                  <p className="text-gray-600">Find existing customers or create new ones</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowCustomerSearch(false)}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <X className="w-6 h-6 text-gray-500" />
-              </button>
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto p-6">
-              {/* Search Section */}
-              <div className="mb-6">
-                <div className="relative mb-4">
-                  <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Search by name, phone, or email..."
-                    value={customerSearchQuery}
-                    onChange={(e) => {
-                      setCustomerSearchQuery(e.target.value);
-                      handleCustomerSearch(e.target.value);
-                    }}
-                    className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-                
-                {/* Add New Customer Button */}
-                <GlassButton
-                  onClick={() => {
-                    setShowCustomerSearch(false);
-                    setShowAddCustomerModal(true);
-                  }}
-                  className="w-full flex items-center justify-center gap-2"
-                >
-                  <Plus className="w-4 h-4" />
-                  Add New Customer
-                </GlassButton>
-              </div>
-
-              {/* Search Results */}
-              {customerSearchQuery.trim() && (
-                <div className="mb-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                    Search Results {searchSuggestions.length > 0 && `(${searchSuggestions.length})`}
-                  </h3>
-                  {searchSuggestions.length > 0 ? (
-                    <div className="grid gap-3">
-                      {searchSuggestions.map((customer) => (
-                        <div
-                          key={customer.id}
-                          onClick={() => handleCustomerSelect(customer)}
-                          className="p-4 border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-md cursor-pointer transition-all duration-200 bg-white"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center">
-                              <User className="w-5 h-5 text-white" />
-                            </div>
-                            <div className="flex-1">
-                              <div className="font-medium text-gray-900">{customer.name}</div>
-                              <div className="text-sm text-gray-600">
-                                {customer.phone && <span>📞 {customer.phone}</span>}
-                                {customer.email && <span className="ml-2">✉️ {customer.email}</span>}
-                              </div>
-                            </div>
-                            <div className="text-blue-500">
-                              <ChevronRight className="w-5 h-5" />
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-8">
-                      <User className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">No customers found</h3>
-                      <p className="text-gray-600 mb-4">
-                        No customers match your search for "{customerSearchQuery}"
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Recent Customers */}
-              {!customerSearchQuery.trim() && (
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Customers</h3>
-                  {customers.length > 0 ? (
-                    <div className="grid gap-3">
-                      {customers.slice(0, 10).map((customer) => (
-                        <div
-                          key={customer.id}
-                          onClick={() => handleCustomerSelect(customer)}
-                          className="p-4 border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-md cursor-pointer transition-all duration-200 bg-white"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center">
-                              <User className="w-5 h-5 text-white" />
-                            </div>
-                            <div className="flex-1">
-                              <div className="font-medium text-gray-900">{customer.name}</div>
-                              <div className="text-sm text-gray-600">
-                                {customer.phone && <span>📞 {customer.phone}</span>}
-                                {customer.email && <span className="ml-2">✉️ {customer.email}</span>}
-                              </div>
-                            </div>
-                            <div className="text-blue-500">
-                              <ChevronRight className="w-5 h-5" />
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-8">
-                      <User className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">No customers yet</h3>
-                      <p className="text-gray-600 mb-4">Create your first customer to get started</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="p-6 border-t border-white/20 bg-gray-50/50">
-              <div className="flex items-center justify-between">
-                <div className="text-sm text-gray-600">
-                  {selectedCustomer ? (
-                    <span>Selected: <strong>{selectedCustomer.name}</strong></span>
-                  ) : (
-                    <span>No customer selected</span>
-                  )}
-                </div>
-                <div className="flex gap-3">
-                  <GlassButton variant="outline" onClick={() => setShowCustomerSearch(false)}>
-                    Cancel
-                  </GlassButton>
-                </div>
-              </div>
-            </div>
-          </GlassCard>
-        </div>
-      )}
 
       {/* Customer Details Modal */}
-      {showCustomerDetails && selectedCustomerForDetails && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-semibold mb-4">Customer Details</h3>
-            <div className="space-y-3">
-              <div>
-                <label className="font-medium">Name:</label>
-                <p className="text-gray-600">{selectedCustomerForDetails.name}</p>
-              </div>
-              {selectedCustomerForDetails.phone && (
-                <div>
-                  <label className="font-medium">Phone:</label>
-                  <p className="text-gray-600">{selectedCustomerForDetails.phone}</p>
-                </div>
-              )}
-              {selectedCustomerForDetails.email && (
-                <div>
-                  <label className="font-medium">Email:</label>
-                  <p className="text-gray-600">{selectedCustomerForDetails.email}</p>
-                </div>
-              )}
-              {selectedCustomerForDetails.address && (
-                <div>
-                  <label className="font-medium">Address:</label>
-                  <p className="text-gray-600">{selectedCustomerForDetails.address}</p>
-                </div>
-              )}
-            </div>
-            <div className="flex gap-2 justify-end mt-6">
-              <button
-                onClick={() => setShowCustomerDetails(false)}
-                className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <CustomerDetailModal
+        isOpen={showCustomerDetails}
+        onClose={() => setShowCustomerDetails(false)}
+        customer={selectedCustomerForDetails}
+        onEdit={(updatedCustomer) => {
+          // Update the selected customer in the POS
+          setSelectedCustomer(updatedCustomer);
+          setSelectedCustomerForDetails(updatedCustomer);
+          setShowCustomerDetails(false);
+        }}
+      />
+
+      {/* Post-Closure Warning Modal */}
+      <PostClosureWarningModal
+        isOpen={showPostClosureWarning}
+        onClose={() => setShowPostClosureWarning(false)}
+        onContinue={() => {
+          setShowPostClosureWarning(false);
+          setShowPaymentModal(true);
+        }}
+        closureTime={dailyClosureInfo?.closedAt}
+        closedBy={dailyClosureInfo?.closedBy}
+        userRole={currentUser?.role}
+      />
+
+      {/* Day Opening Modal */}
+      <DayOpeningModal
+        isOpen={showDayOpeningModal}
+        onClose={() => setShowDayOpeningModal(false)}
+        onOpenDay={() => {
+          setIsDailyClosed(false);
+          setDailyClosureInfo(null);
+          setShowDayOpeningModal(false);
+        }}
+        currentUser={currentUser}
+        lastClosureInfo={dailyClosureInfo}
+      />
+
+      {/* Daily Closing Modal */}
+      <DailyClosingModal
+        isOpen={showDailyClosingModal}
+        onClose={() => setShowDailyClosingModal(false)}
+        onComplete={() => {
+          setIsDailyClosed(true);
+          setDailyClosureInfo({
+            closedAt: new Date().toISOString(),
+            closedBy: currentUser?.name || currentUser?.email || 'Unknown'
+          });
+          setShowDailyClosingModal(false);
+        }}
+        currentUser={currentUser}
+      />
 
       {/* Inventory Alerts Modal */}
       {showInventoryAlerts && (
         <div 
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-          onClick={handleCloseInventoryAlerts}
+          onClick={() => handleCloseInventoryAlerts()}
         >
           <div 
             className="bg-white rounded-lg p-6 max-w-lg w-full mx-4"
@@ -1658,7 +1696,7 @@ const POSPageOptimized: React.FC = () => {
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold">Inventory Alerts</h3>
               <button
-                onClick={handleCloseInventoryAlerts}
+                onClick={() => handleCloseInventoryAlerts()}
                 className="text-gray-500 hover:text-gray-700 text-xl font-bold"
               >
                 ×
@@ -1687,23 +1725,65 @@ const POSPageOptimized: React.FC = () => {
             </div>
             <div className="flex gap-2 justify-between mt-4">
               <button
-                onClick={() => {
-                  setAlertsDismissed(true);
-                  setShowInventoryAlerts(false);
-                }}
-                className="px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600"
+                onClick={() => handleCloseInventoryAlerts(true)}
+                className="px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 text-sm"
               >
-                Don't Show Again
+                Don't Show Today
               </button>
               <div className="flex gap-2">
+              <button
+                onClick={() => handleCloseInventoryAlerts(false)}
+                className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600 text-sm"
+              >
+                Close
+              </button>
                 <button
-                  onClick={handleCloseInventoryAlerts}
-                  className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
+                  onClick={() => {
+                    setAlertsDismissed(true);
+                    setShowInventoryAlerts(false);
+                  }}
+                  className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
                 >
-                  Close
+                  Don't Show Again
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Inventory Alerts Notification (Non-blocking) */}
+      {showAlertsAsNotification && (
+        <div className="fixed top-4 right-4 z-50 bg-orange-100 border border-orange-300 rounded-lg p-4 shadow-lg max-w-sm">
+          <div className="flex items-start gap-3">
+            <div className="flex-shrink-0">
+              <svg className="w-5 h-5 text-orange-600" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <h4 className="text-sm font-medium text-orange-800">Low Stock Alert</h4>
+              <p className="text-sm text-orange-700 mt-1">
+                {inventoryAlerts.length} product{inventoryAlerts.length !== 1 ? 's' : ''} running low on stock
+              </p>
+              <button
+                onClick={() => {
+                  setShowAlertsAsNotification(false);
+                  setShowInventoryAlerts(true);
+                }}
+                className="text-sm text-orange-600 hover:text-orange-800 underline mt-1"
+              >
+                View Details
+              </button>
+            </div>
+            <button
+              onClick={() => setShowAlertsAsNotification(false)}
+              className="flex-shrink-0 text-orange-400 hover:text-orange-600"
+            >
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+            </button>
           </div>
         </div>
       )}
@@ -1933,29 +2013,6 @@ const POSPageOptimized: React.FC = () => {
         />
       )}
 
-      {/* POS Bottom Bar */}
-      <POSBottomBar
-        onViewAnalytics={() => setShowSalesAnalytics(true)}
-        onQuickActions={() => {
-          // Quick actions functionality
-          toast('Quick actions coming soon!');
-        }}
-        onPaymentTracking={() => setShowPaymentTracking(true)}
-        onPaymentMethods={() => navigate('/finance/payments')}
-        onSettings={() => setShowSettings(true)}
-        onCustomers={() => {
-          setShowCustomerSearch(true);
-        }}
-        onInventory={() => {
-          navigate('/lats/inventory');
-        }}
-        onReports={() => {
-          setShowSalesAnalytics(true);
-        }}
-        onLoyalty={() => {
-          setShowLoyaltyPoints(true);
-        }}
-      />
     </div>
   );
 };

@@ -208,7 +208,7 @@ export interface LatsDataProvider {
   getInventoryStats(): Promise<ApiResponse<any>>;
   getSalesStats(): Promise<ApiResponse<any>>;
   getLowStockItems(): Promise<ApiResponse<Product[]>>;
-  getSaleItems(): Promise<ApiResponse<any[]>>;
+  getAllSaleItems(): Promise<ApiResponse<any[]>>;
 
   // Shipping Agents
   getShippingAgents(): Promise<ApiResponse<ShippingAgent[]>>;

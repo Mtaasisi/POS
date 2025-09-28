@@ -1,5 +1,5 @@
 import { supabase } from '../../../lib/supabaseClient';
-import { ShippingInfo, CargoBox, Product } from '../types/inventory';
+import { Product } from '../types/inventory';
 import { draftProductsService } from './draftProductsService';
 import { validateAndCreateDefaultVariant } from '../lib/variantUtils';
 
@@ -51,28 +51,7 @@ class InventoryService {
       }
 
       // Update purchase order status to received
-      const { data: shippingData, error: shippingError } = await supabase
-        .from('lats_shipping_info')
-        .select('purchase_order_id')
-        .eq('id', shippingId)
-        .single();
 
-      if (!shippingError && shippingData) {
-        const { error: poUpdateError } = await supabase
-          .from('lats_purchase_orders')
-          .update({ 
-            status: 'received',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', shippingData.purchase_order_id);
-          
-        if (poUpdateError) {
-          console.error('❌ [InventoryService] Error updating purchase order status:', poUpdateError);
-          // Don't fail the entire operation if PO update fails
-        } else {
-          console.log('✅ [InventoryService] Purchase order status updated to received');
-        }
-      }
 
       console.log('✅ [InventoryService] Shipment received successfully:', result);
       
@@ -287,81 +266,6 @@ class InventoryService {
     }
   }
 
-  /**
-   * Validate product completeness for ready_for_inventory status
-   */
-  async validateProductCompleteness(shippingId: string): Promise<{
-    isValid: boolean;
-    missingFields: string[];
-    products: Array<{
-      name: string;
-      isComplete: boolean;
-      missingFields: string[];
-    }>;
-  }> {
-    try {
-      const { data: shippingData, error } = await supabase
-        .from('lats_shipping_info')
-        .select('cargo_boxes')
-        .eq('id', shippingId)
-        .single();
-
-      if (error || !shippingData) {
-        return {
-          isValid: false,
-          missingFields: ['Shipping data not found'],
-          products: []
-        };
-      }
-
-      const cargoBoxes: CargoBox[] = shippingData.cargo_boxes 
-        ? JSON.parse(shippingData.cargo_boxes) 
-        : [];
-
-      const products = [];
-      let allValid = true;
-      const allMissingFields: string[] = [];
-
-      for (const box of cargoBoxes) {
-        if (!box.description) continue;
-
-        const product = await this.findProductByDescription(box.description);
-        const missingFields: string[] = [];
-
-        if (!product) {
-          missingFields.push('Product not found');
-          allValid = false;
-        } else {
-          if (!product.name) missingFields.push('Product name');
-          if (!product.description) missingFields.push('Product description');
-          if (!product.price || product.price <= 0) missingFields.push('Valid selling price');
-          if (!product.costPrice || product.costPrice <= 0) missingFields.push('Valid cost price');
-          if (!product.images || product.images.length === 0) missingFields.push('Product images');
-        }
-
-        products.push({
-          name: box.description,
-          isComplete: missingFields.length === 0,
-          missingFields
-        });
-
-        allMissingFields.push(...missingFields);
-      }
-
-      return {
-        isValid: allValid,
-        missingFields: [...new Set(allMissingFields)],
-        products
-      };
-    } catch (error) {
-      console.error('❌ [InventoryService] Error validating product completeness:', error);
-      return {
-        isValid: false,
-        missingFields: ['Validation error'],
-        products: []
-      };
-    }
-  }
 }
 
 // Export singleton instance

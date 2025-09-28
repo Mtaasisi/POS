@@ -4,6 +4,7 @@ import { getDiagnosticRequests } from '../../../../lib/diagnosticsApi';
 import { DiagnosticRequest } from '../../types/diagnostics';
 import GlassCard from '../../../../features/shared/components/ui/GlassCard';
 import GlassButton from '../../../../features/shared/components/ui/GlassButton';
+import DiagnosticDeviceDetailModal from '../DiagnosticDeviceDetailModal';
 import { 
   Eye, 
   CheckCircle, 
@@ -19,9 +20,11 @@ const AssignedDiagnosticsTab: React.FC = () => {
   const { currentUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [requests, setRequests] = useState<DiagnosticRequest[]>([]);
+  const [selectedRequest, setSelectedRequest] = useState<DiagnosticRequest | null>(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
 
   useEffect(() => {
-    if (currentUser && ['technician', 'admin'].includes(currentUser.role)) {
+    if (currentUser && ['admin'].includes(currentUser.role)) {
       loadAssignedRequests();
     }
   }, [currentUser]);
@@ -67,7 +70,7 @@ const AssignedDiagnosticsTab: React.FC = () => {
     return colors[status as keyof typeof colors] || 'bg-gray-100 text-gray-800';
   };
 
-  if (!currentUser || !['technician', 'admin'].includes(currentUser.role)) {
+  if (!currentUser || !['admin'].includes(currentUser.role)) {
     return (
       <GlassCard className="p-6">
         <div className="text-center">
@@ -149,8 +152,8 @@ const AssignedDiagnosticsTab: React.FC = () => {
                 <div className="flex space-x-2">
                   <GlassButton
                     onClick={() => {
-                      // Navigate to diagnostic details
-                      toast('Opening diagnostic details...');
+                      setSelectedRequest(request);
+                      setShowDetailModal(true);
                     }}
                     className="bg-blue-500 hover:bg-blue-600 text-white"
                   >
@@ -162,6 +165,19 @@ const AssignedDiagnosticsTab: React.FC = () => {
             </GlassCard>
           ))}
         </div>
+      )}
+
+      {/* Diagnostic Device Detail Modal */}
+      {selectedRequest && (
+        <DiagnosticDeviceDetailModal
+          request={selectedRequest}
+          isOpen={showDetailModal}
+          onClose={() => {
+            setShowDetailModal(false);
+            setSelectedRequest(null);
+          }}
+          onRefresh={loadAssignedRequests}
+        />
       )}
     </div>
   );

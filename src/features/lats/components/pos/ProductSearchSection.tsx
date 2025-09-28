@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Search, RefreshCw, Package, Command, Barcode, Filter, X } from 'lucide-react';
+import { Search, RefreshCw, Package, Command, QrCode, Filter, X, MoreHorizontal } from 'lucide-react';
 import GlassCard from '../../../../features/shared/components/ui/GlassCard';
 import VariantProductCard from './VariantProductCard';
 import { toast } from 'react-hot-toast';
 import { useAuth } from '../../../../context/AuthContext';
 import { rbacManager, type UserRole } from '../../lib/rbac';
+import { useBodyScrollLock } from '../../../../hooks/useBodyScrollLock';
 
 interface Product {
   id: string;
@@ -56,7 +57,7 @@ interface ProductSearchSectionProps {
   onAddToCart: (product: Product, variant?: any) => void;
   onAddExternalProduct: () => void;
   onSearch: (query: string) => void;
-  onScanBarcode?: () => void;
+  onScanQrCode?: () => void;
   currentPage: number;
   setCurrentPage: (page: number) => void;
   totalPages: number;
@@ -87,7 +88,7 @@ const ProductSearchSection: React.FC<ProductSearchSectionProps> = ({
   onAddToCart,
   onAddExternalProduct,
   onSearch,
-  onScanBarcode,
+  onScanQrCode,
   currentPage,
   setCurrentPage,
   totalPages,
@@ -103,6 +104,12 @@ const ProductSearchSection: React.FC<ProductSearchSectionProps> = ({
   // Search suggestions disabled - keeping state for potential future use
   const [searchSuggestions, setSearchSuggestions] = useState<Product[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  
+  // Categories popup state
+  const [showCategoriesPopup, setShowCategoriesPopup] = useState(false);
+  
+  // Body scroll lock for categories popup
+  useBodyScrollLock(showCategoriesPopup);
 
   // Handle search input change
   const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -128,10 +135,10 @@ const ProductSearchSection: React.FC<ProductSearchSectionProps> = ({
     // Check if it's a barcode
     if (/^\d{8,}$/.test(query)) {
       // It's likely a barcode
-      if (onScanBarcode) {
-        onScanBarcode();
+      if (onScanQrCode) {
+        onScanQrCode();
       } else {
-        toast('Barcode scanning not available');
+        toast('QrCode scanning not available');
       }
     } else {
       // Regular search
@@ -147,7 +154,13 @@ const ProductSearchSection: React.FC<ProductSearchSectionProps> = ({
       const matchesSearch = 
         product.name?.toLowerCase().includes(query) ||
         product.sku?.toLowerCase().includes(query) ||
-        (product.category?.name && product.category.name.toLowerCase().includes(query));
+        (product.category?.name && product.category.name.toLowerCase().includes(query)) ||
+        // Enhanced variant search - search through variant names and SKUs
+        (product.variants && product.variants.some(variant => 
+          variant.name?.toLowerCase().includes(query) ||
+          variant.sku?.toLowerCase().includes(query) ||
+          variant.barcode?.toLowerCase().includes(query)
+        ));
       
       if (!matchesSearch) return false;
     }
@@ -225,210 +238,224 @@ const ProductSearchSection: React.FC<ProductSearchSectionProps> = ({
   useEffect(() => {
     if (import.meta.env.MODE === 'development' && !hasLoggedDebug) {
       console.log('🔍 ProductSearchSection Debug:', {
-    totalProducts: products.length,
-    filteredProducts: filteredProducts.length,
-    displayProducts: displayProducts.length,
-    searchQuery: searchQuery.trim(),
-    selectedCategory,
-    selectedBrand,
-    priceRange,
-    stockFilter,
-    categoriesReceived: categories,
-    categoriesCount: categories?.length || 0,
-    sampleProduct: products[0] ? {
-      id: products[0].id,
-      name: products[0].name,
-      sku: products[0].sku,
-      price: products[0].price,
-      stockQuantity: products[0].stockQuantity,
-      category: products[0].category?.name,
-      brand: products[0].brand,
-      hasVariants: !!products[0].variants,
-      variantsCount: products[0].variants?.length || 0,
-      primaryVariant: products[0].variants?.[0] ? {
-        id: products[0].variants[0].id,
-        sku: products[0].variants[0].sku,
-        sellingPrice: products[0].variants[0].sellingPrice,
-        quantity: products[0].variants[0].quantity
-      } : null
-    } : null
+        totalProducts: products.length,
+        filteredProducts: filteredProducts.length,
+        displayProducts: displayProducts.length,
+        searchQuery: searchQuery.trim(),
+        selectedCategory,
+        selectedBrand,
+        priceRange,
+        stockFilter,
+        categoriesReceived: categories,
+        categoriesCount: categories?.length || 0,
+        sampleProduct: products[0] ? {
+          id: products[0].id,
+          name: products[0].name,
+          sku: products[0].sku,
+          price: products[0].price,
+          stockQuantity: products[0].stockQuantity,
+          category: products[0].category?.name,
+          brand: products[0].brand,
+          hasVariants: !!products[0].variants,
+          variantsCount: products[0].variants?.length || 0,
+          primaryVariant: products[0].variants?.[0] ? {
+            id: products[0].variants[0].id,
+            sku: products[0].variants[0].sku,
+            sellingPrice: products[0].variants[0].sellingPrice,
+            quantity: products[0].variants[0].quantity
+          } : null
+        } : null
       });
       setHasLoggedDebug(true);
     }
   }, [products.length, filteredProducts.length, displayProducts.length, searchQuery, selectedCategory, selectedBrand, priceRange, stockFilter, hasLoggedDebug]);
 
+  // Additional debug logging for product changes (reduced frequency)
+  useEffect(() => {
+    if (import.meta.env.MODE === 'development' && products.length > 0) {
+      console.log('🔍 Products loaded:', products.length, 'Categories:', categories?.length || 0);
+    }
+  }, [products.length, categories?.length]);
+
   return (
     <div className="flex-1 overflow-hidden flex flex-col">
       <GlassCard className="p-6 h-full flex flex-col">
         {/* Fixed Search Section */}
-        <div className="flex-shrink-0 mb-6 space-y-4">
-          {/* Smart Search Bar */}
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-6 h-6 text-blue-500" />
-            <input
-              type="text"
-              placeholder="Search products by name, SKU, category, or scan barcode..."
-              value={searchQuery}
-              onChange={handleSearchInputChange}
-              onKeyPress={handleSearchInputKeyPress}
-              className="w-full pl-14 pr-24 py-5 text-lg border-2 border-blue-200 rounded-xl bg-white text-gray-900 placeholder-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-500/30 focus:border-blue-500 shadow-lg hover:shadow-xl transition-all duration-200"
-              style={{ minHeight: '60px' }}
-            />
-            
-            {/* Loading indicator */}
-            {isSearching && (
-              <div className="absolute left-14 top-1/2 transform -translate-y-1/2">
-                <RefreshCw className="w-4 h-4 text-blue-500 animate-spin" />
-              </div>
-            )}
-            
-            <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center gap-2">
-              {canAddProducts && (
-                <button
-                  onClick={onAddExternalProduct}
-                  className="p-3 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors duration-200 shadow-md hover:shadow-lg active:scale-95"
-                  title="Add External Product"
-                  style={{ minWidth: '44px', minHeight: '44px' }}
-                >
-                  <Package className="w-5 h-5" />
-                </button>
-              )}
-              <button
-                onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-                className="p-3 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg transition-colors duration-200"
-                title="Advanced filters"
-              >
-                <Command className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => {
-                  if (searchQuery.trim()) {
-                    handleUnifiedSearch(searchQuery.trim());
-                  }
-                }}
-                className="p-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors duration-200 shadow-md hover:shadow-lg active:scale-95"
-                title="Search or scan"
-                style={{ minWidth: '44px', minHeight: '44px' }}
-              >
-                <Barcode className="w-5 h-5" />
-              </button>
-            </div>
-
-          </div>
-
-          {/* Advanced Filters */}
-          {showAdvancedFilters && (
-            <div className="bg-gray-50 rounded-lg p-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                  <Filter className="w-4 h-4" />
-                  Advanced Filters
-                </h3>
-                <button
-                  onClick={() => setShowAdvancedFilters(false)}
-                  className="text-gray-500 hover:text-gray-700"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+        <div className="flex-shrink-0 mb-4">
+          {/* Main Search and Quick Filters */}
+          <div className="bg-white/70 backdrop-blur-xl rounded-xl border border-white/30 shadow-lg p-4 mb-4">
+            <div className="flex flex-col sm:flex-row gap-3 mb-4">
+              <div className="flex-1">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <input
+                    type="text"
+                    placeholder="Search products..."
+                    value={searchQuery}
+                    onChange={handleSearchInputChange}
+                    onKeyPress={handleSearchInputKeyPress}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white/80"
+                  />
+                </div>
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* Category Filter */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                  <select
-                    value={selectedCategory}
-                    onChange={(e) => setSelectedCategory(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">All Categories</option>
-                    {categories.map((category) => (
-                      <option key={category} value={category}>{category}</option>
-                    ))}
-                  </select>
-                </div>
+            </div>
 
-                {/* Brand Filter */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Brand</label>
-                  <select
-                    value={selectedBrand}
-                    onChange={(e) => setSelectedBrand(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">All Brands</option>
-                    {brands.map((brand) => (
-                      <option key={brand} value={brand}>{brand}</option>
-                    ))}
-                  </select>
-                </div>
+            {/* Advanced Filters Row */}
+            <div className="flex flex-wrap items-center gap-3">
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as any)}
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 bg-white/80 text-sm"
+              >
+                <option value="sales">Best Selling</option>
+                <option value="name">Name</option>
+                <option value="price">Price</option>
+                <option value="stock">Stock</option>
+              </select>
+              
+              <button
+                onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                className="px-3 py-2 text-sm bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                {sortOrder === 'asc' ? '↑' : '↓'}
+              </button>
 
-                {/* Price Range */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Price Range</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="number"
-                      placeholder="Min"
-                      value={priceRange.min}
-                      onChange={(e) => setPriceRange({ ...priceRange, min: e.target.value })}
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <input
-                      type="number"
-                      placeholder="Max"
-                      value={priceRange.max}
-                      onChange={(e) => setPriceRange({ ...priceRange, max: e.target.value })}
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-
-                {/* Stock Filter */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Stock Status</label>
-                  <select
-                    value={stockFilter}
-                    onChange={(e) => setStockFilter(e.target.value as any)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="all">All Stock</option>
-                    <option value="in-stock">In Stock</option>
-                    <option value="low-stock">Low Stock</option>
-                    <option value="out-of-stock">Out of Stock</option>
-                  </select>
-                </div>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  placeholder="Min Price"
+                  value={priceRange.min}
+                  onChange={(e) => setPriceRange({ ...priceRange, min: e.target.value })}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 bg-white/80 text-sm w-24"
+                />
+                <input
+                  type="number"
+                  placeholder="Max Price"
+                  value={priceRange.max}
+                  onChange={(e) => setPriceRange({ ...priceRange, max: e.target.value })}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 bg-white/80 text-sm w-24"
+                />
               </div>
 
-              {/* Sort Options */}
-              <div className="flex items-center gap-4">
-                <label className="text-sm font-medium text-gray-700">Sort by:</label>
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as any)}
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="sales">Best Selling</option>
-                  <option value="name">Name</option>
-                  <option value="price">Price</option>
-                  <option value="stock">Stock</option>
-                  <option value="recent">Recent</option>
-                </select>
-                <button
-                  onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                  className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
-                >
-                  {sortOrder === 'asc' ? '↑' : '↓'}
-                </button>
+              <button
+                onClick={() => {
+                  setSearchQuery('');
+                  setSelectedCategory('');
+                  setSelectedBrand('');
+                  setPriceRange({ min: '', max: '' });
+                  setStockFilter('all');
+                }}
+                className="px-3 py-2 text-sm bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                Clear
+              </button>
+
+              {/* Filter Section */}
+              <div className="flex gap-2">
+                {/* Category Filter Buttons */}
+                <div className="flex border border-gray-300 rounded-lg overflow-hidden">
+                  <button
+                    onClick={() => setSelectedCategory('')}
+                    className={`px-3 py-2 text-sm transition-colors ${
+                      selectedCategory === '' 
+                        ? 'bg-blue-600 text-white' 
+                        : 'bg-white text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    All
+                  </button>
+                  {categories.slice(0, 3).map((category) => (
+                    <button
+                      key={category}
+                      onClick={() => setSelectedCategory(category)}
+                      className={`px-3 py-2 text-sm transition-colors ${
+                        selectedCategory === category 
+                          ? 'bg-green-600 text-white' 
+                          : 'bg-white text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >
+                      {category}
+                    </button>
+                  ))}
+                  {categories.length > 3 && (
+                    <button
+                      onClick={() => setShowCategoriesPopup(true)}
+                      className="px-3 py-2 text-sm bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors border-l border-gray-300"
+                      title="Show all categories"
+                    >
+                      <MoreHorizontal className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Stock Filter Buttons */}
+                <div className="flex border border-gray-300 rounded-lg overflow-hidden">
+                  <button
+                    onClick={() => setStockFilter('all')}
+                    className={`px-3 py-2 text-sm transition-colors ${
+                      stockFilter === 'all' 
+                        ? 'bg-blue-600 text-white' 
+                        : 'bg-white text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    All
+                  </button>
+                  <button
+                    onClick={() => setStockFilter('in-stock')}
+                    className={`px-3 py-2 text-sm transition-colors ${
+                      stockFilter === 'in-stock' 
+                        ? 'bg-green-600 text-white' 
+                        : 'bg-white text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    In Stock
+                  </button>
+                  <button
+                    onClick={() => setStockFilter('low-stock')}
+                    className={`px-3 py-2 text-sm transition-colors ${
+                      stockFilter === 'low-stock' 
+                        ? 'bg-orange-600 text-white' 
+                        : 'bg-white text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    Low Stock
+                  </button>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex border border-gray-300 rounded-lg overflow-hidden">
+                  {canAddProducts && (
+                    <button
+                      onClick={onAddExternalProduct}
+                      className="px-3 py-2 text-sm bg-green-600 text-white hover:bg-green-700 transition-colors"
+                      title="Add Product"
+                    >
+                      <Package className="w-4 h-4" />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      if (searchQuery.trim()) {
+                        handleUnifiedSearch(searchQuery.trim());
+                      }
+                    }}
+                    className="px-3 py-2 text-sm bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                    title="Scan"
+                  >
+                    <QrCode className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             </div>
-          )}
+          </div>
         </div>
+
 
         {/* Products Grid - Scrollable */}
         <div className="flex-1 overflow-y-auto scrollbar-transparent">
           {displayProducts.length > 0 ? (
-            <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-4 pb-4">
               {displayProducts.map((product) => (
                 <VariantProductCard
                   key={product.id}
@@ -455,6 +482,81 @@ const ProductSearchSection: React.FC<ProductSearchSectionProps> = ({
           </div>
         </div>
       </GlassCard>
+
+      {/* Categories Popup Modal */}
+      {showCategoriesPopup && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[80vh] overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-900">Select Category</h2>
+              <button
+                onClick={() => setShowCategoriesPopup(false)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            {/* Categories Grid */}
+            <div className="p-6 overflow-y-auto max-h-[calc(80vh-120px)]">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                {/* All Categories Button */}
+                <button
+                  onClick={() => {
+                    setSelectedCategory('');
+                    setShowCategoriesPopup(false);
+                  }}
+                  className={`p-4 rounded-lg border-2 transition-all hover:shadow-md ${
+                    selectedCategory === ''
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : 'border-gray-200 bg-white hover:border-gray-300 text-gray-700'
+                  }`}
+                >
+                  <div className="text-center">
+                    <div className="text-sm font-medium">All Categories</div>
+                  </div>
+                </button>
+
+                {/* Individual Category Buttons */}
+                {categories.map((category) => (
+                  <button
+                    key={category}
+                    onClick={() => {
+                      setSelectedCategory(category);
+                      setShowCategoriesPopup(false);
+                    }}
+                    className={`p-4 rounded-lg border-2 transition-all hover:shadow-md ${
+                      selectedCategory === category
+                        ? 'border-green-500 bg-green-50 text-green-700'
+                        : 'border-gray-200 bg-white hover:border-gray-300 text-gray-700'
+                    }`}
+                  >
+                    <div className="text-center">
+                      <div className="text-sm font-medium truncate" title={category}>
+                        {category}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between p-6 border-t border-gray-200 bg-gray-50">
+              <div className="text-sm text-gray-500">
+                {categories.length} categories available
+              </div>
+              <button
+                onClick={() => setShowCategoriesPopup(false)}
+                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

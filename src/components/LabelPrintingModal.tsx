@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Printer, QrCode, Barcode, Tag } from 'lucide-react';
+import { X, Printer, QrCode, Tag } from 'lucide-react';
 import { useBluetoothPrinter } from '../hooks/useBluetoothPrinter';
 import GlassButton from '../features/shared/components/ui/GlassButton';
 import GlassCard from '../features/shared/components/ui/GlassCard';
@@ -137,10 +137,10 @@ export const LabelPrintingModal: React.FC<LabelPrintingModalProps> = ({
                 <div className="text-sm text-gray-600">{labelData.text}</div>
               )}
               
-              {/* Barcode */}
+              {/* QrCode */}
               {labelData.barcode && (
                 <div className="flex items-center justify-center gap-2">
-                  <Barcode className="w-4 h-4 text-gray-500" />
+                  <QrCode className="w-4 h-4 text-gray-500" />
                   <span className="text-sm font-mono">{labelData.barcode}</span>
                 </div>
               )}
@@ -198,7 +198,7 @@ export const LabelPrintingModal: React.FC<LabelPrintingModalProps> = ({
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Barcode</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">QrCode</label>
               <input
                 type="text"
                 value={labelData.barcode}

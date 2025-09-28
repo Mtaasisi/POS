@@ -216,7 +216,7 @@ const POSComponent: React.FC = () => {
                       <p className="mt-2 text-gray-600">Loading products...</p>
                     </div>
                   ) : products.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-96 overflow-y-auto">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 max-h-96 overflow-y-auto">
                       {products.map((product) => (
                         <div key={product.id} className="border border-gray-200 rounded-lg p-4 bg-white">
                           <h4 className="font-medium text-gray-900 mb-2">{product.name}</h4>

@@ -5,20 +5,22 @@ import GlassButton from '../../../features/shared/components/ui/GlassButton';
 import { useNavigate } from 'react-router-dom';
 import { toast } from '../../../lib/toastUtils';
 import { SimpleBackButton as BackButton } from '../../../features/shared/components/ui/SimpleBackButton';
-import { ArrowLeft, User, Smartphone, Tag, Layers, Hash, FileText, DollarSign, Key, Phone, Mail, MapPin, Calendar, Clock, ChevronDown, Battery, Camera as CameraIcon, Wifi, Bluetooth, Plug, Volume2, Mic, Speaker, Vibrate, Cpu, HardDrive, Droplet, Shield, Wrench, AlertTriangle as AlertIcon, Eye, Edit, MessageCircle, Users, Star, UserPlus, Brain, Zap, Lightbulb, Search, Sparkles, Package, RefreshCw, WifiOff, Store } from 'lucide-react';
+import { ArrowLeft, User, Smartphone, Tag, Layers, Hash, FileText, DollarSign, Key, Phone, Mail, MapPin, Calendar, Clock, ChevronDown, Battery, Camera as CameraIcon, Wifi, Bluetooth, Plug, Volume2, Mic, Speaker, Vibrate, Cpu, HardDrive, Droplet, Shield, Wrench, AlertTriangle as AlertIcon, Eye, Edit, MessageCircle, Users, Star, UserPlus, Brain, Zap, Lightbulb, Search, Sparkles, Package, RefreshCw, WifiOff, Store, CheckSquare, X } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 import Modal from '../../../features/shared/components/ui/Modal';
 import { useCustomers } from '../../../context/CustomersContext';
+import { searchCustomersFast } from '../../../lib/customerApi/search';
 import AddCustomerModal from '../../../features/customers/components/forms/AddCustomerModal';
 import { useDevices } from '../../../context/DevicesContext';
+import { useInventoryStore } from '../../lats/stores/useInventoryStore';
+import { createRepairParts } from '../../lats/lib/sparePartsApi';
+import { formatCurrency } from '../../lats/lib/productCalculations';
 import { DeviceStatus } from '../../../types';
-import CountdownTimer from '../../../features/shared/components/ui/CountdownTimer';
 import { useAuth } from '../../../context/AuthContext';
 import deviceModels from '../../../data/deviceModels';
 import ModelSuggestionInput from '../../../features/shared/components/ui/ModelSuggestionInput';
 
 
-import ConditionAssessment from '../components/ConditionAssessment';
 import DeviceQRCodePrint from '../components/DeviceQRCodePrint';
 import { smsService } from '../../../services/smsService';
 import { SoundManager } from '../../../lib/soundUtils';
@@ -27,9 +29,6 @@ import { saveActionOffline } from '../../../lib/offlineSync';
 
 import geminiService from '../../../services/geminiService';
 import offlineAIService from '../../../services/offlineAIService';
-import StepIndicator from '../components/StepIndicator';
-import InteractiveDeviceDiagram from '../components/InteractiveDeviceDiagram';
-import VideoTutorials from '../components/VideoTutorials';
 
 const COMMON_MODELS = {
   'Apple': ['iPhone 15', 'iPhone 14', 'iPhone 13', 'iPhone 12', 'iPhone 11', 'iPhone X', 'iPhone 8', 'iPhone 7', 'iPhone 6'],
@@ -50,19 +49,12 @@ const initialForm = {
   serialNumber: '',
   issueDescription: '',
   repairCost: '',
-  depositAmount: '',
-  diagnosisRequired: false,
   expectedReturnDate: new Date().toISOString().split('T')[0], // default to today
   unlockCode: '',
   deviceNotes: '',
-  deviceCost: '',
   assignedTo: '', // Add assignedTo to form state
 };
 
-type DeviceConditionKey = 'screenCracked' | 'backCoverDamaged' | 'waterDamage' | 'noPower' | 'buttonsNotWorking' | 'other';
-const conditionOptions: { key: DeviceConditionKey | 'otherText'; label: string }[] = [
-  { key: 'other', label: 'Condition Assessment' },
-];
 
 const DeviceIntakeUnifiedPage: React.FC = () => {
   // All state variables and refs
@@ -78,6 +70,7 @@ const DeviceIntakeUnifiedPage: React.FC = () => {
   const [customerSearch, setCustomerSearch] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [filteredCustomers, setFilteredCustomers] = useState<any[]>([]);
+  const [searchingCustomers, setSearchingCustomers] = useState(false);
   const customerInputRef = useRef<HTMLInputElement>(null);
   const [recentDevices, setRecentDevices] = useState<any[]>([]);
   const [loadingDevices, setLoadingDevices] = useState(false);
@@ -90,17 +83,6 @@ const DeviceIntakeUnifiedPage: React.FC = () => {
   const [confirmPrivacy, setConfirmPrivacy] = useState(false);
   const [duplicateDevice, setDuplicateDevice] = useState<null | { found: boolean; info?: string }>(null);
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
-  const [deviceCondition, setDeviceCondition] = useState<Record<DeviceConditionKey, boolean> & { otherText: string}>(
-    {
-      screenCracked: false,
-      backCoverDamaged: false,
-      waterDamage: false,
-      noPower: false,
-      buttonsNotWorking: false,
-      other: false,
-      otherText: '',
-    }
-  );
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [note, setNote] = useState('');
 
@@ -162,20 +144,64 @@ const DeviceIntakeUnifiedPage: React.FC = () => {
 
   const [showDeviceNotes, setShowDeviceNotes] = useState(false);
   const [showPartDetails, setShowPartDetails] = useState<any>(null);
-  const [showDepositField, setShowDepositField] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<{ [key: string]: boolean }>({});
   const [errorMessages, setErrorMessages] = useState<{ [key: string]: string }>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const [isRetrying, setIsRetrying] = useState(false);
-  const { addDevice } = useDevices();
+  
+  // Enhanced error handling states
+  const [networkError, setNetworkError] = useState<string | null>(null);
+  const [validationErrors, setValidationErrors] = useState<{ [key: string]: string }>({});
+  const [apiErrors, setApiErrors] = useState<string | null>(null);
+  const [offlineErrors, setOfflineErrors] = useState<string | null>(null);
+  const [criticalError, setCriticalError] = useState<string | null>(null);
+  const [errorHistory, setErrorHistory] = useState<Array<{timestamp: Date, error: string, type: string}>>([]);
+  
+  // Safely access devices context with error handling for HMR
+  let addDevice: any = null;
+  try {
+    const devicesContext = useDevices();
+    addDevice = devicesContext?.addDevice || null;
+  } catch (error) {
+    console.warn('Devices context not available during HMR:', error);
+  }
+  
   const { currentUser } = useAuth();
+  const { spareParts, loadSpareParts, categories, loadCategories, isLoading: inventoryLoading } = useInventoryStore();
   const [technicians, setTechnicians] = useState<any[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Condition assessment state
+  const [selectedConditions, setSelectedConditions] = useState<string[]>([]);
+  const [otherConditionText, setOtherConditionText] = useState('');
+  
   const modelInputRef = useRef<HTMLInputElement>(null);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
   const [offlineSuccess, setOfflineSuccess] = useState(false);
   const qrPrintRef = useRef<HTMLDivElement>(null);
+  
+  // Payment processing state
+  const [showPaymentSection, setShowPaymentSection] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [paymentAccountId, setPaymentAccountId] = useState('');
+  const [paymentReference, setPaymentReference] = useState('');
+  const [paymentNotes, setPaymentNotes] = useState('');
+  const [processingPayment, setProcessingPayment] = useState(false);
+  
+  // Spare parts state
+  const [showSparePartsSection, setShowSparePartsSection] = useState(false);
+  const [selectedSpareParts, setSelectedSpareParts] = useState<Array<{
+    spare_part_id: string;
+    name: string;
+    part_number: string;
+    quantity: number;
+    cost_per_unit: number;
+    total_cost: number;
+    notes?: string;
+  }>>([]);
+  const [sparePartsSearchTerm, setSparePartsSearchTerm] = useState('');
+  const [sparePartsCategory, setSparePartsCategory] = useState('all');
 
   // Redirect technicians away from this page
   useEffect(() => {
@@ -194,23 +220,9 @@ const DeviceIntakeUnifiedPage: React.FC = () => {
     { label: 'Custom', value: 'custom', days: null },
   ];
 
-  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
   
-  // Close dropdown on outside click
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      const dropdown = document.querySelector('[data-dropdown="completion"]');
-      if (dropdown && !dropdown.contains(event.target as Node)) {
-        setDropdownOpen(false);
-      }
-    }
-    if (dropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [dropdownOpen]);
+  // No longer needed for modal
   
   const optionIcons = {
     same_day: <Clock size={20} className="text-blue-500" />,
@@ -220,9 +232,9 @@ const DeviceIntakeUnifiedPage: React.FC = () => {
     custom: <Calendar size={20} className="text-gray-400" />,
   };
 
-  const handleDropdownSelect = (value: string) => {
+  const handleCompletionSelect = (value: string) => {
     setCompletionOption(value);
-    setDropdownOpen(false);
+    setShowCompletionModal(false);
     if (value !== 'custom') {
       const option = completionOptions.find(opt => opt.value === value);
       if (option && option.days !== null) {
@@ -252,21 +264,50 @@ const DeviceIntakeUnifiedPage: React.FC = () => {
     fetchTechnicians();
   }, []);
 
-  // Debounce customer search
+  // Load spare parts and categories when component mounts
+  useEffect(() => {
+    console.log('🔧 Loading spare parts and categories...');
+    loadSpareParts();
+    loadCategories();
+  }, [loadSpareParts, loadCategories]);
+
+  // Debug spare parts loading
+  useEffect(() => {
+    console.log('📦 Spare parts loaded:', spareParts.length, 'parts');
+    console.log('📂 Categories loaded:', categories.length, 'categories');
+    if (spareParts.length > 0) {
+      console.log('📦 Sample spare part:', spareParts[0]);
+    }
+  }, [spareParts, categories]);
+
+  // Debounce customer search using API
   useEffect(() => {
     if (!customerSearch.trim()) {
       setFilteredCustomers([]);
+      setSearchingCustomers(false);
       return;
     }
-    const timeout = setTimeout(() => {
-      const filtered = customers.filter(c =>
-        c.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
-        (c.phone && c.phone.includes(customerSearch))
-      );
-      setFilteredCustomers(filtered);
-    }, 200);
+    
+    const timeout = setTimeout(async () => {
+      try {
+        setSearchingCustomers(true);
+        const result = await searchCustomersFast(customerSearch, 1, 50);
+        
+        if (result && result.customers) {
+          setFilteredCustomers(result.customers);
+        } else {
+          setFilteredCustomers([]);
+        }
+      } catch (error) {
+        toast.error('Failed to search customers');
+        setFilteredCustomers([]);
+      } finally {
+        setSearchingCustomers(false);
+      }
+    }, 300);
+    
     return () => clearTimeout(timeout);
-  }, [customerSearch, customers]);
+  }, [customerSearch]);
 
   // Hide suggestions on outside click
   useEffect(() => {
@@ -299,12 +340,12 @@ const DeviceIntakeUnifiedPage: React.FC = () => {
     };
   }, [showModelSuggestions]);
 
-  // Handlers (examples, not full):
+  // Form handlers:
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
     let newValue = type === 'checkbox' && 'checked' in e.target ? (e.target as HTMLInputElement).checked : value;
     // Fix: For number fields, strip commas and only allow valid numbers
-    if (name === 'repairCost' || name === 'depositAmount') {
+    if (name === 'repairCost') {
       // Remove commas
       const cleaned = value.replace(/,/g, '');
       // Only set if valid number or empty
@@ -327,11 +368,14 @@ const DeviceIntakeUnifiedPage: React.FC = () => {
   // Enhanced AI Analysis function with offline capabilities
   const analyzeDeviceProblem = async () => {
     if (!formData.model || !formData.issueDescription.trim()) {
-      toast.error('Please fill in model and issue description for AI analysis');
+      const errorMsg = 'Please fill in model and issue description for AI analysis';
+      handleValidationError('issueDescription', errorMsg);
+      toast.error(errorMsg);
       return;
     }
 
     setAiAnalysis(prev => ({ ...prev, isAnalyzing: true, error: undefined }));
+    clearAllErrors(); // Clear previous errors before starting analysis
     
     // Initialize repair steps
     const steps = [
@@ -347,8 +391,8 @@ const DeviceIntakeUnifiedPage: React.FC = () => {
       // Check online status first
       if (!isOnline) {
         // Use offline AI analysis
-        console.log('🔴 Offline mode - using local AI analysis');
-        toast('Working offline - using local AI analysis');
+
+        toast.info('Working offline - using local AI analysis');
         
         const offlineResult = await offlineAIService.analyzeDevice(
           formData.model,
@@ -547,15 +591,17 @@ IMPORTANT INSTRUCTIONS:
           throw new Error(response.error || 'AI analysis failed');
         }
       } catch (onlineError) {
-        console.log('🔄 Online AI failed, falling back to offline analysis');
+
+        handleApiError(onlineError, 'AI analysis');
         
-        // Fallback to offline analysis
-        const offlineResult = await offlineAIService.analyzeDevice(
-          formData.brand,
-          formData.model,
-          formData.issueDescription,
-          aiLanguage
-        );
+        try {
+          // Fallback to offline analysis
+          const offlineResult = await offlineAIService.analyzeDevice(
+            formData.brand,
+            formData.model,
+            formData.issueDescription,
+            aiLanguage
+          );
 
         setAiAnalysis({
           isAnalyzing: false,
@@ -576,8 +622,18 @@ IMPORTANT INSTRUCTIONS:
 
         setShowAiAnalysis(true);
         toast.success(`🔄 Fallback analysis completed! (${Math.round(offlineResult.confidence * 100)}% confidence)`);
+        addErrorToHistory('Offline AI analysis completed successfully', 'offline');
+        } catch (offlineError) {
+          handleOfflineError(offlineError);
+          setAiAnalysis(prev => ({ 
+            ...prev, 
+            isAnalyzing: false, 
+            error: 'Both online and offline AI analysis failed' 
+          }));
+        }
       }
     } catch (error) {
+      handleCriticalError(error);
       setAiAnalysis(prev => ({ 
         ...prev, 
         isAnalyzing: false, 
@@ -749,11 +805,15 @@ IMPORTANT INSTRUCTIONS:
   // Customer creation function
   const handleCreateCustomer = async () => {
     if (!newCustomerData.name.trim() || !newCustomerData.phone.trim()) {
-      toast.error('Name and phone number are required');
+      const errorMsg = 'Name and phone number are required';
+      handleValidationError('customer', errorMsg);
+      toast.error(errorMsg);
       return;
     }
 
     setCreatingCustomer(true);
+    clearAllErrors();
+    
     try {
       const { data, error } = await supabase
         .from('customers')
@@ -796,11 +856,102 @@ IMPORTANT INSTRUCTIONS:
         // Note: This would ideally trigger a refresh of the customers context
       }
     } catch (error: any) {
-      toast.error(`Error creating customer: ${error.message}`);
+      handleApiError(error, 'create customer');
+      
+      // Handle specific customer creation errors
+      if (error?.code === '23505') {
+        handleValidationError('phone', 'Phone number already exists. Please use a different number.');
+      } else if (error?.code === '23503') {
+        handleValidationError('customer', 'Invalid data provided for customer creation.');
+      }
     } finally {
       setCreatingCustomer(false);
     }
   };
+
+
+  // Spare parts management functions
+  const addSparePart = (sparePart: any) => {
+    const existingPart = selectedSpareParts.find(p => p.spare_part_id === sparePart.id);
+    
+    if (existingPart) {
+      // Increase quantity if part already selected
+      setSelectedSpareParts(prev => 
+        prev.map(p => 
+          p.spare_part_id === sparePart.id 
+            ? { 
+                ...p, 
+                quantity: Math.min(p.quantity + 1, sparePart.quantity),
+                total_cost: Math.min(p.quantity + 1, sparePart.quantity) * p.cost_per_unit
+              }
+            : p
+        )
+      );
+    } else {
+      // Add new part
+      const newPart = {
+        spare_part_id: sparePart.id,
+        name: sparePart.name,
+        part_number: sparePart.part_number,
+        quantity: 1,
+        cost_per_unit: sparePart.selling_price,
+        total_cost: sparePart.selling_price,
+        notes: ''
+      };
+      setSelectedSpareParts(prev => [...prev, newPart]);
+    }
+    
+    toast.success('Spare part added to device');
+  };
+
+  const updateSparePartQuantity = (sparePartId: string, newQuantity: number) => {
+    const sparePart = spareParts.find(p => p.id === sparePartId);
+    if (!sparePart) return;
+
+    const quantity = Math.max(1, Math.min(newQuantity, sparePart.quantity));
+    
+    setSelectedSpareParts(prev => 
+      prev.map(p => 
+        p.spare_part_id === sparePartId 
+          ? { 
+              ...p, 
+              quantity,
+              total_cost: quantity * p.cost_per_unit
+            }
+          : p
+      )
+    );
+  };
+
+  const removeSparePart = (sparePartId: string) => {
+    setSelectedSpareParts(prev => prev.filter(p => p.spare_part_id !== sparePartId));
+    toast.success('Spare part removed');
+  };
+
+  const updateSparePartNotes = (sparePartId: string, notes: string) => {
+    setSelectedSpareParts(prev => 
+      prev.map(p => 
+        p.spare_part_id === sparePartId 
+          ? { ...p, notes }
+          : p
+      )
+    );
+  };
+
+  // Filter spare parts for display
+  const filteredSpareParts = spareParts.filter(part => {
+    const matchesSearch = part.name.toLowerCase().includes(sparePartsSearchTerm.toLowerCase()) ||
+                         part.part_number.toLowerCase().includes(sparePartsSearchTerm.toLowerCase()) ||
+                         part.brand?.toLowerCase().includes(sparePartsSearchTerm.toLowerCase());
+    const matchesCategory = sparePartsCategory === 'all' || part.category_id === sparePartsCategory;
+    const hasStock = part.quantity > 0;
+    const isActive = part.is_active;
+    
+    return matchesSearch && matchesCategory && hasStock && isActive;
+  });
+
+  // Calculate total spare parts cost
+  const totalSparePartsCost = selectedSpareParts.reduce((total, part) => total + part.total_cost, 0);
 
   // Enhanced IMEI/Serial Number validation
   const validateImeiOrSerial = (value: string): { isValid: boolean; error?: string } => {
@@ -978,13 +1129,13 @@ IMPORTANT INSTRUCTIONS:
       }
     }
 
-    // Condition assessment validation
-    const anyCondition = Object.values(deviceCondition).some(v => v) || selectedConditions.length > 0 || !!otherConditionText.trim();
-    if (!anyCondition) {
-      errors.conditionAssessment = true;
-      messages.conditionAssessment = 'Please complete the device condition assessment';
-      valid = false;
-    }
+    // Condition assessment validation - DISABLED
+    // const anyCondition = Object.values(deviceCondition).some(v => v) || selectedConditions.length > 0 || !!otherConditionText.trim();
+    // if (!anyCondition) {
+    //   errors.conditionAssessment = true;
+    //   messages.conditionAssessment = 'Please complete the device condition assessment';
+    //   valid = false;
+    // }
 
     // Repair cost validation (if provided)
     if (formData.repairCost && formData.repairCost.trim()) {
@@ -996,43 +1147,117 @@ IMPORTANT INSTRUCTIONS:
       }
     }
 
-    // Deposit amount validation (if provided)
-    if (formData.depositAmount && formData.depositAmount.trim()) {
-      const deposit = parseFloat(formData.depositAmount);
-      if (isNaN(deposit) || deposit < 0) {
-        errors.depositAmount = true;
-        messages.depositAmount = 'Deposit amount must be a valid positive number';
-        valid = false;
-      }
-    }
+
 
     setFieldErrors(errors);
     setErrorMessages(messages);
     return valid;
   };
 
+  // Enhanced error handling system
+  const addErrorToHistory = (error: string, type: string) => {
+    const newError = {
+      timestamp: new Date(),
+      error,
+      type
+    };
+    setErrorHistory(prev => [newError, ...prev.slice(0, 9)]); // Keep last 10 errors
+  };
+
+  const clearAllErrors = () => {
+    setNetworkError(null);
+    setValidationErrors({});
+    setApiErrors(null);
+    setOfflineErrors(null);
+    setCriticalError(null);
+    setSubmitError(null);
+    setFieldErrors({});
+    setErrorMessages({});
+  };
+
+  const handleNetworkError = (error: any) => {
+    const errorMsg = 'Network connection lost. Please check your internet connection and try again.';
+    setNetworkError(errorMsg);
+    addErrorToHistory(errorMsg, 'network');
+    toast.error(errorMsg);
+  };
+
+  const handleApiError = (error: any, context: string = 'API call') => {
+    
+    let errorMessage = `Failed to ${context.toLowerCase()}. Please try again.`;
+    
+    if (error?.message) {
+      if (error.message.includes('permission') || error.message.includes('unauthorized')) {
+        errorMessage = 'Permission denied. Please contact your administrator.';
+      } else if (error.message.includes('network') || error.message.includes('timeout')) {
+        errorMessage = 'Network timeout. Please check your connection and try again.';
+      } else if (error.message.includes('validation')) {
+        errorMessage = 'Invalid data provided. Please check your input and try again.';
+      }
+    }
+    
+    setApiErrors(errorMessage);
+    addErrorToHistory(errorMessage, 'api');
+    toast.error(errorMessage);
+  };
+
+  const handleValidationError = (field: string, message: string) => {
+    setValidationErrors(prev => ({ ...prev, [field]: message }));
+    setFieldErrors(prev => ({ ...prev, [field]: true }));
+    setErrorMessages(prev => ({ ...prev, [field]: message }));
+    addErrorToHistory(`Validation error in ${field}: ${message}`, 'validation');
+  };
+
+  const handleOfflineError = (error: any) => {
+    const errorMsg = 'Failed to save data offline. Please try again or contact support.';
+    setOfflineErrors(errorMsg);
+    addErrorToHistory(errorMsg, 'offline');
+    toast.error(errorMsg);
+  };
+
+  const handleCriticalError = (error: any) => {
+    const errorMsg = 'A critical error occurred. Please refresh the page and try again.';
+    setCriticalError(errorMsg);
+    addErrorToHistory(errorMsg, 'critical');
+    toast.error(errorMsg);
+  };
+
   // Enhanced error handling for device creation
   const handleDeviceCreationError = (error: any) => {
-    console.error('Device creation error:', error);
     
     let errorMessage = 'An unexpected error occurred while creating the device.';
+    let errorType = 'api';
     
     // Handle specific error types
     if (error?.code === '23505') {
       errorMessage = 'A device with this serial number already exists. Please check the IMEI/Serial Number.';
+      errorType = 'validation';
+      // Highlight the serial number field
+      setFieldErrors(prev => ({ ...prev, imeiOrSerial: true }));
+      setErrorMessages(prev => ({ ...prev, imeiOrSerial: errorMessage }));
     } else if (error?.code === '23503') {
       errorMessage = 'Invalid customer or technician selected. Please refresh and try again.';
+      errorType = 'validation';
     } else if (error?.code === '23514') {
       errorMessage = 'Invalid data provided. Please check all fields and try again.';
+      errorType = 'validation';
     } else if (error?.message?.includes('network') || error?.message?.includes('fetch')) {
       errorMessage = 'Network error. Please check your connection and try again.';
+      errorType = 'network';
+      handleNetworkError(error);
     } else if (error?.message?.includes('timeout')) {
       errorMessage = 'Request timed out. Please try again.';
+      errorType = 'network';
+    } else if (error?.message?.includes('offline')) {
+      errorType = 'offline';
+      handleOfflineError(error);
+      return;
     } else if (error?.message) {
       errorMessage = error.message;
     }
     
     setSubmitError(errorMessage);
+    addErrorToHistory(errorMessage, errorType);
     toast.error(errorMessage);
     
     // Reset loading states
@@ -1043,23 +1268,50 @@ IMPORTANT INSTRUCTIONS:
   // Retry mechanism for failed submissions
   const retryDeviceCreation = async () => {
     if (retryCount >= 3) {
-      toast.error('Maximum retry attempts reached. Please refresh the page and try again.');
+      const errorMsg = 'Maximum retry attempts reached. Please refresh the page and try again.';
+      handleCriticalError(new Error(errorMsg));
       return;
     }
     
     setIsRetrying(true);
     setRetryCount(prev => prev + 1);
+    clearAllErrors();
     
     try {
-      // Wait a bit before retrying
-      await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+      // Wait a bit before retrying with exponential backoff
+      await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, retryCount - 1)));
       
       // Retry the submission
       await submitDeviceForm();
+      
+      // Reset retry count on success
+      setRetryCount(0);
+      addErrorToHistory('Device creation retry successful', 'success');
     } catch (error) {
       handleDeviceCreationError(error);
     } finally {
       setIsRetrying(false);
+    }
+  };
+
+  // Enhanced retry mechanism for different operations
+  const retryOperation = async (operation: () => Promise<any>, operationName: string, maxRetries: number = 3) => {
+    let attempts = 0;
+    
+    while (attempts < maxRetries) {
+      try {
+        return await operation();
+      } catch (error) {
+        attempts++;
+        if (attempts >= maxRetries) {
+          handleApiError(error, operationName);
+          throw error;
+        }
+        
+        // Wait before retry with exponential backoff
+        await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempts - 1)));
+        addErrorToHistory(`${operationName} retry attempt ${attempts}`, 'retry');
+      }
     }
   };
 
@@ -1106,9 +1358,36 @@ IMPORTANT INSTRUCTIONS:
 
   // Main device submission function
   const submitDeviceForm = async () => {
-    if (!validateForm()) {
-      toast.error('Please fix the form errors before submitting.');
+    // Clear previous errors
+    clearAllErrors();
+    
+    // Check if form is ready for submission
+    if (completionPercentage < 70) {
+      const errorMsg = 'Please complete more fields before submitting.';
+      addErrorToHistory(errorMsg, 'validation');
+      toast.error(errorMsg);
       return;
+    }
+    
+    // If not 100% complete, show warning but allow submission
+    if (completionPercentage < 100) {
+      const warningMsg = `Form is ${completionPercentage}% complete. Some fields are optional but recommended.`;
+      toast.info(warningMsg);
+      addErrorToHistory(warningMsg, 'warning');
+    }
+    
+    // Validate required fields only
+    if (!validateForm()) {
+      const errorMsg = 'Please fix the required field errors before submitting.';
+      addErrorToHistory(errorMsg, 'validation');
+      toast.error(errorMsg);
+      return;
+    }
+
+    // Check network connectivity
+    if (!navigator.onLine) {
+      setNetworkError('No internet connection. Data will be saved offline.');
+      addErrorToHistory('Offline mode detected', 'network');
     }
 
     setIsSubmitting(true);
@@ -1121,41 +1400,91 @@ IMPORTANT INSTRUCTIONS:
       const newDevice = {
         brand: extractedBrand,
         model: formData.model,
-        serialNumber: imeiOrSerial,
+        serialNumber: formData.serialNumber || imeiOrSerial,
         unlockCode: formData.unlockCode,
         customerId: selectedCustomer?.id,
-        customerName: selectedCustomer?.name || '',
-        phoneNumber: selectedCustomer?.phone || '',
         expectedReturnDate: formData.expectedReturnDate,
         status: 'assigned' as DeviceStatus,
         issueDescription: formData.issueDescription,
-        conditions: selectedConditions,
-        otherText: otherConditionText,
-        depositAmount: showDepositField && !formData.diagnosisRequired ? formData.depositAmount : undefined,
-        repairCost: formData.repairCost,
         assignedTo: formData.assignedTo,
-        createdBy: currentUser?.id,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        deviceNotes: '', // Condition assessment disabled
+        deviceCondition: null, // Condition assessment disabled
+        repairCost: formData.repairCost ? parseFloat(formData.repairCost) : null,
       };
 
       // Handle offline mode
       if (!navigator.onLine) {
-        await saveActionOffline({ type: 'addDevice', payload: newDevice });
-        setOfflineSuccess(true);
-        setFormData(initialForm);
-        setIsSubmitting(false);
-        setIsLoading(false);
-        setTimeout(() => setOfflineSuccess(false), 3000);
-        toast.success('Device saved offline. Will sync when connection is restored.');
-        return;
+        try {
+          await saveActionOffline({ type: 'addDevice', payload: newDevice });
+          setOfflineSuccess(true);
+          setFormData(initialForm);
+          setIsSubmitting(false);
+          setIsLoading(false);
+          setTimeout(() => setOfflineSuccess(false), 3000);
+          toast.success('Device saved offline. Will sync when connection is restored.');
+          addErrorToHistory('Device saved offline successfully', 'offline');
+          return;
+        } catch (offlineError) {
+          handleOfflineError(offlineError);
+          setIsSubmitting(false);
+          setIsLoading(false);
+          return;
+        }
       }
 
       // Online submission
       const device = await addDevice(newDevice);
       
       if (device) {
+        // Create spare parts if any are selected
+        if (selectedSpareParts.length > 0) {
+          try {
+            console.log('🔧 Creating repair parts for device:', device.id);
+            console.log('📦 Selected spare parts:', selectedSpareParts);
+            
+            const repairPartsData = selectedSpareParts.map(part => ({
+              device_id: device.id,
+              spare_part_id: part.spare_part_id,
+              quantity_needed: part.quantity,
+              cost_per_unit: part.cost_per_unit,
+              total_cost: part.total_cost,
+              status: 'needed' as const,
+              notes: part.notes || ''
+            }));
+
+            console.log('📦 Repair parts data to send:', repairPartsData);
+            const result = await createRepairParts(repairPartsData);
+            console.log('📦 Repair parts creation result:', result);
+            
+            if (result.ok) {
+              toast.success(`${selectedSpareParts.length} spare parts added to device and stock deducted`);
+            } else {
+              console.error('❌ Failed to create repair parts:', result.message);
+              toast.error(`Failed to add spare parts: ${result.message}`);
+              
+              // Show detailed error information
+              if (result.message.includes('Insufficient stock')) {
+                toast.error('Some parts have insufficient stock. Please check inventory and try again.');
+              } else if (result.message.includes('Operation failed')) {
+                toast.error('Some operations failed and were rolled back. Please check the parts and try again.');
+              }
+            }
+          } catch (error) {
+            console.error('❌ Error creating repair parts:', error);
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            
+            if (errorMessage.includes('Insufficient stock')) {
+              toast.error('Cannot add spare parts: Insufficient stock available. Please check inventory.');
+            } else if (errorMessage.includes('Operation failed')) {
+              toast.error('Failed to add spare parts due to system error. All changes have been rolled back.');
+            } else {
+              toast.error(`Failed to add spare parts: ${errorMessage}`);
+            }
+          }
+        }
+
         toast.success('Device intake created successfully!');
+        
         setIsSubmitting(false);
         setIsLoading(false);
         navigate(`/device/${device.id}`);
@@ -1167,12 +1496,7 @@ IMPORTANT INSTRUCTIONS:
     }
   };
 
-  // ... more handlers and helpers as needed ...
 
-  // New condition assessment state
-  const [showConditionAssessment, setShowConditionAssessment] = useState(false);
-  const [selectedConditions, setSelectedConditions] = useState<string[]>([]);
-  const [otherConditionText, setOtherConditionText] = useState('');
   
   // QR Code print state
   const [showQRPrint, setShowQRPrint] = useState(false);
@@ -1258,6 +1582,7 @@ IMPORTANT INSTRUCTIONS:
   const completionPercentage = getFormCompletion();
 
   const [customerCardMinimized, setCustomerCardMinimized] = useState(false);
+  
 
   return (
     <div className="p-4 sm:p-6 h-full overflow-y-auto pt-8">
@@ -1296,10 +1621,19 @@ IMPORTANT INSTRUCTIONS:
                       <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
                       {showSuggestions && (
                         <div className="w-full bg-white/95 backdrop-blur-md border border-gray-300 rounded-lg shadow-xl mb-4">
-                          {filteredCustomers.length > 0 ? (
+                          {searchingCustomers ? (
+                            <div className="p-4 text-center">
+                              <div className="flex items-center justify-center gap-2 text-gray-600">
+                                <RefreshCw className="animate-spin" size={16} />
+                                <span>Searching customers...</span>
+                              </div>
+                            </div>
+                          ) : filteredCustomers.length > 0 ? (
                             <div className="overflow-x-auto">
                               <div className="flex items-center justify-between p-4 border-b border-gray-200">
-                                <span className="text-sm text-gray-600">{filteredCustomers.length} customer(s) found</span>
+                                <span className="text-sm text-gray-600">
+                                  {filteredCustomers.length} customer(s) found
+                                </span>
                                 <button
                                   type="button"
                                   onClick={() => setShowCreateCustomer(!showCreateCustomer)}
@@ -1695,6 +2029,7 @@ IMPORTANT INSTRUCTIONS:
               )}
             </div>
 
+            
             {/* Device Form Section */}
             <div className="space-y-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
@@ -1741,6 +2076,7 @@ IMPORTANT INSTRUCTIONS:
                         onChange={e => {
                           const newValue = e.target.value.toUpperCase();
                           setImeiOrSerial(newValue);
+                          setFormData(prev => ({ ...prev, serialNumber: newValue }));
                           
                           // Real-time validation feedback
                           if (newValue.length > 0) {
@@ -1785,8 +2121,8 @@ IMPORTANT INSTRUCTIONS:
                     <div className="relative">
                       <button
                         type="button"
-                        className="w-full py-3 pl-4 pr-10 bg-white border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none flex items-center"
-                        onClick={() => setDropdownOpen((open) => !open)}
+                        className="w-full py-3 pl-4 pr-10 bg-white border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none flex items-center hover:bg-gray-50 transition-colors"
+                        onClick={() => setShowCompletionModal(true)}
                         tabIndex={0}
                       >
                         <span className="flex items-center gap-2 w-full justify-start">
@@ -1795,21 +2131,6 @@ IMPORTANT INSTRUCTIONS:
                         </span>
                         <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
                       </button>
-                      {dropdownOpen && (
-                        <div data-dropdown="completion" className="absolute z-50 left-0 right-0 mt-2 bg-white rounded-xl shadow-lg border border-gray-200 p-4 grid grid-cols-2 gap-3">
-                          {completionOptions.map(opt => (
-                            <button
-                              key={opt.value}
-                              type="button"
-                              className={`flex items-center gap-3 px-4 py-4 rounded-lg transition hover:bg-blue-50 w-full text-left text-base ${completionOption === opt.value ? 'bg-blue-100' : ''}`}
-                              onClick={() => handleDropdownSelect(opt.value)}
-                            >
-                              {optionIcons[opt.value as keyof typeof optionIcons]}
-                              <span>{opt.label}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
                     </div>
                     {completionOption === 'custom' && (
                       <div className="relative mt-2">
@@ -1853,7 +2174,7 @@ IMPORTANT INSTRUCTIONS:
                   </div>
                   {/* Repair Cost */}
                   <div>
-                    <label className="block text-gray-700 mb-2 font-medium">Estimated Repair Cost</label>
+                    <label className="block text-gray-700 mb-2 font-medium">Estimated Repair Cost (TSH)</label>
                     <div className="relative">
                       <input
                         type="number"
@@ -1861,13 +2182,14 @@ IMPORTANT INSTRUCTIONS:
                         value={formData.repairCost}
                         onChange={handleInputChange}
                         className={`w-full py-3 pl-12 pr-4 bg-white/30 backdrop-blur-md border-2 rounded-lg focus:outline-none ${fieldErrors.repairCost ? 'border-red-500 focus:border-red-600' : 'border-gray-300 focus:border-blue-500'}`}
-                        placeholder="Enter estimated cost"
+                        placeholder="Estimated cost to repair the device"
                         autoComplete="off"
                         autoCorrect="off"
                         spellCheck={false}
                       />
                       <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
                     </div>
+                    <p className="text-xs text-gray-500 mt-1">Cost for parts and labor to fix the device</p>
                     {fieldErrors.repairCost && (
                       <div className="text-red-500 text-xs mt-1">
                         {errorMessages.repairCost || 'Repair cost must be a valid positive number'}
@@ -1922,70 +2244,255 @@ IMPORTANT INSTRUCTIONS:
                     )}
                     {fieldErrors.assignedTo && <div className="text-red-500 text-xs mt-1">{errorMessages.assignedTo || 'Please select a technician'}</div>}
                   </div>
-                  {/* Deposit Field Toggle */}
-                  {/* Arrange toggles vertically as a list */}
-                  <div className="space-y-4">
-                    {/* Deposit Toggle */}
-                    <div className="relative flex items-center" style={{ minHeight: '2.5rem' }}>
-                      <label
-                        className="text-gray-700 font-medium cursor-pointer flex-1 z-10 relative px-4 bg-transparent"
-                        onClick={() => setShowDepositField(!showDepositField)}
-                      >
-                        Request Deposit
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => setShowDepositField(!showDepositField)}
-                        className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${showDepositField ? 'bg-blue-600' : 'bg-gray-200'}`}
-                        style={{ zIndex: 0 }}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${showDepositField ? 'translate-x-6' : 'translate-x-1'}`}
-                        />
-                      </button>
-                    </div>
-                    {/* Diagnosis Toggle */}
-                    <div className="relative flex items-center" style={{ minHeight: '2.5rem' }}>
-                      <label
-                        className="text-gray-700 font-medium cursor-pointer flex-1 z-10 relative px-4 bg-transparent"
-                        onClick={() => setFormData(prev => ({ ...prev, diagnosisRequired: !prev.diagnosisRequired }))}
-                      >
-                        Diagnosis Required
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => setFormData(prev => ({ ...prev, diagnosisRequired: !prev.diagnosisRequired }))}
-                        className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${formData.diagnosisRequired ? 'bg-blue-600' : 'bg-gray-200'}`}
-                        style={{ zIndex: 0 }}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.diagnosisRequired ? 'translate-x-6' : 'translate-x-1'}`}
-                        />
-                      </button>
-                    </div>
-                  </div>
-                  {/* Deposit Amount Field */}
-                  {showDepositField && !formData.diagnosisRequired && (
-                    <div className="md:col-span-2">
-                      <div className="relative">
-                        <input
-                          type="number"
-                          name="depositAmount"
-                          value={formData.depositAmount}
-                          onChange={handleInputChange}
-                          className={`w-full py-3 pl-12 pr-4 bg-white/30 backdrop-blur-md border-2 rounded-lg focus:outline-none ${fieldErrors.depositAmount ? 'border-red-500 focus:border-red-600' : 'border-gray-300 focus:border-blue-500'}`}
-                          placeholder="Enter deposit amount"
-                          autoComplete="off"
-                          autoCorrect="off"
-                          spellCheck={false}
-                        />
-                        <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+                  
+                  {/* Spare Parts Section */}
+                  <div className="md:col-span-2">
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-semibold text-blue-900 flex items-center gap-2">
+                          <Package className="w-5 h-5" />
+                          Spare Parts Selection
+                        </h3>
+                        <button
+                          type="button"
+                          onClick={() => setShowSparePartsSection(!showSparePartsSection)}
+                          className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                        >
+                          {showSparePartsSection ? 'Hide' : 'Show'} Parts
+                        </button>
                       </div>
-                      {fieldErrors.depositAmount && (
-                        <div className="text-red-500 text-xs mt-1">
-                          {errorMessages.depositAmount || 'Deposit amount must be a valid positive number'}
+                      
+                      {showSparePartsSection && (
+                        <div className="space-y-4">
+                          {/* Search and Filter */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Search Parts
+                              </label>
+                              <div className="relative">
+                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                                <input
+                                  type="text"
+                                  value={sparePartsSearchTerm}
+                                  onChange={(e) => setSparePartsSearchTerm(e.target.value)}
+                                  placeholder="Search by name, part number, or brand..."
+                                  className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                />
+                              </div>
+                            </div>
+                            
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Category
+                              </label>
+                              <select
+                                value={sparePartsCategory}
+                                onChange={(e) => setSparePartsCategory(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              >
+                                <option value="all">All Categories</option>
+                                {categories.map(category => (
+                                  <option key={category.id} value={category.id}>
+                                    {category.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+
+                          {/* Available Spare Parts */}
+                          <div className="max-h-60 overflow-y-auto border border-gray-200 rounded-md">
+                            <div className="p-3 bg-gray-50 border-b border-gray-200">
+                              <h4 className="font-medium text-gray-900">
+                                Available Parts ({filteredSpareParts.length})
+                                {inventoryLoading && (
+                                  <span className="ml-2 text-sm text-blue-600">Loading...</span>
+                                )}
+                              </h4>
+                            </div>
+                            <div className="divide-y divide-gray-200">
+                              {inventoryLoading ? (
+                                <div className="p-4 text-center">
+                                  <div className="flex items-center justify-center gap-2 text-gray-600">
+                                    <div className="w-4 h-4 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin"></div>
+                                    <span>Loading spare parts...</span>
+                                  </div>
+                                </div>
+                              ) : filteredSpareParts.length === 0 ? (
+                                <div className="p-4 text-center text-gray-500">
+                                  <Package className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                                  <p>No spare parts found matching your criteria.</p>
+                                  <p className="text-sm mt-1">
+                                    {spareParts.length === 0 
+                                      ? "No spare parts available in inventory." 
+                                      : "Try adjusting your search or category filter."
+                                    }
+                                  </p>
+                                </div>
+                              ) : (
+                                filteredSpareParts.map((part) => (
+                                <div key={part.id} className="p-3 hover:bg-gray-50">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-2">
+                                        <h5 className="font-medium text-gray-900">{part.name}</h5>
+                                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                                          {part.part_number}
+                                        </span>
+                                      </div>
+                                      <p className="text-sm text-gray-600">
+                                        {part.brand} • Stock: {part.quantity} • Price: {formatCurrency(part.selling_price)}
+                                      </p>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => addSparePart(part)}
+                                      className="ml-4 px-3 py-1 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
+                                    >
+                                      Add
+                                    </button>
+                                  </div>
+                                </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Selected Spare Parts */}
+                          {selectedSpareParts.length > 0 && (
+                            <div className="border border-gray-200 rounded-md">
+                              <div className="p-3 bg-green-50 border-b border-gray-200">
+                                <h4 className="font-medium text-green-900">
+                                  Selected Parts ({selectedSpareParts.length}) - Total: {formatCurrency(totalSparePartsCost)}
+                                </h4>
+                              </div>
+                              <div className="divide-y divide-gray-200">
+                                {selectedSpareParts.map((part) => (
+                                  <div key={part.spare_part_id} className="p-3">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-2">
+                                          <h5 className="font-medium text-gray-900">{part.name}</h5>
+                                          <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                                            {part.part_number}
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center gap-4 mt-1">
+                                          <div className="flex items-center gap-2">
+                                            <label className="text-sm text-gray-600">Qty:</label>
+                                            <input
+                                              type="number"
+                                              min="1"
+                                              max={spareParts.find(p => p.id === part.spare_part_id)?.quantity || 1}
+                                              value={part.quantity}
+                                              onChange={(e) => updateSparePartQuantity(part.spare_part_id, parseInt(e.target.value) || 1)}
+                                              className="w-16 px-2 py-1 border border-gray-300 rounded text-sm"
+                                            />
+                                          </div>
+                                          <span className="text-sm text-gray-600">
+                                            {formatCurrency(part.cost_per_unit)} × {part.quantity} = {formatCurrency(part.total_cost)}
+                                          </span>
+                                        </div>
+                                        <input
+                                          type="text"
+                                          placeholder="Notes (optional)"
+                                          value={part.notes || ''}
+                                          onChange={(e) => updateSparePartNotes(part.spare_part_id, e.target.value)}
+                                          className="w-full mt-2 px-2 py-1 border border-gray-300 rounded text-sm"
+                                        />
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => removeSparePart(part.spare_part_id)}
+                                        className="ml-4 p-1 text-red-600 hover:text-red-800"
+                                      >
+                                        <X className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
+                    </div>
+                  </div>
+
+                  {/* Payment Processing Section */}
+                  {formData.repairCost && selectedCustomer && (
+                    <div className="md:col-span-2">
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="text-lg font-semibold text-green-900 flex items-center gap-2">
+                            <DollarSign size={20} />
+                            Process Payment
+                          </h3>
+                          <button
+                            type="button"
+                            onClick={() => setShowPaymentSection(!showPaymentSection)}
+                            className="text-green-600 hover:text-green-700 font-medium text-sm"
+                          >
+                            {showPaymentSection ? 'Hide Payment' : 'Show Payment Options'}
+                          </button>
+                        </div>
+                        
+                        <div className="mb-3 p-3 bg-white rounded border">
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-700">Repair Cost:</span>
+                            <span className="font-bold text-lg text-green-700">
+                              {parseFloat(formData.repairCost).toLocaleString()} TSH
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center mt-1">
+                            <span className="text-gray-700">Customer:</span>
+                            <span className="font-medium text-gray-900">{selectedCustomer.name}</span>
+                          </div>
+                        </div>
+                        
+                        {showPaymentSection && (
+                          <div className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Payment Method</label>
+                                <select
+                                  value={paymentMethod}
+                                  onChange={(e) => setPaymentMethod(e.target.value)}
+                                  className="w-full py-2 px-3 bg-white border border-gray-300 rounded-lg focus:border-green-500 focus:outline-none"
+                                >
+                                  <option value="cash">Cash</option>
+                                  <option value="card">Card</option>
+                                  <option value="transfer">Bank Transfer</option>
+                                </select>
+                              </div>
+                              
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Reference</label>
+                                <input
+                                  type="text"
+                                  value={paymentReference}
+                                  onChange={(e) => setPaymentReference(e.target.value)}
+                                  placeholder="Payment reference (optional)"
+                                  className="w-full py-2 px-3 bg-white border border-gray-300 rounded-lg focus:border-green-500 focus:outline-none"
+                                />
+                              </div>
+                            </div>
+                            
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">Payment Notes</label>
+                              <textarea
+                                value={paymentNotes}
+                                onChange={(e) => setPaymentNotes(e.target.value)}
+                                placeholder="Additional payment notes (optional)"
+                                rows={2}
+                                className="w-full py-2 px-3 bg-white border border-gray-300 rounded-lg focus:border-green-500 focus:outline-none resize-none"
+                              />
+                            </div>
+                            
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -2090,42 +2597,6 @@ IMPORTANT INSTRUCTIONS:
                     </div>
                   )}
                 </div>
-                {/* Device Condition Checklist */}
-                <div className="mb-4">
-                  <label className="block text-gray-700 mb-2 font-medium">Device Condition Assessment</label>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all flex items-center gap-2 ${
-                        selectedConditions.length > 0 || otherConditionText.trim() 
-                          ? 'bg-blue-500 text-white border-blue-500' 
-                          : 'bg-gray-100 text-gray-600 border-gray-300 hover:bg-blue-50'
-                      }`}
-                      onClick={() => setShowConditionAssessment(true)}
-                    >
-                      <AlertIcon size={16} />
-                      {selectedConditions.length > 0 || otherConditionText.trim() 
-                        ? `${selectedConditions.length + (otherConditionText.trim() ? 1 : 0)} issue(s) selected`
-                        : 'Select Issues'
-                      }
-                    </button>
-                    
-                    {/* Show selected conditions as chips */}
-                    {selectedConditions.map((condition, idx) => (
-                      <span key={condition + idx} className="px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-xs font-semibold flex items-center gap-1">
-                        {condition}
-                      </span>
-                    ))}
-                    {otherConditionText && (
-                      <span className="px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-xs font-semibold flex items-center gap-1">
-                        {otherConditionText}
-                      </span>
-                    )}
-                  </div>
-                  {fieldErrors.conditionAssessment && (
-                    <div className="text-red-500 text-xs mt-2">{errorMessages.conditionAssessment || 'Please select at least one condition in the assessment.'}</div>
-                  )}
-                </div>
 
                 {/* Error Display */}
                 {submitError && (
@@ -2165,27 +2636,6 @@ IMPORTANT INSTRUCTIONS:
                   </div>
                 )}
 
-                {/* Form Validation Errors Summary */}
-                {Object.keys(fieldErrors).length > 0 && (
-                  <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <div className="flex items-start gap-3">
-                      <AlertIcon className="text-yellow-600 mt-0.5 flex-shrink-0" size={20} />
-                      <div className="flex-1">
-                        <h4 className="text-yellow-800 font-medium mb-2">Please fix the following errors:</h4>
-                        <ul className="text-yellow-700 text-sm space-y-1">
-                          {Object.entries(fieldErrors).map(([field, hasError]) => 
-                            hasError && errorMessages[field] && (
-                              <li key={field} className="flex items-center gap-2">
-                                <span className="w-1 h-1 bg-yellow-600 rounded-full"></span>
-                                {errorMessages[field]}
-                              </li>
-                            )
-                          )}
-                        </ul>
-                      </div>
-                    </div>
-                  </div>
-                )}
 
                 {/* Submit Button */}
                 <div className="flex justify-end gap-2 mt-6">
@@ -2203,11 +2653,11 @@ IMPORTANT INSTRUCTIONS:
                       completionPercentage === 100 
                         ? 'bg-green-600 text-white hover:bg-green-700 shadow-lg' 
                         : completionPercentage >= 70
-                        ? 'bg-blue-600 text-white hover:bg-blue-700'
+                        ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-md'
                         : 'bg-gray-400 text-gray-600 cursor-not-allowed'
                     }`}
                     onClick={submitDeviceForm}
-                    disabled={isLoading || isSubmitting || completionPercentage < 100}
+                    disabled={isLoading || isSubmitting || completionPercentage < 70}
                   >
                     {isLoading || isSubmitting ? (
                       <div className="flex items-center gap-2">
@@ -2224,6 +2674,7 @@ IMPORTANT INSTRUCTIONS:
                     ) : completionPercentage >= 70 ? (
                       <div className="flex items-center gap-2">
                         <span>Almost Ready ({completionPercentage}%)</span>
+                        <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
                       </div>
                     ) : (
                       <div className="flex items-center gap-2">
@@ -2237,53 +2688,6 @@ IMPORTANT INSTRUCTIONS:
           </div>
         </GlassCard>
       </div>
-      {showConditionAssessment && (
-        <Modal
-          isOpen={showConditionAssessment}
-          onClose={() => setShowConditionAssessment(false)}
-          title="Device Condition Assessment"
-        >
-          <ConditionAssessment
-            isOpen={showConditionAssessment}
-            onClose={() => setShowConditionAssessment(false)}
-            selectedConditions={selectedConditions}
-            onConditionsChange={setSelectedConditions}
-            otherText={otherConditionText}
-            onOtherTextChange={setOtherConditionText}
-          />
-          <div className="flex justify-end gap-2 mt-4">
-            <button
-              type="button"
-              className="px-6 py-3 rounded-lg bg-gray-200 text-gray-800 font-semibold hover:bg-gray-300 transition"
-              onClick={() => setShowConditionAssessment(false)}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="px-6 py-3 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition"
-              onClick={() => {
-                setSelectedConditions(selectedConditions.filter(c => c !== 'other'));
-                setOtherConditionText('');
-                setShowConditionAssessment(false);
-              }}
-            >
-              Clear All
-            </button>
-            <button
-              type="button"
-              className="px-6 py-3 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition"
-              onClick={() => {
-                setSelectedConditions(selectedConditions.filter(c => c !== 'other'));
-                setOtherConditionText('');
-                setShowConditionAssessment(false);
-              }}
-            >
-              Done
-            </button>
-          </div>
-        </Modal>
-      )}
       {showQRPrint && submittedDevice && (
         <Modal
           isOpen={showQRPrint}
@@ -2631,6 +3035,123 @@ IMPORTANT INSTRUCTIONS:
           </div>
         </Modal>
       )}
+
+      {/* Completion Time Selection Modal */}
+      {showCompletionModal && (
+        <Modal
+          isOpen={showCompletionModal}
+          onClose={() => setShowCompletionModal(false)}
+          title="Select Completion Time"
+        >
+          <div className="grid grid-cols-2 gap-4 p-4">
+            {completionOptions.map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                className={`flex items-center gap-3 px-4 py-4 rounded-lg transition hover:bg-blue-50 w-full text-left text-base border-2 ${
+                  completionOption === opt.value 
+                    ? 'bg-blue-100 border-blue-500' 
+                    : 'bg-white border-gray-200 hover:border-blue-300'
+                }`}
+                onClick={() => handleCompletionSelect(opt.value)}
+              >
+                {optionIcons[opt.value as keyof typeof optionIcons]}
+                <span className="font-medium">{opt.label}</span>
+              </button>
+            ))}
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <button
+              type="button"
+              className="px-6 py-3 rounded-lg bg-gray-200 text-gray-800 font-semibold hover:bg-gray-300 transition"
+              onClick={() => setShowCompletionModal(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Enhanced Error Display Components */}
+      {criticalError && (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-red-600 text-white px-6 py-3 rounded-lg shadow-lg text-center text-base font-semibold animate-fade-in">
+          <div className="flex items-center gap-2">
+            <AlertIcon size={20} />
+            <span>{criticalError}</span>
+          </div>
+          <button 
+            onClick={() => setCriticalError(null)}
+            className="mt-2 text-sm underline hover:no-underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+      
+      {networkError && (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-orange-600 text-white px-6 py-3 rounded-lg shadow-lg text-center text-base font-semibold animate-fade-in">
+          <div className="flex items-center gap-2">
+            <WifiOff size={20} />
+            <span>{networkError}</span>
+          </div>
+          <button 
+            onClick={() => setNetworkError(null)}
+            className="mt-2 text-sm underline hover:no-underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+      
+      {apiErrors && (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg text-center text-base font-semibold animate-fade-in">
+          <div className="flex items-center gap-2">
+            <AlertIcon size={20} />
+            <span>{apiErrors}</span>
+          </div>
+          <button 
+            onClick={() => setApiErrors(null)}
+            className="mt-2 text-sm underline hover:no-underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+      
+      {offlineErrors && (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-yellow-600 text-white px-6 py-3 rounded-lg shadow-lg text-center text-base font-semibold animate-fade-in">
+          <div className="flex items-center gap-2">
+            <Package size={20} />
+            <span>{offlineErrors}</span>
+          </div>
+          <button 
+            onClick={() => setOfflineErrors(null)}
+            className="mt-2 text-sm underline hover:no-underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+      
+      {Object.keys(validationErrors).length > 0 && (
+        <div className="fixed top-4 right-4 z-50 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg animate-fade-in">
+          <div className="text-sm font-semibold mb-2">Validation Errors:</div>
+          <div className="space-y-1">
+            {Object.entries(validationErrors).map(([field, message]) => (
+              <div key={field} className="text-xs">
+                <strong>{field}:</strong> {message}
+              </div>
+            ))}
+          </div>
+          <button 
+            onClick={() => setValidationErrors({})}
+            className="mt-2 text-xs underline hover:no-underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+      
       {offlineSuccess && (
         <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg text-center text-base font-semibold animate-fade-in">
           Device saved offline! Will sync when you are back online.
@@ -2640,4 +3161,5 @@ IMPORTANT INSTRUCTIONS:
   );
 };
 
+export { DeviceIntakeUnifiedPage as NewDevicePage };
 export default DeviceIntakeUnifiedPage;

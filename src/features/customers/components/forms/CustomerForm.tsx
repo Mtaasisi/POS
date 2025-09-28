@@ -1,5 +1,5 @@
 import React, { ReactNode, useState, useEffect } from 'react';
-import { User, Phone, Mail, MapPin, Tag, Check, RefreshCw, X, ArrowLeft, AlertTriangle, ChevronDown } from 'lucide-react';
+import { User, Phone, Mail, MapPin, Tag, Check, RefreshCw, X, ArrowLeft, AlertTriangle, ChevronDown, Users, UserCheck, Facebook, Instagram, Music, Globe, CreditCard, Newspaper, Search, Building, Calendar, HelpCircle } from 'lucide-react';
 // import FloatingActionBar from '../ui/FloatingActionBar';
 // import { addCustomer } from '../../../services/customer.services'; // Not used in this context
 import { supabase } from '../../../../lib/supabaseClient';
@@ -21,6 +21,7 @@ type CustomerFormValues = Omit<
   {
     id?: string;
     name: string;
+    email: string;
     phone: string;
     whatsapp: string;
     gender: 'male' | 'female';
@@ -45,6 +46,7 @@ interface CustomerFormProps {
 
 const defaultValues: CustomerFormValues = {
   name: '',
+  email: '',
   phone: '',
   whatsapp: '',
   gender: '' as any, // No default
@@ -142,18 +144,18 @@ const CustomerForm: React.FC<CustomerFormProps> = ({
   }
 
   const referralSources: ReferralSource[] = [
-    { label: 'Friend', icon: '🤝', color: 'green' },
-    { label: 'Walk-in', icon: '🚶', color: 'orange' },
-    { label: 'Facebook', icon: <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" style={{ display: 'inline', verticalAlign: 'middle' }}><path d="M22.675 0h-21.35C.595 0 0 .592 0 1.326v21.348C0 23.408.595 24 1.325 24h11.495v-9.294H9.692v-3.622h3.128V8.413c0-3.1 1.893-4.788 4.659-4.788 1.325 0 2.463.099 2.797.143v3.24l-1.918.001c-1.504 0-1.797.715-1.797 1.763v2.313h3.587l-.467 3.622h-3.12V24h6.116C23.406 24 24 23.408 24 22.674V1.326C24 .592 23.406 0 22.675 0"/></svg>, color: 'blue' },
-    { label: 'Instagram', icon: <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" style={{ display: 'inline', verticalAlign: 'middle' }}><path d="M12 2.163c3.204 0 3.584.012 4.85.07 1.366.062 2.633.334 3.608 1.308.974.974 1.246 2.241 1.308 3.608.058 1.266.07 1.646.07 4.85s-.012 3.584-.07 4.85c-.062 1.366-.334 2.633-1.308 3.608-.974.974-2.241 1.246-3.608 1.308-1.266.058-1.646.07-4.85.07s-3.584-.012-4.85-.07c-1.366-.062-2.633-.334-3.608-1.308-.974-.974-1.246-2.241-1.308-3.608C2.175 15.647 2.163 15.267 2.163 12s.012-3.584.07-4.85c.062-1.366.334-2.633 1.308-3.608.974-.974 2.241-1.246 3.608-1.308C8.416 2.175 8.796 2.163 12 2.163zm0-2.163C8.741 0 8.332.013 7.052.072 5.771.131 4.659.363 3.678 1.344c-.98.98-1.213 2.092-1.272 3.373C2.013 5.668 2 6.077 2 9.333v5.334c0 3.256.013 3.665.072 4.946.059 1.281.292 2.393 1.272 3.373.98.98 2.092 1.213 3.373 1.272C8.332 23.987 8.741 24 12 24s3.668-.013 4.948-.072c1.281-.059 2.393-.292 3.373-1.272.98-.98 1.213-2.092 1.272-3.373.059-1.281.072-1.69.072-4.946V9.333c0-3.256-.013-3.665-.072-4.946-.059-1.281-.292-2.393-1.272-3.373-.98-.98-2.092-1.213-3.373-1.272C15.668.013 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zm0 10.162a3.999 3.999 0 1 1 0-7.998 3.999 3.999 0 0 1 0 7.998zm6.406-11.845a1.44 1.44 0 1 0 0 2.88 1.44 1.44 0 0 0 0-2.88z"/></svg>, color: 'pink' },
-    { label: 'Tiktok', icon: '🎵', color: 'gray' },
-    { label: 'Website', icon: '🌐', color: 'teal' },
-    { label: 'Business Card', icon: '💳', color: 'yellow' },
-    { label: 'Newspaper', icon: '📰', color: 'gray' },
-    { label: 'Google Search', icon: '🔍', color: 'red' },
-    { label: 'Billboard', icon: '🏢', color: 'indigo' },
-    { label: 'Event', icon: '🎫', color: 'violet' },
-    { label: 'Other', icon: '❓', color: 'slate' },
+    { label: 'Friend', icon: <Users className="w-5 h-5" />, color: 'green' },
+    { label: 'Walk-in', icon: <UserCheck className="w-5 h-5" />, color: 'orange' },
+    { label: 'Facebook', icon: <Facebook className="w-5 h-5" />, color: 'blue' },
+    { label: 'Instagram', icon: <Instagram className="w-5 h-5" />, color: 'pink' },
+    { label: 'Tiktok', icon: <Music className="w-5 h-5" />, color: 'gray' },
+    { label: 'Website', icon: <Globe className="w-5 h-5" />, color: 'teal' },
+    { label: 'Business Card', icon: <CreditCard className="w-5 h-5" />, color: 'yellow' },
+    { label: 'Newspaper', icon: <Newspaper className="w-5 h-5" />, color: 'gray' },
+    { label: 'Google Search', icon: <Search className="w-5 h-5" />, color: 'red' },
+    { label: 'Billboard', icon: <Building className="w-5 h-5" />, color: 'indigo' },
+    { label: 'Event', icon: <Calendar className="w-5 h-5" />, color: 'violet' },
+    { label: 'Other', icon: <HelpCircle className="w-5 h-5" />, color: 'slate' },
   ];
 
   const colorMap: Record<ReferralColor, { selected: string; unselected: string }> = {
@@ -407,6 +409,25 @@ const CustomerForm: React.FC<CustomerFormProps> = ({
           <User className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
         </div>
         {validationErrors.name && <div className="text-red-600 text-xs mt-1">{validationErrors.name}</div>}
+      </div>
+      {/* Email */}
+      <div>
+        <label className="block text-gray-700 mb-2 font-medium">Email</label>
+        <div className="relative">
+          <input
+            type="email"
+            name="email"
+            value={formData.email || ''}
+            onChange={handleInputChange}
+            className="w-full py-3 pl-12 pr-4 bg-white/30 backdrop-blur-md border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+            placeholder="Enter email address"
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
+          />
+          <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+        </div>
+        {validationErrors.email && <div className="text-red-600 text-xs mt-1">{validationErrors.email}</div>}
       </div>
       {/* Phone Number */}
       <div>
@@ -682,64 +703,61 @@ const CustomerForm: React.FC<CustomerFormProps> = ({
       </div>
       {/* Referral Source */}
       <div className="md:col-span-2">
-        <label className="block text-gray-700 mb-4 font-semibold text-lg">How did you hear about us?</label>
-        <div className="w-full">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-            {sortedReferralSources.map((source) => {
-              const selected = formData.referralSource === source.label;
-              const colorClass = colorMap[source.color][selected ? 'selected' : 'unselected'];
-              return (
-                <button
-                  key={source.label}
-                  type="button"
-                  onClick={() => handleReferralClick(source.label)}
-                  className={`group relative w-full flex flex-col items-center justify-center gap-2 px-4 py-6 rounded-xl text-sm transition-all duration-300 ease-in-out focus:outline-none focus:ring-4 focus:ring-blue-500/30 ${
-                    selected 
-                      ? 'bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-400 shadow-lg scale-105' 
-                      : 'bg-gradient-to-br from-gray-50 to-slate-50 border-2 border-gray-200 hover:border-gray-400 hover:shadow-lg hover:scale-105'
-                  }`}
-                  style={{ userSelect: 'none' }}
-                >
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white text-2xl shadow-lg group-hover:scale-110 transition-transform duration-300 ${
-                    selected 
-                      ? 'bg-gradient-to-br from-blue-500 to-indigo-600' 
-                      : colorClass.includes('green') ? 'bg-gradient-to-br from-green-500 to-emerald-600' :
-                        colorClass.includes('orange') ? 'bg-gradient-to-br from-orange-500 to-amber-600' :
-                        colorClass.includes('blue') ? 'bg-gradient-to-br from-blue-500 to-indigo-600' :
-                        colorClass.includes('pink') ? 'bg-gradient-to-br from-pink-500 to-rose-600' :
-                        colorClass.includes('gray') ? 'bg-gradient-to-br from-gray-500 to-slate-600' :
-                        colorClass.includes('teal') ? 'bg-gradient-to-br from-teal-500 to-cyan-600' :
-                        colorClass.includes('yellow') ? 'bg-gradient-to-br from-yellow-500 to-amber-600' :
-                        colorClass.includes('red') ? 'bg-gradient-to-br from-red-500 to-orange-600' :
-                        colorClass.includes('indigo') ? 'bg-gradient-to-br from-indigo-500 to-purple-600' :
-                        colorClass.includes('violet') ? 'bg-gradient-to-br from-violet-500 to-purple-600' :
-                        'bg-gradient-to-br from-slate-500 to-gray-600'
-                  }`}>
+        <label className="block text-gray-700 mb-3 font-medium">How did you hear about us?</label>
+        
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+          {sortedReferralSources.map((source) => {
+            const selected = formData.referralSource === source.label;
+            return (
+              <button
+                key={source.label}
+                type="button"
+                onClick={() => handleReferralClick(source.label)}
+                className={`flex flex-col items-center gap-2 p-3 rounded-lg text-sm transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/30 ${
+                  selected 
+                    ? 'bg-blue-50 border border-blue-300' 
+                    : 'bg-gray-50 border border-gray-200 hover:bg-gray-100'
+                }`}
+                style={{ userSelect: 'none' }}
+              >
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors duration-200 ${
+                  selected 
+                    ? 'bg-blue-500' 
+                    : source.color === 'green' ? 'bg-gray-400 hover:bg-green-500' :
+                      source.color === 'orange' ? 'bg-gray-400 hover:bg-orange-500' :
+                      source.color === 'blue' ? 'bg-gray-400 hover:bg-blue-500' :
+                      source.color === 'pink' ? 'bg-gray-400 hover:bg-pink-500' :
+                      source.color === 'gray' ? 'bg-gray-400 hover:bg-gray-600' :
+                      source.color === 'teal' ? 'bg-gray-400 hover:bg-teal-500' :
+                      source.color === 'yellow' ? 'bg-gray-400 hover:bg-yellow-500' :
+                      source.color === 'red' ? 'bg-gray-400 hover:bg-red-500' :
+                      source.color === 'indigo' ? 'bg-gray-400 hover:bg-indigo-500' :
+                      source.color === 'violet' ? 'bg-gray-400 hover:bg-violet-500' :
+                      'bg-gray-400 hover:bg-slate-500'
+                }`}>
+                  <div className="text-white">
                     {source.icon}
                   </div>
-                  <span className={`font-medium whitespace-nowrap ${
-                    selected ? 'text-blue-800' : 'text-gray-700'
-                  }`}>
-                    {source.label}
-                  </span>
-                  {selected && (
-                    <div className="absolute top-2 right-2 w-3 h-3 bg-blue-500 rounded-full shadow-sm"></div>
-                  )}
-                </button>
-              );
-            })}
-          </div>
+                </div>
+                <span className={`text-xs font-medium transition-colors duration-200 ${
+                  selected ? 'text-blue-700' : 'text-gray-600'
+                }`}>
+                  {source.label}
+                </span>
+              </button>
+            );
+          })}
         </div>
         {/* Show custom input if 'Other' is selected */}
         {formData.referralSource === 'Other' && (
-          <div className="mt-2">
+          <div className="mt-3">
             <input
               type="text"
               name="referralSource"
               value={formData.referralSourceCustom || ''}
               onChange={e => setFormData(prev => ({ ...prev, referralSourceCustom: e.target.value }))}
-              className="w-full min-h-[48px] py-3 px-4 bg-white/30 backdrop-blur-md border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-              placeholder="Please specify referral source"
+              className="w-full py-2 px-3 bg-white border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-sm"
+              placeholder="Please specify..."
               autoComplete="off"
               autoCorrect="off"
               spellCheck={false}

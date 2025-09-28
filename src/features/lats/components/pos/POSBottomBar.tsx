@@ -1,32 +1,26 @@
 import React, { useState } from 'react';
-import { BarChart3, Zap, Settings, Users, Package, TrendingUp, FileText, Crown, Maximize2, Minimize2, CreditCard } from 'lucide-react';
-import GlassButton from '../../../shared/components/ui/GlassButton';
+import { BarChart3, Users, FileText, Settings, RefreshCw, Clock, Maximize2, Minimize2 } from 'lucide-react';
 
 interface POSBottomBarProps {
   onViewAnalytics: () => void;
-  onQuickActions: () => void;
   onPaymentTracking: () => void;
-  onPaymentMethods: () => void;
   onSettings: () => void;
   onCustomers: () => void;
-  onInventory: () => void;
   onReports: () => void;
-  onLoyalty?: () => void;
+  onRefreshData?: () => void;
   className?: string;
 }
 
 const POSBottomBar: React.FC<POSBottomBarProps> = ({
   onViewAnalytics,
-  onQuickActions,
   onPaymentTracking,
-  onPaymentMethods,
   onSettings,
   onCustomers,
-  onInventory,
   onReports,
-  onLoyalty,
+  onRefreshData,
   className = ''
 }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const toggleFullscreen = () => {
@@ -46,109 +40,119 @@ const POSBottomBar: React.FC<POSBottomBarProps> = ({
   };
 
   return (
-    <div className={`fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-gray-200 shadow-lg z-40 ${className}`}>
-      <div className="max-w-7xl mx-auto px-4 py-3">
+    <div className={`fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-sm border-t border-neutral-200 shadow-medium ${className}`}>
+      <div className="px-6 py-3">
+        {/* Main Actions Row */}
         <div className="flex items-center justify-between">
-          {/* Left side - Main actions */}
+          {/* Left Section - Customer Care Actions */}
           <div className="flex items-center gap-3">
-            <GlassButton
+            <button
               onClick={onViewAnalytics}
-              icon={<BarChart3 size={20} />}
-              className="bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 px-4 py-2 rounded-lg font-medium"
+              className="flex items-center gap-2 px-4 py-2 bg-lats-analytics-50 text-lats-analytics-700 rounded-lg hover:bg-lats-analytics-100 transition-all duration-200 border border-lats-analytics-200 shadow-soft hover:shadow-medium"
             >
-              View Analytics
-            </GlassButton>
-            
-            <GlassButton
-              onClick={onQuickActions}
-              icon={<Zap size={20} />}
-              className="bg-gradient-to-r from-purple-500 to-purple-600 text-white hover:from-purple-600 hover:to-purple-700 px-4 py-2 rounded-lg font-medium"
-            >
-              Quick Actions
-            </GlassButton>
+              <BarChart3 size={16} />
+              <span className="text-sm font-medium">Analytics</span>
+            </button>
 
-            <GlassButton
+            <button
               onClick={onPaymentTracking}
-              icon={<TrendingUp size={20} />}
-              className="bg-gradient-to-r from-indigo-500 to-indigo-600 text-white hover:from-indigo-600 hover:to-indigo-700 px-4 py-2 rounded-lg font-medium"
+              className="flex items-center gap-2 px-4 py-2 bg-lats-finance-50 text-lats-finance-700 rounded-lg hover:bg-lats-finance-100 transition-all duration-200 border border-lats-finance-200 shadow-soft hover:shadow-medium"
             >
-              Payment Tracking
-            </GlassButton>
+              <FileText size={16} />
+              <span className="text-sm font-medium">Payments</span>
+            </button>
 
-            <GlassButton
-              onClick={onPaymentMethods}
-              icon={<CreditCard size={20} />}
-              className="bg-gradient-to-r from-green-500 to-green-600 text-white hover:from-green-600 hover:to-green-700 px-4 py-2 rounded-lg font-medium"
-            >
-              Payment Methods
-            </GlassButton>
-          </div>
-
-          {/* Center - Status indicators */}
-          <div className="flex items-center gap-4 text-sm text-gray-600">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-              <span>POS Active</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-              <span>Online</span>
-            </div>
-          </div>
-
-          {/* Right side - Secondary actions */}
-          <div className="flex items-center gap-2">
             <button
               onClick={onCustomers}
-              className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors duration-200"
-              title="Customer Management"
+              className="flex items-center gap-2 px-4 py-2 bg-lats-customer-care-50 text-lats-customer-care-700 rounded-lg hover:bg-lats-customer-care-100 transition-all duration-200 border border-lats-customer-care-200 shadow-soft hover:shadow-medium"
             >
-              <Users size={18} />
+              <Users size={16} />
+              <span className="text-sm font-medium">Customers</span>
             </button>
-            
-            <button
-              onClick={onInventory}
-              className="p-2 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors duration-200"
-              title="Inventory Management"
-            >
-              <Package size={18} />
-            </button>
-            
+          </div>
+
+          {/* Center Section - Reports & Status */}
+          <div className="flex items-center gap-4">
             <button
               onClick={onReports}
-              className="p-2 text-gray-600 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors duration-200"
-              title="Sales Reports"
+              className="flex items-center gap-2 px-6 py-2 bg-lats-analytics-500 text-white rounded-lg hover:bg-lats-analytics-600 transition-all duration-200 font-semibold shadow-glow"
             >
-              <FileText size={18} />
+              <BarChart3 size={18} />
+              <span>Sales Reports</span>
             </button>
-            
-            {onLoyalty && (
+
+            {/* Status Indicators */}
+            <div className="flex items-center gap-3 text-sm text-neutral-600">
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 bg-lats-pos-500 rounded-full shadow-glow-green"></div>
+                <span>POS Active</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 bg-lats-customer-care-500 rounded-full shadow-glow"></div>
+                <span>Online</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Section - System Actions */}
+          <div className="flex items-center gap-2">
+            {onRefreshData && (
               <button
-                onClick={onLoyalty}
-                className="p-2 text-gray-600 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors duration-200"
-                title="Loyalty Program"
+                onClick={onRefreshData}
+                className="p-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                title="Refresh Data"
               >
-                <Crown size={18} />
+                <RefreshCw size={16} />
               </button>
             )}
-            
-            <button
-              onClick={toggleFullscreen}
-              className="p-2 text-gray-600 hover:text-yellow-600 hover:bg-yellow-50 rounded-lg transition-colors duration-200"
-              title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
-            >
-              {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
-            </button>
-            
+
             <button
               onClick={onSettings}
-              className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded-lg transition-colors duration-200"
-              title="POS Settings"
+              className="p-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+              title="Settings"
             >
-              <Settings size={18} />
+              <Settings size={16} />
+            </button>
+
+            <button
+              onClick={toggleFullscreen}
+              className="p-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+              title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+            >
+              {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+            </button>
+
+            {/* Expand/Collapse */}
+            <button
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="p-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+              title={isExpanded ? "Collapse Menu" : "Expand Menu"}
+            >
+              <Clock size={16} />
             </button>
           </div>
         </div>
+
+        {/* Expanded Menu */}
+        {isExpanded && (
+          <div className="mt-4 pt-4 border-t border-gray-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <Clock size={14} />
+                <span>Last updated: {new Date().toLocaleTimeString()}</span>
+              </div>
+              
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <span>Customer Care Mode</span>
+                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+              </div>
+
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <span>Session: {new Date().toLocaleDateString()}</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

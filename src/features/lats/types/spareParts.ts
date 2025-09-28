@@ -17,16 +17,43 @@ export interface SparePart {
   location?: string;
   compatible_devices?: string;
   is_active: boolean;
+  images?: string[]; // Array of image URLs
   created_by?: string;
   updated_by?: string;
   created_at: string;
   updated_at: string;
+  
+  // Variants support
+  variants?: SparePartVariant[];
+  use_variants?: boolean;
+  metadata?: {
+    useVariants?: boolean;
+    variantCount?: number;
+    totalQuantity?: number;
+    totalValue?: number;
+  };
   
   // Joined data (not in database)
   category?: Category;
   supplier?: Supplier;
   created_by_user?: User;
   updated_by_user?: User;
+}
+
+export interface SparePartVariant {
+  id?: string;
+  spare_part_id?: string;
+  name: string;
+  sku: string;
+  cost_price: number;
+  selling_price: number;
+  quantity: number;
+  min_quantity: number;
+  attributes?: Record<string, any>;
+  image_url?: string;
+  image_file?: File;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface SparePartUsage {
@@ -59,6 +86,8 @@ export interface SparePartFormData {
   location: string;
   compatible_devices: string;
   images: any[];
+  variants?: SparePartVariant[];
+  useVariants?: boolean;
 }
 
 export interface SparePartCreateData {

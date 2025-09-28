@@ -5,6 +5,7 @@ import GlassCard from '../ui/GlassCard';
 import GlassButton from '../ui/GlassButton';
 import GlassBadge from '../ui/GlassBadge';
 import ProductImageDisplay from './ProductImageDisplay';
+import VariantImageDisplay from './VariantImageDisplay';
 import { format } from '../../lib/format';
 import { LabelPrintingModal } from '../../../../components/LabelPrintingModal';
 
@@ -463,6 +464,7 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
+                        // Product detail page removed - redirect to edit page directly
                         window.location.href = `/lats/products/${product.id}/edit`;
                       }}
                       className="p-3 text-gray-500 hover:text-green-600 hover:bg-green-50 transition-all duration-200 rounded-lg"
@@ -640,15 +642,32 @@ const VariantProductCard: React.FC<VariantProductCardProps> = ({
                     }}
                   >
                     <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <div className="font-semibold text-sm text-gray-900">{variant.name}</div>
-                        <div className="text-xs text-gray-600 flex items-center gap-2 mt-1">
-                          <span className="font-mono bg-gray-100 px-2 py-0.5 rounded">{variant.sku}</span>
-                          {variant.attributes && Object.entries(variant.attributes).map(([key, value]) => (
-                            <span key={key} className="text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
-                              {key}: {value}
-                            </span>
-                          ))}
+                      <div className="flex items-center gap-3 flex-1">
+                        {/* Variant Image */}
+                        <VariantImageDisplay
+                          variant={variant}
+                          productImages={product.images?.map((url, index) => ({
+                            id: `product-${index}`,
+                            url,
+                            fileName: `product-image-${index + 1}`,
+                            fileSize: 0,
+                            isPrimary: index === 0,
+                            order: index,
+                            createdAt: new Date().toISOString()
+                          })) || []}
+                          size="sm"
+                        />
+                        
+                        <div className="flex-1">
+                          <div className="font-semibold text-sm text-gray-900">{variant.name}</div>
+                          <div className="text-xs text-gray-600 flex items-center gap-2 mt-1">
+                            <span className="font-mono bg-gray-100 px-2 py-0.5 rounded">{variant.sku}</span>
+                            {variant.attributes && Object.entries(variant.attributes).map(([key, value]) => (
+                              <span key={key} className="text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
+                                {key}: {value}
+                              </span>
+                            ))}
+                          </div>
                         </div>
                       </div>
                       <div className="text-right">

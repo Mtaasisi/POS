@@ -41,12 +41,6 @@ export interface Supplier {
   onTimeDeliveryRate?: number; // percentage
   qualityRating?: number; // 0-5
   
-  // New shipping cost fields
-  defaultShippingCost?: number;
-  shippingCostPerKg?: number;
-  shippingCostPerCbm?: number;
-  minimumShippingCost?: number;
-  freeShippingThreshold?: number;
 }
 
 export interface ProductImage {
@@ -63,12 +57,13 @@ export interface ProductVariant {
   id?: string;
   sku: string;
   name: string;
-
+  barcode?: string;
   price: number;
   costPrice: number;
   stockQuantity: number;
   minStockLevel: number;
   attributes: Record<string, any>;
+  images?: ProductImage[]; // Variant-specific images
 }
 
 export interface Product {
@@ -94,14 +89,6 @@ export interface Product {
   createdAt: string;
   updatedAt: string;
   
-  // New shipping fields
-  weight?: number;
-  length?: number;
-  width?: number;
-  height?: number;
-  cbm?: number;
-  shippingClass?: 'standard' | 'fragile' | 'hazardous' | 'oversized';
-  requiresSpecialHandling?: boolean;
   
   // New multi-currency fields
   usdPrice?: number;
@@ -113,14 +100,8 @@ export interface Product {
   lastOrderDate?: string;
   lastOrderQuantity?: number;
   pendingQuantity?: number;
-  orderStatus?: 'draft' | 'sent' | 'confirmed' | 'processing' | 'shipping' | 'shipped' | 'received' | 'cancelled';
+  orderStatus?: 'draft' | 'sent' | 'confirmed' | 'processing' | 'received' | 'cancelled';
   
-  // New shipping status fields
-  shippingStatus?: 'pending' | 'picked_up' | 'in_transit' | 'out_for_delivery' | 'delivered' | 'exception';
-  trackingNumber?: string;
-  expectedDelivery?: string;
-  shippingAgent?: string;
-  shippingCarrier?: string;
   
   // New storage fields
   storageRoomName?: string;
@@ -129,61 +110,9 @@ export interface Product {
   isRefrigerated?: boolean;
   requiresLadder?: boolean;
   
-  // New shipping cost fields
-  shippingCost?: number;
-  freightCost?: number;
-  deliveryCost?: number;
-  insuranceCost?: number;
-  customsCost?: number;
-  handlingCost?: number;
-  totalShippingCost?: number;
-  shippingCostCurrency?: string;
-  shippingCostPerUnit?: number;
-  shippingCostPerKg?: number;
-  shippingCostPerCbm?: number;
 
-  // Shipping info from lats_shipping_info table
-  shippingInfo?: ShippingInfo[];
 }
 
-export interface ShippingInfo {
-  id: string;
-  trackingNumber?: string;
-  carrierName?: string;
-  shippingAgent?: string;
-  shippingManager?: string;
-  originAddress?: string;
-  originCity?: string;
-  originCountry?: string;
-  destinationAddress?: string;
-  destinationCity?: string;
-  destinationCountry?: string;
-  shippingStatus?: string;
-  shippedDate?: string;
-  expectedDeliveryDate?: string;
-  actualDeliveryDate?: string;
-  shippingCost?: number;
-  freightCost?: number;
-  deliveryCost?: number;
-  insuranceCost?: number;
-  customsCost?: number;
-  handlingCost?: number;
-  totalShippingCost?: number;
-  shippingCostCurrency?: string;
-  packageWeight?: number;
-  packageLength?: number;
-  packageWidth?: number;
-  packageHeight?: number;
-  packageCbm?: number;
-  packageCount?: number;
-  requiresSpecialHandling?: boolean;
-  isFragile?: boolean;
-  isHazardous?: boolean;
-  temperatureControlled?: boolean;
-  notes?: string;
-  createdAt?: string;
-  updatedAt?: string;
-}
 
 export interface StockMovement {
   id: string;
@@ -202,188 +131,28 @@ export interface PurchaseOrder {
   id: string;
   orderNumber: string;
   supplierId: string;
-  status: 'draft' | 'sent' | 'confirmed' | 'processing' | 'shipping' | 'shipped' | 'received' | 'cancelled';
+  status: 'draft' | 'sent' | 'confirmed' | 'processing' | 'received' | 'cancelled';
   orderDate: string;
   expectedDeliveryDate?: string;
   receivedDate?: string;
-  shippingDate?: string;
   totalAmount: number;
   currency?: string; // Currency used for the purchase order
   notes?: string;
   items: PurchaseOrderItem[];
   supplier?: Supplier;
-  shippingInfo?: ShippingInfo;
   createdAt: string;
   updatedAt: string;
-  // Shipping management fields
-  trackingNumber?: string;
-  shippingStatus?: 'pending' | 'packed' | 'shipped' | 'in_transit' | 'delivered' | 'returned';
-  estimatedDelivery?: string;
-  shippingNotes?: string;
   // Exchange rate tracking fields
   exchangeRate?: number; // Exchange rate from purchase currency to base currency
   baseCurrency?: string; // Base currency for the business (typically TZS)
   exchangeRateSource?: string; // Source of the exchange rate (manual, api, bank, etc.)
   exchangeRateDate?: string; // Date when the exchange rate was applied
   totalAmountBaseCurrency?: number; // Total amount converted to base currency
+  // Payment tracking fields
+  totalPaid?: number; // Total amount paid for this purchase order
+  paymentStatus?: 'unpaid' | 'partial' | 'paid' | 'overpaid'; // Payment status
 }
 
-export interface ShippingInfo {
-  id?: string;
-  carrier: string;
-  carrierId?: string;
-  trackingNumber: string;
-  shippingMethod?: string;
-  method?: string;
-  estimatedDelivery: string;
-  actualDelivery?: string;
-  shippingCost?: number;
-  cost?: number;
-  notes?: string;
-  shippedDate?: string;
-  shippedBy?: string;
-  status?: string;
-  agentId?: string;
-  agent?: {
-    id: string;
-    name: string;
-    company?: string;
-    phone?: string;
-    email?: string;
-    isActive?: boolean;
-  };
-  managerId?: string;
-  manager?: {
-    id: string;
-    name: string;
-    department?: string;
-    phone?: string;
-    email?: string;
-  };
-  deliveredDate?: string;
-  portOfLoading?: string;
-  portOfDischarge?: string;
-  pricePerCBM?: number;
-  requireSignature?: boolean;
-  enableInsurance?: boolean;
-  insuranceValue?: number;
-  trackingEvents?: ShippingEvent[];
-  // Additional fields for complete shipping data
-  cargoBoxes?: CargoBox[];
-  cargoItems?: ShippingCargoItem[]; // New: linked draft products
-  // Air shipping fields
-  flightNumber?: string;
-  departureAirport?: string;
-  arrivalAirport?: string;
-  departureTime?: string;
-  arrivalTime?: string;
-  // Sea shipping fields
-  vesselName?: string;
-  departureDate?: string;
-  arrivalDate?: string;
-  containerNumber?: string;
-  // Additional tracking fields
-  shippingOrigin?: string;
-  shippingDestination?: string;
-  // New workflow fields
-  productsUpdatedAt?: string;
-  inventoryReceivedAt?: string;
-}
-
-// Shipping status type with new statuses
-export type ShippingStatus = 
-  | 'pending' 
-  | 'picked_up' 
-  | 'in_transit' 
-  | 'out_for_delivery' 
-  | 'delivered' 
-  | 'exception'
-  | 'arrived'
-  | 'ready_for_inventory'
-  | 'received';
-
-export interface ShippingEvent {
-  id: string;
-  status: string;
-  description: string;
-  location?: string;
-  timestamp: string;
-  notes?: string;
-}
-
-export interface CargoBox {
-  id: string;
-  length: number; // in cm
-  width: number; // in cm
-  height: number; // in cm
-  quantity: number;
-  description?: string;
-}
-
-// New interfaces for draft products workflow
-export interface ShippingCargoItem {
-  id: string;
-  shippingId: string;
-  productId: string;
-  purchaseOrderItemId?: string;
-  quantity: number;
-  costPrice: number;
-  description?: string;
-  notes?: string;
-  createdAt: string;
-  updatedAt: string;
-  // Related data
-  product?: Product;
-  purchaseOrderItem?: PurchaseOrderItem;
-}
-
-export interface ProductValidation {
-  id: string;
-  productId: string;
-  shippingId: string;
-  isValidated: boolean;
-  validationErrors: string[];
-  validatedBy?: string;
-  validatedAt?: string;
-  createdAt: string;
-  updatedAt: string;
-  // Related data
-  product?: Product;
-  validatedByUser?: {
-    id: string;
-    name: string;
-    email: string;
-  };
-}
-
-export interface ShippingFormData {
-  agentId: string;
-  managerId: string;
-  trackingNumber: string;
-  estimatedDelivery: string;
-  cost: number;
-  notes: string;
-  requireSignature: boolean;
-  enableInsurance: boolean;
-  shippingMethod: 'air' | 'sea' | '';
-  carrierId?: string; // Added carrier ID for proper carrier assignment
-  // Air shipping specific fields
-  flightNumber?: string;
-  departureAirport?: string;
-  arrivalAirport?: string;
-  departureTime?: string;
-  arrivalTime?: string;
-  // Sea shipping specific fields
-  vesselName?: string;
-  portOfLoading?: string;
-  portOfDischarge?: string;
-  departureDate?: string;
-  arrivalDate?: string;
-  containerNumber?: string;
-  // Cargo dimensions for sea shipping
-  cargoBoxes?: CargoBox[];
-  pricePerCBM?: number; // USD per cubic meter
-}
 
 export interface PurchaseOrderItem {
   id: string;
@@ -393,7 +162,7 @@ export interface PurchaseOrderItem {
   quantity: number;
   costPrice: number;
   receivedQuantity: number;
-  status?: 'pending' | 'processing' | 'shipping' | 'shipped' | 'delivered' | 'cancelled';
+  status?: 'pending' | 'processing' | 'received' | 'cancelled';
   product?: Product;
   variant?: ProductVariant;
 }
@@ -608,45 +377,6 @@ export interface PurchaseOrderFormData {
   baseCurrency?: string;
   exchangeRateSource?: string;
   exchangeRateDate?: string;
-  shippingInfo?: {
-    address?: string;
-    city?: string;
-    country?: string;
-    phone?: string;
-    contact?: string;
-    method?: string;
-    notes?: string;
-    trackingNumber?: string;
-    estimatedCost?: number;
-    carrier?: string;
-    requireSignature?: boolean;
-    enableInsurance?: boolean;
-    insuranceValue?: number;
-    // Internal shipping fields
-    internalRef?: string;
-    priority?: 'Low' | 'Normal' | 'High' | 'Urgent';
-    internalStatus?: 'Pending' | 'Assigned' | 'In Transit' | 'Delivered';
-    agent?: string;
-    assignedDate?: string;
-    pickupDate?: string;
-    deliveryAttempts?: number;
-    actualCost?: number;
-    internalNotes?: string;
-    shippingType?: string;
-    // Air shipping fields
-    flightNumber?: string;
-    departureAirport?: string;
-    arrivalAirport?: string;
-    departureTime?: string;
-    arrivalTime?: string;
-    // Sea shipping fields
-    vesselName?: string;
-    portOfLoading?: string;
-    portOfDischarge?: string;
-    departureDate?: string;
-    arrivalDate?: string;
-    containerNumber?: string;
-  };
 }
 
 export interface PurchaseOrderItemFormData {

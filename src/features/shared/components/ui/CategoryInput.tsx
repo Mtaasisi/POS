@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Tag, ChevronDown, ChevronRight, Folder, FolderOpen } from 'lucide-react';
 import { Category } from '../../../lats/types/inventory';
 
@@ -32,19 +32,19 @@ const CategoryInput: React.FC<CategoryInputProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Build hierarchical structure
-  const buildCategoryTree = (cats: Category[]): Category[] => {
+  // Build hierarchical structure with memoization
+  const categoryTree = useMemo(() => {
     const categoryMap = new Map<string, Category>();
     const rootCategories: Category[] = [];
 
     try {
       // First pass: create map of all categories
-      cats.forEach(cat => {
+      categories.forEach(cat => {
         categoryMap.set(cat.id, { ...cat, children: [] });
       });
 
       // Second pass: build tree structure
-      cats.forEach(cat => {
+      categories.forEach(cat => {
         const categoryWithChildren = categoryMap.get(cat.id)!;
         if (cat.parentId && categoryMap.has(cat.parentId)) {
           const parent = categoryMap.get(cat.parentId)!;
@@ -55,17 +55,15 @@ const CategoryInput: React.FC<CategoryInputProps> = ({
         }
       });
 
+      // Only log when categories actually change
       console.log('🌳 CategoryInput: Built tree with', rootCategories.length, 'root categories');
     } catch (error) {
       console.error('❌ CategoryInput: Error building category tree:', error);
-      console.error('❌ CategoryInput: Categories data:', cats);
+      console.error('❌ CategoryInput: Categories data:', categories);
     }
 
     return rootCategories;
-  };
-
-  const categoryTree = buildCategoryTree(categories);
-  console.log('🌳 CategoryInput: Built tree with', categoryTree.length, 'root categories');
+  }, [categories]);
 
   // Handle input change and search
   const handleInputChange = (inputValue: string) => {

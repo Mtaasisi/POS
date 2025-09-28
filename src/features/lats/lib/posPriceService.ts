@@ -80,8 +80,7 @@ class POSPriceService {
                 name,
                 selling_price,
                 cost_price,
-                quantity,
-
+                quantity
               `)
               .in('product_id', batch)
               .order('name');
@@ -145,8 +144,7 @@ class POSPriceService {
                   name,
                   selling_price,
                   cost_price,
-                  quantity,
-  
+                  quantity
                 `)
                 .eq('product_id', productId)
                 .order('name');
@@ -222,8 +220,7 @@ class POSPriceService {
           name,
           selling_price,
           cost_price,
-          quantity,
-
+          quantity
         `)
         .eq('sku', sku)
         .limit(1);

@@ -4,13 +4,12 @@ import { Device, DeviceStatus } from '../../../types';
 import GlassCard from '../../shared/components/ui/GlassCard';
 import StatusBadge from '../../shared/components/ui/StatusBadge';
 import CountdownTimer from '../../shared/components/ui/CountdownTimer';
-import { Clock, User, Smartphone, Wrench, Calendar, AlarmClock, CheckSquare, MessageSquare, Edit, AlertTriangle, Star, DollarSign } from 'lucide-react';
+import { Clock, User, Smartphone, Wrench, Calendar, AlarmClock, CheckSquare, MessageSquare, Edit, AlertTriangle, Star, Shield, DollarSign } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useCustomers } from '../../../context/CustomersContext';
 import { useDevices } from '../../../context/DevicesContext';
-import RepairChecklist from './RepairChecklist';
 import QuickStatusUpdate from './QuickStatusUpdate';
-import RepairPaymentButton from './RepairPaymentButton';
+import DeviceRepairDetailModal from './DeviceRepairDetailModal';
 import { updateDeviceInDb } from '../../../lib/deviceApi';
 import { toast } from 'react-hot-toast';
 import { supabase } from '../../../lib/supabaseClient';
@@ -60,44 +59,129 @@ const DeviceCard: React.FC<DeviceCardProps> = React.memo(({
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { customers } = useCustomers();
-  const { getDeviceOverdueStatus } = useDevices();
+  // Safely access devices context with error handling
+  let getDeviceOverdueStatus: any = null;
+  
+  try {
+    const devicesContext = useDevices();
+    getDeviceOverdueStatus = devicesContext?.getDeviceOverdueStatus || null;
+  } catch (error) {
+    console.warn('Devices context not available:', error);
+  }
   
   // Add state for technician quick actions
-  const [showRepairChecklist, setShowRepairChecklist] = useState(false);
   const [showQuickStatusUpdate, setShowQuickStatusUpdate] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showDetailModal, setShowDetailModal] = useState(false);
   const [editingDevice, setEditingDevice] = useState<Partial<Device>>({});
   const [saving, setSaving] = useState(false);
 
-  // Add state for customer information
+  // Add state for comprehensive device information
   const [customerInfo, setCustomerInfo] = useState<any>(null);
   const [loadingCustomer, setLoadingCustomer] = useState(false);
+  const [devicePayments, setDevicePayments] = useState<any[]>([]);
+  const [loadingPayments, setLoadingPayments] = useState(false);
+  const [technicianInfo, setTechnicianInfo] = useState<any>(null);
+  const [loadingTechnician, setLoadingTechnician] = useState(false);
+  // Device checklists removed - table not available
+  const [deviceRatings, setDeviceRatings] = useState<any[]>([]);
+  const [loadingRatings, setLoadingRatings] = useState(false);
 
-  // Fetch detailed customer information
+  // Fetch comprehensive device information
   useEffect(() => {
-    const fetchCustomerInfo = async () => {
-      if (!device.customerId) return;
+    const fetchAllDeviceInfo = async () => {
+      if (!device.id) return;
       
-      setLoadingCustomer(true);
+      // Fetch customer information - only for admin and customer-care
+      if (device.customerId && (currentUser?.role === 'admin' || currentUser?.role === 'customer-care')) {
+        setLoadingCustomer(true);
+        try {
+          const { data, error } = await supabase
+            .from('customers')
+            .select('*')
+            .eq('id', device.customerId)
+            .single();
+          
+          if (!error && data) {
+            setCustomerInfo(data);
+          }
+        } catch (error) {
+          console.error('Error fetching customer info:', error);
+        } finally {
+          setLoadingCustomer(false);
+        }
+      }
+
+      // Fetch device payments - only for admin and customer-care
+      if (currentUser?.role === 'admin' || currentUser?.role === 'customer-care') {
+        setLoadingPayments(true);
+        try {
+          const { data, error } = await supabase
+            .from('customer_payments')
+            .select(`
+              *,
+              customers(name),
+              devices(brand, model)
+            `)
+            .eq('device_id', device.id)
+            .order('payment_date', { ascending: false });
+          
+          if (!error && data) {
+            setDevicePayments(data);
+          }
+        } catch (error) {
+          console.error('Error fetching device payments:', error);
+        } finally {
+          setLoadingPayments(false);
+        }
+      }
+
+      // Fetch technician information
+      if (device.assignedTo) {
+        setLoadingTechnician(true);
+        try {
+          const { data, error } = await supabase
+            .from('auth_users')
+            .select('*')
+            .eq('id', device.assignedTo)
+            .single();
+          
+          if (!error && data) {
+            setTechnicianInfo(data);
+          }
+        } catch (error) {
+          console.error('Error fetching technician info:', error);
+        } finally {
+          setLoadingTechnician(false);
+        }
+      }
+
+      // Device checklists removed - table not available
+
+      // Fetch device ratings
+      setLoadingRatings(true);
       try {
         const { data, error } = await supabase
-          .from('customers')
-          .select('*')
-          .eq('id', device.customerId)
-          .single();
+          .from('device_ratings')
+          .select(`
+            *,
+            auth_users(name)
+          `)
+          .eq('device_id', device.id)
+          .order('created_at', { ascending: false });
         
         if (!error && data) {
-          setCustomerInfo(data);
+          setDeviceRatings(data);
         }
       } catch (error) {
-        console.error('Error fetching customer info:', error);
+        console.error('Error fetching device ratings:', error);
       } finally {
-        setLoadingCustomer(false);
+        setLoadingRatings(false);
       }
     };
 
-    fetchCustomerInfo();
-  }, [device.customerId]);
+    fetchAllDeviceInfo();
+  }, [device.id, device.customerId, device.assignedTo]);
 
   // Track if the card has been opened (clicked)
   const [opened, setOpened] = useState(false);
@@ -166,11 +250,11 @@ const DeviceCard: React.FC<DeviceCardProps> = React.memo(({
     // Mark as opened in localStorage
     localStorage.setItem(`devicecard_opened_${device.id}`, '1');
     setOpened(true);
-    navigate(`/devices/${device.id}`);
+    setShowDetailModal(true);
   };
 
   const handleStatusUpdate = (newStatus: DeviceStatus) => {
-    // This will be handled by the RepairChecklist or QuickStatusUpdate components
+    // This will be handled by the QuickStatusUpdate component
     console.log('Status update:', newStatus);
   };
 
@@ -248,15 +332,15 @@ const DeviceCard: React.FC<DeviceCardProps> = React.memo(({
 
   return (
     <>
-      <GlassCard 
+      <div 
         onClick={handleCardClick}
-        className={`transform transition-all duration-300 hover:translate-y-[-2px] hover:shadow-lg relative ${
+        className={`bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 hover:translate-y-[-2px] cursor-pointer relative overflow-hidden ${
           device.status === 'done' ? 'border-green-200 bg-green-50/30' :
           device.status === 'failed' ? 'border-red-200 bg-red-50/30' :
           getDeviceOverdueStatus(device).isOverdue ? 'border-orange-200 bg-orange-50/30' :
           getDeviceOverdueStatus(device).status === 'due-today' ? 'border-yellow-200 bg-yellow-50/30' :
-          'border-blue-200 bg-blue-50/30'
-        } ${showDetails ? '' : 'p-4'} ${selected ? 'ring-2 ring-blue-500 bg-blue-50/50' : ''}`}
+          'border-gray-200 bg-white'
+        } ${showDetails ? 'p-5' : 'p-4'} ${selected ? 'ring-2 ring-blue-500 bg-blue-50/50' : ''}`}
       >
         {/* Selection checkbox */}
         {showSelection && (
@@ -275,17 +359,23 @@ const DeviceCard: React.FC<DeviceCardProps> = React.memo(({
 
         {/* Comment count in top-left corner */}
         {device.remarks && device.remarks.length > 0 && !opened && (
-          <div className="absolute top-1 left-1 z-10">
-            <span className="bg-red-500 text-white text-sm font-bold rounded-full w-7 h-7 flex items-center justify-center border border-white shadow">
+          <div className="absolute top-3 left-3 z-10">
+            <span className="bg-red-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center border-2 border-white shadow-sm">
               {device.remarks.length}
             </span>
           </div>
         )}
         
-        {/* Move intake date to a new prominent line below the device title */}
-        <div className="flex justify-between items-start mb-1 pt-2">
-          <div className="flex items-center gap-2 w-full">
-            <h3 className="font-bold text-base sm:text-lg text-gray-900 truncate overflow-hidden text-ellipsis" title={getDisplayModel()}>{getDisplayModel()}</h3>
+        {/* Device Header */}
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
+              <Smartphone className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h3 className="font-bold text-lg text-gray-900 truncate" title={getDisplayModel()}>{getDisplayModel()}</h3>
+              <p className="text-sm text-gray-500">Serial: {device.serialNumber || 'N/A'}</p>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {currentUser?.role === 'admin' && (
@@ -295,7 +385,7 @@ const DeviceCard: React.FC<DeviceCardProps> = React.memo(({
                   setEditingDevice(device);
                   setShowEditModal(true);
                 }}
-                className="p-1 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors duration-200"
+                className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors duration-200"
                 title="Edit Device"
               >
                 <Edit size={16} />
@@ -304,85 +394,317 @@ const DeviceCard: React.FC<DeviceCardProps> = React.memo(({
             <StatusBadge status={device.status} />
           </div>
         </div>
-        {/* Minimal device issue display */}
+        {/* Issue Description */}
         {device.issueDescription && (
-          <div
-            className="pl-2 sm:pl-3 py-1 mb-2 border-l-4 border-red-500 bg-red-50 text-red-800 text-xs sm:text-sm line-clamp-2 uppercase"
-            title={device.issueDescription}
-          >
-            {device.issueDescription}
+          <div className="mb-4">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-4 h-4 rounded-full bg-red-500 flex items-center justify-center">
+                <span className="text-white text-xs font-bold">!</span>
+              </div>
+              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Issue</span>
+            </div>
+            <p className="text-sm text-gray-700 bg-gray-50 rounded-lg p-3 border border-gray-200" title={device.issueDescription}>
+              {device.issueDescription}
+            </p>
           </div>
         )}
-        {/* Serial Number and Intake Date */}
-        <div className="flex flex-wrap gap-2 sm:gap-4 mb-2 text-xs text-gray-500">
-          <div>
-            <span className="font-medium">Serial:</span> {device.serialNumber || 'N/A'}
-          </div>
-          {/* Overdue Indicator removed */}
-        </div>
         {showDetails ? (
           <>
-            <div className="space-y-2 mb-3">
-              {/* Simplified Customer Information */}
-              <div className="flex items-center gap-2 text-gray-700">
-                <User size={14} />
-                <span className="text-sm font-medium truncate capitalize">
-                  {customerInfo?.name || device.customerName || 'Unknown Customer'}
-                </span>
-                {customerInfo?.color_tag && (
-                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium border ${
-                    customerInfo.color_tag === 'vip' ? 'bg-purple-100 text-purple-700 border-purple-200' :
-                    customerInfo.color_tag === 'complainer' ? 'bg-red-100 text-red-700 border-red-200' :
-                    customerInfo.color_tag === 'purchased' ? 'bg-green-100 text-green-700 border-green-200' :
-                    'bg-gray-100 text-gray-700 border-gray-200'
-                  }`}>
-                    {customerInfo.color_tag}
-                  </span>
-                )}
+            {/* Customer Information */}
+            <div className="mb-4">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-4 h-4 rounded-full bg-green-500 flex items-center justify-center">
+                  <User className="w-3 h-3 text-white" />
+                </div>
+                <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Customer</span>
+                {loadingCustomer && <div className="w-3 h-3 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin"></div>}
               </div>
-              
-              {/* Simplified Status Display */}
-              {(() => {
-                if (device.status === 'done' || device.status === 'failed') {
-                  return null;
-                }
-                
-                const overdueStatus = getDeviceOverdueStatus(device);
-                if (overdueStatus.isOverdue) {
-                  return (
-                    <div className="flex items-center gap-1 px-2 py-1 rounded bg-red-50 border border-red-200">
-                      <AlertTriangle className="text-red-600" size={12} />
-                      <span className="text-xs font-medium text-red-700">Overdue</span>
-                    </div>
-                  );
-                } else if (overdueStatus.status === 'due-today') {
-                  return (
-                    <div className="flex items-center gap-1 px-2 py-1 rounded bg-orange-50 border border-orange-200">
-                      <AlarmClock className="text-orange-600" size={12} />
-                      <span className="text-xs font-medium text-orange-700">Due Today</span>
-                    </div>
-                  );
-                }
-                return null;
-              })()}
+              <div className="bg-green-50 rounded-lg p-3 border border-green-200">
+                <div className="flex items-center gap-3">
+                  <User className="w-4 h-4 text-green-600" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-900 capitalize truncate">
+                      {customerInfo?.name || device.customerName || 'Unknown Customer'}
+                    </p>
+                    {/* Hide sensitive customer details from technicians */}
+                    {(currentUser?.role === 'admin' || currentUser?.role === 'customer-care') && (
+                      <>
+                        {customerInfo?.phone && (
+                          <p className="text-xs text-blue-600 font-medium mt-1">{customerInfo.phone}</p>
+                        )}
+                        {customerInfo?.email && (
+                          <p className="text-xs text-gray-600">{customerInfo.email}</p>
+                        )}
+                        {customerInfo?.color_tag && (
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium mt-1 ${
+                            customerInfo.color_tag === 'vip' ? 'bg-purple-100 text-purple-700' :
+                            customerInfo.color_tag === 'complainer' ? 'bg-red-100 text-red-700' :
+                            customerInfo.color_tag === 'purchased' ? 'bg-green-100 text-green-700' :
+                            'bg-gray-100 text-gray-700'
+                          }`}>
+                            {customerInfo.color_tag}
+                          </span>
+                        )}
+                        {customerInfo?.loyalty_level && (
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium mt-1 bg-yellow-100 text-yellow-700">
+                            {customerInfo.loyalty_level}
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
+
+            {/* Technician Information */}
+            {device.assignedTo && (
+              <div className="mb-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-4 h-4 rounded-full bg-purple-500 flex items-center justify-center">
+                    <Wrench className="w-3 h-3 text-white" />
+                  </div>
+                  <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Assigned Technician</span>
+                  {loadingTechnician && <div className="w-3 h-3 border-2 border-gray-300 border-t-purple-600 rounded-full animate-spin"></div>}
+                </div>
+                <div className="bg-purple-50 rounded-lg p-3 border border-purple-200">
+                  <div className="flex items-center gap-3">
+                    <Wrench className="w-4 h-4 text-purple-600" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-900">
+                        {technicianInfo?.name || 'Unknown Technician'}
+                      </p>
+                      {technicianInfo?.email && (
+                        <p className="text-xs text-gray-600 mt-1">{technicianInfo.email}</p>
+                      )}
+                      {technicianInfo?.role && (
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium mt-1 bg-purple-100 text-purple-700">
+                          {technicianInfo.role}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Payment Information - Hide from technicians */}
+            {devicePayments.length > 0 && (currentUser?.role === 'admin' || currentUser?.role === 'customer-care') && (
+              <div className="mb-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center">
+                    <DollarSign className="w-3 h-3 text-white" />
+                  </div>
+                  <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Payment History</span>
+                  {loadingPayments && <div className="w-3 h-3 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin"></div>}
+                </div>
+                <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+                  <div className="space-y-2">
+                    {devicePayments.slice(0, 3).map((payment) => (
+                      <div key={payment.id} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${
+                            payment.status === 'completed' ? 'bg-green-500' : 
+                            payment.status === 'pending' ? 'bg-yellow-500' : 'bg-red-500'
+                          }`}></div>
+                          <span className="text-sm font-medium text-gray-900">
+                            ${payment.amount}
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-xs text-gray-600 capitalize">{payment.method}</span>
+                          <p className="text-xs text-gray-500">
+                            {new Date(payment.payment_date).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                    {devicePayments.length > 3 && (
+                      <p className="text-xs text-gray-500 text-center">
+                        +{devicePayments.length - 3} more payments
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Warranty Information */}
+            {(device.warrantyStart || device.warrantyEnd || device.warrantyStatus) && (
+              <div className="mb-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-4 h-4 rounded-full bg-yellow-500 flex items-center justify-center">
+                    <Shield className="w-3 h-3 text-white" />
+                  </div>
+                  <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Warranty</span>
+                </div>
+                <div className="bg-yellow-50 rounded-lg p-3 border border-yellow-200">
+                  <div className="space-y-2">
+                    {device.warrantyStatus && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-600">Status:</span>
+                        <span className={`text-sm font-medium capitalize ${
+                          device.warrantyStatus === 'active' ? 'text-green-700' :
+                          device.warrantyStatus === 'expired' ? 'text-red-700' :
+                          'text-gray-700'
+                        }`}>
+                          {device.warrantyStatus}
+                        </span>
+                      </div>
+                    )}
+                    {device.warrantyStart && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-600">Start:</span>
+                        <span className="text-sm font-medium text-gray-900">
+                          {new Date(device.warrantyStart).toLocaleDateString()}
+                        </span>
+                      </div>
+                    )}
+                    {device.warrantyEnd && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-600">End:</span>
+                        <span className="text-sm font-medium text-gray-900">
+                          {new Date(device.warrantyEnd).toLocaleDateString()}
+                        </span>
+                      </div>
+                    )}
+                    {device.repairCount && device.repairCount > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-600">Repair Count:</span>
+                        <span className="text-sm font-medium text-gray-900">{device.repairCount}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Device Ratings */}
+            {deviceRatings.length > 0 && (
+              <div className="mb-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-4 h-4 rounded-full bg-orange-500 flex items-center justify-center">
+                    <Star className="w-3 h-3 text-white" />
+                  </div>
+                  <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Ratings</span>
+                  {loadingRatings && <div className="w-3 h-3 border-2 border-gray-300 border-t-orange-600 rounded-full animate-spin"></div>}
+                </div>
+                <div className="bg-orange-50 rounded-lg p-3 border border-orange-200">
+                  <div className="space-y-2">
+                    {deviceRatings.slice(0, 2).map((rating) => (
+                      <div key={rating.id} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center">
+                            {[...Array(5)].map((_, i) => (
+                              <Star
+                                key={i}
+                                className={`w-3 h-3 ${
+                                  i < (rating.score || 5) ? 'text-yellow-400 fill-current' : 'text-gray-300'
+                                }`}
+                              />
+                            ))}
+                          </div>
+                          <span className="text-sm font-medium text-gray-900">{rating.score || 5}/5</span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-xs text-gray-600">
+                            {rating.auth_users?.name || 'Anonymous'}
+                          </span>
+                          <p className="text-xs text-gray-500">
+                            {new Date(rating.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                    {deviceRatings.length > 2 && (
+                      <p className="text-xs text-gray-500 text-center">
+                        +{deviceRatings.length - 2} more ratings
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Device Checklists removed - table not available */}
+            {/* Status Alerts */}
+            {(() => {
+              if (device.status === 'done' || device.status === 'failed') {
+                return null;
+              }
+              
+              const overdueStatus = getDeviceOverdueStatus(device);
+              if (overdueStatus.isOverdue) {
+                return (
+                  <div className="mb-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-4 h-4 rounded-full bg-red-500 flex items-center justify-center">
+                        <AlertTriangle className="w-3 h-3 text-white" />
+                      </div>
+                      <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Status Alert</span>
+                    </div>
+                    <div className="bg-red-50 rounded-lg p-3 border border-red-200">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-red-600" />
+                        <span className="text-sm font-medium text-red-700">Device is overdue for return</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              } else if (overdueStatus.status === 'due-today') {
+                return (
+                  <div className="mb-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-4 h-4 rounded-full bg-orange-500 flex items-center justify-center">
+                        <AlarmClock className="w-3 h-3 text-white" />
+                      </div>
+                      <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Status Alert</span>
+                    </div>
+                    <div className="bg-orange-50 rounded-lg p-3 border border-orange-200">
+                      <div className="flex items-center gap-2">
+                        <AlarmClock className="w-4 h-4 text-orange-600" />
+                        <span className="text-sm font-medium text-orange-700">Device is due today</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+            {/* Admin Duration Info */}
             {currentUser?.role === 'admin' && (
-              <div className="mt-1 sm:mt-2 text-xs text-gray-600">
-                <div>Tech job: <span className="font-semibold">{formatDuration(technicianDuration)}</span></div>
-                <div>CC handover: <span className="font-semibold">{formatDuration(handoverDuration)}</span></div>
+              <div className="mb-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center">
+                    <Clock className="w-3 h-3 text-white" />
+                  </div>
+                  <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Timing</span>
+                </div>
+                <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <span className="text-gray-600">Tech job:</span>
+                      <span className="font-semibold text-blue-700 ml-1">{formatDuration(technicianDuration)}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">CC handover:</span>
+                      <span className="font-semibold text-blue-700 ml-1">{formatDuration(handoverDuration)}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
           </>
         ) : (
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 text-gray-700">
-              <Smartphone size={16} />
-              <span className="truncate">{device.model}</span>
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <Smartphone className="w-4 h-4 text-gray-500" />
+              <span className="text-sm font-medium text-gray-900 truncate">{device.model}</span>
             </div>
-            <div className="flex items-center gap-1 text-gray-600 text-xs">
-              <User size={12} />
-              <span className="truncate capitalize">
+            <div className="flex items-center gap-3">
+              <User className="w-4 h-4 text-gray-500" />
+              <span className="text-sm text-gray-600 truncate capitalize">
                 {customerInfo?.name || device.customerName || 'Unknown Customer'}
               </span>
             </div>
@@ -391,54 +713,29 @@ const DeviceCard: React.FC<DeviceCardProps> = React.memo(({
 
         {/* Technician Quick Actions */}
         {currentUser?.role === 'technician' && showDetails && (
-          <div className="flex gap-2 mt-3 pt-3 border-t border-gray-200">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowRepairChecklist(true);
-              }}
-              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-700 rounded-lg border border-blue-200/50 transition-all duration-200 text-sm font-medium"
-            >
-              <CheckSquare size={16} />
-              Checklist
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowQuickStatusUpdate(true);
-              }}
-              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 rounded-lg border border-purple-200/50 transition-all duration-200 text-sm font-medium"
-            >
-              <MessageSquare size={16} />
-              Update
-            </button>
-            {device.status === 'repair-complete' && customerInfo && (
-              <RepairPaymentButton
-                customerId={device.customerId || ''}
-                customerName={customerInfo.name || 'Unknown Customer'}
-                deviceId={device.id}
-                deviceName={`${device.brand} ${device.model}`}
-                repairAmount={Number(device.repairCost) || 0}
-                onPaymentComplete={(paymentData) => {
-                  toast.success('Repair payment processed successfully!');
-                  // Optionally refresh device data or update status
+          <div className="mt-4 pt-4 border-t border-gray-200">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-4 h-4 rounded-full bg-purple-500 flex items-center justify-center">
+                <Wrench className="w-3 h-3 text-white" />
+              </div>
+              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Actions</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowQuickStatusUpdate(true);
                 }}
-                className="flex-1"
-                variant="secondary"
-                size="sm"
-              />
-            )}
+                className="flex items-center justify-center gap-2 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-all duration-200 text-sm font-medium"
+              >
+                <MessageSquare size={16} />
+                Update
+              </button>
+            </div>
           </div>
         )}
-      </GlassCard>
+      </div>
 
-      {/* Repair Checklist Modal */}
-      <RepairChecklist
-        device={device}
-        isOpen={showRepairChecklist}
-        onClose={() => setShowRepairChecklist(false)}
-        onStatusUpdate={handleStatusUpdate}
-      />
 
       {/* Quick Status Update Modal */}
       <QuickStatusUpdate
@@ -450,7 +747,7 @@ const DeviceCard: React.FC<DeviceCardProps> = React.memo(({
 
       {/* Edit Device Modal */}
       {showEditModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4" style={{ zIndex: 99999 }}>
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
@@ -553,6 +850,13 @@ const DeviceCard: React.FC<DeviceCardProps> = React.memo(({
           </div>
         </div>
       )}
+
+      {/* Device Repair Detail Modal */}
+      <DeviceRepairDetailModal
+        isOpen={showDetailModal}
+        onClose={() => setShowDetailModal(false)}
+        deviceId={device.id}
+      />
     </>
   );
 });

@@ -6,17 +6,21 @@ import { useCustomers } from '../../../../context/CustomersContext';
 import { useUserGoals } from '../../../../context/UserGoalsContext';
 import { supabase } from '../../../../lib/supabaseClient';
 import GlassCard from '../ui/GlassCard';
-import DeviceCard from '../DeviceCard';
-import { removeDuplicateDevices } from '../DeviceCard';
+import DeviceCard, { removeDuplicateDevices } from '../../../devices/components/DeviceCard';
+import DeviceListCard from '../DeviceListCard';
+import DeviceColumnView from '../DeviceColumnView';
+import CustomerCareAnalyticsDashboard from './CustomerCareAnalyticsDashboard';
 import SearchBar from '../ui/SearchBar';
 import BarcodeScanner from '../../../devices/components/BarcodeScanner';
 import { Link, useNavigate } from 'react-router-dom';
-import { PlusCircle, Smartphone, CheckCircle, UserCheck, QrCode, Clock, AlertTriangle, TrendingUp, Calendar, Users, Phone, Mail, MessageSquare, ClipboardList, Trophy, Star, Gift, Check, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { PlusCircle, Smartphone, CheckCircle, UserCheck, QrCode, Clock, AlertTriangle, TrendingUp, Calendar, Users, Phone, Mail, MessageSquare, ClipboardList, Trophy, Star, Gift, Check, ArrowUpDown, ArrowUp, ArrowDown, Target, Search } from 'lucide-react';
+import CustomerCareStatsCard from '../CustomerCareStatsCard';
+import CustomerCareQuickActions from '../CustomerCareQuickActions';
+import StandardButton from '../ui/StandardButton';
 
 import { DeviceStatus, Device } from '../../../types';
 import Modal from '../ui/Modal';
 import StatusBadge from '../ui/StatusBadge';
-import GlassButton from '../ui/GlassButton';
 
 
 interface CustomerCareDashboardProps {
@@ -37,7 +41,18 @@ const CustomerCareDashboard: React.FC<CustomerCareDashboardProps> = ({
   setStatusFilter
 }) => {
   const { currentUser } = useAuth();
-  const { getOverdueDevices, addRemark: _addRemark } = useDevices();
+  
+  // Safely access devices context with error handling for HMR
+  let getOverdueDevices: any = null;
+  let addRemark: any = null;
+  try {
+    const devicesContext = useDevices();
+    getOverdueDevices = devicesContext?.getOverdueDevices || null;
+    addRemark = devicesContext?.addRemark || null;
+  } catch (error) {
+    console.warn('Devices context not available during HMR:', error);
+  }
+  
   const { customers, addPoints } = useCustomers();
   const { userGoals: _userGoals, getGoalProgress } = useUserGoals();
   const navigate = useNavigate();
@@ -47,13 +62,13 @@ const CustomerCareDashboard: React.FC<CustomerCareDashboardProps> = ({
   const [showReturnedCCModal, setShowReturnedCCModal] = useState(false);
   const [showCompletedTodayModal, setShowCompletedTodayModal] = useState(false);
   const [showTotalCustomersModal, setShowTotalCustomersModal] = useState(false);
-  // Add state for expanding the top card
-  const [expanded, setExpanded] = useState(false);
   // Add state for device detail modal
   const [showDeviceDetailModal, setShowDeviceDetailModal] = useState(false);
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
   // Add state for showing all devices
   const [showAllDevices, setShowAllDevices] = useState(false);
+  // Add state for view mode
+  const [viewMode, setViewMode] = useState<'grid' | 'list' | 'column' | 'analytics'>('column');
   
   // Add state for goals management modal
 
@@ -84,12 +99,13 @@ const CustomerCareDashboard: React.FC<CustomerCareDashboardProps> = ({
     fetchUserGoal();
   }, [currentUser?.id, getGoalProgress]);
 
-  // Auto-refresh dashboard data every 30 seconds
+  // Auto-refresh dashboard data every 60 seconds
   useEffect(() => {
     const interval = setInterval(() => {
-      // Trigger a refresh by updating the component
+      // Trigger a refresh by reloading the page
       console.log('Auto-refreshing dashboard data...');
-    }, 30000); // 30 seconds
+      window.location.reload();
+    }, 60000); // 60 seconds
 
     return () => clearInterval(interval);
   }, []);
@@ -248,23 +264,7 @@ const CustomerCareDashboard: React.FC<CustomerCareDashboardProps> = ({
       "Kumbuka: wewe ni muhimu kwa biashara hii.",
       "Kila siku ni fursa ya kujifunza na kukua.",
       "Ukarimu wako unaweza kuwa tofauti kwa mtu.",
-      "Leo fanya kazi kama mtu anategemea wewe.",
-      // Zilizoongezwa mpya
-      "Kumbuka: mchango wako ni wa kipekee na hauwezi kubadilishwa.",
-      "Kila tabasamu lako linaongeza thamani kwa biashara hii.",
-      "Wewe ni nguzo muhimu ya mafanikio yetu.",
-      "Kila hatua yako inasaidia biashara kusonga mbele.",
-      "Kumbuka: bila wewe, huduma zetu hazingekuwa bora.",
-      "Uaminifu wako ni msingi wa mafanikio ya timu.",
-      "Kila siku unaleta tofauti kubwa kwa wateja wetu.",
-      "Jitihada zako zinaonekana na zinathaminiwa.",
-      "Kila changamoto ni fursa ya kuonyesha ubora wako.",
-      "Kumbuka: wewe ni mfano wa kuigwa kwa wengine.",
-      "Huduma yako bora inajenga jina la biashara yetu.",
-      "Kila mteja anayefurahi ni ushindi wako pia.",
-      "Kumbuka: mafanikio ya biashara ni matokeo ya kazi yako nzuri.",
-      "Wewe ni sehemu ya mafanikio ya kila siku.",
-      "Kila siku ni nafasi mpya ya kung'ara na kuleta mabadiliko."
+      "Leo fanya kazi kama mtu anategemea wewe."
     ];
     
     const today = new Date();
@@ -484,97 +484,47 @@ const CustomerCareDashboard: React.FC<CustomerCareDashboardProps> = ({
 
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
-      {/* Motivational Greeting & Quote */}
-      <div className="mb-4 animate-fade-in">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 flex items-center gap-2">
-            {greeting}, {userName}!
-            {streak > 1 && <span className="ml-2 flex items-center gap-1 text-yellow-500 text-lg font-bold animate-glow"><Star size={20} /> {streak} day streak!</span>}
-          </h2>
-          <button
+      {/* Header Section */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-gradient-to-br from-blue-500 to-indigo-600">
+              <UserCheck className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 flex items-center gap-2">
+                {greeting}, {userName}!
+                {streak > 1 && <span className="ml-2 flex items-center gap-1 text-yellow-500 text-lg font-bold animate-glow"><Star size={20} /> {streak} day streak!</span>}
+              </h2>
+              <p className="text-blue-700 font-semibold text-lg">{quote}</p>
+            </div>
+          </div>
+          <StandardButton
+            variant="primary"
+            size="sm"
             onClick={() => {
               console.log('Manual refresh triggered');
               window.location.reload();
             }}
-            className="flex items-center gap-2 px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition-colors duration-200"
+            icon={
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            }
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
             Refresh
-          </button>
+          </StandardButton>
         </div>
-        <div className="text-blue-700 font-semibold text-lg mb-1">{quote}</div>
       </div>
 
       {/* Staff Points Card */}
-      <div
-        className={`mb-4 flex flex-col gap-0 justify-between py-4 px-6 bg-white/90 rounded-xl transition-all duration-300 cursor-pointer ${expanded ? 'shadow-2xl scale-[1.03]' : ''}`}
-        onMouseEnter={() => setExpanded(true)}
-        onMouseLeave={() => setExpanded(false)}
-        onClick={() => setExpanded((v) => !v)}
-      >
-        <div className="flex items-center justify-between gap-5">
-          {/* Left: Trophy Icon in circle */}
-          <div className="flex items-center gap-3">
-            <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-yellow-100">
-              <Trophy size={28} className="text-yellow-500" />
-            </span>
-            <div className="flex items-center gap-2">
-              <span className="text-2xl font-extrabold text-gray-900">{currentUser?.points ?? 0}</span>
-              <span className="text-2xl font-bold text-gray-700">Daily points</span>
-            </div>
-          </div>
-          {/* Right: Progress Icons Only */}
-          <div className="flex gap-4 items-center text-base font-bold">
-            <span className="flex items-center gap-1 text-yellow-600"><UserCheck size={20} />{Object.keys(checkinStats).length}</span>
-            <span className="flex items-center gap-1 text-blue-600"><Users size={20} />{newCustomersToday.length}</span>
-            <span className="flex items-center gap-1 text-green-600"><ClipboardList size={20} />{devicesToday.length}</span>
-            <span className="flex items-center gap-1 text-pink-600"><Gift size={20} />{birthdaysThisMonth.length}</span>
-          </div>
-        </div>
-        {/* Expandable details */}
-        <div className={`overflow-hidden transition-all duration-300 ${expanded ? 'max-h-[400px] mt-4 opacity-100' : 'max-h-0 opacity-0'}`}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {/* Checked In Today */}
-            <div className="flex flex-col items-center justify-center bg-white rounded-xl p-6 border border-yellow-100">
-              <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-yellow-100 mb-2"><UserCheck size={28} className="text-yellow-500" /></span>
-              <span className="text-3xl font-extrabold text-gray-900 mb-1">{Object.keys(checkinStats).length}</span>
-              <span className="text-xs font-semibold text-gray-500 mb-2">Checked In</span>
-              <div className="w-full h-1 bg-yellow-100 rounded-full overflow-hidden">
-                <div className="h-1 bg-yellow-400 rounded-full transition-all duration-1000 animate-progress" style={{ width: `${Math.min(100, Math.round((Object.keys(checkinStats).length / 5) * 100))}%` }} />
-              </div>
-            </div>
-            {/* New Customers Today */}
-            <div className="flex flex-col items-center justify-center bg-white rounded-xl p-6 border border-blue-100">
-              <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-100 mb-2"><Users size={28} className="text-blue-500" /></span>
-              <span className="text-3xl font-extrabold text-gray-900 mb-1">{newCustomersToday.length}</span>
-              <span className="text-xs font-semibold text-gray-500 mb-2">New Customers</span>
-              <div className="w-full h-1 bg-blue-100 rounded-full overflow-hidden">
-                <div className="h-1 bg-blue-500 rounded-full transition-all duration-1000 animate-progress" style={{ width: `${Math.min(100, Math.round((newCustomersToday.length / 5) * 100))}%` }} />
-              </div>
-            </div>
-            {/* Devices Received Today */}
-            <div className="flex flex-col items-center justify-center bg-white rounded-xl p-6 border border-green-100">
-              <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-green-100 mb-2"><ClipboardList size={28} className="text-green-500" /></span>
-              <span className="text-3xl font-extrabold text-gray-900 mb-1">{devicesToday.length}</span>
-              <span className="text-xs font-semibold text-gray-500 mb-2">Devices Received</span>
-              <div className="w-full h-1 bg-green-100 rounded-full overflow-hidden">
-                <div className="h-1 bg-green-500 rounded-full transition-all duration-1000 animate-progress" style={{ width: `${Math.min(100, Math.round((devicesToday.length / 5) * 100))}%` }} />
-              </div>
-            </div>
-            {/* Birthdays This Month */}
-            <div className="flex flex-col items-center justify-center bg-white rounded-xl p-6 border border-pink-100">
-              <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-pink-100 mb-2"><Gift size={28} className="text-pink-500" /></span>
-              <span className="text-3xl font-extrabold text-gray-900 mb-1">{birthdaysThisMonth.length}</span>
-              <span className="text-xs font-semibold text-gray-500 mb-2">Birthdays</span>
-              <div className="w-full h-1 bg-pink-100 rounded-full overflow-hidden">
-                <div className="h-1 bg-pink-500 rounded-full transition-all duration-1000 animate-progress" style={{ width: `${Math.min(100, Math.round((birthdaysThisMonth.length / 10) * 100))}%` }} />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <CustomerCareStatsCard
+        currentUser={currentUser}
+        checkinStats={checkinStats}
+        newCustomersToday={newCustomersToday}
+        devicesToday={devicesToday}
+        birthdaysThisMonth={birthdaysThisMonth}
+      />
       {/* --- TOP: Dashboard Stats Grid --- */}
       {/* Removed the dashboard stats grid with three GlassCard widgets for New Customers Today, My Activities Today, and Customers Checked In Today. */}
       {/* --- Customer Insights Section --- */}
@@ -582,70 +532,44 @@ const CustomerCareDashboard: React.FC<CustomerCareDashboardProps> = ({
       {/* Section Divider */}
       <div className="border-b border-gray-200 mb-4" />
 
-      {/* Priority Cards - Mobile Optimized */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 sm:mb-8">
-        {priorityCards.map((card, index) => (
-          <GlassCard 
-            key={index} 
-            className={`bg-gradient-to-br ${card.color} cursor-pointer hover:scale-105 transition-transform duration-200 p-4 sm:p-6 col-span-1 h-full`}
-            onClick={() => {
-              if (index === 0) openReadyHandoverModal();
-              else if (index === 1) openOverdueModal();
-              else if (index === 2) openReturnedCCModal();
-              else if (index === 3) openCompletedTodayModal();
-            }}
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex-1 min-w-0">
-                <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">{card.label}</p>
-                <p className="text-2xl sm:text-4xl font-bold text-gray-900">{card.count}</p>
-                {card.subtitle && (
-                  <p className="text-xs text-gray-500 mt-1">{card.subtitle}</p>
-                )}
-              </div>
-              <div className="flex-shrink-0 ml-2">
-                {card.icon}
+      {/* Priority Cards - Redesigned to match modal */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+        <div className="flex items-center gap-2 pb-4 border-b border-gray-100 mb-6">
+          <Target className="w-5 h-5 text-orange-500" />
+          <h3 className="text-lg font-semibold text-gray-900">Priority Overview</h3>
+        </div>
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {priorityCards.map((card, index) => (
+            <div 
+              key={index} 
+              className="bg-gray-50 rounded-lg p-4 cursor-pointer hover:bg-gray-100 transition-colors duration-200 border border-gray-200"
+              onClick={() => {
+                if (index === 0) openReadyHandoverModal();
+                else if (index === 1) openOverdueModal();
+                else if (index === 2) openReturnedCCModal();
+                else if (index === 3) openCompletedTodayModal();
+              }}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-white border border-gray-200">
+                  {card.icon}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-600 truncate">{card.label}</p>
+                  <p className="text-2xl font-bold text-gray-900">{card.count}</p>
+                  {card.subtitle && (
+                    <p className="text-xs text-gray-500 mt-1">{card.subtitle}</p>
+                  )}
+                </div>
               </div>
             </div>
-          </GlassCard>
-        ))}
+          ))}
+        </div>
       </div>
 
       {/* Quick Actions - Mobile Optimized */}
-      <div className="flex flex-wrap justify-end gap-2 sm:gap-3 mb-4 sm:mb-6">
-        <Link
-          to="/devices/new"
-          className="inline-flex items-center justify-center gap-2 bg-blue-500/70 hover:bg-blue-600/70 text-white py-3 px-4 sm:py-2 sm:px-6 rounded-lg border border-blue-300/30 backdrop-blur-md transition-colors duration-150 text-sm flex-1 sm:flex-none min-w-[120px]"
-        >
-          <PlusCircle size={16} />
-          <span className="hidden sm:inline">New Device</span>
-          <span className="sm:hidden">New</span>
-        </Link>
-        <button
-          onClick={() => setShowScanner(true)}
-          className="inline-flex items-center justify-center gap-2 bg-purple-500/70 hover:bg-purple-600/70 text-white py-3 px-4 sm:py-2 sm:px-6 rounded-lg border border-purple-300/30 backdrop-blur-md transition-colors duration-150 text-sm flex-1 sm:flex-none min-w-[120px]"
-        >
-          <QrCode size={16} />
-          <span className="hidden sm:inline">Scan Device</span>
-          <span className="sm:hidden">Scan</span>
-        </button>
-        <Link
-          to="/customers"
-          className="inline-flex items-center justify-center gap-2 bg-green-500/70 hover:bg-green-600/70 text-white py-3 px-4 sm:py-2 sm:px-6 rounded-lg border border-green-300/30 backdrop-blur-md transition-colors duration-150 text-sm flex-1 sm:flex-none min-w-[120px]"
-        >
-          <Users size={16} />
-          <span className="hidden sm:inline">Manage Customers</span>
-          <span className="sm:hidden">Customers</span>
-        </Link>
-        <Link
-          to="/sms"
-          className="inline-flex items-center justify-center gap-2 bg-orange-500/70 hover:bg-orange-600/70 text-white py-3 px-4 sm:py-2 sm:px-6 rounded-lg border border-orange-300/30 backdrop-blur-md transition-colors duration-150 text-sm flex-1 sm:flex-none min-w-[120px]"
-        >
-          <MessageSquare size={16} />
-          <span className="hidden sm:inline">SMS Center</span>
-          <span className="sm:hidden">SMS</span>
-        </Link>
-      </div>
+      <CustomerCareQuickActions onScanClick={() => setShowScanner(true)} />
 
       {/* Filter Chips */}
       {(searchQuery || statusFilter !== 'all') && (
@@ -679,9 +603,14 @@ const CustomerCareDashboard: React.FC<CustomerCareDashboardProps> = ({
         </div>
       )}
 
-      {/* Search and Filter - Mobile Optimized */}
-      <div className="flex flex-col gap-3 sm:gap-4 mb-4 sm:mb-6">
-        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+      {/* Search and Filter - Redesigned to match modal */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+        <div className="flex items-center gap-2 pb-4 border-b border-gray-100 mb-6">
+          <Search className="w-5 h-5 text-blue-600" />
+          <h3 className="text-lg font-semibold text-gray-900">Search & Filter</h3>
+        </div>
+        
+        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
           <SearchBar
             onSearch={setSearchQuery}
             placeholder="Search devices..."
@@ -697,12 +626,11 @@ const CustomerCareDashboard: React.FC<CustomerCareDashboardProps> = ({
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as 'date' | 'customer' | 'brand' | 'status')}
                 className="
-                  py-2 sm:py-3 pl-10 sm:pl-12 pr-10 
-                  bg-white/20 backdrop-blur-md
-                  border border-white/30 rounded-lg
-                  text-gray-800 text-sm sm:text-base
-                  focus:outline-none focus:ring-2 focus:ring-blue-500/50
-                  transition-all duration-300
+                  py-2 px-4 pr-8
+                  bg-white border border-gray-300 rounded-lg
+                  text-gray-800 text-sm
+                  focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500
+                  transition-all duration-200
                   appearance-none
                 "
               >
@@ -711,27 +639,26 @@ const CustomerCareDashboard: React.FC<CustomerCareDashboardProps> = ({
                 <option value="brand">Sort by Device</option>
                 <option value="status">Sort by Status</option>
               </select>
-              <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">
-                <ArrowUpDown size={18} className="sm:w-5 sm:h-5" />
+              <span className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500">
+                <ArrowUpDown size={16} />
               </span>
             </div>
             
             <button
               onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
               className="
-                p-2 sm:p-3
-                bg-white/20 backdrop-blur-md
-                border border-white/30 rounded-lg
-                text-gray-800 hover:bg-white/30
-                focus:outline-none focus:ring-2 focus:ring-blue-500/50
-                transition-all duration-300
+                p-2 
+                bg-white border border-gray-300 rounded-lg
+                text-gray-800 hover:bg-gray-50
+                transition-all duration-200
+                focus:outline-none focus:ring-2 focus:ring-blue-500
               "
               title={`Sort ${sortOrder === 'asc' ? 'Descending' : 'Ascending'}`}
             >
               {sortOrder === 'asc' ? (
-                <ArrowUp size={18} className="sm:w-5 sm:h-5" />
+                <ArrowUp size={16} />
               ) : (
-                <ArrowDown size={18} className="sm:w-5 sm:h-5" />
+                <ArrowDown size={16} />
               )}
             </button>
           </div>
@@ -748,11 +675,102 @@ const CustomerCareDashboard: React.FC<CustomerCareDashboardProps> = ({
           >
             All
           </button>
+          <button
+            onClick={() => setStatusFilter('pending')}
+            className={`px-3 sm:px-4 py-2 rounded-lg border transition-colors whitespace-nowrap text-sm ${
+              statusFilter === 'pending'
+                ? 'bg-yellow-500 text-white border-yellow-500'
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            Pending
+          </button>
+          <button
+            onClick={() => setStatusFilter('in-progress')}
+            className={`px-3 sm:px-4 py-2 rounded-lg border transition-colors whitespace-nowrap text-sm ${
+              statusFilter === 'in-progress'
+                ? 'bg-blue-500 text-white border-blue-500'
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            In Progress
+          </button>
+          <button
+            onClick={() => setStatusFilter('repair-complete')}
+            className={`px-3 sm:px-4 py-2 rounded-lg border transition-colors whitespace-nowrap text-sm ${
+              statusFilter === 'repair-complete'
+                ? 'bg-green-500 text-white border-green-500'
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            Ready for Handover
+          </button>
+          <button
+            onClick={() => setStatusFilter('returned-to-customer-care')}
+            className={`px-3 sm:px-4 py-2 rounded-lg border transition-colors whitespace-nowrap text-sm ${
+              statusFilter === 'returned-to-customer-care'
+                ? 'bg-teal-500 text-white border-teal-500'
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            Returned to CC
+          </button>
         </div>
       </div>
 
-      {/* Device List - Mobile Optimized */}
-      <div className="space-y-4">
+      {/* Device List - Redesigned to match modal */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+        <div className="flex items-center justify-between pb-4 border-b border-gray-100 mb-6">
+          <div className="flex items-center gap-2">
+            <Smartphone className="w-5 h-5 text-blue-600" />
+            <h3 className="text-lg font-semibold text-gray-900">Active Devices ({filteredDevices.length})</h3>
+          </div>
+          
+          {/* View Mode Toggle */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setViewMode('column')}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                viewMode === 'column'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Table
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                viewMode === 'list'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              List
+            </button>
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                viewMode === 'grid'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Grid
+            </button>
+            <button
+              onClick={() => setViewMode('analytics')}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                viewMode === 'analytics'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Analytics
+            </button>
+          </div>
+        </div>
+        
         {loading ? (
           <div className="text-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
@@ -764,102 +782,73 @@ const CustomerCareDashboard: React.FC<CustomerCareDashboardProps> = ({
             <p className="text-gray-600">No devices found</p>
             <p className="text-sm text-gray-500">Try adjusting your search or filters</p>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
+        ) : viewMode === 'analytics' ? (
+          <CustomerCareAnalyticsDashboard devices={filteredDevices} loading={loading} />
+        ) : viewMode === 'column' ? (
+          <DeviceColumnView 
+            devices={filteredDevices} 
+            loading={loading}
+            onDeviceSelect={(device) => {
+              setSelectedDevice(device);
+              setShowDeviceDetailModal(true);
+            }}
+            onBulkAction={(devices, action) => {
+              if (action === 'call') {
+                // Handle bulk call action
+                toast.success(`Calling ${devices.length} customers...`);
+              } else if (action === 'sms') {
+                // Handle bulk SMS action
+                toast.success(`Sending SMS to ${devices.length} customers...`);
+              }
+            }}
+          />
+        ) : viewMode === 'list' ? (
+          <div className="space-y-3">
             {sortDevices(filteredDevices)
               .map((device, index) => (
-                <DeviceCard key={`${device.id}-${index}`} device={device} />
+                <DeviceListCard 
+                  key={`${device.id}-${index}`}
+                  device={device} 
+                  showDetails={true} 
+                />
+              ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {sortDevices(filteredDevices)
+              .map((device, index) => (
+                <div 
+                  key={`${device.id}-${index}`}
+                  onClick={() => {
+                    setSelectedDevice(device);
+                    setShowDeviceDetailModal(true);
+                  }}
+                  className="cursor-pointer"
+                >
+                  <DeviceCard device={device} showDetails={true} />
+                </div>
               ))}
           </div>
         )}
       </div>
 
-      {/* All Done Status Devices Section */}
+      {/* All Done Status Devices Section - Redesigned */}
       {done.length > 0 && (
-        <div className="mt-8 border-t border-gray-200 pt-6">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <div className="w-12 h-12 bg-gradient-to-br from-green-500/20 to-green-400/10 rounded-xl flex items-center justify-center">
-                  <CheckCircle className="h-6 w-6 text-green-500" />
-                </div>
-                <div className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
-                  <span className="text-xs font-bold text-white">{done.length}</span>
-                </div>
-              </div>
-              <div>
-                <h3 className="text-xl font-bold text-gray-900">Completed Devices</h3>
-                <p className="text-sm text-gray-600">Successfully completed work</p>
-              </div>
-            </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+          <div className="flex items-center gap-2 pb-4 border-b border-gray-100 mb-6">
+            <CheckCircle className="w-5 h-5 text-green-600" />
+            <h3 className="text-lg font-semibold text-gray-900">Completed Devices ({done.length})</h3>
           </div>
           
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="space-y-3">
             {sortDevices(removeDuplicateDevices(done))
               .slice(0, showAllDevices ? done.length : 6) // Show all or first 6
               .map((device, index) => (
-                <GlassCard 
-                  key={device.id} 
-                  className={`transform transition-all duration-500 ease-in-out hover:translate-y-[-5px] hover:scale-105 ${
-                    selectedDevice?.id === device.id 
-                      ? 'border-green-400 bg-green-50 shadow-lg shadow-green-500/20 scale-105 ring-2 ring-green-200' 
-                      : ''
-                  }`}
-                  onClick={() => {
-                    setSelectedDevice(device);
-                    setShowDeviceDetailModal(true);
-                  }}
-                >
-                  {/* Header with Status Badge */}
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="flex items-center gap-2 w-full">
-                      <h3 className="font-bold text-base text-gray-900 truncate">
-                        {device.brand} {device.model}
-                      </h3>
-                    </div>
-                    <span className="inline-flex items-center gap-1 px-3 py-2 rounded-full text-sm font-bold bg-green-100 text-green-700 border border-green-200">
-                      <Check size={16} className="text-green-600 font-bold" />
-                      Done
-                    </span>
-                  </div>
-
-                  {/* Customer Info */}
-                  <div className="space-y-2 mb-3">
-                    <div className="flex items-center gap-2 text-gray-700">
-                      <UserCheck size={16} className="text-blue-500" />
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/customers/${device.customerId}`);
-                        }}
-                        className="text-base font-semibold truncate text-blue-600 hover:text-blue-800 hover:underline transition-colors"
-                      >
-                        {device.customerName}
-                      </button>
-                    </div>
-
-                    {/* Completion Date */}
-                    <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-2 rounded-lg bg-white/20 backdrop-blur-md shadow mt-1">
-                      <CheckCircle className="text-purple-600 drop-shadow" size={16} />
-                      <span className="font-semibold text-sm sm:text-base text-purple-900">Completed:</span>
-                      <span className="ml-1 font-semibold text-sm sm:text-base text-purple-700">
-                        {new Date(device.updatedAt || '').toLocaleDateString('en-US', { 
-                          month: 'short', 
-                          day: 'numeric',
-                          year: 'numeric'
-                        })}
-                      </span>
-                    </div>
-
-                    {/* Phone Number */}
-                    {device.phoneNumber && (
-                      <div className="flex items-center gap-2 text-gray-700">
-                        <Phone size={14} className="text-gray-500" />
-                        <span className="text-xs truncate">{device.phoneNumber}</span>
-                      </div>
-                    )}
-                  </div>
-                </GlassCard>
+                <DeviceListCard 
+                  key={device.id}
+                  device={device} 
+                  showDetails={true} 
+                />
               ))}
           </div>
           
@@ -1040,7 +1029,7 @@ const CustomerCareDashboard: React.FC<CustomerCareDashboardProps> = ({
                     <div className="flex justify-between items-start">
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-gray-900 truncate">{customer.name}</p>
-                        <p className="text-sm text-gray-600 truncate">Phone: {customer.phone}</p>
+                        <p className="text-sm text-blue-600 font-medium truncate">Phone: {customer.phone}</p>
                         {/* Email hidden for privacy */}
                       </div>
                       <div className="text-xs text-gray-500 flex-shrink-0 ml-2">

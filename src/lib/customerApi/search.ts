@@ -1,4 +1,5 @@
 import { supabase } from '../supabaseClient';
+import { getPhoneNumberVariations, cleanPhoneNumber } from '../phoneUtils';
 
 // Function to normalize color tag values
 function normalizeColorTag(colorTag: string): 'new' | 'vip' | 'complainer' | 'purchased' {
@@ -40,12 +41,40 @@ export async function searchCustomers(query: string, page: number = 1, pageSize:
     
     const offset = (page - 1) * pageSize;
     
-    // Create search conditions
+    // Create optimized search conditions
     const searchConditions = [
-      { name: { ilike: `%${query}%` } },
-      { phone: { ilike: `%${query}%` } },
-      { email: { ilike: `%${query}%` } }
+      `name.ilike.%${query}%`,
+      `phone.ilike.%${query}%`,
+      `email.ilike.%${query}%`,
+      `whatsapp.ilike.%${query}%`,
+      `city.ilike.%${query}%`,
+      `referral_source.ilike.%${query}%`,
+      `customer_tag.ilike.%${query}%`,
+      `initial_notes.ilike.%${query}%`
     ];
+
+    // Enhanced phone number search for better mobile number matching
+    if (/^\d{3,}$/.test(query)) {
+      // Add phone number variations for partial matching
+      searchConditions.push(`phone.like.%${query}`);
+      searchConditions.push(`whatsapp.like.%${query}`);
+    }
+
+    // Handle Tanzanian phone number formats with enhanced conversion using utility
+    const cleanQuery = cleanPhoneNumber(query);
+    if (/^\d{3,}$/.test(cleanQuery)) {
+      // Get all phone number variations for comprehensive search
+      const phoneVariations = getPhoneNumberVariations(cleanQuery);
+      
+      phoneVariations.forEach(phone => {
+        // Add exact match conditions
+        searchConditions.push(`phone.eq.${phone}`);
+        searchConditions.push(`whatsapp.eq.${phone}`);
+        // Add partial match conditions
+        searchConditions.push(`phone.ilike.%${phone}%`);
+        searchConditions.push(`whatsapp.ilike.%${phone}%`);
+      });
+    }
     
     const { data, error, count } = await supabase
       .from('customers')
@@ -65,8 +94,6 @@ export async function searchCustomers(query: string, page: number = 1, pageSize:
         referral_source,
         birth_month,
         birth_day,
-        total_returns,
-        profile_image,
         whatsapp,
         whatsapp_opt_out,
         initial_notes,
@@ -79,9 +106,18 @@ export async function searchCustomers(query: string, page: number = 1, pageSize:
         last_purchase_date,
         total_purchases,
         birthday,
-        referred_by
+        referred_by,
+        total_calls,
+        total_call_duration_minutes,
+        incoming_calls,
+        outgoing_calls,
+        missed_calls,
+        avg_call_duration_minutes,
+        first_call_date,
+        last_call_date,
+        call_loyalty_level
       `, { count: 'exact' })
-      .or(searchConditions.map(condition => Object.entries(condition).map(([key, value]) => `${key}.${Object.keys(value)[0]}.${Object.values(value)[0]}`).join(',')).join(','))
+      .or(searchConditions.join(','))
       .range(offset, offset + pageSize - 1)
       .order('created_at', { ascending: false });
     
@@ -110,8 +146,8 @@ export async function searchCustomers(query: string, page: number = 1, pageSize:
           referralSource: customer.referral_source,
           birthMonth: customer.birth_month,
           birthDay: customer.birth_day,
-          totalReturns: customer.total_returns || 0,
-          profileImage: customer.profile_image,
+          totalReturns: 0, // Field doesn't exist in database
+          profileImage: null, // Field doesn't exist in database
           whatsapp: customer.whatsapp,
           whatsappOptOut: customer.whatsapp_opt_out || false,
           initialNotes: customer.initial_notes,
@@ -134,6 +170,16 @@ export async function searchCustomers(query: string, page: number = 1, pageSize:
           totalPurchases: customer.total_purchases || 0,
           birthday: customer.birthday,
           referredBy: customer.referred_by,
+          // Call analytics fields
+          totalCalls: customer.total_calls || 0,
+          totalCallDurationMinutes: customer.total_call_duration_minutes || 0,
+          incomingCalls: customer.incoming_calls || 0,
+          outgoingCalls: customer.outgoing_calls || 0,
+          missedCalls: customer.missed_calls || 0,
+          avgCallDurationMinutes: customer.avg_call_duration_minutes || 0,
+          firstCallDate: customer.first_call_date || '',
+          lastCallDate: customer.last_call_date || '',
+          callLoyaltyLevel: customer.call_loyalty_level || 'Basic',
           // Additional fields for interface compatibility
           customerNotes: [],
           customerPayments: [],
@@ -181,7 +227,28 @@ export async function searchCustomersFast(query: string, page: number = 1, pageS
     
     const offset = (page - 1) * pageSize;
     
-    // Simplified search for better performance
+    // Enhanced search query for better mobile number matching
+    let searchQuery = `name.ilike.%${query}%,phone.ilike.%${query}%,email.ilike.%${query}%,whatsapp.ilike.%${query}%,city.ilike.%${query}%,referral_source.ilike.%${query}%,customer_tag.ilike.%${query}%,initial_notes.ilike.%${query}%`;
+    
+    // Add enhanced phone number search
+    if (/^\d{3,}$/.test(query)) {
+      searchQuery += `,phone.like.%${query},whatsapp.like.%${query},phone.like.${query}%,whatsapp.like.${query}%`;
+    }
+    
+    // Handle Tanzanian phone number formats with enhanced conversion using utility
+    const cleanQuery = cleanPhoneNumber(query);
+    if (/^\d{3,}$/.test(cleanQuery)) {
+      // Get all phone number variations for comprehensive search
+      const phoneVariations = getPhoneNumberVariations(cleanQuery);
+      
+      phoneVariations.forEach(phone => {
+        // Add exact and partial match conditions
+        searchQuery += `,phone.eq.${phone},whatsapp.eq.${phone}`;
+        searchQuery += `,phone.like.%${phone}%,whatsapp.like.%${phone}%`;
+        searchQuery += `,phone.like.${phone}%,whatsapp.like.${phone}%`;
+      });
+    }
+
     const { data, error, count } = await supabase
       .from('customers')
       .select(`
@@ -189,12 +256,14 @@ export async function searchCustomersFast(query: string, page: number = 1, pageS
         name,
         phone,
         email,
+        whatsapp,
+        city,
         color_tag,
         points,
         created_at,
         updated_at
       `, { count: 'exact' })
-      .or(`name.ilike.%${query}%,phone.ilike.%${query}%,email.ilike.%${query}%`)
+      .or(searchQuery)
       .range(offset, offset + pageSize - 1)
       .order('created_at', { ascending: false });
     

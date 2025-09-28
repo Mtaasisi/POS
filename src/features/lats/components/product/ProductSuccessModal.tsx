@@ -1,6 +1,7 @@
 import React from 'react';
 import { CheckCircle, Copy, Edit, Plus, Eye, Download, Share2, ArrowRight } from 'lucide-react';
 import GlassButton from '../../../shared/components/ui/GlassButton';
+import { useBodyScrollLock } from '../../../../hooks/useBodyScrollLock';
 
 interface ProductSuccessModalProps {
   isOpen: boolean;
@@ -52,6 +53,9 @@ const ProductSuccessModal: React.FC<ProductSuccessModalProps> = ({
       document.body.style.overflow = 'unset';
     };
   }, [isOpen, onClose]);
+
+  // Prevent body scroll when modal is open
+  useBodyScrollLock(isOpen);
 
   if (!isOpen) return null;
 

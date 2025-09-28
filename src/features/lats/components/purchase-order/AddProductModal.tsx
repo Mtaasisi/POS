@@ -11,6 +11,7 @@ import { generateSKU } from '../../lib/skuUtils';
 import ProductDetailModal from './ProductDetailModal';
 import CategoryInput from '../../../shared/components/ui/CategoryInput';
 import { validateAndCreateDefaultVariant } from '../../lib/variantUtils';
+import { useBodyScrollLock } from '../../../../hooks/useBodyScrollLock';
 
 // Simplified validation schema for purchase order products
 const productFormSchema = z.object({
@@ -259,6 +260,9 @@ const AddProductModal: React.FC<AddProductModalProps> = ({
     onProductAdded(product);
     onClose();
   };
+
+  // Prevent body scroll when modal is open
+  useBodyScrollLock(isOpen);
 
   if (!isOpen) return null;
 

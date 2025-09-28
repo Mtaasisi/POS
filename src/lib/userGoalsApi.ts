@@ -319,7 +319,7 @@ export async function getUserGoalProgress(userId: string, goalType: UserDailyGoa
             .from('customer_checkins')
             .select('id', { count: 'exact', head: true })
             .eq('staff_id', userId)
-            .eq('checked_in_date', today);
+            .gte('checkin_at', today);
           current = checkinsCount || 0;
           break;
 

@@ -82,10 +82,10 @@ const PaymentDetailsViewer: React.FC<PaymentDetailsViewerProps> = ({
   }, [transactionId]);
 
   // Format currency following user preference (no trailing zeros, show full numbers)
-  const formatMoney = (amount: number) => {
+  const formatMoney = (amount: number, currency: string = 'TZS') => {
     return new Intl.NumberFormat('en-TZ', {
       style: 'currency',
-      currency: 'TZS',
+      currency: currency,
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
     }).format(amount);
@@ -109,6 +109,8 @@ const PaymentDetailsViewer: React.FC<PaymentDetailsViewerProps> = ({
     switch (status) {
       case 'completed':
         return <CheckCircle className="w-5 h-5 text-green-600" />;
+      case 'approved':
+        return <CheckCircle className="w-5 h-5 text-blue-600" />;
       case 'pending':
         return <Clock className="w-5 h-5 text-orange-600" />;
       case 'failed':
@@ -124,11 +126,21 @@ const PaymentDetailsViewer: React.FC<PaymentDetailsViewerProps> = ({
   };
 
   // Handle payment actions
-  const handlePaymentAction = async (action: 'confirm' | 'reject') => {
+  const handlePaymentAction = async (action: 'confirm' | 'reject' | 'stop' | 'cancel') => {
     if (!transaction) return;
     
     try {
-      const newStatus = action === 'confirm' ? 'completed' : 'failed';
+      let newStatus: 'completed' | 'failed' | 'stopped';
+      if (action === 'confirm') {
+        newStatus = 'completed';
+      } else if (action === 'reject') {
+        newStatus = 'failed';
+      } else if (action === 'stop' || action === 'cancel') {
+        newStatus = 'stopped';
+      } else {
+        return;
+      }
+      
       const success = await paymentTrackingService.updatePaymentStatus(
         transaction.id, 
         newStatus, 
@@ -157,7 +169,8 @@ Transaction Details
 ===================
 Transaction ID: ${transaction.transactionId}
 Customer: ${transaction.customerName}
-Amount: ${formatMoney(transaction.amount)}
+Amount: ${formatMoney(transaction.amount, transaction.currency)}
+Currency: ${transaction.currency || 'TZS'}
 Method: ${transaction.method}
 Status: ${transaction.status}
 Date: ${new Date(transaction.timestamp).toLocaleString()}
@@ -194,6 +207,7 @@ ${soldItems.map(item => `- ${item.name} x${item.quantity} = ${formatMoney(item.t
       transactionId: transaction.transactionId,
       customerName: transaction.customerName,
       amount: transaction.amount,
+      currency: transaction.currency || 'TZS',
       method: transaction.method,
       status: transaction.status,
       date: transaction.timestamp,
@@ -273,7 +287,7 @@ ${soldItems.map(item => `- ${item.name} x${item.quantity} = ${formatMoney(item.t
             <DollarSign className="w-6 h-6 text-green-600" />
             <span className="text-sm font-medium text-green-700">Transaction Amount</span>
           </div>
-          <div className="text-3xl font-bold text-green-900 mb-2">{formatMoney(transaction.amount)}</div>
+          <div className="text-3xl font-bold text-green-900 mb-2">{formatMoney(transaction.amount, transaction.currency)}</div>
           <div className="text-sm text-green-600">
             {soldItems.length > 0 ? `${soldItems.length} item(s)` : 'Service payment'}
           </div>
@@ -301,12 +315,23 @@ ${soldItems.map(item => `- ${item.name} x${item.quantity} = ${formatMoney(item.t
           </div>
           <div className="text-xl font-bold text-purple-900">
             {transaction.metadata?.paymentMethod?.type === 'multiple' 
-              ? `${transaction.metadata.paymentMethod.details?.payments?.length || 0} Methods`
+              ? (() => {
+                  const payments = transaction.metadata.paymentMethod.details?.payments || [];
+                  const methods = payments.map((payment: any) => {
+                    const methodName = payment.method || payment.paymentMethod || 'Unknown';
+                    return methodName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                  });
+                  const uniqueMethods = [...new Set(methods)];
+                  return uniqueMethods.join(', ');
+                })()
               : transaction.method
             }
           </div>
           <div className="text-sm text-purple-600">
-            {transaction.metadata?.paymentMethod?.type === 'multiple' ? 'Multiple payments' : 'Payment processed'}
+            {transaction.metadata?.paymentMethod?.type === 'multiple' 
+              ? `${transaction.metadata.paymentMethod.details?.payments?.length || 0} payments` 
+              : 'Payment processed'
+            }
           </div>
         </div>
       </div>
@@ -316,41 +341,183 @@ ${soldItems.map(item => `- ${item.name} x${item.quantity} = ${formatMoney(item.t
         <div className="bg-gradient-to-br from-blue-50 to-indigo-100 rounded-xl border border-blue-200 p-6">
           <h3 className="text-lg font-semibold text-blue-900 mb-4 flex items-center gap-2">
             <CreditCard className="w-5 h-5" />
-            Payment Breakdown
+            Split Payment Breakdown
           </h3>
-          <div className="space-y-3">
+          <div className="space-y-4">
             {transaction.metadata.paymentMethod.details.payments.map((payment: any, index: number) => (
-              <div key={index} className="bg-white rounded-lg border border-blue-200 p-4 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                    {getPaymentMethodIcon(payment.method)}
-                  </div>
-                  <div>
-                    <div className="font-semibold text-gray-900 capitalize">{payment.method}</div>
-                    <div className="text-sm text-gray-600">
-                      {payment.accountId && `Account: ${payment.accountId.slice(0, 8)}...`}
-                      {payment.reference && ` • Ref: ${payment.reference}`}
+              <div key={index} className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200 shadow-sm">
+                <div className="flex justify-between items-start">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                        {getPaymentMethodIcon(payment.method)}
+                      </div>
+                      <p className="font-semibold text-gray-900 text-lg">
+                        {payment.method ? 
+                          payment.method.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 
+                          'Unknown Method'
+                        }
+                      </p>
                     </div>
-                    {payment.notes && (
-                      <div className="text-xs text-gray-500 mt-1">{payment.notes}</div>
+                    <div className="space-y-1">
+                      {payment.reference && (
+                        <p className="text-sm text-gray-600">
+                          <span className="font-medium">Reference:</span> {payment.reference}
+                        </p>
+                      )}
+                      {payment.transactionId && (
+                        <p className="text-sm text-gray-600">
+                          <span className="font-medium">Transaction ID:</span> {payment.transactionId}
+                        </p>
+                      )}
+                      {payment.accountId && (
+                        <p className="text-sm text-gray-600">
+                          <span className="font-medium">Account:</span> {payment.accountId.slice(0, 8)}...
+                        </p>
+                      )}
+                      {payment.cardLast4 && (
+                        <p className="text-sm text-gray-600">
+                          <span className="font-medium">Card:</span> ****{payment.cardLast4}
+                        </p>
+                      )}
+                      {payment.mobileNumber && (
+                        <p className="text-sm text-gray-600">
+                          <span className="font-medium">Mobile:</span> {payment.mobileNumber}
+                        </p>
+                      )}
+                      {payment.bankName && (
+                        <p className="text-sm text-gray-600">
+                          <span className="font-medium">Bank:</span> {payment.bankName}
+                        </p>
+                      )}
+                      {payment.timestamp && (
+                        <p className="text-sm text-gray-500">
+                          <span className="font-medium">Time:</span> {new Date(payment.timestamp).toLocaleString('en-TZ')}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xl font-bold text-green-600 mb-2">
+                      {formatMoney(payment.amount, transaction.currency)}
+                    </p>
+                    {payment.status && (
+                      <span className={`inline-flex px-3 py-1 text-xs font-semibold rounded-full ${
+                        payment.status === 'completed' || payment.status === 'success' ? 'bg-green-100 text-green-800' :
+                        payment.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                        payment.status === 'failed' ? 'bg-red-100 text-red-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {payment.status.toUpperCase()}
+                      </span>
                     )}
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-lg font-bold text-blue-900">{formatMoney(payment.amount)}</div>
-                  <div className="text-xs text-gray-500">
-                    {payment.timestamp && new Date(payment.timestamp).toLocaleString()}
+                {payment.notes && (
+                  <div className="mt-3 pt-3 border-t border-blue-200">
+                    <p className="text-sm text-gray-600 italic">
+                      <span className="font-medium">Note:</span> {payment.notes}
+                    </p>
+                  </div>
+                )}
+              </div>
+            ))}
+            
+            {/* Payment Summary */}
+            <div className="mt-4 p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200">
+              <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                <DollarSign className="w-4 h-4 text-green-600" />
+                Payment Summary
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="text-center">
+                  <div className="text-sm text-gray-600">Total Payments</div>
+                  <div className="text-lg font-semibold text-blue-900">
+                    {transaction.metadata.paymentMethod.details.payments.length}
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="text-sm text-gray-600">Payment Methods</div>
+                  <div className="text-lg font-semibold text-blue-900">
+                    {new Set(transaction.metadata.paymentMethod.details.payments.map((p: any) => p.method)).size}
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="text-sm text-gray-600">Total Amount</div>
+                  <div className="text-xl font-bold text-green-600">
+                    {formatMoney(transaction.metadata.paymentMethod.details.totalPaid || transaction.amount, transaction.currency)}
                   </div>
                 </div>
               </div>
-            ))}
-            <div className="border-t border-blue-200 pt-3 mt-4">
-              <div className="flex justify-between items-center">
-                <span className="text-lg font-semibold text-blue-900">Total Paid:</span>
-                <span className="text-xl font-bold text-blue-900">
-                  {formatMoney(transaction.metadata.paymentMethod.details.totalPaid || transaction.amount)}
-                </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Enhanced Single Payment Display - Show more details even for single payments */}
+      {transaction.metadata?.paymentMethod?.type !== 'multiple' && (
+        <div className="bg-gradient-to-br from-green-50 to-emerald-100 rounded-xl border border-green-200 p-6">
+          <h3 className="text-lg font-semibold text-green-900 mb-4 flex items-center gap-2">
+            <CreditCard className="w-5 h-5" />
+            Payment Details
+          </h3>
+          <div className="bg-white rounded-lg border border-green-200 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                  {getPaymentMethodIcon(transaction.method)}
+                </div>
+                <div>
+                  <div className="font-semibold text-gray-900 capitalize text-lg">{transaction.method}</div>
+                  <div className="text-sm text-gray-600">Single Payment</div>
+                </div>
               </div>
+              <div className="text-right">
+                <div className="text-xl font-bold text-green-900">{formatMoney(transaction.amount, transaction.currency)}</div>
+                <div className="text-xs text-gray-500">
+                  {new Date(transaction.timestamp).toLocaleString()}
+                </div>
+              </div>
+            </div>
+            
+            {/* Payment Details */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+              {transaction.reference && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Reference:</span>
+                  <span className="font-medium text-gray-900">{transaction.reference}</span>
+                </div>
+              )}
+              {transaction.cardLast4 && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Card:</span>
+                  <span className="font-medium text-gray-900">****{transaction.cardLast4}</span>
+                </div>
+              )}
+              {transaction.mobileNumber && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Mobile:</span>
+                  <span className="font-medium text-gray-900">{transaction.mobileNumber}</span>
+                </div>
+              )}
+              {transaction.bankName && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Bank:</span>
+                  <span className="font-medium text-gray-900">{transaction.bankName}</span>
+                </div>
+              )}
+              {transaction.paymentProvider && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Provider:</span>
+                  <span className="font-medium text-gray-900">{transaction.paymentProvider}</span>
+                </div>
+              )}
+              {transaction.fees > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Fees:</span>
+                  <span className="font-medium text-gray-900">{formatMoney(transaction.fees, transaction.currency)}</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -427,7 +594,7 @@ ${soldItems.map(item => `- ${item.name} x${item.quantity} = ${formatMoney(item.t
             {transaction.fees > 0 && (
               <div className="flex justify-between items-center py-2 border-b border-gray-100">
                 <span className="text-sm font-medium text-gray-600">Transaction Fees</span>
-                <span className="text-sm text-gray-900">{formatMoney(transaction.fees)}</span>
+                <span className="text-sm text-gray-900">{formatMoney(transaction.fees, transaction.currency)}</span>
               </div>
             )}
             <div className="flex justify-between items-center py-2">
@@ -457,12 +624,12 @@ ${soldItems.map(item => `- ${item.name} x${item.quantity} = ${formatMoney(item.t
                     )}
                   </div>
                   <div className="text-right">
-                    <div className="font-semibold text-gray-900">{formatMoney(item.totalPrice)}</div>
+                    <div className="font-semibold text-gray-900">{formatMoney(item.totalPrice, transaction.currency)}</div>
                     <div className="text-sm text-gray-600">Qty: {item.quantity}</div>
                   </div>
                 </div>
                 <div className="flex justify-between text-sm text-gray-600">
-                  <span>Unit Price: {formatMoney(item.unitPrice)}</span>
+                  <span>Unit Price: {formatMoney(item.unitPrice, transaction.currency)}</span>
                   <span>Type: {item.type}</span>
                 </div>
                 {item.notes && (

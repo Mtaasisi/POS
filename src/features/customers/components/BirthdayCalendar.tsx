@@ -107,7 +107,7 @@ const BirthdayCalendar: React.FC<BirthdayCalendarProps> = ({
   const isPast = (day: number, monthIndex: number) => {
     const today = new Date();
     const birthday = new Date(currentYear, monthIndex, day);
-    return birthday < today;
+    return birthday < today && !isToday(day, monthIndex);
   };
 
   return (
@@ -173,8 +173,8 @@ const BirthdayCalendar: React.FC<BirthdayCalendarProps> = ({
                       className={`
                         relative p-1 text-center cursor-pointer rounded transition-colors
                         ${isCurrentDay ? 'bg-pink-500 text-white font-bold' : ''}
-                        ${isPastDay && !isCurrentDay ? 'text-gray-400' : 'text-gray-700'}
-                        ${dayBirthdays ? 'bg-pink-50 hover:bg-pink-100' : 'hover:bg-gray-50'}
+                        ${isPastDay ? 'text-gray-400' : 'text-gray-700'}
+                        ${dayBirthdays && !isCurrentDay ? 'bg-pink-50 hover:bg-pink-100' : 'hover:bg-gray-50'}
                       `}
                       onClick={() => dayBirthdays && onCustomerClick?.(dayBirthdays.customers[0])}
                     >

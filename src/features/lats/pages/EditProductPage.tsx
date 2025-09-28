@@ -158,6 +158,7 @@ const EditProductPageContent: React.FC = () => {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasSubmitted, setHasSubmitted] = useState(false);
+  const [isLoadingProduct, setIsLoadingProduct] = useState(true);
 
   // Variants state
   const [variants, setVariants] = useState<ProductVariant[]>([]);
@@ -183,6 +184,7 @@ const EditProductPageContent: React.FC = () => {
   // Name checking
   const [isCheckingName, setIsCheckingName] = useState(false);
   const [nameExists, setNameExists] = useState(false);
+  const [originalProductName, setOriginalProductName] = useState<string>('');
 
   const { currentUser } = useAuth();
 
@@ -293,6 +295,12 @@ const EditProductPageContent: React.FC = () => {
       return;
     }
 
+    // Don't check if the name hasn't changed from the original
+    if (originalProductName && name.trim() === originalProductName.trim()) {
+      setNameExists(false);
+      return;
+    }
+
     setIsCheckingName(true);
     try {
       const { data, error } = await supabase!
@@ -332,41 +340,29 @@ const EditProductPageContent: React.FC = () => {
     return () => clearTimeout(timeoutId);
   }, [formData.name]);
 
+
   const loadProductData = async () => {
     if (!productId) return;
     
+    setIsLoadingProduct(true);
     try {
       // First try to get product with images
       let { data: product, error } = await supabase!
         .from('lats_products')
         .select(`
           *,
-          variants:lats_product_variants(*),
-          images:product_images(*)
+          variants:lats_product_variants(*)
         `)
         .eq('id', productId)
         .single();
 
-      // If the query fails (possibly due to product_images table not existing), try without images
-      if (error && error.message.includes('product_images')) {
-        console.warn('⚠️ product_images table not accessible, fetching product without images:', error.message);
-        const { data: productWithoutImages, error: productError } = await supabase!
-          .from('lats_products')
-          .select(`
-            *,
-            variants:lats_product_variants(*)
-          `)
-          .eq('id', productId)
-          .single();
-        
-        if (productError) throw productError;
-        product = productWithoutImages;
-        error = null;
-      } else if (error) {
+      if (error) {
         throw error;
       }
       
       if (product) {
+        // Store the original product name for comparison
+        setOriginalProductName(product.name || '');
 
         
         setFormData({
@@ -391,7 +387,7 @@ const EditProductPageContent: React.FC = () => {
               return '';
             }
           })(),
-          sku: product.sku || '',
+          sku: product.sku || product.barcode || generateSKU(),
           categoryId: product.category_id || null,
       
           condition: product.condition || '',
@@ -421,6 +417,7 @@ const EditProductPageContent: React.FC = () => {
           metadata: product.attributes || {},
           variants: []
         });
+        
         
         // Determine if product originally had variants
         const hadVariantsOriginally = (
@@ -480,6 +477,8 @@ const EditProductPageContent: React.FC = () => {
     } catch (error) {
       console.error('Error loading product:', error);
       toast.error('Failed to load product data');
+    } finally {
+      setIsLoadingProduct(false);
     }
   };
 
@@ -568,8 +567,9 @@ const EditProductPageContent: React.FC = () => {
       return;
     }
 
-    if (nameExists) {
-      toast.error('A product with this name already exists');
+    // Only check for name conflicts if the name has actually changed
+    if (nameExists && formData.name.trim() !== originalProductName.trim()) {
+      toast.error('Another product with a similar name already exists');
       return;
     }
 
@@ -875,20 +875,28 @@ const EditProductPageContent: React.FC = () => {
         </div>
 
         <GlassCard className="mb-6">
-          <div className="space-y-6">
-            {/* Product Information Form */}
-            <ProductInformationForm
-              formData={formData}
-              setFormData={setFormData}
-              categories={categories}
-              currentErrors={currentErrors}
-              isCheckingName={isCheckingName}
-              nameExists={nameExists}
-              onNameCheck={checkProductName}
-              onSpecificationsClick={handleProductSpecificationsClick}
-              useVariants={useVariants}
-              onGenerateSKU={generateAutoSKU}
-            />
+          {isLoadingProduct ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                <p className="text-gray-600">Loading product data...</p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Product Information Form */}
+              <ProductInformationForm
+                formData={formData}
+                setFormData={setFormData}
+                categories={categories}
+                currentErrors={currentErrors}
+                isCheckingName={isCheckingName}
+                nameExists={nameExists}
+                onNameCheck={checkProductName}
+                onSpecificationsClick={handleProductSpecificationsClick}
+                useVariants={useVariants}
+                onGenerateSKU={generateAutoSKU}
+              />
 
 
 
@@ -955,7 +963,8 @@ const EditProductPageContent: React.FC = () => {
                 {isSubmitting ? 'Updating...' : 'Update Product'}
               </GlassButton>
             </div>
-          </div>
+            </div>
+          )}
         </GlassCard>
       </div>
 

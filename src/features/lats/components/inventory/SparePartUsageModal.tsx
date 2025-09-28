@@ -3,7 +3,7 @@ import { useAuth } from '../../../../context/AuthContext';
 import GlassCard from '../../../../features/shared/components/ui/GlassCard';
 import GlassButton from '../../../../features/shared/components/ui/GlassButton';
 import { X, Minus, AlertCircle, Package } from 'lucide-react';
-import { SparePart } from '../../types/inventory';
+import { SparePart } from '../../types/spareParts';
 import { format } from '../../lib/format';
 
 interface SparePartUsageModalProps {
@@ -100,63 +100,63 @@ const SparePartUsageModal: React.FC<SparePartUsageModalProps> = ({
 
   // Calculate remaining quantity after usage
   const remainingQuantity = sparePart.quantity - quantity;
-  const isLowStock = remainingQuantity <= sparePart.minQuantity;
+  const isLowStock = remainingQuantity <= sparePart.min_quantity;
   const isOutOfStock = remainingQuantity === 0;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <GlassCard className="w-full max-w-md">
-        <div className="p-6">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-2 z-50">
+      <GlassCard className="w-full max-w-sm">
+        <div className="p-4">
           {/* Header */}
-          <div className="flex justify-between items-center mb-6">
-            <div className="flex items-center gap-3">
-              <Minus className="w-6 h-6 text-red-600" />
-              <h2 className="text-xl font-semibold text-gray-900">
-                Use Spare Part
+          <div className="flex justify-between items-center mb-4">
+            <div className="flex items-center gap-2">
+              <Minus className="w-5 h-5 text-red-600" />
+              <h2 className="text-lg font-semibold text-gray-900">
+                Use Part
               </h2>
             </div>
             <button
               onClick={onCancel}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              className="p-1.5 hover:bg-gray-100 rounded transition-colors"
             >
-              <X className="w-5 h-5 text-gray-500" />
+              <X className="w-4 h-4 text-gray-500" />
             </button>
           </div>
 
           {/* Spare Part Info */}
-          <div className="bg-gray-50 rounded-lg p-4 mb-6">
-            <div className="flex items-center gap-3 mb-3">
-              <Package className="w-5 h-5 text-blue-600" />
+          <div className="bg-gray-50 rounded p-3 mb-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Package className="w-4 h-4 text-blue-600" />
               <div>
-                <h3 className="font-medium text-gray-900">{sparePart.name}</h3>
-                <p className="text-sm text-gray-500">{sparePart.partNumber}</p>
+                <h3 className="font-medium text-gray-900 text-sm">{sparePart.name}</h3>
+                <p className="text-xs text-gray-500">{sparePart.part_number}</p>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="grid grid-cols-2 gap-2 text-xs">
               <div>
                 <span className="text-gray-500">Available:</span>
-                <span className="ml-2 font-medium text-gray-900">{sparePart.quantity}</span>
+                <span className="ml-1 font-medium text-gray-900">{sparePart.quantity}</span>
               </div>
               <div>
-                <span className="text-gray-500">Min Level:</span>
-                <span className="ml-2 font-medium text-gray-900">{sparePart.minQuantity}</span>
+                <span className="text-gray-500">Min:</span>
+                <span className="ml-1 font-medium text-gray-900">{sparePart.min_quantity}</span>
               </div>
               <div>
                 <span className="text-gray-500">Cost:</span>
-                <span className="ml-2 font-medium text-gray-900">{format.currency(sparePart.costPrice)}</span>
+                <span className="ml-1 font-medium text-gray-900">{format.currency(sparePart.cost_price)}</span>
               </div>
               <div>
-                <span className="text-gray-500">Selling:</span>
-                <span className="ml-2 font-medium text-gray-900">{format.currency(sparePart.sellingPrice)}</span>
+                <span className="text-gray-500">Price:</span>
+                <span className="ml-1 font-medium text-gray-900">{format.currency(sparePart.selling_price)}</span>
               </div>
             </div>
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-3">
             {/* Quantity */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-xs font-medium text-gray-700 mb-1">
                 Quantity to Use *
               </label>
               <input
@@ -165,20 +165,20 @@ const SparePartUsageModal: React.FC<SparePartUsageModalProps> = ({
                 max={sparePart.quantity}
                 value={quantity}
                 onChange={(e) => handleInputChange('quantity', parseInt(e.target.value) || 0)}
-                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                className={`w-full px-2 py-1.5 border rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm ${
                   errors.quantity ? 'border-red-300' : 'border-gray-300'
                 }`}
                 placeholder="1"
               />
               {errors.quantity && (
-                <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
+                <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
                   <AlertCircle className="w-3 h-3" />
                   {errors.quantity}
                 </p>
               )}
               {quantity > 0 && (
-                <p className="mt-1 text-sm text-gray-500">
-                  Remaining after use: <span className={`font-medium ${isOutOfStock ? 'text-red-600' : isLowStock ? 'text-yellow-600' : 'text-green-600'}`}>
+                <p className="mt-1 text-xs text-gray-500">
+                  Remaining: <span className={`font-medium ${isOutOfStock ? 'text-red-600' : isLowStock ? 'text-yellow-600' : 'text-green-600'}`}>
                     {remainingQuantity}
                   </span>
                   {isOutOfStock && ' (Out of stock)'}
@@ -189,13 +189,13 @@ const SparePartUsageModal: React.FC<SparePartUsageModalProps> = ({
 
             {/* Reason */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-xs font-medium text-gray-700 mb-1">
                 Reason for Use *
               </label>
               <select
                 value={reason}
                 onChange={(e) => handleInputChange('reason', e.target.value)}
-                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                className={`w-full px-2 py-1.5 border rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm ${
                   errors.reason ? 'border-red-300' : 'border-gray-300'
                 }`}
               >
@@ -207,7 +207,7 @@ const SparePartUsageModal: React.FC<SparePartUsageModalProps> = ({
                 ))}
               </select>
               {errors.reason && (
-                <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
+                <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
                   <AlertCircle className="w-3 h-3" />
                   {errors.reason}
                 </p>
@@ -216,37 +216,37 @@ const SparePartUsageModal: React.FC<SparePartUsageModalProps> = ({
 
             {/* Notes */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-xs font-medium text-gray-700 mb-1">
                 Additional Notes
               </label>
               <textarea
                 value={notes}
                 onChange={(e) => handleInputChange('notes', e.target.value)}
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                rows={2}
+                className="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                 placeholder="Optional notes about this usage..."
               />
             </div>
 
             {/* Usage Summary */}
             {quantity > 0 && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h4 className="font-medium text-blue-900 mb-2">Usage Summary</h4>
-                <div className="space-y-1 text-sm text-blue-800">
+              <div className="bg-blue-50 border border-blue-200 rounded p-3">
+                <h4 className="font-medium text-blue-900 mb-2 text-sm">Usage Summary</h4>
+                <div className="space-y-1 text-xs text-blue-800">
                   <div className="flex justify-between">
                     <span>Quantity:</span>
                     <span className="font-medium">{quantity}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Cost Value:</span>
-                    <span className="font-medium">{format.currency(quantity * sparePart.costPrice)}</span>
+                    <span className="font-medium">{format.currency(quantity * sparePart.cost_price)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Selling Value:</span>
-                    <span className="font-medium">{format.currency(quantity * sparePart.sellingPrice)}</span>
+                    <span className="font-medium">{format.currency(quantity * sparePart.selling_price)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Remaining Stock:</span>
+                    <span>Remaining:</span>
                     <span className={`font-medium ${isOutOfStock ? 'text-red-600' : isLowStock ? 'text-yellow-600' : 'text-green-600'}`}>
                       {remainingQuantity}
                     </span>
@@ -256,21 +256,22 @@ const SparePartUsageModal: React.FC<SparePartUsageModalProps> = ({
             )}
 
             {/* Actions */}
-            <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
+            <div className="flex justify-end gap-2 pt-3 border-t border-gray-200">
               <GlassButton
                 type="button"
                 variant="outline"
                 onClick={onCancel}
                 disabled={isSubmitting}
+                className="text-sm px-3 py-1.5"
               >
                 Cancel
               </GlassButton>
               <GlassButton
                 type="submit"
                 disabled={isSubmitting || quantity <= 0 || quantity > sparePart.quantity}
-                className="flex items-center gap-2"
+                className="flex items-center gap-1 text-sm px-3 py-1.5"
               >
-                <Minus className="w-4 h-4" />
+                <Minus className="w-3 h-3" />
                 {isSubmitting ? 'Recording...' : 'Record Usage'}
               </GlassButton>
             </div>

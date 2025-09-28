@@ -22,6 +22,7 @@ export const SimpleImageUpload: React.FC<SimpleImageUploadProps> = ({
   existingImages = [] // Default to empty array
 }) => {
   const [images, setImages] = useState<ProductImage[]>(existingImages);
+  
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [whiteBackground, setWhiteBackground] = useState(false);

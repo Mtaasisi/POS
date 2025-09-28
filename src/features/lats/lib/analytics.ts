@@ -390,16 +390,16 @@ class LatsAnalyticsService {
           customers: { current: currentCustomers, previous: previousCustomers, growth: customerGrowth },
           orders: { current: currentOrders, previous: previousOrders, growth: orderGrowth },
           avgOrderValue: { current: avgOrderValue, previous: previousAvgOrderValue, growth: avgOrderGrowth },
-          conversionRate: { current: 0, previous: 0, growth: 0 } // TODO: Calculate from real data
+          conversionRate: { current: await this.calculateConversionRate(), previous: await this.calculateConversionRate(true), growth: 0 }
         },
         trends: {
           revenue: revenueTrend,
-          customers: revenueTrend.map(item => ({ month: item.month, new: 0, returning: 0 })) // TODO: Calculate from real customer data
+          customers: await this.calculateCustomerTrends()
         },
         segments: {
           customerSegments,
           productCategories: categoryPerformance,
-          geographicData: [] // TODO: Calculate from real customer location data
+          geographicData: await this.calculateGeographicData()
         },
         performance: {
           topProducts,
@@ -441,6 +441,130 @@ class LatsAnalyticsService {
         }]
       };
     }
+  }
+
+  // Calculate conversion rate from real data
+  private async calculateConversionRate(previous: boolean = false): Promise<number> {
+    try {
+      const dateFilter = previous ? 
+        { gte: this.getPreviousMonthStart(), lt: this.getCurrentMonthStart() } :
+        { gte: this.getCurrentMonthStart() };
+
+      // Get total visitors (customers who visited)
+      const { data: visitors } = await supabase
+        .from('customers')
+        .select('id')
+        .gte('last_visit', dateFilter.gte)
+        .lt('last_visit', dateFilter.lt);
+
+      // Get total purchases (customers who made purchases)
+      const { data: purchasers } = await supabase
+        .from('customers')
+        .select('id')
+        .gte('last_purchase_date', dateFilter.gte)
+        .lt('last_purchase_date', dateFilter.lt);
+
+      const totalVisitors = visitors?.length || 0;
+      const totalPurchasers = purchasers?.length || 0;
+
+      return totalVisitors > 0 ? (totalPurchasers / totalVisitors) * 100 : 0;
+    } catch (error) {
+      console.error('Error calculating conversion rate:', error);
+      return 0;
+    }
+  }
+
+  // Calculate customer trends from real data
+  private async calculateCustomerTrends(): Promise<Array<{ month: string; new: number; returning: number }>> {
+    try {
+      const trends = [];
+      const months = this.getLast12Months();
+
+      for (const month of months) {
+        const { data: newCustomers } = await supabase
+          .from('customers')
+          .select('id')
+          .gte('created_at', month.start)
+          .lt('created_at', month.end);
+
+        const { data: returningCustomers } = await supabase
+          .from('customers')
+          .select('id')
+          .gte('last_visit', month.start)
+          .lt('last_visit', month.end)
+          .lt('created_at', month.start); // Exclude new customers
+
+        trends.push({
+          month: month.name,
+          new: newCustomers?.length || 0,
+          returning: returningCustomers?.length || 0
+        });
+      }
+
+      return trends;
+    } catch (error) {
+      console.error('Error calculating customer trends:', error);
+      return [];
+    }
+  }
+
+  // Calculate geographic data from real customer data
+  private async calculateGeographicData(): Promise<Array<{ location: string; customers: number; revenue: number }>> {
+    try {
+      const { data: customers } = await supabase
+        .from('customers')
+        .select('city, total_spent');
+
+      const locationMap = new Map<string, { customers: number; revenue: number }>();
+
+      customers?.forEach(customer => {
+        const location = customer.city || 'Unknown';
+        const existing = locationMap.get(location) || { customers: 0, revenue: 0 };
+        locationMap.set(location, {
+          customers: existing.customers + 1,
+          revenue: existing.revenue + (customer.total_spent || 0)
+        });
+      });
+
+      return Array.from(locationMap.entries()).map(([location, data]) => ({
+        location,
+        customers: data.customers,
+        revenue: data.revenue
+      })).sort((a, b) => b.customers - a.customers);
+    } catch (error) {
+      console.error('Error calculating geographic data:', error);
+      return [];
+    }
+  }
+
+  // Helper methods for date calculations
+  private getCurrentMonthStart(): string {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  }
+
+  private getPreviousMonthStart(): string {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
+  }
+
+  private getLast12Months(): Array<{ name: string; start: string; end: string }> {
+    const months = [];
+    const now = new Date();
+
+    for (let i = 11; i >= 0; i--) {
+      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const start = date.toISOString();
+      const end = new Date(date.getFullYear(), date.getMonth() + 1, 1).toISOString();
+      
+      months.push({
+        name: date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+        start,
+        end
+      });
+    }
+
+    return months;
   }
 }
 

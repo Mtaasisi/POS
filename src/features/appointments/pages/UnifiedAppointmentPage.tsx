@@ -44,6 +44,13 @@ const UnifiedAppointmentPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
 
+  // Debug logging
+  useEffect(() => {
+    console.log('📅 UnifiedAppointmentPage loaded');
+    console.log('👤 Current user:', currentUser);
+    console.log('🔑 User role:', currentUser?.role);
+  }, [currentUser]);
+
   // Define all appointment tabs
   const appointmentTabs: TabConfig[] = [
     {
@@ -185,66 +192,39 @@ const UnifiedAppointmentPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Appointment Navigation */}
-          <div className="lg:col-span-1">
-            <GlassCard className="p-4">
-              <h3 className="font-semibold text-gray-900 mb-4">Appointment Categories</h3>
-              <nav className="space-y-2">
-                {availableTabs.map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => handleTabChange(tab.id)}
-                    className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg text-left transition-all duration-200 ${
-                      activeTab === tab.id
-                        ? `bg-${tab.color}-500 text-white shadow-lg`
-                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                    }`}
-                  >
-                    <div className={`${activeTab === tab.id ? 'text-white' : `text-${tab.color}-500`}`}>
-                      {tab.icon}
-                    </div>
-                    <div className="flex-1">
-                      <div className="font-medium">{tab.label}</div>
-                      {tab.adminOnly && (
-                        <div className="text-xs opacity-75">Admin Only</div>
-                      )}
-                    </div>
-                    <ChevronRight 
-                      size={16} 
-                      className={`${activeTab === tab.id ? 'text-white' : 'text-gray-400'}`} 
-                    />
-                  </button>
-                ))}
-              </nav>
-            </GlassCard>
-
-            {/* Quick Stats */}
-            <GlassCard className="p-4 mt-4">
-              <h4 className="font-medium text-gray-900 mb-3">Quick Stats</h4>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Total Appointments:</span>
-                  <span className="font-medium text-blue-600">24</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Today's Appointments:</span>
-                  <span className="font-medium text-green-600">5</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Pending:</span>
-                  <span className="font-medium text-yellow-600">8</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Completed:</span>
-                  <span className="font-medium text-purple-600">16</span>
-                </div>
-              </div>
-            </GlassCard>
+        {/* Top Tabs Navigation */}
+        <GlassCard className="p-0 overflow-hidden">
+          <div className="border-b border-gray-200">
+            <nav className="flex space-x-0" role="tablist">
+              {availableTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => handleTabChange(tab.id)}
+                  className={`flex items-center gap-2 px-6 py-4 text-sm font-medium transition-all duration-200 border-b-2 ${
+                    activeTab === tab.id
+                      ? `border-${tab.color}-500 text-${tab.color}-600 bg-${tab.color}-50`
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                  role="tab"
+                  aria-selected={activeTab === tab.id}
+                >
+                  <div className={`${activeTab === tab.id ? `text-${tab.color}-600` : 'text-gray-400'}`}>
+                    {tab.icon}
+                  </div>
+                  <span>{tab.label}</span>
+                  {tab.adminOnly && (
+                    <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                      Admin
+                    </span>
+                  )}
+                </button>
+              ))}
+            </nav>
           </div>
+        </GlassCard>
 
-          {/* Appointment Content */}
-          <div className="lg:col-span-3">
+        {/* Appointment Content */}
+        <div className="w-full">
             <GlassCard className="p-6">
               <div className="flex items-center gap-3 mb-6">
                 <div className={`text-${currentTab?.color}-500`}>
@@ -272,7 +252,6 @@ const UnifiedAppointmentPage: React.FC = () => {
                 </div>
               )}
             </GlassCard>
-          </div>
         </div>
       </div>
     </PageErrorBoundary>

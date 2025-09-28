@@ -90,9 +90,9 @@ export const SystemHealthWidget: React.FC<SystemHealthWidgetProps> = ({ classNam
 
   const testDatabaseConnectivity = async (): Promise<boolean> => {
     try {
-      // Simple database connectivity test using Supabase instead of health endpoint
+      // Simple database connectivity test using a reliable table (customers)
       const { data, error } = await supabase
-        .from('notifications')
+        .from('customers')
         .select('id')
         .limit(1);
       

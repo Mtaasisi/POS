@@ -5,8 +5,9 @@ export interface DiagnosticRequest {
   title: string;
   created_by: string;
   assigned_to?: string;
-  notes?: string;
+  description?: string; // Changed from notes to description to match database schema
   status: 'pending' | 'in_progress' | 'completed' | 'submitted_for_review' | 'admin_reviewed';
+  priority?: 'low' | 'medium' | 'high'; // Added priority field from database schema
   created_at: string;
   updated_at: string;
   // Joined fields
@@ -83,7 +84,8 @@ export interface ChecklistItem {
 export interface CreateDiagnosticRequestData {
   title: string;
   assigned_to?: string;
-  notes?: string;
+  notes?: string; // Keep this for backward compatibility, will be mapped to description
+  priority?: 'low' | 'medium' | 'high';
   devices: CreateDiagnosticDeviceData[];
 }
 

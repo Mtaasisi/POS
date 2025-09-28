@@ -22,7 +22,7 @@ export const useDraftManager = ({
     if (cartItems && cartItems.length > 0) {
       const saveDraft = () => {
         try {
-          const draftId = draftService.saveDraft(cartItems, customer, deliveryInfo, notes);
+          const draftId = draftService.savePOSDraft(cartItems, customer, deliveryInfo, notes);
           setCurrentDraftId(draftId);
           setHasUnsavedChanges(false);
         } catch (error) {
@@ -49,7 +49,7 @@ export const useDraftManager = ({
     if (!cartItems || cartItems.length === 0) return null;
     
     try {
-      const draftId = draftService.saveDraft(
+      const draftId = draftService.savePOSDraft(
         cartItems, 
         customer, 
         deliveryInfo, 

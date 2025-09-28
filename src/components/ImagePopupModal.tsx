@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCw } from 'lucide-react';
 import { ProductImage } from '../lib/robustImageService';
 
@@ -136,8 +137,8 @@ export const ImagePopupModal: React.FC<ImagePopupModalProps> = ({
   const imageUrl = getImageUrl(currentImage);
   const imageAlt = getImageAlt(currentImage, currentIndex);
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+  return createPortal(
+    <div className="fixed inset-0 flex items-center justify-center p-4" style={{ zIndex: 99999 }}>
       {/* Backdrop */}
       <div 
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
@@ -269,6 +270,7 @@ export const ImagePopupModal: React.FC<ImagePopupModalProps> = ({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

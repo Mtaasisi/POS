@@ -20,16 +20,17 @@ export interface PaymentTransaction {
   transactionId: string;
   customerName: string;
   amount: number;
+  currency: string; // Added currency field
   method: string;
   reference: string;
-  status: 'completed' | 'pending' | 'failed';
+  status: 'completed' | 'pending' | 'failed' | 'approved';
   date: string;
   timestamp: string; // For display purposes
   cashier: string;
   fees: number;
   netAmount: number;
   orderId?: string;
-  source: 'device_payment' | 'pos_sale' | 'repair_payment';
+  source: 'device_payment' | 'pos_sale' | 'repair_payment' | 'purchase_order';
   customerId: string;
   deviceId?: string;
   deviceName?: string;
@@ -49,6 +50,17 @@ export interface PaymentTransaction {
   bankName?: string;
   failureReason?: string;
   metadata?: Record<string, any>;
+  
+  // Purchase Order specific fields
+  purchaseOrderId?: string;
+  purchaseOrderNumber?: string;
+  supplierId?: string;
+  supplierName?: string;
+  supplierPhone?: string;
+  supplierEmail?: string;
+  paymentAccountId?: string;
+  paymentAccountName?: string;
+  notes?: string;
   
   // Sold items
   soldItems?: SoldItem[];
@@ -193,7 +205,7 @@ class PaymentTrackingService {
   }
 
   // Fetch sold items for a transaction
-  async fetchSoldItems(transactionId: string, source: 'device_payment' | 'pos_sale' | 'repair_payment'): Promise<SoldItem[]> {
+  async fetchSoldItems(transactionId: string, source: 'device_payment' | 'pos_sale' | 'repair_payment' | 'purchase_order'): Promise<SoldItem[]> {
     try {
       if (source === 'pos_sale') {
         // Fetch POS sale items with simpler query to avoid join issues
@@ -246,6 +258,37 @@ class PaymentTrackingService {
           description: 'Device repair and maintenance service',
           notes: 'Repair service for device'
         }];
+      } else if (source === 'purchase_order') {
+        // For purchase order payments, fetch the purchase order items
+        const { data: poItems, error: poItemsError } = await supabase
+          .from('lats_purchase_order_items')
+          .select(`
+            *,
+            lats_products(name, sku),
+            lats_product_variants(name, sku)
+          `)
+          .eq('purchase_order_id', transactionId);
+
+        if (poItemsError) {
+          console.error('Error fetching purchase order items:', poItemsError);
+          return [];
+        }
+
+        // Transform the purchase order items
+        return poItems?.map((item: any) => ({
+          id: item.id,
+          name: item.lats_products?.name || item.lats_product_variants?.name || 'Unknown Product',
+          sku: item.lats_products?.sku || item.lats_product_variants?.sku || 'N/A',
+          quantity: item.quantity || 1,
+          unitPrice: item.unit_price || 0,
+          totalPrice: item.total_price || 0,
+          category: 'Purchase Order',
+          brand: 'Supplier',
+          variant: item.lats_product_variants?.name || 'Default',
+          type: 'product' as const,
+          description: `Purchase order item - ${item.lats_products?.name || 'Product'}`,
+          notes: item.notes || ''
+        })) || [];
       }
       
       return [];
@@ -430,7 +473,9 @@ class PaymentTrackingService {
         .order('payment_date', { ascending: false })
         .limit(1000); // Add reasonable limit to prevent performance issues
 
-      if (!devicePaymentsError && devicePayments) {
+      if (devicePaymentsError) {
+        console.log('⚠️ PaymentTrackingService: customer_payments table not found or error:', devicePaymentsError);
+      } else if (devicePayments) {
         console.log(`📊 PaymentTrackingService: Found ${devicePayments.length} device payments`);
         const transformedDevicePayments = devicePayments.map((payment: any) => ({
           id: payment.id,
@@ -473,10 +518,7 @@ class PaymentTrackingService {
         console.log('🔍 PaymentTrackingService: Fetching POS sales...');
         const { data: posSales, error: posSalesError } = await supabase
           .from('lats_sales')
-          .select(`
-            *,
-            customers(name)
-          `)
+          .select('*')
           .order('created_at', { ascending: false })
           .limit(1000); // Add reasonable limit
 
@@ -487,13 +529,13 @@ class PaymentTrackingService {
           const transformedPOSSales = posSales.map((sale: any) => ({
             id: sale.id,
             transactionId: sale.sale_number || `SALE-${sale.id.slice(0, 8).toUpperCase()}`,
-            customerName: sale.customers?.name || 'Walk-in Customer',
+            customerName: sale.customer_name || 'Walk-in Customer',
             customerPhone: sale.customer_phone,
             customerEmail: sale.customer_email,
             customerAddress: sale.customer_address,
             amount: sale.total_amount || 0,
-            method: sale.payment_method?.type === 'multiple' ? 'Multiple' : this.mapPaymentMethod(sale.payment_method),
-            paymentMethod: sale.payment_method?.type === 'multiple' ? 'Multiple' : this.mapPaymentMethod(sale.payment_method),
+            method: this.getPaymentMethodDisplay(sale.payment_method),
+            paymentMethod: this.getPaymentMethodDisplay(sale.payment_method),
             reference: sale.sale_number || `REF-${sale.id.slice(0, 8).toUpperCase()}`,
             status: this.mapSaleStatus(sale.status),
             date: sale.created_at,
@@ -510,7 +552,7 @@ class PaymentTrackingService {
             failureReason: sale.failure_reason,
             metadata: {
               ...sale.metadata,
-              paymentMethod: sale.payment_method // Include the full payment method structure
+              paymentMethod: this.parsePaymentMethod(sale.payment_method) // Include the parsed payment method structure
             }
             // soldItems will be fetched on-demand when viewing transaction details
           }));
@@ -520,6 +562,75 @@ class PaymentTrackingService {
         }
       } catch (posError) {
         console.warn('POS sales not accessible due to RLS policies:', posError);
+      }
+
+      // Fetch Purchase Order payments with simplified query to avoid relationship issues
+      try {
+        console.log('🔍 PaymentTrackingService: Fetching Purchase Order payments...');
+        const { data: poPayments, error: poPaymentsError } = await supabase
+          .from('purchase_order_payments')
+          .select(`
+            *,
+            lats_purchase_orders(
+              order_number,
+              total_amount,
+              status,
+              supplier_id
+            ),
+            finance_accounts(name)
+          `)
+          .order('payment_date', { ascending: false })
+          .limit(1000); // Add reasonable limit
+
+        if (!poPaymentsError && poPayments) {
+          console.log(`📊 PaymentTrackingService: Found ${poPayments.length} Purchase Order payments`);
+          
+          // Transform Purchase Order payments with safe data mapping
+          const transformedPOPayments = poPayments.map((payment: any) => ({
+            id: payment.id,
+            transactionId: `PO-PAY-${payment.id.slice(0, 8).toUpperCase()}`,
+            customerName: 'Supplier Payment', // Simplified since we don't have supplier name in this query
+            customerPhone: undefined, // Will be fetched separately if needed
+            customerEmail: undefined, // Will be fetched separately if needed
+            amount: payment.amount || 0,
+            currency: payment.currency || 'TZS',
+            method: this.mapPaymentMethod(payment.payment_method),
+            paymentMethod: this.mapPaymentMethod(payment.payment_method),
+            reference: payment.reference || `PO-REF-${payment.id.slice(0, 8).toUpperCase()}`,
+            status: this.mapPOPaymentStatus(payment.status),
+            date: payment.payment_date || payment.created_at,
+            timestamp: payment.payment_date || payment.created_at,
+            cashier: 'System', // PO payments don't have cashier
+            fees: 0, // PO payments typically don't have processing fees
+            netAmount: payment.amount || 0,
+            orderId: payment.purchase_order_id,
+            source: 'purchase_order' as const,
+            customerId: payment.lats_purchase_orders?.supplier_id || '',
+            paymentType: 'payment' as const,
+            createdBy: payment.created_by,
+            createdAt: payment.created_at,
+            failureReason: payment.status === 'failed' ? 'Payment failed' : undefined,
+            metadata: {
+              paymentMethod: payment.payment_method,
+              paymentAccount: payment.finance_accounts?.name
+            },
+            // Purchase Order specific fields
+            purchaseOrderId: payment.purchase_order_id,
+            purchaseOrderNumber: payment.lats_purchase_orders?.order_number,
+            supplierId: payment.lats_purchase_orders?.supplier_id,
+            supplierName: undefined, // Will be fetched separately if needed
+            supplierPhone: undefined, // Will be fetched separately if needed
+            supplierEmail: undefined, // Will be fetched separately if needed
+            paymentAccountId: payment.payment_account_id,
+            paymentAccountName: payment.finance_accounts?.name,
+            notes: payment.notes
+          }));
+          allPayments.push(...transformedPOPayments);
+        } else if (poPaymentsError) {
+          console.error('❌ PaymentTrackingService: Error fetching Purchase Order payments:', poPaymentsError);
+        }
+      } catch (poError) {
+        console.warn('Purchase Order payments not accessible due to RLS policies:', poError);
       }
 
       // Apply filters
@@ -628,6 +739,124 @@ class PaymentTrackingService {
     }
   }
 
+  // Get all payments grouped by payment method
+  async getPaymentsByMethod(
+    startDate?: string,
+    endDate?: string,
+    status?: string
+  ): Promise<{ [method: string]: PaymentTransaction[] }> {
+    try {
+      console.log('🔍 PaymentTrackingService: Fetching payments grouped by method...');
+      const payments = await this.fetchPaymentTransactions(startDate, endDate, status);
+      
+      // Group payments by method
+      const paymentsByMethod: { [method: string]: PaymentTransaction[] } = {};
+      
+      payments.forEach(payment => {
+        const method = payment.method;
+        if (!paymentsByMethod[method]) {
+          paymentsByMethod[method] = [];
+        }
+        paymentsByMethod[method].push(payment);
+      });
+
+      // Sort payments within each method by date (newest first)
+      Object.keys(paymentsByMethod).forEach(method => {
+        paymentsByMethod[method].sort((a, b) => 
+          new Date(b.date).getTime() - new Date(a.date).getTime()
+        );
+      });
+
+      console.log(`✅ PaymentTrackingService: Grouped ${payments.length} payments into ${Object.keys(paymentsByMethod).length} methods`);
+      return paymentsByMethod;
+    } catch (error) {
+      console.error('Error getting payments by method:', error);
+      return {};
+    }
+  }
+
+  // Get detailed payment method statistics
+  async getPaymentMethodStatistics(
+    startDate?: string,
+    endDate?: string
+  ): Promise<{ [method: string]: { 
+    totalAmount: number; 
+    totalCount: number; 
+    completedAmount: number; 
+    completedCount: number;
+    pendingAmount: number; 
+    pendingCount: number;
+    failedAmount: number; 
+    failedCount: number;
+    averageAmount: number;
+    successRate: number;
+  } }> {
+    try {
+      console.log('🔍 PaymentTrackingService: Calculating payment method statistics...');
+      const payments = await this.fetchPaymentTransactions(startDate, endDate);
+      
+      const methodStats: { [method: string]: { 
+        totalAmount: number; 
+        totalCount: number; 
+        completedAmount: number; 
+        completedCount: number;
+        pendingAmount: number; 
+        pendingCount: number;
+        failedAmount: number; 
+        failedCount: number;
+        averageAmount: number;
+        successRate: number;
+      } } = {};
+      
+      payments.forEach(payment => {
+        const method = payment.method;
+        
+        if (!methodStats[method]) {
+          methodStats[method] = {
+            totalAmount: 0,
+            totalCount: 0,
+            completedAmount: 0,
+            completedCount: 0,
+            pendingAmount: 0,
+            pendingCount: 0,
+            failedAmount: 0,
+            failedCount: 0,
+            averageAmount: 0,
+            successRate: 0
+          };
+        }
+        
+        const stats = methodStats[method];
+        stats.totalAmount += payment.amount;
+        stats.totalCount += 1;
+        
+        if (payment.status === 'completed') {
+          stats.completedAmount += payment.amount;
+          stats.completedCount += 1;
+        } else if (payment.status === 'pending') {
+          stats.pendingAmount += payment.amount;
+          stats.pendingCount += 1;
+        } else if (payment.status === 'failed') {
+          stats.failedAmount += payment.amount;
+          stats.failedCount += 1;
+        }
+      });
+
+      // Calculate derived statistics
+      Object.keys(methodStats).forEach(method => {
+        const stats = methodStats[method];
+        stats.averageAmount = stats.totalCount > 0 ? stats.totalAmount / stats.totalCount : 0;
+        stats.successRate = stats.totalCount > 0 ? (stats.completedCount / stats.totalCount) * 100 : 0;
+      });
+
+      console.log(`✅ PaymentTrackingService: Calculated statistics for ${Object.keys(methodStats).length} payment methods`);
+      return methodStats;
+    } catch (error) {
+      console.error('Error calculating payment method statistics:', error);
+      return {};
+    }
+  }
+
   // Get daily summary
   async getDailySummary(days: number = 7): Promise<DailySummary[]> {
     try {
@@ -693,24 +922,53 @@ class PaymentTrackingService {
   // Update payment status with audit logging
   async updatePaymentStatus(
     paymentId: string,
-    status: 'completed' | 'pending' | 'failed',
-    source: 'device_payment' | 'pos_sale',
+    status: 'completed' | 'pending' | 'failed' | 'stopped' | 'cancelled',
+    source: 'device_payment' | 'pos_sale' | 'purchase_order',
     userId?: string
   ): Promise<boolean> {
     try {
       const previousStatus = await this.getPaymentStatus(paymentId, source);
       
       if (source === 'device_payment') {
-        const { error } = await supabase
-          .from('customer_payments')
-          .update({ 
+        // Only add updated_at and updated_by if they exist in the table
+        try {
+          // Validate userId before using it
+          const updateData: any = { 
             status,
-            updated_at: new Date().toISOString(),
-            updated_by: userId
-          })
-          .eq('id', paymentId);
-        
-        if (error) throw error;
+            updated_at: new Date().toISOString()
+          };
+          
+          // Only add updated_by if userId is valid and exists in users table
+          if (userId && userId !== 'null' && userId !== 'undefined' && userId.length > 0) {
+            // Check if it's a valid UUID format (supports all UUID versions including nil UUID)
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (uuidRegex.test(userId)) {
+              // For now, skip updated_by to avoid foreign key constraint issues
+              // In production, you might want to verify the user exists first
+              console.log('Valid UUID format detected, but skipping updated_by to avoid FK constraint issues:', userId);
+            } else {
+              console.warn('Invalid UUID format for updated_by, skipping:', userId);
+            }
+          }
+          
+          const { error } = await supabase
+            .from('customer_payments')
+            .update(updateData)
+            .eq('id', paymentId);
+          
+          if (error) {
+            // If that fails, try with just status
+            console.warn('Full update failed, trying with status only:', error.message);
+            const { error: simpleError } = await supabase
+              .from('customer_payments')
+              .update({ status })
+              .eq('id', paymentId);
+            
+            if (simpleError) throw simpleError;
+          }
+        } catch (updateError) {
+          throw updateError;
+        }
       } else if (source === 'pos_sale') {
         const { error } = await supabase
           .from('lats_sales')
@@ -718,6 +976,16 @@ class PaymentTrackingService {
             status: this.mapStatusToSaleStatus(status),
             updated_at: new Date().toISOString(),
             updated_by: userId
+          })
+          .eq('id', paymentId);
+        
+        if (error) throw error;
+      } else if (source === 'purchase_order') {
+        const { error } = await supabase
+          .from('purchase_order_payments')
+          .update({ 
+            status: status === 'failed' ? 'failed' : status,
+            updated_at: new Date().toISOString()
           })
           .eq('id', paymentId);
         
@@ -747,7 +1015,7 @@ class PaymentTrackingService {
   }
 
   // Get current payment status
-  private async getPaymentStatus(paymentId: string, source: 'device_payment' | 'pos_sale'): Promise<string> {
+  private async getPaymentStatus(paymentId: string, source: 'device_payment' | 'pos_sale' | 'purchase_order'): Promise<string> {
     try {
       if (source === 'device_payment') {
         const { data, error } = await supabase
@@ -761,6 +1029,15 @@ class PaymentTrackingService {
       } else if (source === 'pos_sale') {
         const { data, error } = await supabase
           .from('lats_sales')
+          .select('status')
+          .eq('id', paymentId)
+          .single();
+        
+        if (error) throw error;
+        return data?.status || 'unknown';
+      } else if (source === 'purchase_order') {
+        const { data, error } = await supabase
+          .from('purchase_order_payments')
           .select('status')
           .eq('id', paymentId)
           .single();
@@ -834,18 +1111,83 @@ class PaymentTrackingService {
     return methodMap[method?.toLowerCase()] || method || 'Cash';
   }
 
-  private mapSaleStatus(status: string): 'completed' | 'pending' | 'failed' {
+  private mapSaleStatus(status: string): 'completed' | 'pending' | 'failed' | 'approved' {
     if (status === 'completed') return 'completed';
     if (status === 'pending') return 'pending';
+    if (status === 'approved') return 'approved';
     if (status === 'cancelled' || status === 'refunded') return 'failed';
     return 'pending';
   }
 
-  private mapStatusToSaleStatus(status: 'completed' | 'pending' | 'failed'): string {
+  private mapStatusToSaleStatus(status: 'completed' | 'pending' | 'failed' | 'approved'): string {
     if (status === 'completed') return 'completed';
     if (status === 'pending') return 'pending';
+    if (status === 'approved') return 'approved';
     if (status === 'failed') return 'cancelled';
     return 'pending';
+  }
+
+  private mapPOPaymentStatus(status: string): 'completed' | 'pending' | 'failed' | 'approved' {
+    if (status === 'completed') return 'completed';
+    if (status === 'pending') return 'pending';
+    if (status === 'approved') return 'approved';
+    if (status === 'failed' || status === 'cancelled') return 'failed';
+    return 'pending';
+  }
+
+  // Parse payment method from JSON string or object
+  private parsePaymentMethod(paymentMethod: any): any {
+    if (!paymentMethod) return null;
+    
+    // If it's already an object, return it
+    if (typeof paymentMethod === 'object') {
+      return paymentMethod;
+    }
+    
+    // If it's a string, try to parse it as JSON
+    if (typeof paymentMethod === 'string') {
+      try {
+        const parsed = JSON.parse(paymentMethod);
+        console.log('🔍 PaymentTrackingService: Parsed payment method:', parsed);
+        return parsed;
+      } catch (error) {
+        console.warn('Failed to parse payment method JSON:', error, 'Raw value:', paymentMethod);
+        // Return a simple object with the string as the method
+        return { type: 'single', method: paymentMethod };
+      }
+    }
+    
+    return null;
+  }
+
+  // Get payment method display string for multiple or single payments
+  private getPaymentMethodDisplay(paymentMethod: any): string {
+    const parsed = this.parsePaymentMethod(paymentMethod);
+    
+    if (!parsed) {
+      return 'Unknown';
+    }
+    
+    // If it's a single payment method
+    if (parsed.type === 'single' || !parsed.type || parsed.type !== 'multiple') {
+      return this.mapPaymentMethod(parsed);
+    }
+    
+    // If it's multiple payment methods, extract and display them
+    if (parsed.type === 'multiple' && parsed.details?.payments) {
+      const methods = parsed.details.payments.map((payment: any) => {
+        // Format method name nicely
+        const methodName = payment.method || payment.paymentMethod || 'Unknown';
+        return methodName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+      });
+      
+      // Remove duplicates and join with commas
+      const uniqueMethods = [...new Set(methods)];
+      return uniqueMethods.join(', ');
+    }
+    
+    // Fallback to mapping the parsed method
+    return this.mapPaymentMethod(parsed);
   }
 }
 

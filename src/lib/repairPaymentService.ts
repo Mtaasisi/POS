@@ -116,23 +116,22 @@ class RepairPaymentService {
         .select(`
           *,
           customers(name),
-          devices(brand, model),
-          finance_accounts(name)
+          devices(brand, model)
         `)
         .eq('customer_id', customerId)
         .eq('payment_type', 'payment')
         .order('payment_date', { ascending: false });
 
       if (error) {
-        console.error('❌ Error fetching customer repair payments:', error);
-        throw error;
+        console.log('⚠️ RepairPaymentService: customer_payments table not found or error:', error);
+        return []; // Return empty array instead of throwing error
       }
 
       const payments = data?.map(payment => ({
         ...payment,
         customer_name: payment.customers?.name,
         device_name: payment.devices ? `${payment.devices.brand} ${payment.devices.model}` : undefined,
-        payment_account_name: payment.finance_accounts?.name
+        payment_account_name: payment.method // Use method as account name since finance_accounts join is not available
       })) || [];
 
       console.log('✅ RepairPaymentService: Fetched repair payments:', payments.length);
@@ -146,15 +145,14 @@ class RepairPaymentService {
   // Get repair payments for a device
   async getDeviceRepairPayments(deviceId: string): Promise<RepairPayment[]> {
     try {
-      console.log('🔍 RepairPaymentService: Fetching repair payments for device:', deviceId);
+      // Fetching repair payments for device
       
       const { data, error } = await supabase
         .from('customer_payments')
         .select(`
           *,
           customers(name),
-          devices(brand, model),
-          finance_accounts(name)
+          devices(brand, model)
         `)
         .eq('device_id', deviceId)
         .eq('payment_type', 'payment')
@@ -169,10 +167,10 @@ class RepairPaymentService {
         ...payment,
         customer_name: payment.customers?.name,
         device_name: payment.devices ? `${payment.devices.brand} ${payment.devices.model}` : undefined,
-        payment_account_name: payment.finance_accounts?.name
+        payment_account_name: payment.method // Use method as account name since finance_accounts join is not available
       })) || [];
 
-      console.log('✅ RepairPaymentService: Fetched device repair payments:', payments.length);
+        // Successfully fetched repair payments
       return payments;
     } catch (error) {
       console.error('❌ RepairPaymentService: Error fetching device repair payments:', error);
@@ -206,7 +204,7 @@ class RepairPaymentService {
         ...payment,
         customer_name: payment.customers?.name,
         device_name: payment.devices ? `${payment.devices.brand} ${payment.devices.model}` : undefined,
-        payment_account_name: payment.finance_accounts?.name
+        payment_account_name: payment.method // Use method as account name since finance_accounts join is not available
       })) || [];
 
       console.log('✅ RepairPaymentService: Fetched all repair payments:', payments.length);

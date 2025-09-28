@@ -254,8 +254,8 @@ const QuickStatusUpdate: React.FC<QuickStatusUpdateProps> = ({
             </div>
           )}
 
-          {/* SMS Toggle */}
-          {device.phoneNumber && (
+          {/* SMS Toggle - Only show if diagnostics have started */}
+          {device.phoneNumber && device.status !== 'assigned' && (
             <div className="mb-6">
               <label className="flex items-center gap-3 cursor-pointer">
                 <input

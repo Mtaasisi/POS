@@ -1,5 +1,6 @@
 import React from 'react';
 import { LucideIcon } from 'lucide-react';
+import { usePOSClickSounds } from '../../hooks/usePOSClickSounds';
 
 interface TouchButtonProps {
   children: React.ReactNode;
@@ -10,6 +11,8 @@ interface TouchButtonProps {
   icon?: LucideIcon;
   className?: string;
   title?: string;
+  enableClickSound?: boolean;
+  soundType?: 'click' | 'cart-add' | 'payment' | 'delete' | 'success' | 'error';
 }
 
 const TouchButton: React.FC<TouchButtonProps> = ({
@@ -20,8 +23,18 @@ const TouchButton: React.FC<TouchButtonProps> = ({
   size = 'md',
   icon: Icon,
   className = '',
-  title
+  title,
+  enableClickSound = true,
+  soundType = 'click'
 }) => {
+  const { playSound } = usePOSClickSounds();
+
+  const handleClick = () => {
+    if (enableClickSound && !disabled) {
+      playSound(soundType);
+    }
+    onClick?.();
+  };
   const baseClasses = "inline-flex items-center justify-center font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 active:scale-95";
   
   const sizeClasses = {
@@ -39,7 +52,7 @@ const TouchButton: React.FC<TouchButtonProps> = ({
 
   return (
     <button
-      onClick={onClick}
+      onClick={handleClick}
       disabled={disabled}
       className={`${baseClasses} ${sizeClasses[size]} ${variantClasses[variant]} ${className}`}
       title={title}

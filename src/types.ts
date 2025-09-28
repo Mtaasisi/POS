@@ -61,6 +61,9 @@ export interface Device {
   sellerSignature?: string;
   staffSignature?: string;
   transactionId?: string;
+  // Checklist fields
+  diagnosticChecklist?: any;
+  repairChecklist?: any;
 }
 
 export interface DevicePhoto {
@@ -149,6 +152,7 @@ export type DeviceStatus =
   | 'assigned' // Device assigned (matches DB)
   | 'diagnosis-started' // Diagnosis started (matches DB)
   | 'awaiting-parts' // Awaiting parts (matches DB)
+  | 'parts-arrived' // Parts have arrived (matches DB)
   | 'in-repair' // In Repair (matches DB)
   | 'reassembled-testing' // Reassembled/Testing (matches DB)
   | 'repair-complete' // Repair Complete (matches DB)
@@ -227,6 +231,24 @@ export interface Customer {
   loyaltyRewardsRedeemed?: number;
   loyaltyTotalSpent?: number;
   isLoyaltyMember?: boolean;
+  // Additional fields for compatibility
+  createdAt?: string;
+  updatedAt?: string;
+  totalPurchases?: number;
+  lastPurchaseDate?: string;
+  birthday?: string;
+  whatsappOptOut?: boolean;
+  customerTag?: string;
+  // Call analytics fields
+  totalCalls?: number;
+  totalCallDurationMinutes?: number;
+  incomingCalls?: number;
+  outgoingCalls?: number;
+  missedCalls?: number;
+  avgCallDurationMinutes?: number;
+  firstCallDate?: string;
+  lastCallDate?: string;
+  callLoyaltyLevel?: 'VIP' | 'Gold' | 'Silver' | 'Bronze' | 'Basic' | 'New';
 }
 
 export interface CustomerNote {
@@ -248,6 +270,7 @@ export interface PromoMessage {
 export interface Payment {
   id: string;
   amount: number;
+  currency: string; // Added currency field
   method: 'cash' | 'card' | 'transfer';
   date: string;
   type: 'payment' | 'deposit' | 'refund';
@@ -262,22 +285,6 @@ export interface Payment {
 
 
 
-export interface Customer {
-  id: string;
-  name: string;
-  profile_image?: string;
-  email: string;
-  phone: string;
-  gender: 'male' | 'female' | 'other';
-  city: string;
-  loyalty_level?: string;
-  color_tag?: string;
-  is_active?: boolean;
-  created_at?: string;
-  last_visit?: string;
-  total_spent?: number;
-  tags?: string[];
-}
 
 export interface Template {
   id: string;

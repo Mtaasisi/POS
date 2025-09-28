@@ -9,13 +9,10 @@ import DeviceCard from '../DeviceCard';
 import SearchBar from '../ui/SearchBar';
 import BarcodeScanner from '../../../devices/components/BarcodeScanner';
 import { Link } from 'react-router-dom';
-import { PlusCircle, Smartphone, CheckCircle, UserCheck, QrCode, Clock, AlertTriangle, TrendingUp, Calendar, Settings, Trophy, Star, Stethoscope, ChevronDown, ChevronUp, Eye } from 'lucide-react';
+import { PlusCircle, Smartphone, CheckCircle, UserCheck, QrCode, Clock, AlertTriangle, TrendingUp, Calendar, Settings, Trophy, Star, ChevronDown, ChevronUp, Eye, Wrench, PackageCheck, Hammer } from 'lucide-react';
 import { DeviceStatus, Device } from '../../../types';
 
-import { getDiagnosticRequests } from '../../../../lib/diagnosticsApi';
-import { DiagnosticRequest } from '../../types/diagnostics';
-import UserGoalsManagement from '../../../admin/components/UserGoalsManagement';
-import AdminGoalsManagement from '../../../admin/components/AdminGoalsManagement';
+// Removed diagnostic imports - technicians focus only on repair
 import GlassButton from '../ui/GlassButton';
 import { supabase } from '../../../../lib/supabaseClient';
 
@@ -28,7 +25,7 @@ interface TechnicianDashboardProps {
   setStatusFilter: (status: 'all' | DeviceStatus) => void;
 }
 
-const TechnicianDashboard: React.FC<TechnicianDashboardProps> = ({
+const TechnicianDashboard: React.FC<TechnicianDashboardProps> = React.memo(({
   devices,
   loading,
   searchQuery,
@@ -37,21 +34,18 @@ const TechnicianDashboard: React.FC<TechnicianDashboardProps> = ({
   setStatusFilter
 }) => {
   const { currentUser } = useAuth();
-  const { getOverdueDevices } = useDevices();
+  
+  // Safely access devices context with error handling for HMR
+  let getOverdueDevices: any = null;
+  try {
+    const devicesContext = useDevices();
+    getOverdueDevices = devicesContext?.getOverdueDevices || null;
+  } catch (error) {
+    console.warn('Devices context not available during HMR:', error);
+  }
+  
   const { getGoalProgress } = useUserGoals();
   const [showScanner, setShowScanner] = useState(false);
-  const [_assignedReturns, setAssignedReturns] = useState<any[]>([]);
-  const [_returnsLoading, setReturnsLoading] = useState(true);
-  
-  // Add diagnostic devices state
-  const [diagnosticRequests, setDiagnosticRequests] = useState<DiagnosticRequest[]>([]);
-  const [diagnosticsLoading, setDiagnosticsLoading] = useState(true);
-  
-
-  
-  // Add state for goals management modal
-  const [showGoalsManagement, setShowGoalsManagement] = useState(false);
-  const [showAdminGoalsManagement, setShowAdminGoalsManagement] = useState(false);
   
   // Add state for expanding the goals card
   const [expanded, setExpanded] = useState(false);
@@ -62,29 +56,10 @@ const TechnicianDashboard: React.FC<TechnicianDashboardProps> = ({
   
   // Add goals-related state
   const [dailyGoal, setDailyGoal] = useState(5);
-  const [progress, setProgress] = useState(0);
 
 
 
-  // Load diagnostic devices for technician
-  useEffect(() => {
-    async function loadDiagnostics() {
-      if (!currentUser || currentUser.role !== 'technician') {
-        return;
-      }
-      setDiagnosticsLoading(true);
-      try {
-        const data = await getDiagnosticRequests({ assigned_to: currentUser.id });
-        setDiagnosticRequests(data || []);
-      } catch (error) {
-        console.error('Error loading diagnostic requests:', error);
-        setDiagnosticRequests([]);
-      } finally {
-        setDiagnosticsLoading(false);
-      }
-    }
-    loadDiagnostics();
-  }, [currentUser]);
+  // Removed diagnostic loading - technicians focus only on repair
 
 
 
@@ -95,19 +70,17 @@ const TechnicianDashboard: React.FC<TechnicianDashboardProps> = ({
     }
   }, [currentUser?.role, statusFilter, setStatusFilter]);
 
-  // Get user-specific daily goal and progress
+  // Get user-specific daily goal
   useEffect(() => {
     const fetchUserGoal = async () => {
       if (currentUser?.id) {
         try {
           const goalProgress = await getGoalProgress('repairs_completed');
           setDailyGoal(goalProgress.goal);
-          setProgress(goalProgress.progress);
         } catch (error) {
           console.warn('Goals system not available yet:', error);
           // Set default values if goals system is not available
           setDailyGoal(5);
-          setProgress(0);
         }
       }
     };
@@ -147,20 +120,35 @@ const TechnicianDashboard: React.FC<TechnicianDashboardProps> = ({
   }, [technicianDevices, searchQuery, statusFilter]);
 
   // Get priority devices - filter for current technician since these functions return all devices
-  const dueToday = getDevicesDueToday().filter(d => d.assignedTo === currentUser?.id);
-  const overdue = getOverdueDevices().filter(d => d.assignedTo === currentUser?.id);
-  const inProgress = technicianDevices.filter(d => 
-    ['diagnosis-started', 'in-repair', 'reassembled-testing'].includes(d.status)
+  const dueToday = useMemo(() => 
+    getDevicesDueToday().filter(d => d.assignedTo === currentUser?.id), 
+    [getDevicesDueToday, currentUser?.id]
   );
-  const readyForTesting = technicianDevices.filter(d => d.status === 'reassembled-testing');
-  const awaitingParts = technicianDevices.filter(d => d.status === 'awaiting-parts');
+  const overdue = useMemo(() => 
+    getOverdueDevices().filter(d => d.assignedTo === currentUser?.id), 
+    [getOverdueDevices, currentUser?.id]
+  );
+  const inProgress = useMemo(() => 
+    technicianDevices.filter(d => 
+      ['diagnosis-started', 'in-repair', 'reassembled-testing'].includes(d.status)
+    ), 
+    [technicianDevices]
+  );
+  const readyForTesting = useMemo(() => 
+    technicianDevices.filter(d => d.status === 'reassembled-testing'), 
+    [technicianDevices]
+  );
+  const awaitingParts = useMemo(() => 
+    technicianDevices.filter(d => d.status === 'awaiting-parts'), 
+    [technicianDevices]
+  );
 
   // Count devices by status - use technicianDevices (all assigned) not filteredDevices
   const countByStatus = (status: DeviceStatus) => {
     return technicianDevices.filter(d => d.status === status).length;
   };
 
-  const priorityCards = [
+  const priorityCards = useMemo(() => [
     {
       label: 'Overdue',
       count: overdue.length,
@@ -196,9 +184,9 @@ const TechnicianDashboard: React.FC<TechnicianDashboardProps> = ({
       color: 'from-yellow-500/20 to-yellow-400/10',
       priority: 'low'
     }
-  ];
+  ], [overdue.length, dueToday.length, inProgress.length, readyForTesting.length, awaitingParts.length]);
 
-  const statusCards = [
+  const statusCards = useMemo(() => [
     {
       label: 'Diagnosis',
       count: countByStatus('diagnosis-started'),
@@ -227,7 +215,7 @@ const TechnicianDashboard: React.FC<TechnicianDashboardProps> = ({
       status: 'reassembled-testing' as DeviceStatus,
       color: 'from-cyan-500/20 to-blue-200/10'
     }
-  ];
+  ], [technicianDevices]);
 
   // Show notifications for priority items
   useEffect(() => {
@@ -405,6 +393,47 @@ const TechnicianDashboard: React.FC<TechnicianDashboardProps> = ({
           <QrCode size={18} />
           <span>Scan Device</span>
         </button>
+        
+        {readyForTesting.length > 0 && (
+          <button
+            onClick={() => {
+              // Filter to show only ready for testing devices
+              setStatusFilter('reassembled-testing');
+              toast.success(`Showing ${readyForTesting.length} device${readyForTesting.length > 1 ? 's' : ''} ready for testing`);
+            }}
+            className="inline-flex items-center gap-2 bg-green-500/70 hover:bg-green-600/70 text-white py-3 px-4 rounded-lg border border-green-300/30 backdrop-blur-md transition-all duration-300 text-sm sm:text-base min-h-[44px]"
+          >
+            <CheckCircle size={18} />
+            <span>Ready for Testing ({readyForTesting.length})</span>
+          </button>
+        )}
+        
+        {awaitingParts.length > 0 && (
+          <button
+            onClick={() => {
+              // Filter to show only devices awaiting parts
+              setStatusFilter('awaiting-parts');
+              toast.success(`Showing ${awaitingParts.length} device${awaitingParts.length > 1 ? 's' : ''} awaiting parts`);
+            }}
+            className="inline-flex items-center gap-2 bg-yellow-500/70 hover:bg-yellow-600/70 text-white py-3 px-4 rounded-lg border border-yellow-300/30 backdrop-blur-md transition-all duration-300 text-sm sm:text-base min-h-[44px]"
+          >
+            <PackageCheck size={18} />
+            <span>Awaiting Parts ({awaitingParts.length})</span>
+          </button>
+        )}
+        
+        {overdue.length > 0 && (
+          <button
+            onClick={() => {
+              // Show overdue devices
+              toast.error(`You have ${overdue.length} overdue device${overdue.length > 1 ? 's' : ''}! Please prioritize these.`);
+            }}
+            className="inline-flex items-center gap-2 bg-red-500/70 hover:bg-red-600/70 text-white py-3 px-4 rounded-lg border border-red-300/30 backdrop-blur-md transition-all duration-300 text-sm sm:text-base min-h-[44px]"
+          >
+            <AlertTriangle size={18} />
+            <span>Overdue ({overdue.length})</span>
+          </button>
+        )}
       </div>
 
       {/* Search Bar - Mobile Optimized */}
@@ -541,142 +570,38 @@ const TechnicianDashboard: React.FC<TechnicianDashboardProps> = ({
         )}
       </div>
 
-      {/* Diagnostic Devices Section - Mobile Optimized */}
+      {/* Repair Focus Section */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-            <Stethoscope className="h-5 w-5 text-purple-500" />
-            <span className="hidden sm:inline">Diagnostic Devices</span>
-            <span className="sm:hidden">Diagnostics</span>
-            <span className="text-sm text-gray-500">({diagnosticRequests.flatMap(r => r.devices || []).length})</span>
+            <Wrench className="h-5 w-5 text-blue-500" />
+            <span className="hidden sm:inline">Repair Focus</span>
+            <span className="sm:hidden">Repair</span>
           </h3>
-          <Link 
-            to="/diagnostics/assigned"
-            className="text-sm text-purple-600 hover:text-purple-700 font-medium"
-          >
-            <span className="hidden sm:inline">View All →</span>
-            <span className="sm:hidden">View All</span>
-          </Link>
         </div>
         
-        {diagnosticsLoading ? (
-          <div className="text-center py-4">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600 mx-auto"></div>
-            <p className="text-gray-600 mt-2 text-sm">Loading diagnostic devices...</p>
+        <GlassCard className="p-4 sm:p-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
+              <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                <Wrench className="h-5 w-5 text-blue-600" />
+              </div>
+              <div>
+                <h4 className="font-semibold text-gray-900">Active Repairs</h4>
+                <p className="text-sm text-gray-600">{inProgress.length} devices in progress</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 p-3 bg-green-50 rounded-lg">
+              <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+                <CheckCircle className="h-5 w-5 text-green-600" />
+              </div>
+              <div>
+                <h4 className="font-semibold text-gray-900">Ready for Testing</h4>
+                <p className="text-sm text-gray-600">{readyForTesting.length} devices ready</p>
+              </div>
+            </div>
           </div>
-        ) : diagnosticRequests.length === 0 ? (
-          <GlassCard className="p-4 sm:p-6 text-center">
-            <Stethoscope className="h-8 w-8 text-gray-400 mx-auto mb-3" />
-            <p className="text-gray-600 text-sm">No diagnostic devices assigned</p>
-            <p className="text-xs text-gray-500 mt-1">You'll see diagnostic devices here when they're assigned to you</p>
-          </GlassCard>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-            {diagnosticRequests.flatMap(request => 
-              request.devices?.map(device => (
-                <div key={device.id} className="
-                  backdrop-blur-xl bg-white/70 rounded-xl 
-                  border border-white/30 shadow-lg 
-                  p-4 sm:p-6 transition-all duration-300 
-                  hover:bg-white/80 hover:shadow-xl hover:border-white/40
-                  hover:backdrop-blur-2xl hover:scale-[1.02]
-                  cursor-pointer active:scale-[0.98]
-                  group transform transition-all duration-300 ease-in-out hover:scale-[1.02] hover:shadow-xl cursor-pointer relative overflow-hidden
-                ">
-                  <div className="absolute inset-0 bg-gradient-to-br from-purple-50/30 via-transparent to-blue-50/30 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                  <div className="absolute top-3 right-3 z-20">
-                    <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border-2 shadow-lg backdrop-blur-sm ${
-                      device.result_status === 'passed' ? 'text-green-700 bg-gradient-to-r from-green-50 to-emerald-50 border-green-200' :
-                      device.result_status === 'failed' ? 'text-red-700 bg-gradient-to-r from-red-50 to-pink-50 border-red-200' :
-                      'text-yellow-700 bg-gradient-to-r from-yellow-50 to-orange-50 border-yellow-200'
-                    }`}>
-                      <CheckCircle className="h-5 w-5" />
-                      <span className="capitalize">{device.result_status || 'pending'}</span>
-                    </span>
-                  </div>
-                  <div className="relative z-10">
-                    <div className="flex items-center gap-4 mb-4 pt-8 pr-20">
-                      <div className="flex-shrink-0">
-                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-100 to-blue-100 flex items-center justify-center border-2 border-purple-200 shadow-sm">
-                          <Stethoscope className="h-6 w-6 text-purple-600" />
-                        </div>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-bold text-lg text-gray-900 truncate" title={device.device_name}>{device.device_name}</h3>
-                        <p className="text-sm text-gray-600 font-mono truncate" title={`S/N: ${device.serial_number || 'N/A'}`}>S/N: {device.serial_number || 'N/A'}</p>
-                      </div>
-                    </div>
-                    <div className="mb-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <TrendingUp className="h-4 w-4 text-purple-600" />
-                          <span className="text-sm font-medium text-gray-700">Progress</span>
-                        </div>
-                        <span className="text-sm font-semibold text-gray-900">
-                          {device.result_status === 'passed' ? '8/8 tests completed' : 
-                           device.result_status === 'failed' ? 'Tests failed' : 
-                           'Tests pending'}
-                        </span>
-                      </div>
-                      <div className="relative">
-                        <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                          <div className={`h-full rounded-full transition-all duration-500 ease-out ${
-                            device.result_status === 'passed' ? 'bg-gradient-to-r from-green-500 to-emerald-500' :
-                            device.result_status === 'failed' ? 'bg-gradient-to-r from-red-500 to-pink-500' :
-                            'bg-gradient-to-r from-yellow-500 to-orange-500'
-                          }`} style={{ width: device.result_status === 'passed' ? '100%' : device.result_status === 'failed' ? '100%' : '0%' }}></div>
-                        </div>
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3 mb-4">
-                      <div className="flex items-center gap-2 p-2 bg-purple-50/50 rounded-lg border border-purple-100">
-                        <Calendar className="h-4 w-4 text-purple-600" />
-                        <div className="min-w-0">
-                          <p className="text-xs text-gray-500 font-medium">Created</p>
-                          <p className="text-sm font-semibold text-purple-700 truncate">
-                            {new Date(request.created_at || Date.now()).toLocaleDateString('en-US', { 
-                              month: 'short', 
-                              day: 'numeric', 
-                              year: '2-digit',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 p-2 bg-blue-50/50 rounded-lg border border-blue-100">
-                        <UserCheck className="h-4 w-4 text-blue-600" />
-                        <div className="min-w-0">
-                          <p className="text-xs text-gray-500 font-medium">Assigned</p>
-                          <p className="text-sm font-semibold text-blue-700 truncate">
-                            {request.assigned_to || 'Unassigned'}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mb-4 p-3 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border border-indigo-100">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Clock className="h-4 w-4 text-indigo-600" />
-                        <span className="text-sm font-semibold text-indigo-800">Request</span>
-                      </div>
-                      <p className="text-sm text-indigo-700 font-medium truncate">{request.title}</p>
-                    </div>
-                    <div className="flex gap-2 pt-4 border-t border-gray-200">
-                      <Link 
-                        to={`/diagnostics/device/${request.id}/${device.id}`}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white rounded-lg font-medium shadow-sm transition-all duration-200 group-hover:shadow-md"
-                      >
-                        <Eye className="h-4 w-4" />
-                        View
-                      </Link>
-                    </div>
-                  </div>
-                </div>
-              )) || []
-            )}
-          </div>
-        )}
+        </GlassCard>
       </div>
 
 
@@ -685,21 +610,11 @@ const TechnicianDashboard: React.FC<TechnicianDashboardProps> = ({
       {showScanner && (
         <BarcodeScanner onClose={() => setShowScanner(false)} />
       )}
-
-      {/* User Goals Management Modal */}
-      <UserGoalsManagement
-        isOpen={showGoalsManagement}
-        onClose={() => setShowGoalsManagement(false)}
-      />
-
-      {/* Admin Goals Management Modal */}
-      <AdminGoalsManagement
-        isOpen={showAdminGoalsManagement}
-        onClose={() => setShowAdminGoalsManagement(false)}
-      />
     </div>
   );
-};
+});
+
+TechnicianDashboard.displayName = 'TechnicianDashboard';
 
 // Helper function for highlighting
 function highlightMatch(text: string, query: string) {

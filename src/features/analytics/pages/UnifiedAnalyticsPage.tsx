@@ -44,7 +44,7 @@ const UnifiedAnalyticsPage: React.FC = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<AnalyticsTab>('business');
   const [isLoading, setIsLoading] = useState(false);
-  const [timeRange, setTimeRange] = useState('30d');
+  const [timeRange, setTimeRange] = useState('1d');
   const [showCharts, setShowCharts] = useState(true);
 
   // Define all analytics tabs

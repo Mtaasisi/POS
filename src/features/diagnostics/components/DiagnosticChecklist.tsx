@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle, XCircle, AlertTriangle, Camera, Battery, Monitor, Wifi, Speaker, Microphone, HardDrive, Cpu, Memory, CheckSquare, Square, FileText, Send } from 'lucide-react';
+import { CheckCircle, XCircle, AlertTriangle, Camera, Battery, Monitor, Wifi, Speaker, Microphone, HardDrive, Cpu, Memory, CheckSquare, Square, FileText, Send, Wrench } from 'lucide-react';
 import { DeviceStatus, Device } from '../../../types';
 import { supabase } from '../../../lib/supabaseClient';
 import { toast } from 'react-hot-toast';
@@ -481,38 +481,42 @@ const DiagnosticChecklist: React.FC<DiagnosticChecklistProps> = ({
 
       console.log('[DiagnosticChecklist] ✅ Database update successful:', data);
 
-      // Also save individual diagnostic check records to diagnostic_checks table
-      console.log('[DiagnosticChecklist] Saving individual diagnostic check records...');
+      // Also save individual diagnostic check records to diagnostic_checks table (optional)
+      console.log('[DiagnosticChecklist] Attempting to save individual diagnostic check records...');
       
-      for (const item of diagnosticItems) {
-        if (item.status !== 'pending') {
-          try {
-            const checkData = {
-              test_item: item.title,
-              result: item.status === 'pass' ? 'passed' : 'failed',
-              remarks: notes[item.id] || null,
-              image_url: null
-            };
-            
-            console.log('[DiagnosticChecklist] Creating diagnostic check for item:', item.id, checkData);
-            await createDiagnosticCheck(device.id, checkData);
-          } catch (error) {
-            console.error('[DiagnosticChecklist] Error creating diagnostic check for item:', item.id, error);
-            // Continue with other items even if one fails
+      try {
+        for (const item of diagnosticItems) {
+          if (item.status !== 'pending') {
+            try {
+              const checkData = {
+                test_item: item.title,
+                result: item.status === 'pass' ? 'passed' : 'failed',
+                remarks: notes[item.id] || null,
+                image_url: null
+              };
+              
+              console.log('[DiagnosticChecklist] Creating diagnostic check for item:', item.id, checkData);
+              await createDiagnosticCheck(device.id, checkData);
+            } catch (error) {
+              console.warn('[DiagnosticChecklist] Warning: Could not save individual diagnostic check for item:', item.id, error);
+              // Continue with other items even if one fails
+            }
           }
         }
+        console.log('[DiagnosticChecklist] ✅ Individual diagnostic check records saved');
+      } catch (error) {
+        console.warn('[DiagnosticChecklist] Warning: Could not save individual diagnostic check records:', error);
+        console.log('[DiagnosticChecklist] Continuing with main diagnostic data save...');
       }
-      
-      console.log('[DiagnosticChecklist] ✅ Individual diagnostic check records saved');
 
       // Update device status based on diagnostic results
       let newStatus: DeviceStatus = device.status;
       if (overallStatus === 'all-passed') {
-        newStatus = 'diagnosis-complete';
+        newStatus = 'awaiting-parts'; // All tests passed, ready for repair
       } else if (overallStatus === 'issues-found') {
-        newStatus = 'diagnosis-issues';
+        newStatus = 'awaiting-parts'; // Issues found, still needs repair
       } else {
-        newStatus = 'diagnosis-started';
+        newStatus = 'diagnosis-started'; // Keep as diagnosis started
       }
 
       console.log('[DiagnosticChecklist] Status update logic:', {
@@ -607,29 +611,33 @@ const DiagnosticChecklist: React.FC<DiagnosticChecklistProps> = ({
 
       console.log('[DiagnosticChecklist] ✅ Admin submission successful:', data);
 
-      // Also save individual diagnostic check records to diagnostic_checks table
-      console.log('[DiagnosticChecklist] Saving individual diagnostic check records for admin submission...');
+      // Also save individual diagnostic check records to diagnostic_checks table (optional)
+      console.log('[DiagnosticChecklist] Attempting to save individual diagnostic check records for admin submission...');
       
-      for (const item of diagnosticItems) {
-        if (item.status !== 'pending') {
-          try {
-            const checkData = {
-              test_item: item.title,
-              result: item.status === 'pass' ? 'passed' : 'failed',
-              remarks: notes[item.id] || null,
-              image_url: null
-            };
-            
-            console.log('[DiagnosticChecklist] Creating diagnostic check for item:', item.id, checkData);
-            await createDiagnosticCheck(device.id, checkData);
-          } catch (error) {
-            console.error('[DiagnosticChecklist] Error creating diagnostic check for item:', item.id, error);
-            // Continue with other items even if one fails
+      try {
+        for (const item of diagnosticItems) {
+          if (item.status !== 'pending') {
+            try {
+              const checkData = {
+                test_item: item.title,
+                result: item.status === 'pass' ? 'passed' : 'failed',
+                remarks: notes[item.id] || null,
+                image_url: null
+              };
+              
+              console.log('[DiagnosticChecklist] Creating diagnostic check for item:', item.id, checkData);
+              await createDiagnosticCheck(device.id, checkData);
+            } catch (error) {
+              console.warn('[DiagnosticChecklist] Warning: Could not save individual diagnostic check for item:', item.id, error);
+              // Continue with other items even if one fails
+            }
           }
         }
+        console.log('[DiagnosticChecklist] ✅ Individual diagnostic check records saved for admin submission');
+      } catch (error) {
+        console.warn('[DiagnosticChecklist] Warning: Could not save individual diagnostic check records for admin submission:', error);
+        console.log('[DiagnosticChecklist] Continuing with main admin submission...');
       }
-      
-      console.log('[DiagnosticChecklist] ✅ Individual diagnostic check records saved for admin submission');
 
       // Create admin notification
       const notificationData = {
@@ -662,6 +670,108 @@ const DiagnosticChecklist: React.FC<DiagnosticChecklistProps> = ({
     } catch (error) {
       console.error('[DiagnosticChecklist] ❌ Error submitting to admin:', error);
       toast.error('Failed to submit to admin');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleConvertToRepair = async () => {
+    console.log('[DiagnosticChecklist] Converting diagnostic to repair...');
+    setLoading(true);
+    
+    try {
+      const summary = getDiagnosticSummary();
+      const overallStatus = getOverallStatus();
+
+      // Check if repair is needed based on diagnostic results
+      const needsRepair = summary.failed > 0 || overallStatus === 'issues-found';
+      
+      if (!needsRepair) {
+        toast.error('No repair needed based on diagnostic results');
+        return;
+      }
+
+      console.log('[DiagnosticChecklist] Converting to repair device:', {
+        summary,
+        overallStatus,
+        deviceId: device.id,
+        needsRepair
+      });
+
+      // Create a new device in the devices table for repair workflow
+      const newDeviceData = {
+        brand: device.brand,
+        model: device.model,
+        serial_number: device.serialNumber,
+        issue_description: `Diagnostic findings: ${summary.failed} issues found. ${notes || 'See diagnostic checklist for details.'}`,
+        status: 'assigned',
+        assigned_to: device.assignedTo,
+        customer_id: device.customerId || null,
+        diagnosis_required: false, // Already diagnosed
+        diagnostic_completed: true,
+        diagnostic_checklist: {
+          items: diagnosticItems,
+          notes: notes,
+          adminNotes: adminNotes,
+          summary: summary,
+          overallStatus: overallStatus,
+          convertedToRepair: true,
+          convertedAt: new Date().toISOString(),
+          last_updated: new Date().toISOString()
+        },
+        diagnostic_results: {
+          summary,
+          overallStatus,
+          items: diagnosticItems,
+          completedAt: new Date().toISOString()
+        },
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      console.log('[DiagnosticChecklist] Creating new repair device:', newDeviceData);
+
+      // Create new device in devices table
+      const { data: newDevice, error: createError } = await supabase
+        .from('devices')
+        .insert(newDeviceData)
+        .select()
+        .single();
+
+      if (createError) {
+        console.error('[DiagnosticChecklist] ❌ Device creation failed:', createError);
+        console.error('[DiagnosticChecklist] Error details:', {
+          message: createError.message,
+          details: createError.details,
+          hint: createError.hint,
+          code: createError.code
+        });
+        throw createError;
+      }
+
+      console.log('[DiagnosticChecklist] ✅ New repair device created:', newDevice);
+
+      // Update the diagnostic device to mark it as converted
+      const { error: updateError } = await supabase
+        .from('diagnostic_devices')
+        .update({ 
+          result_status: 'repair_required',
+          next_action: 'repair',
+          repair_completed_at: new Date().toISOString(),
+          repair_notes: `Converted to repair device: ${newDevice.id}`
+        })
+        .eq('id', device.id);
+
+      if (updateError) {
+        console.warn('[DiagnosticChecklist] ⚠️ Failed to update diagnostic device:', updateError);
+      }
+
+      toast.success('Device converted to repair workflow! You can now find it in the Devices section.');
+      onStatusUpdate('assigned'); // Update status to assigned for repair
+      onClose();
+    } catch (error: any) {
+      console.error('[DiagnosticChecklist] Error converting to repair:', error);
+      toast.error(error.message || 'Failed to convert to repair');
     } finally {
       setLoading(false);
     }
@@ -854,6 +964,14 @@ const DiagnosticChecklist: React.FC<DiagnosticChecklistProps> = ({
             >
               <Send className="h-4 w-4" />
               Submit to Admin
+            </button>
+            <button
+              onClick={handleConvertToRepair}
+              disabled={loading || summary.pending > 0 || summary.failed === 0}
+              className="px-6 py-2 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg hover:from-orange-600 hover:to-red-600 transition-all duration-200 disabled:opacity-50 flex items-center gap-2"
+            >
+              <Wrench className="h-4 w-4" />
+              Convert to Repair
             </button>
           </div>
         </div>

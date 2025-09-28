@@ -5,6 +5,7 @@ import { retryWithBackoff } from '../lib/supabaseClient';
 import { toast } from 'react-hot-toast';
 // Removed POSSettingsAPI import to avoid circular dependency
 import { logInfo, logError, logWarn, trackInit } from '../lib/debugUtils';
+import { clearAuthState, isSessionValid, handle403Error } from '../lib/authUtils';
 
 // Import the inventory store for automatic product loading
 import { useInventoryStore } from '../features/lats/stores/useInventoryStore';
@@ -27,7 +28,10 @@ export { AuthContext };
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth must be used within an AuthProvider');
+  if (!context) {
+    console.error('useAuth hook called outside of AuthProvider context');
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
   return context;
 };
 
@@ -44,7 +48,7 @@ function mapUserFromSupabase(user: any): any {
       case 'admin':
         return ['all'];
       case 'technician':
-        return ['view_devices', 'update_device_status', 'view_customers'];
+        return ['view_devices', 'update_device_status', 'view_customers', 'view_spare_parts'];
       case 'customer-care':
         return ['view_customers', 'create_customers', 'edit_customers', 'view_devices', 'assign_devices'];
       default:
@@ -88,12 +92,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loadInitialDataInBackground = async () => {
     // Prevent multiple data loads
     if (dataLoadedRef.current) {
-      console.log('📦 Data already loaded, skipping...');
+
       return;
     }
     
     try {
-      console.log('🚀 Starting automatic data loading in background...');
+
       dataLoadedRef.current = true;
       
       // Small delay to ensure UI is fully loaded first
@@ -105,8 +109,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loadDevicesData(),
         loadSettingsData()
       ];
-      
-      console.log('🚀 Starting other data loading...');
+
       const otherResults = await Promise.allSettled(otherDataPromises);
       
       // Load inventory data after other data (to avoid initialization issues)
@@ -117,8 +120,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           inventoryStore.loadCategories(),
           inventoryStore.loadSuppliers()
         ];
-        
-        console.log('🚀 Starting inventory data loading...');
+
         const inventoryResults = await Promise.allSettled(inventoryPromises);
         
         // Combine results
@@ -127,12 +129,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Count successful loads
         const successfulLoads = results.filter(result => result.status === 'fulfilled').length;
         const totalLoads = results.length;
-        
-        console.log(`✅ Background data loading completed: ${successfulLoads}/${totalLoads} successful`);
-        
+
         // Background data loading completed silently
         if (successfulLoads > 0) {
-          console.log(`✅ Background data loading completed: ${successfulLoads}/${totalLoads} successful`);
+
         }
       } catch (inventoryError) {
         console.error('❌ Error loading inventory data:', inventoryError);
@@ -151,8 +151,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Helper function to load customer data
   const loadCustomersData = async () => {
     try {
-      console.log('👥 Loading customer data...');
-      
+
       // Add retry logic for customer loading
       let retryCount = 0;
       const maxRetries = 3;
@@ -162,13 +161,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Import dynamically to avoid circular dependencies
           const { fetchAllCustomersSimple } = await import('../lib/customerApi');
           const customers = await fetchAllCustomersSimple();
-          console.log(`✅ Loaded ${customers.length} customers successfully`);
-          
+
           return customers;
         } catch (error) {
           retryCount++;
-          console.warn(`⚠️ Customer loading attempt ${retryCount} failed:`, error);
-          
+
           if (retryCount < maxRetries) {
             console.log(`⏳ Retrying customer loading in 1 second... (${retryCount}/${maxRetries})`);
             await new Promise(resolve => setTimeout(resolve, 1000));
@@ -189,11 +186,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Helper function to load device data
   const loadDevicesData = async () => {
     try {
-      console.log('📱 Loading device data...');
+
       // Import dynamically to avoid circular dependencies
       const { fetchAllDevices } = await import('../lib/deviceApi');
       const devices = await fetchAllDevices();
-      console.log(`✅ Loaded ${devices.length} devices`);
+
       return devices;
     } catch (error) {
       console.error('❌ Error loading devices:', error);
@@ -204,11 +201,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Helper function to load settings data
   const loadSettingsData = async () => {
     try {
-      console.log('⚙️ Loading settings data...');
+
       // Import dynamically to avoid circular dependencies
       const { POSSettingsService } = await import('../lib/posSettingsApi');
       const generalSettings = await POSSettingsService.loadGeneralSettings();
-      console.log('✅ Loaded general settings');
+
       return generalSettings;
     } catch (error) {
       console.error('❌ Error loading settings:', error);
@@ -218,8 +215,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const fetchAndSetUserProfile = async (user: any) => {
     try {
-      console.log('🔍 Fetching user profile for:', user.id);
-      
+
       // First try to fetch from auth_users table (our main table)
       let { data: profileData, error: profileError } = await supabase
         .from('auth_users')
@@ -229,7 +225,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // If not found in auth_users table, try auth.users table
       if (profileError || !profileData) {
-        console.log('User not found in auth_users table, trying auth.users table...');
+
         const { data: authProfileData, error: authProfileError } = await supabase
           .from('auth_users')
           .select('*')
@@ -237,7 +233,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           .single();
 
         if (authProfileError || !authProfileData) {
-          console.log('User not found in either table, creating default profile...');
+
           // Create a default user profile in the auth_users table
           const defaultProfile = {
             id: user.id,
@@ -257,7 +253,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (insertError) {
             console.error('Error creating default profile:', insertError);
           } else {
-            console.log('Default user profile created successfully');
+
             profileData = defaultProfile;
           }
         } else {
@@ -267,7 +263,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (!profileData) {
-        console.log('No profile data found, setting default user');
+
         // Set user with default technician role if profile not found
         const defaultUser = {
           ...user,
@@ -286,9 +282,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Map the user data from Supabase to our app format
       const mappedUser = mapUserFromSupabase(profileData);
-      console.log('✅ User profile loaded successfully:', mappedUser.name || mappedUser.email);
-      console.log('🔍 User profile data:', profileData);
-      console.log('🔍 Mapped user data:', mappedUser);
+
+
+
       setCurrentUser(mappedUser);
       setLoading(false);
       
@@ -315,8 +311,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Add a session refresh function
   const refreshSession = async () => {
     try {
-      console.log('🔄 Attempting to refresh session...');
-      
+
       const result = await retryWithBackoff(async () => {
         return await supabase.auth.refreshSession();
       });
@@ -329,11 +324,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       
       if (data.session) {
-        console.log('✅ Session refreshed successfully');
+
         await fetchAndSetUserProfile(data.session.user);
         return true;
       } else {
-        console.log('❌ No session after refresh');
+
         return false;
       }
     } catch (err) {
@@ -342,14 +337,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Add automatic session refresh on 401 errors
+  // Add automatic session refresh on 401/403 errors
   const handleAuthError = async (error: any) => {
-    if (error?.status === 401 || error?.message?.includes('401') || error?.message?.includes('Unauthorized')) {
-      console.log('🔐 Detected 401 error, attempting session refresh...');
+    if (error?.status === 401 || 
+        error?.status === 403 ||
+        error?.message?.includes('401') || 
+        error?.message?.includes('403') ||
+        error?.message?.includes('Unauthorized') ||
+        error?.message?.includes('Forbidden') ||
+        error?.message?.includes('bad_jwt') ||
+        error?.message?.includes('missing sub claim')) {
+
       const refreshed = await refreshSession();
       if (!refreshed) {
-        console.log('🚪 Session refresh failed, redirecting to login...');
-        // Clear current user and redirect to login
+
+        // Clear authentication state and redirect to login
+        await handle403Error();
         setCurrentUser(null);
         setError('Session expired. Please log in again.');
         // You might want to navigate to login page here
@@ -381,11 +384,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setLoading(true);
           logInfo('AuthProvider', 'Checking for existing session...');
           
+          // Check if session is valid first
+          const isValid = await isSessionValid();
+          if (!isValid) {
+            logInfo('AuthProvider', 'No valid session found, clearing auth state');
+            await clearAuthState();
+            setCurrentUser(null);
+            setLoading(false);
+            initializedRef.current = true;
+            return;
+          }
+          
           // Get current session
           const { data: { session }, error: sessionError } = await supabase.auth.getSession();
           
           if (sessionError) {
             logError('AuthProvider', 'Session error:', sessionError);
+            
+            // Handle 403 errors specifically
+            if (sessionError.message?.includes('403') || 
+                sessionError.message?.includes('Forbidden') ||
+                sessionError.message?.includes('bad_jwt')) {
+              logInfo('AuthProvider', '403 error detected, clearing auth state');
+              await handle403Error();
+            }
+            
             setCurrentUser(null);
             setLoading(false);
             return;
@@ -404,6 +427,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           logInfo('AuthProvider', 'Auth initialization complete');
         } catch (err) {
           logError('AuthProvider', 'Error initializing auth:', err);
+          
+          // Handle 403 errors in catch block too
+          if (err?.message?.includes('403') || 
+              err?.message?.includes('Forbidden') ||
+              err?.message?.includes('bad_jwt')) {
+            logInfo('AuthProvider', '403 error in catch block, clearing auth state');
+            await handle403Error();
+          }
+          
           setCurrentUser(null);
           setLoading(false);
           initializedRef.current = true;
@@ -458,7 +490,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setError(null);
       setLoading(true);
-      console.log('🔐 Attempting login for:', email);
 
       // Use Supabase auth for login
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -474,7 +505,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (data.user) {
-        console.log('✅ Login successful for:', data.user.email);
+
         await fetchAndSetUserProfile(data.user);
         setLoading(false);
         return true;
@@ -493,7 +524,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     try {
-      console.log('👋 Logging out user');
+
       setLoading(true);
       
       // Clear POS settings user cache (handled by the hook itself)
@@ -503,7 +534,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setCurrentUser(null);
       setError(null);
       dataLoadedRef.current = false; // Reset data loaded flag
-      console.log('✅ Logout successful');
+
     } catch (err) {
       console.error('❌ Logout error:', err);
     } finally {

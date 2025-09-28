@@ -128,81 +128,123 @@ const VariantCartItem: React.FC<VariantCartItemProps> = ({
 
   if (variant === 'compact') {
     return (
-      <GlassCard className={`p-3 ${className}`}>
+      <div className={`bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-all duration-200 ${className}`}>
         <div className="flex items-center justify-between">
+          {/* Left Section - Product Info */}
           <div className="flex items-center space-x-3 flex-1 min-w-0">
-            {/* Product Thumbnail */}
-            <SimpleImageDisplay
-              images={convertToProductImages(thumbnail ? [thumbnail] : [])}
-              productName={item.productName}
-              size="sm"
-              className="flex-shrink-0"
-            />
+            {/* Product Icon */}
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              {thumbnail ? (
+                <SimpleImageDisplay
+                  images={convertToProductImages([thumbnail])}
+                  productName={item.productName}
+                  size="sm"
+                  className="w-full h-full rounded-lg"
+                />
+              ) : (
+                <Package className="w-5 h-5 text-blue-600" />
+              )}
+            </div>
+            
+            {/* Product Details */}
             <div className="flex-1 min-w-0">
-              <div className="font-medium text-sm text-gray-900 truncate">
+              <h3 className="font-medium text-gray-900 truncate text-sm">
                 {item.productName}
-              </div>
-              <div className="text-xs text-gray-600 flex items-center gap-2">
-                <span className="font-mono">{item.sku}</span>
-                {item.variantName !== 'Default' && (
+              </h3>
+              {item.variantName !== 'Default' && (
+                <div className="flex items-center gap-2 text-xs text-gray-600 mt-1">
                   <span className="text-blue-600">{item.variantName}</span>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </div>
           
-          <div className="flex items-center space-x-2">
+          {/* Right Section - Price, Quantity, Actions */}
+          <div className="flex items-center gap-4">
+            {/* Stock Info */}
             <div className="text-right">
-              <div className="text-sm font-medium">{format.money(item.unitPrice)}</div>
-              <div className="text-xs text-gray-500">x {item.quantity}</div>
+              <div className="text-xs text-gray-500">Available: {availableStock} units</div>
             </div>
+            
+            {/* Total Price */}
             <div className="text-right">
-              <div className="font-bold text-sm">{format.money(subtotal)}</div>
-              {stockStatus === 'insufficient' && getStockStatusBadge()}
+              <div className="font-bold text-lg text-gray-900">{format.money(subtotal)}</div>
             </div>
-            <GlassButton
-              size="sm"
-              variant="danger"
+            
+            {/* Quantity Controls */}
+            <div className="flex items-center space-x-2">
+              <label className="text-sm font-medium text-gray-700">Quantity:</label>
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() => handleQuantityChange(item.quantity - 1)}
+                  disabled={item.quantity <= 1}
+                  className="inline-flex items-center justify-center w-8 h-8 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Minus className="w-3 h-3" />
+                </button>
+                <span className="w-12 text-center font-medium text-sm px-2 py-1 bg-gray-50 rounded-md">
+                  {item.quantity}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleQuantityChange(item.quantity + 1)}
+                  disabled={item.quantity >= availableStock}
+                  className="inline-flex items-center justify-center w-8 h-8 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Plus className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+            
+            {/* Remove Button */}
+            <button
+              type="button"
               onClick={onRemove}
-              className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center"
+              className="inline-flex items-center justify-center w-8 h-8 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors duration-200"
             >
               <Trash2 className="w-4 h-4" />
-            </GlassButton>
+            </button>
           </div>
         </div>
-      </GlassCard>
+        
+        {/* Stock Warning */}
+        {stockStatus === 'insufficient' && (
+          <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded-lg">
+            <div className="text-sm text-red-800">
+              <strong>Warning:</strong> Requested quantity ({item.quantity}) exceeds available stock ({availableStock})
+            </div>
+          </div>
+        )}
+      </div>
     );
   }
 
   return (
-    <GlassCard className={`p-4 ${className}`}>
+    <div className={`bg-white border border-gray-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-all duration-200 ${className}`}>
       {/* Product Header */}
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center space-x-3 flex-1 min-w-0">
+      <div className="flex items-start justify-between mb-4">
+        <div className="flex items-center space-x-4 flex-1 min-w-0">
           {/* Product Thumbnail */}
-          <div className="w-10 h-10 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden">
+          <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden">
             {thumbnail ? (
               <SimpleImageDisplay
                 images={convertToProductImages([thumbnail])}
                 productName={item.productName}
                 size="sm"
-                className="w-full h-full"
+                className="w-full h-full rounded-xl"
               />
             ) : (
-              <Package className="w-5 h-5 text-blue-600" />
+              <Package className="w-6 h-6 text-blue-600" />
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="font-medium text-gray-900 truncate">{item.productName}</h3>
-            <div className="flex items-center gap-2 text-sm text-gray-600 mt-1">
-              <span className="font-mono">{item.sku}</span>
-              {item.variantName !== 'Default' && (
-                <>
-                  <span>•</span>
-                  <span className="text-blue-600">{item.variantName}</span>
-                </>
-              )}
-            </div>
+            <h3 className="text-lg font-semibold text-gray-900 truncate">{item.productName}</h3>
+            {item.variantName !== 'Default' && (
+              <div className="flex items-center gap-2 text-sm text-gray-600 mt-1">
+                <span className="text-blue-600 font-medium">{item.variantName}</span>
+              </div>
+            )}
             {/* Show specifications if available */}
             {item.attributes && Object.keys(item.attributes).length > 0 && (
               <div className="mt-3">
@@ -272,9 +314,8 @@ const VariantCartItem: React.FC<VariantCartItemProps> = ({
       </div>
 
       {/* Price and Stock Info */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-4">
         <div>
-          <div className="text-lg font-bold text-gray-900">{format.money(item.unitPrice)}</div>
           {showStockInfo && (
             <div className="text-sm text-gray-600">
               Available: {availableStock} units
@@ -282,17 +323,15 @@ const VariantCartItem: React.FC<VariantCartItemProps> = ({
           )}
         </div>
         <div className="text-right">
-          <div className="font-bold text-lg">{format.money(subtotal)}</div>
+          <div className="font-bold text-2xl text-gray-900">{format.money(subtotal)}</div>
           {hasVariantAttributes && onVariantChange && (
-            <GlassButton
-              size="sm"
-              variant="secondary"
+            <button
               onClick={() => setShowVariantSelector(!showVariantSelector)}
-              className="mt-1"
+              className="mt-2 inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
             >
               <Edit className="w-3 h-3" />
               Change Variant
-            </GlassButton>
+            </button>
           )}
         </div>
       </div>
@@ -372,7 +411,7 @@ const VariantCartItem: React.FC<VariantCartItemProps> = ({
 
       {/* Quantity Controls */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-3">
           <label className="text-sm font-medium text-gray-700">Quantity:</label>
           {isEditing ? (
             <div className="flex items-center space-x-2">
@@ -382,73 +421,69 @@ const VariantCartItem: React.FC<VariantCartItemProps> = ({
                 max={availableStock}
                 value={editQuantity}
                 onChange={handleQuantityInput}
-                className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-20 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 autoFocus
               />
-              <GlassButton
-                size="sm"
+              <button
                 onClick={handleQuantitySubmit}
                 disabled={editQuantity <= 0 || editQuantity > availableStock}
+                className="inline-flex items-center justify-center w-8 h-8 text-sm font-medium text-white bg-green-600 border border-transparent rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 ✓
-              </GlassButton>
-              <GlassButton
-                size="sm"
-                variant="secondary"
+              </button>
+              <button
                 onClick={handleQuantityCancel}
+                className="inline-flex items-center justify-center w-8 h-8 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500"
               >
                 ✕
-              </GlassButton>
+              </button>
             </div>
           ) : (
             <div className="flex items-center space-x-2">
-              <GlassButton
-                size="sm"
-                variant="secondary"
+              <button
                 onClick={() => handleQuantityChange(item.quantity - 1)}
                 disabled={item.quantity <= 1}
+                className="inline-flex items-center justify-center w-10 h-10 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Minus className="w-3 h-3" />
-              </GlassButton>
+                <Minus className="w-4 h-4" />
+              </button>
               <span 
-                className="w-12 text-center font-medium cursor-pointer hover:bg-gray-100 px-2 py-1 rounded"
+                className="w-16 text-center font-semibold text-lg cursor-pointer hover:bg-gray-100 px-3 py-2 rounded-lg border border-gray-200"
                 onClick={() => setIsEditing(true)}
               >
                 {item.quantity}
               </span>
-              <GlassButton
-                size="sm"
-                variant="secondary"
+              <button
                 onClick={() => handleQuantityChange(item.quantity + 1)}
                 disabled={item.quantity >= availableStock}
+                className="inline-flex items-center justify-center w-10 h-10 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Plus className="w-3 h-3" />
-              </GlassButton>
+                <Plus className="w-4 h-4" />
+              </button>
             </div>
           )}
         </div>
         
-        <GlassButton
-          size="sm"
-          variant="danger"
+        <button
           onClick={onRemove}
-          className="flex items-center gap-2"
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors duration-200"
         >
           <Trash2 className="w-4 h-4" />
           Remove
-        </GlassButton>
+        </button>
       </div>
 
       {/* Stock Warning */}
       {stockStatus === 'insufficient' && (
-        <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded-lg">
+        <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
           <div className="text-sm text-red-800">
             <strong>Warning:</strong> Requested quantity ({item.quantity}) exceeds available stock ({availableStock})
           </div>
         </div>
       )}
-    </GlassCard>
+    </div>
   );
 };
 
 export default VariantCartItem;
+

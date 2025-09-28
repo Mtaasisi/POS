@@ -6,7 +6,7 @@ import { Monitor, Wrench, AlertTriangle } from 'lucide-react';
 const DiagnosticDeviceTab: React.FC = () => {
   const { currentUser } = useAuth();
 
-  if (!currentUser || !['admin', 'technician'].includes(currentUser.role)) {
+  if (!currentUser || !['admin'].includes(currentUser.role)) {
     return (
       <GlassCard className="p-6">
         <div className="text-center">

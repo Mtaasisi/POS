@@ -273,20 +273,6 @@ class DraftProductsService {
         return { success: false, message: result.error_message };
       }
 
-      // Update shipping status to 'received'
-      const { error: updateError } = await supabase
-        .from('lats_shipping_info')
-        .update({
-          status: 'received',
-          inventory_received_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', shippingId);
-
-      if (updateError) {
-        console.error('❌ [DraftProductsService] Error updating shipping status:', updateError);
-        return { success: false, message: 'Products moved but failed to update shipping status' };
-      }
 
       return {
         success: true,

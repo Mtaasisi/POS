@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Device, DeviceStatus, User } from '../../../../types';
 import GlassButton from '../../../shared/components/ui/GlassButton';
-import { CheckCircle, Send, PenTool, ShieldCheck, PackageCheck, UserCheck, Hammer, Wrench, CreditCard, XCircle, AlertTriangle, Loader2 } from 'lucide-react';
+import { CheckCircle, Send, PenTool, ShieldCheck, PackageCheck, UserCheck, Hammer, Wrench, XCircle, AlertTriangle, Loader2 } from 'lucide-react';
 import { supabase } from '../../../../lib/supabaseClient';
 import Modal from '../../../shared/components/ui/Modal';
 import { formatCurrency } from '../../../../lib/customerApi';
 import { toast } from 'react-hot-toast';
-import { usePaymentMethodsContext } from '../../../../context/PaymentMethodsContext';
+import { getRepairParts } from '../../../lats/lib/sparePartsApi';
+import { validateRepairStart, hasNeededParts } from '../../../../utils/repairValidation';
 
 interface StatusUpdateFormProps {
   device: Device;
@@ -33,18 +34,10 @@ const StatusUpdateForm: React.FC<StatusUpdateFormProps> = ({
   const [showFailModal, setShowFailModal] = useState(false);
   const [failRemark, setFailRemark] = useState('');
 
-  // Payment modal state
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [paymentAmount, setPaymentAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'transfer'>('cash');
-  const [recordingPayment, setRecordingPayment] = useState(false);
-  const [paymentError, setPaymentError] = useState<string | null>(null);
 
-  // Payment confirmation modal state
-  const [showPaymentConfirmation, setShowPaymentConfirmation] = useState(false);
-  const [lastPayment, setLastPayment] = useState<any>(null);
-
-  const [hasCompletedPayment, setHasCompletedPayment] = useState<boolean>(false);
+  // Repair parts state
+  const [repairParts, setRepairParts] = useState<any[]>([]);
+  const [partsLoading, setPartsLoading] = useState(false);
 
   // --- Improved failed device flow ---
   const [failActionLoading, setFailActionLoading] = useState(false);
@@ -79,6 +72,42 @@ const StatusUpdateForm: React.FC<StatusUpdateFormProps> = ({
       setFailActionLoading(false);
     }
   };
+
+  // Load repair parts when device changes
+  useEffect(() => {
+    const loadRepairParts = async () => {
+      if (!device?.id) return;
+      
+      setPartsLoading(true);
+      try {
+        const response = await getRepairParts(device.id);
+        if (response.ok && response.data) {
+          // Transform the data to match the expected interface
+          const transformedParts = response.data.map((part: any) => ({
+            id: part.id,
+            name: part.spare_part?.name || 'Unknown Part',
+            description: part.spare_part?.description || '',
+            quantity: part.quantity_needed || 0,
+            cost: part.cost_per_unit || 0,
+            status: part.status || 'needed',
+            supplier: part.spare_part?.supplier?.name || 'Unknown',
+            estimatedArrival: part.estimated_arrival || null,
+            notes: part.notes || ''
+          }));
+          setRepairParts(transformedParts);
+        } else {
+          setRepairParts([]);
+        }
+      } catch (error) {
+        console.error('Error loading repair parts:', error);
+        setRepairParts([]);
+      } finally {
+        setPartsLoading(false);
+      }
+    };
+
+    loadRepairParts();
+  }, [device?.id]);
 
   // Fetch payments for this device on mount and poll every 5 seconds
   useEffect(() => {
@@ -124,32 +153,70 @@ const StatusUpdateForm: React.FC<StatusUpdateFormProps> = ({
         return [];
         
       case 'diagnosis-started':
+        const transitions = [
+          { status: 'awaiting-parts' as DeviceStatus, label: 'Awaiting Parts', icon: <PackageCheck size={18} /> }
+        ];
+        
+        // Check if repair can be started based on parts availability
+        const needsParts = hasNeededParts(repairParts);
+        if (!needsParts) {
+          const validation = validateRepairStart(repairParts);
+          if (validation.valid) {
+            transitions.push({ status: 'in-repair' as DeviceStatus, label: 'Start Repair', icon: <Wrench size={18} /> });
+          } else {
+            // Add disabled repair option with validation message
+            transitions.push({ 
+              status: 'in-repair' as DeviceStatus, 
+              label: 'Start Repair (Parts Required)', 
+              icon: <Wrench size={18} />,
+              disabled: true,
+              validationMessage: validation.message
+            });
+          }
+        }
+        
         if (role === 'technician' && isAssignedTechnician) {
-          return [
-            { status: 'awaiting-parts' as DeviceStatus, label: 'Awaiting Parts', icon: <PackageCheck size={18} /> },
-            { status: 'in-repair' as DeviceStatus, label: 'Start Repair', icon: <Wrench size={18} /> }
-          ];
+          return transitions;
         }
         // Allow admin and customer care to update status
         if (role === 'admin' || role === 'customer-care') {
-          return [
-            { status: 'awaiting-parts' as DeviceStatus, label: 'Awaiting Parts', icon: <PackageCheck size={18} /> },
-            { status: 'in-repair' as DeviceStatus, label: 'Start Repair', icon: <Wrench size={18} /> }
-          ];
+          return transitions;
         }
         return [];
         
       case 'awaiting-parts':
         if (role === 'technician' && isAssignedTechnician) {
           return [
-            { status: 'in-repair' as DeviceStatus, label: 'Parts Arrived', icon: <Wrench size={18} /> }
+            { status: 'parts-arrived' as DeviceStatus, label: 'Parts Arrived', icon: <PackageCheck size={18} /> }
           ];
         }
         // Allow admin and customer care to update status
         if (role === 'admin' || role === 'customer-care') {
           return [
-            { status: 'in-repair' as DeviceStatus, label: 'Parts Arrived', icon: <Wrench size={18} /> }
+            { status: 'parts-arrived' as DeviceStatus, label: 'Parts Arrived', icon: <PackageCheck size={18} /> }
           ];
+        }
+        return [];
+        
+      case 'parts-arrived':
+        // Validate if repair can be started from parts-arrived status
+        const partsValidation = validateRepairStart(repairParts);
+        const repairTransitions = partsValidation.valid 
+          ? [{ status: 'in-repair' as DeviceStatus, label: 'Start Repair', icon: <Wrench size={18} /> }]
+          : [{ 
+              status: 'in-repair' as DeviceStatus, 
+              label: 'Start Repair (Parts Required)', 
+              icon: <Wrench size={18} />,
+              disabled: true,
+              validationMessage: partsValidation.message
+            }];
+        
+        if (role === 'technician' && isAssignedTechnician) {
+          return repairTransitions;
+        }
+        // Allow admin and customer care to update status
+        if (role === 'admin' || role === 'customer-care') {
+          return repairTransitions;
         }
         return [];
         
@@ -184,16 +251,13 @@ const StatusUpdateForm: React.FC<StatusUpdateFormProps> = ({
       case 'repair-complete':
         if (role === 'admin' || role === 'customer-care') {
           return [
-            { status: 'returned-to-customer-care' as DeviceStatus, label: 'Receive', icon: <UserCheck size={18} /> }
+            { status: 'returned-to-customer-care' as DeviceStatus, label: 'Give to Customer', icon: <UserCheck size={18} /> }
           ];
         }
-        // Allow technicians to mark as complete
-        if (role === 'technician' && isAssignedTechnician) {
-          return [
-            { status: 'returned-to-customer-care' as DeviceStatus, label: 'Send to Customer Care', icon: <UserCheck size={18} /> }
-          ];
-        }
+        // Technicians cannot handover to customer - only admin/customer-care can
         return [];
+        
+      // REMOVED: process-payments case - Repair payment functionality removed
         
       case 'returned-to-customer-care':
         if (role === 'admin' || role === 'customer-care') {
@@ -226,7 +290,12 @@ const StatusUpdateForm: React.FC<StatusUpdateFormProps> = ({
 
 
 
-  const handleStatusClick = (status: DeviceStatus) => {
+  const handleStatusClick = (status: DeviceStatus, disabled?: boolean, validationMessage?: string) => {
+    if (disabled && validationMessage) {
+      toast.error(validationMessage);
+      return;
+    }
+    
     if (status === 'awaiting-parts') {
       setShowPartsModal(true);
       return;
@@ -255,51 +324,6 @@ const StatusUpdateForm: React.FC<StatusUpdateFormProps> = ({
     onUpdateStatus('awaiting-parts', '');
   };
 
-  // Payment handler
-  const handleRecordPayment = async () => {
-    setRecordingPayment(true);
-    setPaymentError(null);
-    let payment;
-    try {
-      if (!device.customerId) {
-        setPaymentError('Customer must be selected before recording payment');
-        setRecordingPayment(false);
-        return;
-      }
-      if (!device.id) throw new Error('Device ID is missing');
-      if (!paymentAmount || isNaN(Number(paymentAmount)) || Number(paymentAmount) <= 0) {
-        setPaymentError('Enter a valid amount');
-        setRecordingPayment(false);
-        return;
-      }
-      payment = {
-        id: crypto.randomUUID(),
-        customer_id: device.customerId,
-        amount: Number(paymentAmount),
-        method: paymentMethod,
-        device_id: device.id,
-        payment_date: new Date().toISOString(),
-        payment_type: 'payment',
-        status: 'completed',
-        created_by: currentUser?.id || '',
-        created_at: new Date().toISOString(),
-      };
-      const { error, data } = await supabase
-        .from('customer_payments')
-        .insert(payment);
-      if (error) throw error;
-      setShowPaymentModal(false);
-      setPaymentAmount('');
-      setPaymentMethod('cash');
-      setLastPayment(payment);
-      setShowPaymentConfirmation(true);
-      setHasCompletedPayment(true); // Hide payment button immediately after payment
-    } catch (err: any) {
-      setPaymentError(err.message || 'Failed to record payment');
-    } finally {
-      setRecordingPayment(false);
-    }
-  };
 
   const transitions = getAvailableStatusTransitions();
   const isFailed = device.status === 'failed';
@@ -388,11 +412,12 @@ const StatusUpdateForm: React.FC<StatusUpdateFormProps> = ({
                       {isDoneTransition(transition.status) ? (
                         isPaid ? (
                           <GlassButton
-                            onClick={() => handleStatusClick(transition.status)}
+                            onClick={() => handleStatusClick(transition.status, transition.disabled, transition.validationMessage)}
                             size="lg"
                             icon={transition.icon}
-                            className={`justify-start w-full h-[70px] ${transitions.length === 1 ? 'text-xl' : 'text-base'}`}
-                            variant="success"
+                            className={`justify-start w-full h-[70px] ${transitions.length === 1 ? 'text-xl' : 'text-base'} ${transition.disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            variant={transition.disabled ? "secondary" : "success"}
+                            disabled={transition.disabled}
                           >
                             {transition.label}
                           </GlassButton>
@@ -401,17 +426,19 @@ const StatusUpdateForm: React.FC<StatusUpdateFormProps> = ({
                         )
                       ) : (
                         <GlassButton
-                          onClick={() => handleStatusClick(transition.status)}
+                          onClick={() => handleStatusClick(transition.status, transition.disabled, transition.validationMessage)}
                           size="lg"
                           icon={transition.icon}
-                          className={`justify-start w-full h-[70px] ${transitions.length === 1 ? 'text-xl' : 'text-base'}`}
-                          variant="primary"
+                          className={`justify-start w-full h-[70px] ${transitions.length === 1 ? 'text-xl' : 'text-base'} ${transition.disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          variant={transition.disabled ? "secondary" : "primary"}
+                          disabled={transition.disabled}
                         >
                           {transition.label}
                         </GlassButton>
                       )}
                     </div>
-                    {/* After 'Receive' (returned-to-customer-care), show Record Payment button for customer care */}
+                    {/* REMOVED: Record Payment button - Repair payment functionality removed */}
+                    {/*
                     {transition.status === 'done' && device.status === 'returned-to-customer-care' && !hasCompletedPayment && (
                       (isCustomerCare || currentUser?.role === 'admin') ? (
                         <div className="flex flex-col gap-2 my-2">
@@ -424,49 +451,10 @@ const StatusUpdateForm: React.FC<StatusUpdateFormProps> = ({
                           >
                             Record Payment
                           </GlassButton>
-                          {/* Inline payment form instead of modal */}
-                          {showPaymentModal && (
-                            <div className="p-4 mt-2 rounded-lg border border-blue-200 bg-blue-50">
-                              <div className="mb-3">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Amount</label>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="1"
-                                  value={paymentAmount}
-                                  onChange={e => setPaymentAmount(e.target.value)}
-                                  className="w-full rounded-lg border border-white/30 bg-white/30 p-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400/30 transition-all duration-300"
-                                  placeholder="Enter amount"
-                                />
-                              </div>
-                              <div className="mb-3">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Method</label>
-                                <select
-                                  value={paymentMethod}
-                                  onChange={e => setPaymentMethod(e.target.value as any)}
-                                  className="w-full rounded-lg border border-white/30 bg-white/30 p-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400/30 transition-all duration-300"
-                                >
-                                  <option value="cash">Cash</option>
-                                  <option value="card">Card</option>
-                                  <option value="transfer">Transfer</option>
-                                </select>
-                              </div>
-                              {paymentError && <div className="text-red-500 text-sm mb-2">{paymentError}</div>}
-                              <div className="flex gap-3 justify-end mt-2">
-                                <GlassButton variant="secondary" onClick={() => { setShowPaymentModal(false); setPaymentAmount(''); setPaymentError(null); }}>Cancel</GlassButton>
-                                <GlassButton
-                                  variant="primary"
-                                  onClick={handleRecordPayment}
-                                  disabled={recordingPayment}
-                                >
-                                  {recordingPayment ? 'Recording...' : 'Record Payment'}
-                                </GlassButton>
-                              </div>
-                            </div>
-                          )}
                         </div>
                       ) : null
                     )}
+                    */}
                   </React.Fragment>
                 ))}
                 {/* Payment Confirmation Modal */}
@@ -570,64 +558,21 @@ const StatusUpdateForm: React.FC<StatusUpdateFormProps> = ({
         </>
       )}
 
-      {/* Payment Form - only visible when showPaymentModal is true */}
-      {showPaymentModal && (
-        <div className="space-y-4 pt-4 border-t border-gray-200/50">
-          <h3 className="text-lg font-bold text-gray-900">Record Payment</h3>
-          <div className="mb-3">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Amount</label>
-            <input
-              type="number"
-              min="0"
-                              step="1"
-              value={paymentAmount}
-              onChange={e => setPaymentAmount(e.target.value)}
-              className="w-full rounded-lg border border-white/30 bg-white/30 p-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400/30 transition-all duration-300"
-              placeholder="Enter amount"
-            />
-          </div>
-          <div className="mb-3">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Method</label>
-            {paymentMethodsLoading ? (
-              <div className="w-full rounded-lg border border-white/30 bg-white/30 p-3 flex items-center justify-center">
-                <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                <span className="text-gray-600 text-sm">Loading payment methods...</span>
-              </div>
-            ) : (
-              <select
-                value={paymentMethod}
-                onChange={e => setPaymentMethod(e.target.value as any)}
-                className="w-full rounded-lg border border-white/30 bg-white/30 p-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400/30 transition-all duration-300"
-              >
-                {paymentMethods.length > 0 ? (
-                  paymentMethods.map((method) => (
-                    <option key={method.id} value={method.name.toLowerCase().replace(/\s+/g, '_')}>
-                      {method.payment_icon} {method.name}
-                    </option>
-                  ))
-                ) : (
-                  <>
-                    <option value="cash">💵 Cash</option>
-                    <option value="card">💳 Card</option>
-                    <option value="transfer">🏦 Transfer</option>
-                  </>
-                )}
-              </select>
-            )}
-          </div>
-          {paymentError && <div className="text-red-500 text-sm mb-2">{paymentError}</div>}
-          <div className="flex gap-3 justify-end mt-2">
-            <GlassButton variant="secondary" onClick={() => { setShowPaymentModal(false); setPaymentAmount(''); setPaymentError(null); }}>Cancel</GlassButton>
-            <GlassButton
-              variant="primary"
-              onClick={handleRecordPayment}
-              disabled={recordingPayment}
-            >
-              {recordingPayment ? 'Recording...' : 'Record Payment'}
-            </GlassButton>
-          </div>
-        </div>
-      )}
+      {/* Payment Modal */}
+      <PaymentsPopupModal
+        isOpen={showPaymentModal}
+        onClose={() => {
+          setShowPaymentModal(false);
+          setPaymentAmount('');
+          setPaymentError(null);
+        }}
+        amount={outstanding || 0}
+        customerId={device.customerId}
+        customerName={device.customerName}
+        description={`Payment for device repair - ${device.deviceName}`}
+        onPaymentComplete={handleRecordPayment}
+        title="Record Payment"
+      />
       {showPartsModal && (
         <Modal isOpen={showPartsModal} onClose={() => { setShowPartsModal(false); setPartName(''); }} title="Awaiting Parts" maxWidth="400px">
           <div className="space-y-4">

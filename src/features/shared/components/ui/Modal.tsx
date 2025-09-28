@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 
 interface ModalProps {
   isOpen: boolean;
@@ -12,13 +13,13 @@ interface ModalProps {
 
 const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, maxWidth = 'lg', maxHeight, actions }) => {
   if (!isOpen) return null;
-  return (
+  return createPortal(
     <div
       className="modal-backdrop"
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 50,
+        zIndex: 99999,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -72,7 +73,7 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, maxWidt
               borderTop: '1px solid #e5e7eb',
               zIndex: 1,
               display: 'flex',
-              justifyContent: 'flex-start',
+              justifyContent: 'flex-end',
               padding: 15,
             }}
           >
@@ -87,7 +88,8 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, maxWidt
           ×
         </button>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

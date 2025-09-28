@@ -667,7 +667,10 @@ export const POSSettingsDatabaseSetup: React.FC<POSSettingsDatabaseSetupProps> =
         } else if (existing.length === 1) {
           DebugUtils.throttledLog(`record_exists_${table}`, `✅ Record already exists for ${table}`, 5000);
         } else {
-          console.log(`⚠️ Multiple records found for ${table} (${existing.length}), keeping existing records`);
+          // Only log this in development mode to reduce noise
+          if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'development') {
+            console.log(`⚠️ Multiple records found for ${table} (${existing.length}), keeping existing records`);
+          }
         }
       } catch (err) {
         console.error(`💥 Exception creating default record for ${table}:`, err);

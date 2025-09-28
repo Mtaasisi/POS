@@ -45,7 +45,7 @@ const ImageTestComponent: React.FC<ImageTestComponentProps> = ({ isOpen, onClose
         .select(`
           id,
           name,
-          product_images(id, image_url, is_primary)
+          images
         `)
         .limit(3);
 

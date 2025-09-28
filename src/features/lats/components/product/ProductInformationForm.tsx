@@ -87,7 +87,7 @@ const ProductInformationForm: React.FC<ProductInformationFormProps> = ({
               <p className="mt-1 text-sm text-red-600">{currentErrors.name}</p>
             )}
             {nameExists && (
-              <p className="mt-1 text-sm text-amber-600">⚠️ A product with this name already exists</p>
+              <p className="mt-1 text-sm text-amber-600">⚠️ Another product with a similar name already exists</p>
             )}
           </div>
 

@@ -65,8 +65,24 @@ import GlassButton from '../features/shared/components/ui/GlassButton';
 
 const AppLayout: React.FC = () => {
   const { currentUser, logout } = useAuth();
-  const { devices } = useDevices();
-  const { customers } = useCustomers();
+  
+  // Safely access context hooks with error handling
+  let devices: any[] = [];
+  let customers: any[] = [];
+  
+  try {
+    const devicesContext = useDevices();
+    devices = devicesContext?.devices || [];
+  } catch (error) {
+    console.warn('Devices context not available:', error);
+  }
+  
+  try {
+    const customersContext = useCustomers();
+    customers = customersContext?.customers || [];
+  } catch (error) {
+    console.warn('Customers context not available:', error);
+  }
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isNavCollapsed, setIsNavCollapsed] = useState(true);
   const [showAddCustomer, setShowAddCustomer] = useState(false);
@@ -195,6 +211,33 @@ const AppLayout: React.FC = () => {
   };
 
   const getNavItems = () => {
+    // For technicians, only show repair-related navigation
+    if (currentUser?.role === 'technician') {
+      return [
+        {
+          path: '/dashboard',
+          label: 'Dashboard',
+          icon: <LayoutDashboard size={20} />,
+          roles: ['technician'],
+          count: activityCounts.activeDevices
+        },
+        {
+          path: '/devices',
+          label: 'My Devices',
+          icon: <Smartphone size={20} />,
+          roles: ['technician'],
+          count: activityCounts.activeDevices + activityCounts.overdueDevices
+        },
+        {
+          path: '/lats/spare-parts',
+          label: 'Spare Parts',
+          icon: <Package size={20} />,
+          roles: ['technician'],
+          count: Math.floor(Math.random() * 2)
+        },
+      ];
+    }
+
     const items = [
       // Main Dashboard
       {
@@ -224,29 +267,22 @@ const AppLayout: React.FC = () => {
         path: '/pos',
         label: 'POS System',
         icon: <ShoppingCart size={20} />,
-        roles: ['admin', 'customer-care'],
+        roles: ['admin'],
         count: Math.floor(Math.random() * 4) // Placeholder for pending transactions
       },
       {
         path: '/appointments',
         label: 'Appointments',
         icon: <Calendar size={20} />,
-        roles: ['admin', 'customer-care'],
+        roles: ['admin', 'customer-care', 'technician'],
         count: Math.floor(Math.random() * 3) // Placeholder for pending appointments
       },
       {
         path: '/services',
         label: 'Services',
         icon: <Wrench size={20} />,
-        roles: ['admin', 'customer-care'],
+        roles: ['admin'],
         count: Math.floor(Math.random() * 2) // Placeholder for active services
-      },
-      {
-        path: '/repair',
-        label: 'Repair Service',
-        icon: <Wrench size={20} />,
-        roles: ['admin', 'customer-care', 'technician'],
-        count: Math.floor(Math.random() * 5) // Placeholder for active repairs
       },
 
       // Inventory Management
@@ -254,29 +290,15 @@ const AppLayout: React.FC = () => {
         path: '/lats/unified-inventory',
         label: 'Inventory',
         icon: <Package size={20} />,
-        roles: ['admin', 'customer-care'],
+        roles: ['admin'],
         count: Math.floor(Math.random() * 3) // Placeholder for low stock items
       },
       {
-        path: '/lats/purchase-orders',
-        label: 'Purchase Orders',
-        icon: <ShoppingCart size={20} />,
-        roles: ['admin', 'customer-care'],
-        count: Math.floor(Math.random() * 2) // Placeholder for pending orders
-      },
-      {
-        path: '/lats/shipping',
-        label: 'Shipping',
-        icon: <Truck size={20} />,
-        roles: ['admin', 'customer-care'],
-        count: Math.floor(Math.random() * 3) // Placeholder for active shipments
-      },
-      {
-        path: '/lats/storage-rooms',
-        label: 'Storage Rooms',
-        icon: <Building size={20} />,
-        roles: ['admin', 'customer-care'],
-        count: Math.floor(Math.random() * 2) // Placeholder for storage room alerts
+        path: '/lats/serial-manager',
+        label: 'Serial Manager',
+        icon: <Smartphone size={20} />,
+        roles: ['admin'],
+        count: Math.floor(Math.random() * 2) // Placeholder for serial tracking alerts
       },
       {
         path: '/lats/spare-parts',
@@ -284,6 +306,20 @@ const AppLayout: React.FC = () => {
         icon: <Package size={20} />,
         roles: ['admin', 'technician'],
         count: Math.floor(Math.random() * 2) // Placeholder for spare parts alerts
+      },
+      {
+        path: '/lats/purchase-orders',
+        label: 'Purchase Orders',
+        icon: <ShoppingCart size={20} />,
+        roles: ['admin'],
+        count: Math.floor(Math.random() * 2) // Placeholder for pending orders
+      },
+      {
+        path: '/lats/storage-rooms',
+        label: 'Storage Rooms',
+        icon: <Building size={20} />,
+        roles: ['admin'],
+        count: Math.floor(Math.random() * 2) // Placeholder for storage room alerts
       },
 
       // Employee Management
@@ -298,7 +334,7 @@ const AppLayout: React.FC = () => {
         path: '/attendance',
         label: 'Attendance',
         icon: <Clock size={20} />,
-        roles: ['admin', 'manager', 'technician', 'customer-care'],
+        roles: ['admin', 'manager', 'technician'],
         count: Math.floor(Math.random() * 2) // Placeholder for attendance alerts
       },
 
@@ -316,7 +352,7 @@ const AppLayout: React.FC = () => {
         path: '/business',
         label: 'Business',
         icon: <Briefcase size={20} />,
-        roles: ['admin', 'manager', 'customer-care'],
+        roles: ['admin', 'manager'],
         count: Math.floor(Math.random() * 2) // Placeholder for business alerts
       },
       {
@@ -346,7 +382,7 @@ const AppLayout: React.FC = () => {
         path: '/finance/payments',
         label: 'Payment Management',
         icon: <CreditCard size={20} />,
-        roles: ['admin'],
+        roles: ['admin', 'customer-care'],
         count: Math.floor(Math.random() * 2) // Placeholder for payment alerts
       },
 
@@ -355,7 +391,7 @@ const AppLayout: React.FC = () => {
         path: '/lats/whatsapp-chat',
         label: 'WhatsApp Chat',
         icon: <MessageCircle size={20} />,
-        roles: ['admin', 'customer-care'],
+        roles: ['admin'],
         count: Math.floor(Math.random() * 2) // Placeholder for chat alerts
       },
       {
@@ -369,7 +405,7 @@ const AppLayout: React.FC = () => {
         path: '/instagram/dm',
         label: 'Instagram DMs',
         icon: <Instagram size={20} />,
-        roles: ['admin', 'customer-care'],
+        roles: ['admin'],
         count: Math.floor(Math.random() * 5) // Placeholder for unread Instagram messages
       },
 

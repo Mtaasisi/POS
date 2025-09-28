@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useDynamicDataStore } from '../lib/data/dynamicDataStore';
+import { salesAnalyticsService } from '../lib/salesAnalyticsService';
 
 interface SalesMetrics {
   totalSales: number;
@@ -93,29 +94,36 @@ export const usePOSAnalytics = () => {
     const totalTransactions = todaySales.length;
     const averageTransaction = totalTransactions > 0 ? totalSales / totalTransactions : 0;
     
-    // Mock top products (in real app, this would come from database)
-    const topProducts = [
-      { name: 'iPhone 14 Pro', sales: 45000 },
-      { name: 'Samsung Galaxy S23', sales: 38000 },
-      { name: 'MacBook Pro 14"', sales: 32000 },
-      { name: 'AirPods Pro', sales: 28000 },
-      { name: 'iPad Air', sales: 22000 }
-    ];
-    
-    // Mock low stock items
-    const lowStockItems = [
-      { name: 'iPhone 14 Pro', stock: 3 },
-      { name: 'Samsung Galaxy S23', stock: 5 },
-      { name: 'MacBook Pro 14"', stock: 2 },
-      { name: 'AirPods Pro', stock: 8 },
-      { name: 'iPad Air', stock: 4 }
-    ];
+    // Calculate top products from real sales data
+    const topProducts = todaySales.reduce((acc: { [key: string]: { name: string; sales: number } }, sale) => {
+      if (sale.items) {
+        sale.items.forEach((item: any) => {
+          const productName = item.productName || item.name || 'Unknown Product';
+          if (acc[productName]) {
+            acc[productName].sales += item.total || item.totalPrice || 0;
+          } else {
+            acc[productName] = {
+              name: productName,
+              sales: item.total || item.totalPrice || 0
+            };
+          }
+        });
+      }
+      return acc;
+    }, {});
+
+    const topProductsArray = Object.values(topProducts)
+      .sort((a, b) => b.sales - a.sales)
+      .slice(0, 5);
+
+    // Get low stock items from inventory (placeholder - would need inventory integration)
+    const lowStockItems = [];
 
     return {
       totalSales,
       totalTransactions,
       averageTransaction,
-      topProducts,
+      topProducts: topProductsArray,
       lowStockItems
     };
   }, [sales]);
@@ -229,26 +237,20 @@ export const usePOSAnalytics = () => {
       setIsLoadingAnalytics(true);
       setAnalyticsError('');
 
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // Generate mock trend data
-      const trend = [];
-      const today = new Date();
+      // Fetch real sales trend data
+      const period = days <= 7 ? '7d' : days <= 30 ? '30d' : '90d';
+      const salesData = await salesAnalyticsService.getSalesAnalytics(period);
       
-      for (let i = days - 1; i >= 0; i--) {
-        const date = new Date(today);
-        date.setDate(date.getDate() - i);
-        
-        const sales = Math.floor(Math.random() * 20) + 5; // 5-25 sales per day
-        const revenue = sales * (Math.floor(Math.random() * 50000) + 20000); // 20K-70K per sale
-        
-        trend.push({
-          date: date.toISOString().split('T')[0],
-          sales,
-          revenue
-        });
+      if (!salesData || !salesData.dailySales) {
+        return [];
       }
+
+      // Map the daily sales data to the expected format
+      const trend = salesData.dailySales.map(day => ({
+        date: day.date,
+        sales: day.transactions,
+        revenue: day.sales
+      }));
 
       return trend;
     } catch (error) {

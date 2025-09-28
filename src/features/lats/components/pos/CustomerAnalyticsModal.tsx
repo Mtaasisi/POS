@@ -5,6 +5,7 @@ import GlassButton from '../../../shared/components/ui/GlassButton';
 import { 
   LoyaltyCustomer 
 } from '../../../../lib/customerLoyaltyService';
+import { supabase } from '../../../../lib/supabaseClient';
 import { toast } from 'react-hot-toast';
 
 interface CustomerAnalyticsModalProps {
@@ -66,31 +67,93 @@ const CustomerAnalyticsModal: React.FC<CustomerAnalyticsModalProps> = ({
     try {
       setLoading(true);
       
-      // TODO: Replace with real database queries
-      // This should fetch actual customer analytics from your database
-      // including purchase history, points history, visit patterns, etc.
+      // Fetch real customer analytics from database - FIXED QUERY
+      const { data: customerSales, error: salesError } = await supabase
+        .from('lats_sales')
+        .select(`
+          id,
+          sale_number,
+          customer_id,
+          total_amount,
+          status,
+          created_at,
+          lats_sale_items(
+            id,
+            product_id,
+            variant_id,
+            quantity,
+            unit_price,
+            total_price
+          )
+        `)
+        .eq('customer_id', customer.id)
+        .order('created_at', { ascending: false });
+
+      if (salesError) {
+        console.error('Error fetching customer sales:', salesError);
+        toast.error('Failed to load customer sales data');
+        return;
+      }
+
+      // Calculate analytics from real data
+      const purchaseHistory = (customerSales || []).map(sale => ({
+        id: sale.id,
+        date: sale.created_at,
+        amount: sale.total_amount,
+        items: sale.lats_sale_items?.length || 0,
+        status: sale.status
+      }));
+
+      // Calculate visit patterns by day of week
+      const visitPattern = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(day => {
+        const daySales = (customerSales || []).filter(sale => {
+          const saleDay = new Date(sale.created_at).toLocaleDateString('en-US', { weekday: 'long' });
+          return saleDay === day;
+        });
+        
+        const visits = daySales.length;
+        const averageSpend = visits > 0 ? daySales.reduce((sum, sale) => sum + sale.total_amount, 0) / visits : 0;
+        
+        return { day, visits, averageSpend };
+      });
+
+      // Calculate product preferences
+      const productPreferences = (customerSales || []).reduce((acc: { [key: string]: number }, sale) => {
+        if (sale.lats_sale_items) {
+          sale.lats_sale_items.forEach((item: any) => {
+            const category = item.lats_products?.lats_categories?.name || 'Other';
+            acc[category] = (acc[category] || 0) + item.quantity;
+          });
+        }
+        return acc;
+      }, {});
+
+      const productPreferencesArray = Object.entries(productPreferences).map(([category, count]) => ({
+        category,
+        count: count as number
+      })).sort((a, b) => b.count - a.count);
+
+      // Calculate lifetime value and other metrics
+      const lifetimeValue = (customerSales || []).reduce((sum, sale) => sum + sale.total_amount, 0);
+      const totalOrders = (customerSales || []).length;
+      const averageOrderValue = totalOrders > 0 ? lifetimeValue / totalOrders : 0;
       
-      // For now, show empty analytics until database integration is complete
+      const lastPurchase = customerSales?.[0]?.created_at;
+      const daysSinceLastPurchase = lastPurchase ? 
+        Math.floor((Date.now() - new Date(lastPurchase).getTime()) / (1000 * 60 * 60 * 24)) : 0;
+
       const analytics: CustomerAnalytics = {
-        purchaseHistory: [],
-        pointsHistory: [],
-        visitPattern: [
-          { day: 'Monday', visits: 0, averageSpend: 0 },
-          { day: 'Tuesday', visits: 0, averageSpend: 0 },
-          { day: 'Wednesday', visits: 0, averageSpend: 0 },
-          { day: 'Thursday', visits: 0, averageSpend: 0 },
-          { day: 'Friday', visits: 0, averageSpend: 0 },
-          { day: 'Saturday', visits: 0, averageSpend: 0 },
-          { day: 'Sunday', visits: 0, averageSpend: 0 }
-        ],
-        productPreferences: [],
-        lifetimeValue: 0,
-        averageOrderValue: 0,
-        totalOrders: 0,
-        daysSinceLastPurchase: 0,
-        pointsEarned: 0,
-        pointsRedeemed: 0,
-        tierUpgrades: 0
+        purchaseHistory,
+        pointsHistory: [], // Would need points system integration
+        visitPattern,
+        productPreferences: productPreferencesArray,
+        lifetimeValue,
+        averageOrderValue,
+        totalOrders,
+        daysSinceLastPurchase,
+        pointsEarned: 0, // Would need points system integration
+        pointsRedeemed: 0, // Would need points system integration
+        tierUpgrades: 0 // Would need loyalty system integration
       };
 
       setAnalytics(analytics);

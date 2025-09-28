@@ -1,10 +1,12 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { safeQuery, SupabaseErrorHandler } from '../utils/supabaseErrorHandler';
 
 export interface PaymentRow {
   id: string;
   customer_id: string;
   amount: number;
+  currency: string; // Added currency field
   method: 'cash' | 'card' | 'transfer';
   device_id?: string | null;
   payment_date: string;
@@ -63,6 +65,16 @@ export const PaymentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setLoading(true);
     
     try {
+      // Check if user is authenticated first
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError || !user) {
+        console.warn('User not authenticated, skipping payment fetch');
+        setPayments([]);
+        setLoading(false);
+        return;
+      }
+      
       // Fetch device payments (repair payments)
       const { data: devicePaymentsData, error: devicePaymentsError } = await supabase
         .from('customer_payments')
@@ -73,19 +85,49 @@ export const PaymentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         `)
         .order('payment_date', { ascending: false });
       
-      // Fetch POS sales
-      const { data: posSalesData, error: posSalesError } = await supabase
-        .from('lats_sales')
-        .select(`
-          *,
-          customers(name),
-          lats_sale_items(
-            *,
-            lats_products(name, description),
-            lats_product_variants(name, sku, attributes)
-          )
-        `)
-        .order('created_at', { ascending: false });
+      if (devicePaymentsError) {
+        console.error('Error fetching customer payments:', devicePaymentsError);
+        // If table doesn't exist, show helpful message
+        if (devicePaymentsError.message.includes('relation "public.customer_payments" does not exist')) {
+          console.warn('customer_payments table does not exist. Please run the SQL migration in Supabase dashboard.');
+        }
+        // If it's an authentication error, show helpful message
+        if (devicePaymentsError.message.includes('JWT') || devicePaymentsError.message.includes('auth')) {
+          console.warn('Authentication error. Please log in again.');
+        }
+      }
+      
+      // Fetch POS sales with improved error handling
+      let finalPosSalesData: any[] = [];
+      let finalPosSalesError: any = null;
+
+      try {
+        // Skip complex query entirely to avoid 400 errors
+        // Go directly to simple query that we know works
+        console.log('🔧 Using simplified POS sales query to avoid 400 errors...');
+        
+        const posSalesResult = await safeQuery(
+          () => supabase
+            .from('lats_sales')
+            .select('*')
+            .order('created_at', { ascending: false }),
+          () => SupabaseErrorHandler.createLatsSalesListFallbackQuery(supabase, 100)
+        );
+
+        if (posSalesResult.error) {
+          console.error('POS sales query failed:', posSalesResult.error);
+          finalPosSalesData = [];
+          finalPosSalesError = posSalesResult.error;
+        } else {
+          finalPosSalesData = posSalesResult.data || [];
+          finalPosSalesError = null;
+          console.log(`✅ Loaded ${finalPosSalesData.length} POS sales (simplified query)`);
+        }
+      } catch (error) {
+        console.error('Unexpected error fetching POS sales:', error);
+        finalPosSalesData = [];
+        finalPosSalesError = error;
+      }
 
       const allPayments: any[] = [];
 
@@ -95,6 +137,7 @@ export const PaymentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           id: payment.id,
           customer_id: payment.customer_id,
           amount: payment.amount,
+          currency: payment.currency || 'TZS', // Default to TZS if not set
           method: payment.method,
           device_id: payment.device_id,
           payment_date: payment.payment_date,
@@ -116,11 +159,12 @@ export const PaymentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
 
       // Transform POS sales
-      if (!posSalesError && posSalesData) {
-        const transformedPOSSales = posSalesData.map((sale: any) => ({
+      if (!finalPosSalesError && finalPosSalesData) {
+        const transformedPOSSales = finalPosSalesData.map((sale: any) => ({
           id: sale.id,
           customer_id: sale.customer_id,
           amount: sale.total_amount,
+          currency: sale.currency || 'TZS', // Default to TZS if not set
           method: sale.payment_method,
           device_id: null,
           payment_date: sale.created_at,
@@ -130,7 +174,7 @@ export const PaymentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           created_by: sale.created_by,
           created_at: sale.created_at,
           device_name: undefined,
-          customer_name: sale.customers?.name || undefined,
+          customer_name: sale.customers?.name || sale.customer_name || undefined,
           source: 'pos_sale',
           // Enhanced POS-specific fields
           orderId: sale.id,
@@ -212,6 +256,34 @@ export const PaymentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   useEffect(() => {
     fetchPayments();
+    
+    // Listen for authentication state changes with debouncing
+    let authTimeout: NodeJS.Timeout;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('Auth state changed:', event, session?.user?.id);
+      
+      // Clear previous timeout to debounce rapid auth changes
+      if (authTimeout) {
+        clearTimeout(authTimeout);
+      }
+      
+      // Debounce auth state changes to prevent excessive re-renders
+      authTimeout = setTimeout(() => {
+        if (event === 'SIGNED_IN' && session) {
+          fetchPayments();
+        } else if (event === 'SIGNED_OUT') {
+          setPayments([]);
+          setLoading(false);
+        }
+      }, 100); // 100ms debounce
+    });
+    
+    return () => {
+      if (authTimeout) {
+        clearTimeout(authTimeout);
+      }
+      subscription.unsubscribe();
+    };
   }, []);
 
   return (

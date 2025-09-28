@@ -115,25 +115,20 @@ class POSService {
     endDate: string
   ): Promise<{ success: boolean; sales?: POSSale[]; error?: string }> {
     try {
+      // Use simplified query to avoid 400 errors
       const { data: sales, error } = await supabase
         .from('lats_sales')
-        .select(`
-          *,
-          lats_sale_items(
-            *,
-            lats_products(name, description),
-            lats_product_variants(name, sku, attributes)
-          )
-        `)
+        .select('*')
         .gte('created_at', startDate)
         .lte('created_at', endDate)
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('❌ Error fetching sales:', error);
+        console.error('❌ POS service sales query failed:', error);
         return { success: false, error: error.message };
       }
 
+      console.log(`✅ Loaded ${sales?.length || 0} POS service sales`);
       return { success: true, sales: sales || [] };
 
     } catch (error) {
@@ -159,8 +154,22 @@ class POSService {
         .limit(limit);
 
       if (error) {
-        console.error('❌ Error fetching recent sales:', error);
-        return { success: false, error: error.message };
+        console.warn('Complex POS service recent sales query failed, trying simpler query:', error.message);
+        
+        // Fallback to simpler query without joins
+        const { data: simpleSales, error: simpleError } = await supabase
+          .from('lats_sales')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(limit);
+
+        if (simpleError) {
+          console.error('❌ Simple POS service recent sales query also failed:', simpleError);
+          return { success: false, error: simpleError.message };
+        }
+
+        console.log(`✅ Loaded ${simpleSales?.length || 0} POS service recent sales (without joins)`);
+        return { success: true, sales: simpleSales || [] };
       }
 
       return { success: true, sales: sales || [] };

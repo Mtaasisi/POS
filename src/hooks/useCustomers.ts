@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { fetchAllCustomers, fetchAllCustomersSimple, clearRequestCache, checkNetworkStatus, getConnectionQuality } from '../lib/customerApi/core';
 import { Customer } from '../lib/customerApi/types';
+import { retryWithBackoff, isNetworkError } from '../utils/networkErrorHandler';
 
 // Cache for customer data to prevent unnecessary refetches
 const customerDataCache = new Map<string, {
@@ -125,10 +126,9 @@ export function useCustomers(options: UseCustomersOptions = {}): UseCustomersRet
       }
     }
 
-    // Create new request with retry logic for 503 errors
-    const attemptFetch = async (retryCount = 0): Promise<Customer[]> => {
-      const maxRetries = 3;
-      const baseDelay = 2000; // Start with 2 seconds
+    // Create new request with enhanced retry logic for network errors
+    const attemptFetch = async (): Promise<Customer[]> => {
+      return retryWithBackoff(async () => { // Start with 2 seconds
       let fetchTimeout: NodeJS.Timeout | undefined;
       
       try {
@@ -244,13 +244,14 @@ export function useCustomers(options: UseCustomersOptions = {}): UseCustomersRet
         // Remove failed request from cache
         customerDataCache.delete(cacheKeyWithType);
         throw err;
-             } finally {
-         if (fetchTimeout) {
-           clearTimeout(fetchTimeout);
-         }
-         abortControllerRef.current = null;
-       }
-    };
+      } finally {
+        if (fetchTimeout) {
+          clearTimeout(fetchTimeout);
+        }
+        abortControllerRef.current = null;
+      }
+    });
+  };
 
     // Start the fetch with retry logic
     try {

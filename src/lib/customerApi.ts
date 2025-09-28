@@ -51,6 +51,7 @@ export {
 // Additional functions that were in the original file
 import { supabase } from './supabaseClient';
 import { Customer } from '../types';
+import { trackCustomerActivity, reactivateCustomer } from './customerStatusService';
 
 // Function to normalize color tag values (moved here for backward compatibility)
 function normalizeColorTag(colorTag: string): 'new' | 'vip' | 'complainer' | 'purchased' {
@@ -173,7 +174,16 @@ export async function loadCustomerDetails(customerId: string) {
         last_purchase_date,
         total_purchases,
         birthday,
-        referred_by
+        referred_by,
+        total_calls,
+        total_call_duration_minutes,
+        incoming_calls,
+        outgoing_calls,
+        missed_calls,
+        avg_call_duration_minutes,
+        first_call_date,
+        last_call_date,
+        call_loyalty_level
       `)
       .eq('id', customerId)
       .single();
@@ -224,6 +234,16 @@ export async function loadCustomerDetails(customerId: string) {
         totalPurchases: data.total_purchases || 0,
         birthday: data.birthday,
         referredBy: data.referred_by,
+        // Call analytics fields
+        totalCalls: data.total_calls || 0,
+        totalCallDurationMinutes: data.total_call_duration_minutes || 0,
+        incomingCalls: data.incoming_calls || 0,
+        outgoingCalls: data.outgoing_calls || 0,
+        missedCalls: data.missed_calls || 0,
+        avgCallDurationMinutes: data.avg_call_duration_minutes || 0,
+        firstCallDate: data.first_call_date || '',
+        lastCallDate: data.last_call_date || '',
+        callLoyaltyLevel: data.call_loyalty_level || 'Basic',
         // Additional fields for interface compatibility
         customerNotes: [],
         customerPayments: [],
@@ -272,17 +292,45 @@ export async function checkInCustomer(customerId: string, staffId: string): Prom
   try {
     console.log(`📝 Checking in customer: ${customerId} by staff: ${staffId}`);
     
+    // First, check if customer is inactive and reactivate them
+    try {
+      const { data: customer, error: fetchError } = await supabase
+        .from('customers')
+        .select('is_active, name')
+        .eq('id', customerId)
+        .single();
+
+      if (!fetchError && customer && !customer.is_active) {
+        console.log(`🔄 Customer ${customer.name} is inactive, reactivating...`);
+        await reactivateCustomer(customerId);
+        console.log(`✅ Customer ${customer.name} reactivated automatically`);
+      }
+    } catch (reactivationError) {
+      console.warn('⚠️ Failed to check/reactivate customer status:', reactivationError);
+      // Continue with check-in even if reactivation fails
+    }
+    
+    // Record the check-in
     const { error } = await supabase
       .from('customer_checkins')
       .insert([{
         customer_id: customerId,
         staff_id: staffId,
-        checkin_time: new Date().toISOString()
+        checkin_at: new Date().toISOString()
       }]);
     
     if (error) {
       console.error('❌ Error checking in customer:', error);
       return { success: false, message: 'Failed to check in customer' };
+    }
+    
+    // Track customer activity for the check-in
+    try {
+      await trackCustomerActivity(customerId, 'checkin');
+      console.log('📊 Check-in activity tracked successfully');
+    } catch (activityError) {
+      console.warn('⚠️ Failed to track check-in activity:', activityError);
+      // Don't fail the check-in if activity tracking fails
     }
     
     console.log('✅ Customer checked in successfully');

@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useCustomers } from '../../../context/CustomersContext';
+import { matchesPhoneSearch } from '../../../lib/phoneUtils';
 
 interface Customer {
   id: string;
@@ -67,10 +68,12 @@ export const usePOSCustomer = () => {
         }
       }
 
-      // Check phone
-      if (customer.phone && customer.phone.includes(searchTerm)) {
+      // Check phone with enhanced conversion logic using utility
+      if (customer.phone && matchesPhoneSearch(customer.phone, searchTerm)) {
         relevance += 8;
-        if (customer.phone === searchTerm) {
+        const cleanSearchTerm = searchTerm.replace(/[\s\-\(\)]/g, '');
+        const cleanCustomerPhone = customer.phone.replace(/[\s\-\(\)]/g, '');
+        if (cleanCustomerPhone === cleanSearchTerm) {
           relevance += 5;
           matchType = 'exact';
         }

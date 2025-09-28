@@ -9,6 +9,7 @@ import GlassInput from '../../../shared/components/ui/GlassInput';
 import GlassSelect from '../../../shared/components/ui/GlassSelect';
 import GlassButton from '../../../shared/components/ui/GlassButton';
 import AIDescriptionGenerator from '../product/AIDescriptionGenerator';
+import { useBodyScrollLock } from '../../../../hooks/useBodyScrollLock';
 
 import CategoryInput from '../../../shared/components/ui/CategoryInput';
 import GlassBadge from '../../../shared/components/ui/GlassBadge';
@@ -80,6 +81,8 @@ const EditProductModal: React.FC<EditProductModalProps> = ({
   const [product, setProduct] = useState<Product | null>(null);
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
 
+  // Prevent body scroll when modal is open
+  useBodyScrollLock(isOpen);
 
   // Don't render if modal is not open
   if (!isOpen) {

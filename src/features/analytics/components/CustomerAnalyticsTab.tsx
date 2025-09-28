@@ -6,6 +6,7 @@ import {
   ArrowUpRight, ArrowDownRight, Target, Award
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { AnalyticsService } from '../../lats/lib/analyticsService';
 
 interface CustomerAnalyticsTabProps {
   isActive: boolean;
@@ -40,6 +41,7 @@ interface CustomerData {
 const CustomerAnalyticsTab: React.FC<CustomerAnalyticsTabProps> = ({ isActive, timeRange }) => {
   const [customerData, setCustomerData] = useState<CustomerData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isActive) {
@@ -50,41 +52,47 @@ const CustomerAnalyticsTab: React.FC<CustomerAnalyticsTabProps> = ({ isActive, t
   const loadCustomerData = async () => {
     try {
       setLoading(true);
+      setError(null);
       
-      // Mock customer data
-      const mockData: CustomerData = {
-        totalCustomers: 1250,
-        newCustomers: 45,
-        activeCustomers: 890,
-        averageCustomerValue: 85000,
-        customerGrowth: 8.3,
-        topCustomers: [
-          { name: 'John Doe', purchases: 12, totalSpent: 850000, lastPurchase: '2024-01-15' },
-          { name: 'Sarah Smith', purchases: 8, totalSpent: 620000, lastPurchase: '2024-01-14' },
-          { name: 'Mike Johnson', purchases: 15, totalSpent: 1100000, lastPurchase: '2024-01-13' },
-          { name: 'Lisa Brown', purchases: 6, totalSpent: 480000, lastPurchase: '2024-01-12' },
-          { name: 'Alex Wilson', purchases: 10, totalSpent: 750000, lastPurchase: '2024-01-11' }
-        ],
-        customerSegments: [
-          { segment: 'VIP Customers', count: 125, percentage: 10.0, averageValue: 150000 },
-          { segment: 'Regular Customers', count: 450, percentage: 36.0, averageValue: 85000 },
-          { segment: 'Occasional Customers', count: 375, percentage: 30.0, averageValue: 45000 },
-          { segment: 'New Customers', count: 300, percentage: 24.0, averageValue: 25000 }
-        ],
-        customerActivity: [
-          { date: 'Mon', newCustomers: 8, activeCustomers: 145 },
-          { date: 'Tue', newCustomers: 12, activeCustomers: 167 },
-          { date: 'Wed', newCustomers: 6, activeCustomers: 134 },
-          { date: 'Thu', newCustomers: 15, activeCustomers: 189 },
-          { date: 'Fri', newCustomers: 10, activeCustomers: 156 },
-          { date: 'Sat', newCustomers: 18, activeCustomers: 203 },
-          { date: 'Sun', newCustomers: 7, activeCustomers: 123 }
-        ]
+      console.log('📊 Loading customer analytics for period:', timeRange);
+      
+      const customerData = await AnalyticsService.getCustomerAnalytics();
+      
+      if (!customerData) {
+        setError('Failed to load customer analytics data');
+        return;
+      }
+      
+      const customerAnalyticsData: CustomerData = {
+        totalCustomers: customerData.totalCustomers,
+        newCustomers: customerData.newCustomers,
+        activeCustomers: customerData.activeCustomers,
+        averageCustomerValue: customerData.averageCustomerValue,
+        customerGrowth: customerData.customerGrowth,
+        topCustomers: customerData.topCustomers.map(customer => ({
+          name: customer.name,
+          purchases: customer.purchases,
+          totalSpent: customer.totalSpent,
+          lastPurchase: customer.lastPurchase || 'N/A'
+        })),
+        customerSegments: customerData.customerSegments.map(segment => ({
+          segment: segment.segment,
+          count: segment.count,
+          percentage: segment.percentage,
+          averageValue: segment.averageValue
+        })),
+        customerActivity: customerData.customerActivity.map(activity => ({
+          date: activity.date,
+          newCustomers: activity.newCustomers,
+          activeCustomers: activity.activeCustomers
+        }))
       };
       
-      setCustomerData(mockData);
+      setCustomerData(customerAnalyticsData);
+      console.log('✅ Customer analytics data loaded:', customerAnalyticsData);
     } catch (error) {
-      console.error('Error loading customer data:', error);
+      console.error('❌ Error loading customer analytics:', error);
+      setError('Failed to load customer analytics data. Please try again.');
       toast.error('Failed to load customer data');
     } finally {
       setLoading(false);

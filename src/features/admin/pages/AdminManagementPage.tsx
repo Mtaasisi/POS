@@ -12,6 +12,9 @@ import {
   Eye, Download, Upload, RefreshCw, CheckCircle, AlertTriangle, MapPin, Layers
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { useDevices } from '../../../context/DevicesContext';
+import { useCustomers } from '../../../context/CustomersContext';
+import { supabase } from '../../../lib/supabaseClient';
 
 interface AdminSection {
   id: string;
@@ -27,6 +30,8 @@ const AdminManagementPage: React.FC = () => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   const { handleBackClick } = useNavigationHistory();
+  const { addDevice } = useDevices();
+  const { customers } = useCustomers();
   const [activeTab, setActiveTab] = useState<'inventory' | 'system' | 'security' | 'data' | 'communication'>('inventory');
 
   const adminSections: AdminSection[] = [
@@ -233,6 +238,7 @@ const AdminManagementPage: React.FC = () => {
       category: 'communication'
     }
   ];
+
 
   const getTabIcon = (category: string) => {
     switch (category) {

@@ -17,7 +17,7 @@ import {
   RefreshCw,
   X,
   Eye,
-  Grid3X3,
+  LayoutGrid,
   Layers,
   Settings,
   BarChart3,
@@ -349,7 +349,7 @@ const StorageRoomManagementPage: React.FC = () => {
             variant="secondary"
             className="flex items-center gap-2"
           >
-            {viewMode === 'list' ? <Grid3X3 className="w-4 h-4" /> : <Layers className="w-4 h-4" />}
+            {viewMode === 'list' ? <LayoutGrid className="w-4 h-4" /> : <Layers className="w-4 h-4" />}
             {viewMode === 'list' ? 'Grid View' : 'List View'}
           </GlassButton>
           <GlassButton
@@ -531,7 +531,7 @@ const StorageRoomManagementPage: React.FC = () => {
                     className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                     title="Manage Shelves"
                   >
-                    <Grid3X3 className="w-4 h-4" />
+                    <LayoutGrid className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => handleEditRoom(room)}
@@ -627,7 +627,7 @@ const StorageRoomManagementPage: React.FC = () => {
                       className={`px-3 py-1.5 rounded ${viewMode === 'grid' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
                       title="Grid View"
                     >
-                      <Grid3X3 className="w-4 h-4" />
+                      <LayoutGrid className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => setViewMode('list')}
@@ -679,7 +679,7 @@ const StorageRoomManagementPage: React.FC = () => {
                   </div>
                 ) : roomShelves.length === 0 ? (
                   <div className="text-center py-12">
-                    <Grid3X3 className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                    <LayoutGrid className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                     <h3 className="text-lg font-medium text-gray-900 mb-2">No shelves found</h3>
                     <p className="text-gray-600 mb-4">This storage room doesn't have any shelves yet.</p>
                     <GlassButton onClick={handleCreateShelf} className="bg-gradient-to-r from-green-500 to-green-600 text-white">

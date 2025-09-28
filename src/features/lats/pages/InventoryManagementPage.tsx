@@ -90,7 +90,6 @@ const InventoryManagementPage: React.FC = () => {
 
     // Check if user has inventory management permissions
     if (!['admin', 'customer-care'].includes(currentUser.role)) {
-      toast.error('You do not have permission to access inventory management');
       navigate('/dashboard');
       return;
     }

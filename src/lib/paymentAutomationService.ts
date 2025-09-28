@@ -361,8 +361,8 @@ class PaymentAutomationService {
     try {
       return await paymentTrackingService.updatePaymentStatus(
         paymentId,
-        status as 'completed' | 'pending' | 'failed',
-        source as 'device_payment' | 'pos_sale'
+        status as 'completed' | 'pending' | 'failed' | 'stopped' | 'cancelled',
+        source as 'device_payment' | 'pos_sale' | 'purchase_order'
       );
     } catch (error) {
       console.error('Error updating payment status:', error);

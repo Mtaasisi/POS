@@ -34,6 +34,11 @@ const defaultGeneralSettings: GeneralSettings = {
   confirm_delete: true,
   show_confirmations: true,
   enable_sound_effects: true,
+  sound_volume: 0.5,
+  enable_click_sounds: true,
+  enable_cart_sounds: true,
+  enable_payment_sounds: true,
+  enable_delete_sounds: true,
   enable_animations: true,
   enable_caching: true,
   cache_duration: 300,
@@ -372,7 +377,7 @@ export function usePOSSettings<T>(
     const auth = useAuth();
     isAuthenticated = auth?.isAuthenticated || false;
   } catch (err) {
-    console.warn('useAuth not available, using default authentication state');
+
     isAuthenticated = false;
   }
 
@@ -410,11 +415,10 @@ export function usePOSSettings<T>(
           break; // Success, exit retry loop
         } catch (err: any) {
           retryCount++;
-          console.log(`⚠️ Attempt ${retryCount} failed for ${settingsType} settings:`, err.message);
-          
+
           // If it's an authentication error and we haven't exhausted retries, wait and try again
           if ((err.message?.includes('not authenticated') || err.message?.includes('Auth session missing')) && retryCount < maxRetries) {
-            console.log(`⏳ Waiting 1 second before retry ${retryCount + 1}...`);
+
             await new Promise(resolve => setTimeout(resolve, 1000));
             continue;
           }
@@ -427,12 +431,12 @@ export function usePOSSettings<T>(
       if (loadedSettings) {
         // Only log occasionally to reduce spam
         if (Math.random() < 0.1) { // 10% chance to log
-          console.log(`✅ Loaded ${settingsType} settings:`, loadedSettings);
+
         }
         setSettings(loadedSettings as T);
       } else {
         // Use default settings if none found
-        console.log(`⚠️ No ${settingsType} settings found, using defaults:`, defaultSettings);
+
         setSettings(defaultSettings);
       }
     } catch (err) {
@@ -446,9 +450,8 @@ export function usePOSSettings<T>(
 
   // Save settings to database
   const saveSettings = useCallback(async (newSettings: T) => {
-    console.log(`🔧 usePOSSettings.saveSettings called for ${settingsType}`);
-    console.log(`📊 New settings to save:`, newSettings);
-    
+
+
     try {
       setSaving(true);
       setError(null);
@@ -469,20 +472,17 @@ export function usePOSSettings<T>(
       };
       
       const methodName = methodMap[settingsType];
-      console.log(`🔧 Calling POSSettingsService.${methodName}...`);
-      
+
       const savedSettings = await POSSettingsService[methodName](newSettings);
-      
-      console.log(`✅ Save result:`, savedSettings);
-      
+
       if (savedSettings) {
         // Update local state with the saved data from database
         setSettings(savedSettings as T);
-        console.log(`🎉 Settings saved successfully for ${settingsType}`);
+
         toast.success(`${settingsType.charAt(0).toUpperCase() + settingsType.slice(1)} settings saved successfully`);
         
         // Refresh data from database to ensure consistency
-        console.log(`🔄 Refreshing settings from database...`);
+
         await loadSettings();
         
         return true;
@@ -534,7 +534,7 @@ export function usePOSSettings<T>(
         toast.success(`${settingsType.charAt(0).toUpperCase() + settingsType.slice(1)} settings updated successfully`);
         
         // Refresh data from database to ensure consistency
-        console.log(`🔄 Refreshing settings from database after update...`);
+
         await loadSettings();
         
         return true;

@@ -477,15 +477,7 @@ const EnhancedInventoryTab: React.FC<EnhancedInventoryTabProps> = ({
                   return (
                     <tr 
                       key={product.id} 
-                      className="border-b border-gray-200/30 hover:bg-blue-50 cursor-pointer transition-colors"
-                      onClick={(e) => {
-                        // Don't navigate if clicking on checkbox, button, or other interactive elements
-                        if ((e.target as Element).closest('input[type="checkbox"]') || 
-                            (e.target as Element).closest('button')) {
-                          return;
-                        }
-                        navigate(`/lats/products/${product.id}`);
-                      }}
+                      className="border-b border-gray-200/30 hover:bg-blue-50 transition-colors"
                     >
                       <td className="py-4 px-4">
                         <input

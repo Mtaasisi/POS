@@ -71,7 +71,6 @@ const DatabaseConnectionTest: React.FC = () => {
       'lats_storage_rooms',
       'lats_store_shelves',
       'lats_products',
-      'lats_shipping_info',
       'lats_purchase_orders'
     ];
 

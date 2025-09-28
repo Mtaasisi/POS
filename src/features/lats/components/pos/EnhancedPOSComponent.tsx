@@ -779,7 +779,7 @@ const EnhancedPOSComponent: React.FC = () => {
                     : undefined
                 }
                 onPaymentComplete={handlePaymentComplete}
-                disabled={cartItems.length === 0}
+                disabled={cartItems.length === 0 || !selectedCustomer}
                 className="w-full"
                 size="lg"
               />
@@ -788,8 +788,9 @@ const EnhancedPOSComponent: React.FC = () => {
               <GlassButton
                 onClick={handleProcessSale}
                 className="w-full flex items-center justify-center gap-2 py-3"
-                disabled={cartItems.length === 0}
+                disabled={cartItems.length === 0 || !selectedCustomer}
                 variant="outline"
+                title={!selectedCustomer ? "Please select a customer first" : cartItems.length === 0 ? "Add items to cart first" : "Process payment"}
               >
                 <Receipt className="w-5 h-5" />
                 Other Payment Methods - {format.money(cartTotals.total)}

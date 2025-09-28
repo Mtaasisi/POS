@@ -18,7 +18,6 @@ interface CustomerUpdateData {
   birth_month?: string;
   birth_day?: string;
   total_returns?: number;
-  initial_notes?: string;
   location_description?: string;
   national_id?: string;
   points?: number;
@@ -111,7 +110,6 @@ const CustomerDataUpdatePage: React.FC = () => {
           birth_month: customerData.birth_month,
           birth_day: customerData.birth_day,
           total_returns: customerData.total_returns,
-          initial_notes: customerData.initial_notes,
           location_description: customerData.location_description,
           national_id: customerData.national_id,
           points: customerData.points,
@@ -160,7 +158,6 @@ const CustomerDataUpdatePage: React.FC = () => {
         `"${(customer.birth_month || '').replace(/"/g, '""')}"`,
         `"${(customer.birth_day || '').replace(/"/g, '""')}"`,
         customer.total_returns || 0,
-        `"${(customer.initial_notes || '').replace(/"/g, '""')}"`,
         `"${(customer.location_description || '').replace(/"/g, '""')}"`,
         `"${(customer.national_id || '').replace(/"/g, '""')}"`,
         customer.points || 0,
@@ -293,7 +290,7 @@ const CustomerDataUpdatePage: React.FC = () => {
                 <div className="flex justify-between items-start">
                   <div>
                     <h3 className="font-semibold text-gray-900">{customer.name}</h3>
-                    <p className="text-gray-600">{customer.phone}</p>
+                    <p className="text-blue-600 font-medium">{customer.phone}</p>
                     <p className="text-sm text-gray-500">{customer.city}</p>
                   </div>
                   <div className="text-right">

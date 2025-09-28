@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { matchesPhoneSearch } from './phoneUtils';
 
 export interface SearchResult {
   id: string;
@@ -221,7 +222,7 @@ export class SearchService {
       }
       if (filters.phone) {
         results = results.filter(customer => 
-          customer.phone.includes(filters.phone!)
+          customer.phone ? matchesPhoneSearch(customer.phone, filters.phone!) : false
         );
       }
       if (filters.email) {
@@ -366,36 +367,37 @@ export class SearchService {
     }
 
     try {
-      // Use mock data for now since the sales table doesn't exist
-      const mockSales = [
-        {
-          id: '1',
-          totalAmount: 2500000,
-          customerName: 'John Doe',
-          customerPhone: '+255712345678',
-          createdAt: '2024-01-15T10:00:00Z',
-          updatedAt: '2024-01-15T10:00:00Z'
-        },
-        {
-          id: '2',
-          totalAmount: 1800000,
-          customerName: 'Jane Smith',
-          customerPhone: '+255723456789',
-          createdAt: '2024-01-14T14:00:00Z',
-          updatedAt: '2024-01-14T14:00:00Z'
-        },
-        {
-          id: '3',
-          totalAmount: 4500000,
-          customerName: 'Mike Johnson',
-          customerPhone: '+255734567890',
-          createdAt: '2024-01-13T09:00:00Z',
-          updatedAt: '2024-01-13T09:00:00Z'
-        }
-      ];
+      // Fetch real sales data from database
+      const { data: salesData, error: salesError } = await supabase
+        .from('lats_sales')
+        .select(`
+          id,
+          sale_number,
+          customer_name,
+          customer_phone,
+          total_amount,
+          created_at,
+          updated_at
+        `)
+        .order('created_at', { ascending: false })
+        .limit(100); // Limit to recent 100 sales for performance
+
+      if (salesError) {
+        console.error('Error fetching sales for search:', salesError);
+        return [];
+      }
+
+      const realSales = (salesData || []).map(sale => ({
+        id: sale.id,
+        totalAmount: sale.total_amount,
+        customerName: sale.customer_name || 'Walk-in Customer',
+        customerPhone: sale.customer_phone || '',
+        createdAt: sale.created_at,
+        updatedAt: sale.updated_at
+      }));
 
       // Filter by terms if provided
-      let results = mockSales;
+      let results = realSales;
       if (terms.length > 0) {
         results = results.filter(sale => {
           const saleText = [

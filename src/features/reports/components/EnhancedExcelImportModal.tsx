@@ -625,7 +625,7 @@ const EnhancedExcelImportModal: React.FC<EnhancedExcelImportModalProps> = ({
       if (detectedCount > 0) {
         toast.success(`✅ Detected ${detectedCount}/${totalFields} columns: ${mappingReport}`);
       } else {
-        toast.warning('⚠️ Could not detect columns automatically. Please use the template format.');
+        toast('⚠️ Could not detect columns automatically. Please use the template format.');
       }
       
       const data: ImportedCustomer[] = [];

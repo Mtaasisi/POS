@@ -1,26 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Device, DeviceStatus } from '../../../types';
-import GlassCard from './ui/GlassCard';
 import StatusBadge from './ui/StatusBadge';
 import CountdownTimer from './ui/CountdownTimer';
-import { Clock, User, Smartphone, Wrench, Calendar, AlarmClock, CheckSquare, MessageSquare, Edit, AlertTriangle, Star, DollarSign } from 'lucide-react';
+import { 
+  Clock, User, Smartphone, Wrench, Calendar, AlarmClock, CheckSquare, 
+  MessageSquare, Edit, AlertTriangle, Star, DollarSign, Phone, Mail,
+  ChevronRight, MoreVertical, Eye, Zap, Shield, Activity, TrendingUp
+} from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useCustomers } from '../../../context/CustomersContext';
 import { useDevices } from '../../../context/DevicesContext';
-import RepairChecklist from '../../devices/components/RepairChecklist';
 import QuickStatusUpdate from '../../devices/components/QuickStatusUpdate';
-import { updateDeviceInDb } from '../../../lib/deviceApi';
+import { updateDeviceInDb, fixCorruptedDeviceData } from '../../../lib/deviceApi';
 import { toast } from 'react-hot-toast';
 import { supabase } from '../../../lib/supabaseClient';
 
 interface DeviceCardProps {
   device: Device;
   showDetails?: boolean;
-  now?: Date; // Pass the shared timer from parent
+  now?: Date;
 }
 
-// Utility: Sort devices so 'done' and 'failed' are at the bottom, action-needed devices at the top
+// Utility functions
 export function sortDevicesForAction(devices: Device[]) {
   return devices.slice().sort((a, b) => {
     const isADone = a.status === 'done' || a.status === 'failed';
@@ -30,7 +32,6 @@ export function sortDevicesForAction(devices: Device[]) {
   });
 }
 
-// Utility: Remove duplicate devices based on device ID
 export function removeDuplicateDevices<T extends { id: string }>(devices: T[]): T[] {
   const seen = new Set<string>();
   return devices.filter(device => {
@@ -42,25 +43,29 @@ export function removeDuplicateDevices<T extends { id: string }>(devices: T[]): 
   });
 }
 
-// Usage: Sort your device list with sortDevicesForAction before rendering DeviceCard.
-// Usage: Remove duplicates with removeDuplicateDevices before rendering DeviceCard.
-
 const DeviceCard: React.FC<DeviceCardProps> = React.memo(({ device, showDetails = true, now = new Date() }) => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { customers } = useCustomers();
-  const { getDeviceOverdueStatus } = useDevices();
   
-  // Add state for technician quick actions
-  const [showRepairChecklist, setShowRepairChecklist] = useState(false);
+  // Safely access devices context with error handling
+  let getDeviceOverdueStatus: any = null;
+  
+  try {
+    const devicesContext = useDevices();
+    getDeviceOverdueStatus = devicesContext?.getDeviceOverdueStatus || null;
+  } catch (error) {
+    console.warn('Devices context not available:', error);
+  }
+  
+  // State management
   const [showQuickStatusUpdate, setShowQuickStatusUpdate] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingDevice, setEditingDevice] = useState<Partial<Device>>({});
   const [saving, setSaving] = useState(false);
-
-  // Add state for customer information
   const [customerInfo, setCustomerInfo] = useState<any>(null);
   const [loadingCustomer, setLoadingCustomer] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
 
   // Fetch detailed customer information
   useEffect(() => {
@@ -88,443 +93,337 @@ const DeviceCard: React.FC<DeviceCardProps> = React.memo(({ device, showDetails 
     fetchCustomerInfo();
   }, [device.customerId]);
 
-
-  
-  // Format date to readable format
-  const formatDate = (dateString: string | undefined | null) => {
-    if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return 'N/A';
-    const options: Intl.DateTimeFormatOptions = {
-      year: '2-digit', // two-digit year
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    };
-    return date.toLocaleDateString(undefined, options);
+  // Helper functions
+  const getDisplayModel = () => {
+    return `${device.brand} ${device.model}`.trim();
   };
 
-  // Animated dot state for fade in/out
-  const [dotVisible, setDotVisible] = useState(true);
-  useEffect(() => {
-    const interval = setInterval(() => setDotVisible(v => !v), 500);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Minimal countdown string: only two most significant units, with color
-  const getMinimalCountdown = (dateString: string) => {
-    const target = new Date(dateString);
-    const diff = target.getTime() - now.getTime();
-    let color = '#22c55e'; // green-500
-    if (diff <= 0) color = '#ef4444'; // red-500
-    else if (diff < 24 * 60 * 60 * 1000) color = '#f59e42'; // orange-400
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
-    const minutes = Math.floor((diff / (1000 * 60)) % 60);
-    const seconds = Math.floor((diff / 1000) % 60);
-    
-    // Hide the "Overdue" text in countdown - let the status display handle it
-    let units = [];
-    if (days > 0) units.push(`${days}d`);
-    if (hours > 0 || days > 0) units.push(`${hours}h`);
-    if (minutes > 0 && days === 0) units.push(`${minutes}m`);
-    if (days === 0 && hours === 0) units.push(`${seconds}s`);
-    units = units.slice(0, 2);
-    const dot = <span style={{opacity: dotVisible ? 1 : 0.2, transition: 'opacity 0.3s', fontWeight: 'bold', color}}>.</span>;
-    return (
-      <span style={{fontFamily: 'monospace', fontSize: '0.95em', letterSpacing: '0.5px', color, fontWeight: 600}}>
-        {units.map((u, i) => (
-          <React.Fragment key={i}>
-            {u}
-            {i < units.length - 1 && dot}
-          </React.Fragment>
-        ))}
-      </span>
-    );
+  const formatDuration = (duration: number) => {
+    if (duration < 60) return `${duration}s`;
+    if (duration < 3600) return `${Math.floor(duration / 60)}m`;
+    return `${Math.floor(duration / 3600)}h`;
   };
-  
-  // Track if the card has been opened (clicked)
-  const [opened, setOpened] = useState(false);
-  useEffect(() => {
-    // Check localStorage for opened state
-    if (localStorage.getItem(`devicecard_opened_${device.id}`) === '1') {
-      setOpened(true);
+
+  const getStatusColor = (status: DeviceStatus) => {
+    switch (status) {
+      case 'pending': return 'from-yellow-400 to-orange-500';
+      case 'in-progress': return 'from-blue-400 to-blue-600';
+      case 'repair-complete': return 'from-green-400 to-green-600';
+      case 'returned-to-customer-care': return 'from-teal-400 to-teal-600';
+      case 'done': return 'from-gray-400 to-gray-600';
+      case 'failed': return 'from-red-400 to-red-600';
+      default: return 'from-gray-400 to-gray-600';
     }
-  }, [device.id]);
+  };
+
+  const getStatusIcon = (status: DeviceStatus) => {
+    switch (status) {
+      case 'pending': return <Clock className="w-4 h-4" />;
+      case 'in-progress': return <Wrench className="w-4 h-4" />;
+      case 'repair-complete': return <CheckSquare className="w-4 h-4" />;
+      case 'returned-to-customer-care': return <User className="w-4 h-4" />;
+      case 'done': return <CheckSquare className="w-4 h-4" />;
+      case 'failed': return <AlertTriangle className="w-4 h-4" />;
+      default: return <Smartphone className="w-4 h-4" />;
+    }
+  };
+
+  const getPriorityLevel = (status: DeviceStatus) => {
+    switch (status) {
+      case 'failed': return 'high';
+      case 'repair-complete': return 'high';
+      case 'returned-to-customer-care': return 'medium';
+      case 'in-progress': return 'medium';
+      case 'pending': return 'low';
+      case 'done': return 'low';
+      default: return 'low';
+    }
+  };
+
+  const priorityLevel = getPriorityLevel(device.status);
+
+  // Calculate durations
+  const technicianDuration = device.transitions?.reduce((total, transition) => {
+    if (transition.fromStatus === 'assigned' && transition.toStatus === 'repair-complete') {
+      const start = new Date(transition.timestamp).getTime();
+      const end = new Date(device.updatedAt || Date.now()).getTime();
+      return total + (end - start) / 1000;
+    }
+    return total;
+  }, 0) || 0;
+
+  const handoverDuration = device.transitions?.reduce((total, transition) => {
+    if (transition.fromStatus === 'repair-complete' && transition.toStatus === 'returned-to-customer-care') {
+      const start = new Date(transition.timestamp).getTime();
+      const end = new Date(device.updatedAt || Date.now()).getTime();
+      return total + (end - start) / 1000;
+    }
+    return total;
+  }, 0) || 0;
 
   const handleCardClick = () => {
-    // Mark as opened in localStorage
-    localStorage.setItem(`devicecard_opened_${device.id}`, '1');
-    setOpened(true);
     navigate(`/devices/${device.id}`);
   };
 
-  const handleStatusUpdate = (newStatus: DeviceStatus) => {
-    // This will be handled by the parent component through context
-    // For now, we'll just close the modal
-    setShowRepairChecklist(false);
-    setShowQuickStatusUpdate(false);
-  };
-
-  const handleSaveDevice = async () => {
-    if (!editingDevice.id) return;
-    
-    setSaving(true);
-    try {
-      await updateDeviceInDb(editingDevice.id, editingDevice);
-      toast.success('Device updated successfully!');
-      setShowEditModal(false);
-      // Refresh the page to show updated data
-      window.location.reload();
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to update device');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-
-
-
-  
-  // Helper to get icon for main action
-
-  
-  // Helper to format duration
-  function formatDuration(ms?: number) {
-    if (!ms || ms < 0 || isNaN(ms)) return '-';
-    const totalSeconds = Math.floor(ms / 1000);
-    const days = Math.floor(totalSeconds / 86400);
-    const hours = Math.floor((totalSeconds % 86400) / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    if (days > 0) return `${days}d ${hours}h ${minutes}m`;
-    if (hours > 0) return `${hours}h ${minutes}m`;
-    return `${minutes}m`;
-  }
-
-  // Helper to get transition time
-  function getTransitionTime(transitions: {toStatus: string, timestamp: string}[] = [], toStatus: string): number | undefined {
-    const t = transitions.find((tr) => tr.toStatus === toStatus);
-    return t ? new Date(t.timestamp).getTime() : undefined;
-  }
-
-  const inRepairTime = getTransitionTime(device.transitions || [], 'in-repair');
-  const repairCompleteTime = getTransitionTime(device.transitions || [], 'repair-complete');
-  const doneTime = getTransitionTime(device.transitions || [], 'done');
-
-  const technicianDuration = (inRepairTime && repairCompleteTime) ? repairCompleteTime - inRepairTime : undefined;
-  const handoverDuration = (repairCompleteTime && doneTime) ? doneTime - repairCompleteTime : undefined;
-  
-  // Helper to get display model name (hide model number for iPhone)
-  const getDisplayModel = () => {
-    if ((device.brand && device.brand.toLowerCase() === 'apple') || (device.model && device.model.toLowerCase().includes('iphone'))) {
-      // Remove model numbers in parentheses, e.g., 'iPhone 7 (A1660, A1778)' => 'iPhone 7'
-      let model = device.model.replace(/\s*\([^)]*A\d{4}[^)]*\)/gi, '');
-      // Also remove trailing model number if present
-      const parts = model.split(' ');
-      if (parts.length > 2 && /^A\d{4,}$/.test(parts[parts.length - 1])) {
-        model = parts.slice(0, -1).join(' ');
-      }
-      return model.trim();
-    }
-    return device.model;
-  };
-  
-  // Minimal live repair timer: only the most significant unit, small font, no extra styling
-  const getMinimalLiveRepairTimer = (ms: number) => {
-    if (!ms || ms < 0 || isNaN(ms)) return '-';
-    const totalSeconds = Math.floor(ms / 1000);
-    const days = Math.floor(totalSeconds / 86400);
-    const hours = Math.floor((totalSeconds % 86400) / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = Math.floor((totalSeconds % 60));
-    if (days > 0) return `${days}d`;
-    if (hours > 0) return `${hours}h`;
-    if (minutes > 0) return `${minutes}m`;
-    return `${seconds}s`;
+  const handleEditClick = async (e: React.MouseEvent) => {
+                  e.stopPropagation();
+                  
+                  // Validate device data before opening edit modal
+                  const validStatusValues = [
+                    'assigned', 'diagnosis-started', 'awaiting-parts', 'in-repair',
+                    'reassembled-testing', 'repair-complete', 'returned-to-customer-care', 'done', 'failed'
+                  ];
+                  
+                  if (device.status && !validStatusValues.includes(device.status)) {
+                    console.error('Device has invalid status:', device.status);
+                    toast.error(`Device has invalid status: ${device.status}. Please contact support.`);
+                    return;
+                  }
+                  
+                  if (device.status && device.status.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+                    console.error('Device status field contains UUID instead of valid status:', device.status);
+                    toast.error('Device data is corrupted. Attempting to fix...');
+                    
+                    const fixed = await fixCorruptedDeviceData(device.id);
+                    if (fixed) {
+                      toast.success('Device data fixed! Please refresh the page.');
+                      window.location.reload();
+                    } else {
+                      toast.error('Could not fix device data. Please contact support.');
+                    }
+                    return;
+                  }
+                  
+                  setEditingDevice(device);
+                  setShowEditModal(true);
   };
 
   return (
     <>
-      <GlassCard 
+      <div 
+        className={`
+          relative bg-white rounded-2xl border border-gray-200 shadow-sm
+          transition-all duration-300 ease-out
+          hover:shadow-lg hover:shadow-gray-200/50 hover:-translate-y-1
+          ${isHovered ? 'ring-2 ring-blue-100' : ''}
+          ${priorityLevel === 'high' ? 'border-l-4 border-l-red-400' : ''}
+          ${priorityLevel === 'medium' ? 'border-l-4 border-l-yellow-400' : ''}
+          ${priorityLevel === 'low' ? 'border-l-4 border-l-green-400' : ''}
+        `}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
         onClick={handleCardClick}
-        className={`transform transition-all duration-500 ease-in-out hover:translate-y-[-5px] relative ${showDetails ? '' : 'p-4'}`}
       >
-        {/* Comment count in top-left corner */}
-        {device.remarks && device.remarks.length > 0 && !opened && (
-          <div className="absolute top-1 left-1 z-10">
-            <span className="bg-red-500 text-white text-sm font-bold rounded-full w-7 h-7 flex items-center justify-center border border-white shadow">
-              {device.remarks.length}
-            </span>
-          </div>
-        )}
-        
-        {/* Move intake date to a new prominent line below the device title */}
-        <div className="flex justify-between items-start mb-1 pt-2">
-          <div className="flex items-center gap-2 w-full">
-            <h3 className="font-bold text-base sm:text-lg text-gray-900 truncate overflow-hidden text-ellipsis" title={getDisplayModel()}>{getDisplayModel()}</h3>
-          </div>
-          <div className="flex items-center gap-2">
-            {currentUser?.role === 'admin' && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setEditingDevice(device);
-                  setShowEditModal(true);
-                }}
-                className="p-1 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors duration-200"
+        {/* Header Section */}
+        <div className="p-4 pb-3">
+          <div className="flex items-start justify-between mb-3">
+            {/* Device Info */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${getStatusColor(device.status)} flex items-center justify-center text-white shadow-sm`}>
+                  {getStatusIcon(device.status)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-semibold text-gray-900 text-sm truncate" title={getDisplayModel()}>
+                    {getDisplayModel()}
+                  </h3>
+                  <p className="text-xs text-gray-500 truncate">
+                    {device.serialNumber || 'No Serial'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Status Badge & Actions */}
+            <div className="flex items-center gap-2">
+              {device.remarks && device.remarks.length > 0 && (
+                <div className="relative">
+                  <div className="w-6 h-6 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
+                    {device.remarks.length}
+                  </div>
+                </div>
+              )}
+              
+              {currentUser?.role === 'admin' && (
+                <button
+                  onClick={handleEditClick}
+                  className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200"
                 title="Edit Device"
               >
-                <Edit size={16} />
+                  <Edit size={14} />
               </button>
             )}
+              
             <StatusBadge status={device.status} />
           </div>
         </div>
-        {/* Minimal device issue display */}
+
+          {/* Issue Description */}
         {device.issueDescription && (
-          <div
-            className="pl-2 sm:pl-3 py-1 mb-2 border-l-4 border-red-500 bg-red-50 text-red-800 text-xs sm:text-sm line-clamp-2 uppercase"
-            title={device.issueDescription}
-          >
+            <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-xs text-red-800 font-medium line-clamp-2" title={device.issueDescription}>
             {device.issueDescription}
+              </p>
           </div>
         )}
-        {/* Serial Number and Intake Date */}
-        <div className="flex flex-wrap gap-2 sm:gap-4 mb-2 text-xs text-gray-500">
-          <div>
-            <span className="font-medium">Serial:</span> {device.serialNumber || 'N/A'}
+
+          {/* Customer Information */}
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-6 h-6 bg-gray-100 rounded-full flex items-center justify-center">
+              <User size={12} className="text-gray-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-900 truncate">
+                {customerInfo?.name || device.customerName || 'Unknown Customer'}
+              </p>
+              {device.phoneNumber && (
+                <p className="text-xs text-gray-500 truncate">
+                  {device.phoneNumber}
+                </p>
+              )}
+            </div>
           </div>
-          {/* Overdue Indicator removed */}
-        </div>
-        {showDetails ? (
-          <>
-            <div className="space-y-1 sm:space-y-2 mb-3 sm:mb-4">
-              {/* Enhanced Customer Information */}
-              <div className="flex items-center gap-1 sm:gap-2 text-gray-700">
-                <User size={16} />
-                <span className="text-sm sm:text-base font-medium truncate capitalize">
-                  {customerInfo?.name || device.customerName || 'Unknown Customer'}
-                </span>
-                {customerInfo && (
-                  <div className="flex items-center gap-1">
-                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${
-                      customerInfo.color_tag === 'vip' ? 'bg-purple-100 text-purple-700 border-purple-200' :
-                      customerInfo.color_tag === 'complainer' ? 'bg-red-100 text-red-700 border-red-200' :
-                      customerInfo.color_tag === 'purchased' ? 'bg-green-100 text-green-700 border-green-200' :
-                      'bg-gray-100 text-gray-700 border-gray-200'
-                    }`}>
-                      {customerInfo.color_tag || 'normal'}
-                    </span>
-                  </div>
-                )}
               </div>
               
-
-              
-              {/* Intake Date - Moved above overdue status */}
-              <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm">
-                <Calendar className="text-blue-500" size={14} />
-                <span className="text-gray-700 font-medium">Intake:</span>
-                <span className="font-semibold text-blue-700">{formatDate(device.createdAt || (device as any).created_at)}</span>
-              </div>
-
-              {/* Overdue Status Display */}
+        {/* Status Indicators */}
+        {showDetails && (
+          <div className="px-4 pb-3">
+            {/* Overdue Status */}
               {(() => {
-                // Hide overdue status for completed devices
                 if (device.status === 'done' || device.status === 'failed') {
                   return null;
                 }
                 
-                const overdueStatus = getDeviceOverdueStatus(device);
+              const overdueStatus = getDeviceOverdueStatus?.(device);
+              if (!overdueStatus) return null;
+
                 if (overdueStatus.status === 'completed') {
                   return (
-                    <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-2 rounded-lg bg-green-50 border border-green-200 mt-1">
-                      <CheckSquare className="text-green-600" size={16} />
-                      <span className="text-sm sm:text-base font-semibold text-green-700">Completed</span>
-                    </div>
-                  );
-                } else if (overdueStatus.status === 'no-due-date') {
-                  return (
-                    <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-2 rounded-lg bg-gray-50 border border-gray-200 mt-1">
-                      <Clock className="text-gray-600" size={16} />
-                      <span className="text-sm sm:text-base font-semibold text-gray-700">No Due Date</span>
+                  <div className="flex items-center gap-2 p-2 bg-green-50 border border-green-200 rounded-lg mb-2">
+                    <CheckSquare className="text-green-600" size={14} />
+                    <span className="text-xs font-medium text-green-700">Completed</span>
                     </div>
                   );
                 } else if (overdueStatus.isOverdue) {
                   return (
-                    <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-2 rounded-lg bg-red-50 border border-red-200 mt-1">
-                      <AlertTriangle className="text-red-600" size={16} />
-                      <span className="text-sm sm:text-base font-semibold text-red-700">{overdueStatus.overdueTime}</span>
+                  <div className="flex items-center gap-2 p-2 bg-red-50 border border-red-200 rounded-lg mb-2">
+                    <AlertTriangle className="text-red-600" size={14} />
+                    <span className="text-xs font-medium text-red-700">{overdueStatus.overdueTime}</span>
                     </div>
                   );
                 } else if (overdueStatus.status === 'due-today') {
                   return (
-                    <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-2 rounded-lg bg-orange-50 border border-orange-200 mt-1">
-                      <AlarmClock className="text-orange-600" size={16} />
-                      <span className="text-sm sm:text-base font-semibold text-orange-700">Due Today</span>
+                  <div className="flex items-center gap-2 p-2 bg-orange-50 border border-orange-200 rounded-lg mb-2">
+                    <AlarmClock className="text-orange-600" size={14} />
+                    <span className="text-xs font-medium text-orange-700">Due Today</span>
                     </div>
                   );
                 } else if (overdueStatus.overdueTime) {
                   return (
-                    <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-2 rounded-lg bg-blue-50 border border-blue-200 mt-1">
-                      <Clock className="text-blue-600" size={16} />
-                      <span className="text-sm sm:text-base font-semibold text-blue-700">{overdueStatus.overdueTime}</span>
+                  <div className="flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded-lg mb-2">
+                    <Clock className="text-blue-600" size={14} />
+                    <span className="text-xs font-medium text-blue-700">{overdueStatus.overdueTime}</span>
                     </div>
                   );
                 }
                 return null;
               })()}
 
-            </div>
+            {/* Admin Duration Info */}
             {currentUser?.role === 'admin' && (
-              <div className="mt-1 sm:mt-2 text-xs text-gray-600">
-                <div>Tech job: <span className="font-semibold">{formatDuration(technicianDuration)}</span></div>
-                <div>CC handover: <span className="font-semibold">{formatDuration(handoverDuration)}</span></div>
+              <div className="flex gap-3 text-xs text-gray-500 mb-2">
+                <div className="flex items-center gap-1">
+                  <Wrench size={12} />
+                  <span>Tech: {formatDuration(technicianDuration)}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <User size={12} />
+                  <span>CC: {formatDuration(handoverDuration)}</span>
+                </div>
               </div>
             )}
-
-          </>
-        ) : (
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 text-gray-700">
-              <Smartphone size={16} />
-              <span className="truncate">{device.model}</span>
-            </div>
-            <div className="flex items-center gap-1 text-gray-600 text-xs">
-              <User size={12} />
-              <span className="truncate capitalize">
-                {customerInfo?.name || device.customerName || 'Unknown Customer'}
-              </span>
-            </div>
           </div>
         )}
 
         {/* Technician Quick Actions */}
         {currentUser?.role === 'technician' && showDetails && (
-          <div className="flex gap-2 mt-3 pt-3 border-t border-gray-200">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowRepairChecklist(true);
-              }}
-              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-700 rounded-lg border border-blue-200/50 transition-all duration-200 text-sm font-medium"
-            >
-              <CheckSquare size={16} />
-              Checklist
-            </button>
+          <div className="px-4 pb-4">
+            <div className="flex gap-2">
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 setShowQuickStatusUpdate(true);
               }}
-              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 rounded-lg border border-purple-200/50 transition-all duration-200 text-sm font-medium"
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg border border-purple-200 transition-all duration-200 text-xs font-medium"
             >
-              <MessageSquare size={16} />
+                <MessageSquare size={12} />
               Update
             </button>
+            </div>
           </div>
         )}
-      </GlassCard>
 
-      {/* Repair Checklist Modal */}
-      <RepairChecklist
-        device={device}
-        isOpen={showRepairChecklist}
-        onClose={() => setShowRepairChecklist(false)}
-        onStatusUpdate={handleStatusUpdate}
-      />
+        {/* Hover Indicator */}
+        {isHovered && (
+          <div className="absolute top-4 right-4">
+            <ChevronRight size={16} className="text-gray-400" />
+          </div>
+        )}
+      </div>
 
-      {/* Quick Status Update Modal */}
+      {/* Modals */}
+
       <QuickStatusUpdate
-        device={device}
         isOpen={showQuickStatusUpdate}
         onClose={() => setShowQuickStatusUpdate(false)}
-        onStatusUpdate={handleStatusUpdate}
+        deviceId={device.id}
       />
 
-      {/* Edit Device Modal */}
+      {/* Edit Modal */}
       {showEditModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">Edit Device</h3>
-                <button
-                  onClick={() => setShowEditModal(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Edit Device</h3>
               
-              <form onSubmit={(e) => {
+              <form onSubmit={async (e) => {
                 e.preventDefault();
-                handleSaveDevice();
+                setSaving(true);
+                try {
+                  await updateDeviceInDb(device.id, editingDevice);
+                  toast.success('Device updated successfully');
+                  setShowEditModal(false);
+                } catch (error) {
+                  toast.error('Failed to update device');
+                } finally {
+                  setSaving(false);
+                }
               }}>
                 <div className="space-y-4">
-
-                  
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Model</label>
-                    <input
-                      type="text"
-                      value={editingDevice.model || ''}
-                      onChange={(e) => setEditingDevice({...editingDevice, model: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Serial Number</label>
-                    <input
-                      type="text"
-                      value={editingDevice.serialNumber || ''}
-                      onChange={(e) => setEditingDevice({...editingDevice, serialNumber: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                    <select
+                      value={editingDevice.status || device.status}
+                      onChange={(e) => setEditingDevice({...editingDevice, status: e.target.value as DeviceStatus})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="pending">Pending</option>
+                      <option value="in-progress">In Progress</option>
+                      <option value="repair-complete">Repair Complete</option>
+                      <option value="returned-to-customer-care">Returned to CC</option>
+                      <option value="done">Done</option>
+                      <option value="failed">Failed</option>
+                    </select>
                   </div>
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Issue Description</label>
                     <textarea
-                      value={editingDevice.issueDescription || ''}
+                      value={editingDevice.issueDescription || device.issueDescription || ''}
                       onChange={(e) => setEditingDevice({...editingDevice, issueDescription: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       rows={3}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Expected Return Date</label>
-                    <input
-                      type="date"
-                      value={editingDevice.expectedReturnDate ? editingDevice.expectedReturnDate.split('T')[0] : ''}
-                      onChange={(e) => setEditingDevice({...editingDevice, expectedReturnDate: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                    <select
-                      value={editingDevice.status || ''}
-                      onChange={(e) => setEditingDevice({...editingDevice, status: e.target.value as DeviceStatus})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="assigned">Assigned</option>
-                      <option value="diagnosis-started">Diagnosis Started</option>
-                      <option value="awaiting-parts">Awaiting Parts</option>
-                      <option value="in-repair">In Repair</option>
-                      <option value="reassembled-testing">Reassembled/Testing</option>
-                      <option value="repair-complete">Repair Complete</option>
-                      <option value="returned-to-customer-care">Returned to Customer Care</option>
-                      <option value="done">Done</option>
-                      <option value="failed">Failed</option>
-                    </select>
                   </div>
                 </div>
                 
@@ -532,14 +431,14 @@ const DeviceCard: React.FC<DeviceCardProps> = React.memo(({ device, showDetails 
                   <button
                     type="button"
                     onClick={() => setShowEditModal(false)}
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors duration-200"
+                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors duration-200"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={saving}
-                    className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {saving ? 'Saving...' : 'Save Changes'}
                   </button>
@@ -552,5 +451,7 @@ const DeviceCard: React.FC<DeviceCardProps> = React.memo(({ device, showDetails 
     </>
   );
 });
+
+DeviceCard.displayName = 'DeviceCard';
 
 export default DeviceCard;

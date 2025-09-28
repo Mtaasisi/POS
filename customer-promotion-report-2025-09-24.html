@@ -1,0 +1,1044 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Promotion Analysis Report</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .header { text-align: center; margin-bottom: 30px; }
+        .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .summary-card { background: #f8f9fa; padding: 20px; border-radius: 8px; text-align: center; }
+        .summary-card h3 { margin: 0 0 10px 0; color: #333; }
+        .summary-card .number { font-size: 2em; font-weight: bold; color: #007bff; }
+        .section { margin-bottom: 40px; }
+        .section h2 { color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
+        .customer-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px; }
+        .customer-card { background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #007bff; }
+        .customer-card h4 { margin: 0 0 10px 0; color: #333; }
+        .customer-card .phone { color: #666; font-size: 0.9em; }
+        .customer-card .stats { display: flex; justify-content: space-between; margin-top: 10px; }
+        .customer-card .stat { text-align: center; }
+        .customer-card .stat .label { font-size: 0.8em; color: #666; }
+        .customer-card .stat .value { font-weight: bold; color: #007bff; }
+        .strategy { background: #e3f2fd; padding: 15px; border-radius: 8px; margin-top: 15px; }
+        .strategy h4 { margin: 0 0 10px 0; color: #1976d2; }
+        .reason { background: #fff3e0; padding: 15px; border-radius: 8px; margin-top: 15px; }
+        .reason h4 { margin: 0 0 10px 0; color: #f57c00; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎯 Customer Promotion Analysis Report</h1>
+            <p>Generated on 9/24/2025</p>
+        </div>
+        
+        <div class="summary">
+            <div class="summary-card">
+                <h3>Total Customers</h3>
+                <div class="number">5143</div>
+            </div>
+            <div class="summary-card">
+                <h3>Total Messages</h3>
+                <div class="number">52338</div>
+            </div>
+            <div class="summary-card">
+                <h3>High Value Customers</h3>
+                <div class="number">1672</div>
+            </div>
+            <div class="summary-card">
+                <h3>Loyal Customers</h3>
+                <div class="number">2</div>
+            </div>
+        </div>
+        
+        
+        <div class="section">
+            <h2>High spending customers - offer premium products/services</h2>
+            <div class="reason">
+                <h4>Why Target This Group:</h4>
+                <p>High spending customers - offer premium products/services</p>
+            </div>
+            <div class="strategy">
+                <h4>Recommended Strategy:</h4>
+                <p>VIP treatment, exclusive offers, early access to new products</p>
+            </div>
+            <div class="customer-grid">
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">0755197700</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 1,962,286,140</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">498</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">50%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">255712378850</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 1,121,986,330</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">573</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">60%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">0768985500</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 380,752,409</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">611</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">50%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">255746605561</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 92,304,307</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">363</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">50%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">+255714197700</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 41,850,281</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">37</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">50%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Fella 💸</h4>
+                    <div class="phone">+255714261732</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 33,166,302</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">49</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">50%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">717268500</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 32,379,433</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">14</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">50%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">0711185886</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 29,857,681</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">8</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">50%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>INAUZWA</h4>
+                    <div class="phone">0746813813</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 26,584,037</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">47</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">60%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Emmano Mwilongo</h4>
+                    <div class="phone">+255717364036</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 24,373,396</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">40</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">70%</div>
+                        </div>
+                    </div>
+                </div>
+                
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Regular customers - offer loyalty rewards and bulk discounts</h2>
+            <div class="reason">
+                <h4>Why Target This Group:</h4>
+                <p>Regular customers - offer loyalty rewards and bulk discounts</p>
+            </div>
+            <div class="strategy">
+                <h4>Recommended Strategy:</h4>
+                <p>Volume discounts, loyalty points, referral bonuses</p>
+            </div>
+            <div class="customer-grid">
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">+255754700000</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 0</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">45</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">50%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">+255774700703</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 0</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">10</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">40%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">0754100100</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 13,000</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">33</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">30%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">255767210534</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 0</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">3</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">35%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">+255710682430</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 0</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">180</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">35%</div>
+                        </div>
+                    </div>
+                </div>
+                
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Inactive customers - re-engagement campaigns</h2>
+            <div class="reason">
+                <h4>Why Target This Group:</h4>
+                <p>Inactive customers - re-engagement campaigns</p>
+            </div>
+            <div class="strategy">
+                <h4>Recommended Strategy:</h4>
+                <p>Win-back offers, special discounts, "we miss you" messages</p>
+            </div>
+            <div class="customer-grid">
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">650204348</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 9,781</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">2</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">10%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">772733049</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 294,009</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">4</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">40%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">772738550</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 102,993</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">1</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">30%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">650731258</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 163,613</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">6</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">30%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">659616241</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 544,972</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">5</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">50%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">714383300</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 0</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">1</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">10%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">704753765</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 16,442</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">1</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">10%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">505302134</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 109,934</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">2</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">30%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">613911905</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 2,769</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">2</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">10%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">558163857</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 0</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">1</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">10%</div>
+                        </div>
+                    </div>
+                </div>
+                
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>New customers - welcome offers and onboarding</h2>
+            <div class="reason">
+                <h4>Why Target This Group:</h4>
+                <p>New customers - welcome offers and onboarding</p>
+            </div>
+            <div class="strategy">
+                <h4>Recommended Strategy:</h4>
+                <p>Welcome discounts, first-time buyer offers, service introductions</p>
+            </div>
+            <div class="customer-grid">
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">759646571</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 120,000</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">1</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">30%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">255682419992</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 2,860,000</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">2</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">50%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">606100005</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 30,000</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">1</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">10%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">686131088</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 215,000</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">1</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">40%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">640540256</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 1,615,000</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">1</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">50%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">522655308</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 2,365,000</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">1</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">50%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">255689206260</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 1,675,000</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">1</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">50%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">790886596</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 1,765,000</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">1</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">50%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">255752666614</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 480,000</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">1</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">40%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">255764191191</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 290,000</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">1</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">40%</div>
+                        </div>
+                    </div>
+                </div>
+                
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Customers with complaints - service recovery</h2>
+            <div class="reason">
+                <h4>Why Target This Group:</h4>
+                <p>Customers with complaints - service recovery</p>
+            </div>
+            <div class="strategy">
+                <h4>Recommended Strategy:</h4>
+                <p>Apology offers, service improvements, satisfaction surveys</p>
+            </div>
+            <div class="customer-grid">
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">255653936226</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 298,172</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">24</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">35%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">255718472887</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 300,000</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">15</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">35%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">0754100100</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 13,000</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">33</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">30%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Prissy</h4>
+                    <div class="phone">+255716021991</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 0</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">81</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">5%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Devo</h4>
+                    <div class="phone">+255655141096</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 0</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">265</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">20%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>apa</h4>
+                    <div class="phone">+255611165824</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 0</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">1</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">5%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">600525252</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 0</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">2</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">5%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">+255788413861</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 0</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">3</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">5%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">+255738422543</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 0</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">1</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">5%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Mushi</h4>
+                    <div class="phone">+255652472486</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 0</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">16</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">5%</div>
+                        </div>
+                    </div>
+                </div>
+                
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Loyal customers - retention and advocacy</h2>
+            <div class="reason">
+                <h4>Why Target This Group:</h4>
+                <p>Loyal customers - retention and advocacy</p>
+            </div>
+            <div class="strategy">
+                <h4>Recommended Strategy:</h4>
+                <p>Exclusive benefits, referral programs, premium services</p>
+            </div>
+            <div class="customer-grid">
+                
+                <div class="customer-card">
+                    <h4>🚧 🚧</h4>
+                    <div class="phone">+255718904969</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 11,604,352</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">38</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">75%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="customer-card">
+                    <h4>Unknown Customer</h4>
+                    <div class="phone">+255716656805</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="label">Spent</div>
+                            <div class="value">TZS 1,275,765</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Messages</div>
+                            <div class="value">34</div>
+                        </div>
+                        <div class="stat">
+                            <div class="label">Loyalty</div>
+                            <div class="value">75%</div>
+                        </div>
+                    </div>
+                </div>
+                
+            </div>
+        </div>
+        
+    </div>
+</body>
+</html>

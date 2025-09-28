@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "supabase-database": {
+      "command": "node",
+      "args": ["/Users/mtaasisi/Desktop/LATS CHANCE copy/mcp-supabase-server.js"],
+      "env": {
+        "SUPABASE_URL": "${VITE_SUPABASE_URL}",
+        "SUPABASE_ANON_KEY": "${VITE_SUPABASE_ANON_KEY}",
+        "SUPABASE_SERVICE_ROLE_KEY": "${SUPABASE_SERVICE_ROLE_KEY}"
+      }
+    }
+  }
+}

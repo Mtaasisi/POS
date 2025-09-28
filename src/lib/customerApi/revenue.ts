@@ -31,11 +31,19 @@ export async function fetchCustomerRevenue(customerId: string): Promise<Customer
   try {
     console.log(`💰 Fetching revenue for customer: ${customerId}`);
     
+    // Check if user is authenticated first
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    
+    if (authError || !user) {
+      console.warn('User not authenticated, skipping customer revenue fetch');
+      return [];
+    }
+    
     const { data, error } = await supabase
       .from('customer_payments')
       .select(`
         *,
-        customers!inner(name),
+        customers(name),
         devices(device_name)
       `)
       .eq('customer_id', customerId)
@@ -75,6 +83,22 @@ export async function fetchCustomerRevenue(customerId: string): Promise<Customer
 export async function getCustomerRevenueSummary(customerId: string): Promise<CustomerRevenueSummary> {
   try {
     console.log(`💰 Calculating revenue summary for customer: ${customerId}`);
+    
+    // Check if user is authenticated first
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    
+    if (authError || !user) {
+      console.warn('User not authenticated, skipping customer revenue summary');
+      return {
+        totalRevenue: 0,
+        deviceRevenue: 0,
+        posRevenue: 0,
+        serviceRevenue: 0,
+        consultationRevenue: 0,
+        transactionCount: 0,
+        averageTransaction: 0
+      };
+    }
     
     const { data, error } = await supabase
       .from('customer_payments')
@@ -229,7 +253,7 @@ export async function getRevenueByDateRange(startDate: string, endDate: string):
       .from('customer_revenue')
       .select(`
         *,
-        customers!inner(name),
+        customers(name),
         devices(device_name)
       `)
       .gte('transaction_date', startDate)
@@ -270,7 +294,7 @@ export async function getTopCustomersByRevenue(limit: number = 10): Promise<Arra
       .select(`
         customer_id,
         amount,
-        customers!inner(name)
+        customers(name)
       `);
     
     if (error) {

@@ -166,10 +166,11 @@ const ModernDeviceCard: React.FC<ModernDeviceCardProps> = React.memo(({
                 {device.customerName || 'Unknown Customer'}
               </span>
             </div>
-            {device.phoneNumber && (
-              <div className="flex items-center gap-2 text-xs text-gray-600 ml-11">
-                <PhoneCall className="w-3 h-3 text-gray-500" />
-                <span className="font-mono">{device.phoneNumber}</span>
+            {/* Hide phone number from technicians */}
+            {device.phoneNumber && (currentUser?.role === 'admin' || currentUser?.role === 'customer-care') && (
+              <div className="flex items-center gap-2 text-xs text-blue-600 ml-11">
+                <PhoneCall className="w-3 h-3 text-blue-500" />
+                <span className="font-mono font-medium">{device.phoneNumber}</span>
               </div>
             )}
           </div>
@@ -399,23 +400,28 @@ const ModernDeviceCard: React.FC<ModernDeviceCardProps> = React.memo(({
               <p className="font-medium">{new Date(device.expectedReturnDate).toLocaleDateString()}</p>
             </div>
           </div>
-          {device.depositAmount && (
-            <div className="flex items-center gap-2 text-sm">
-              <DollarSign className="w-4 h-4 text-gray-400" />
-              <div>
-                <p className="text-gray-500">Deposit</p>
-                <p className="font-medium text-green-600">{formatCurrency(parseFloat(device.depositAmount))}</p>
-              </div>
-            </div>
-          )}
-          {device.repairCost && (
-            <div className="flex items-center gap-2 text-sm">
-              <DollarSign className="w-4 h-4 text-gray-400" />
-              <div>
-                <p className="text-gray-500">Repair Cost</p>
-                <p className="font-medium">{formatCurrency(parseFloat(device.repairCost))}</p>
-              </div>
-            </div>
+          {/* Hide financial information from technicians */}
+          {(currentUser?.role === 'admin' || currentUser?.role === 'customer-care') && (
+            <>
+              {device.depositAmount && (
+                <div className="flex items-center gap-2 text-sm">
+                  <DollarSign className="w-4 h-4 text-gray-400" />
+                  <div>
+                    <p className="text-gray-500">Deposit</p>
+                    <p className="font-medium text-green-600">{formatCurrency(parseFloat(device.depositAmount))}</p>
+                  </div>
+                </div>
+              )}
+              {device.repairCost && (
+                <div className="flex items-center gap-2 text-sm">
+                  <DollarSign className="w-4 h-4 text-gray-400" />
+                  <div>
+                    <p className="text-gray-500">Repair Cost</p>
+                    <p className="font-medium">{formatCurrency(parseFloat(device.repairCost))}</p>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
 

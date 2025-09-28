@@ -113,8 +113,7 @@ const InteractiveMessageCharts: React.FC<InteractiveMessageChartsProps> = ({
           sender,
           timestamp,
           status,
-          customer_id,
-          customers!inner(id, name, phone, email)
+          customer_id
         `)
         .eq('user_id', user.id)
         .gte('timestamp', startDate.toISOString())
@@ -210,7 +209,7 @@ const InteractiveMessageCharts: React.FC<InteractiveMessageChartsProps> = ({
         .from('chat_messages')
         .select(`
           customer_id,
-          customers!inner(id, name, phone),
+          customers(id, name, phone),
           timestamp
         `)
         .eq('user_id', userId)

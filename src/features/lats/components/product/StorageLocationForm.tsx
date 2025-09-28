@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MapPin, Grid3X3, Building, Package, X, Check, Search, Filter } from 'lucide-react';
+import { MapPin, LayoutGrid, Building, Package, X, Check, Search, Filter } from 'lucide-react';
 import { storageRoomApi, StorageRoom } from '../../../settings/utils/storageRoomApi';
 import { storeShelfApi, StoreShelf } from '../../../settings/utils/storeShelfApi';
 import { storeLocationApi } from '../../../settings/utils/storeLocationApi';
@@ -508,7 +508,7 @@ const StorageLocationForm: React.FC<StorageLocationFormProps> = ({
                   <div className="relative w-24 h-24 mx-auto mb-8">
                     <div className="absolute inset-0 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full animate-pulse" />
                     <div className="absolute inset-2 bg-white rounded-full flex items-center justify-center">
-                      <Grid3X3 size={36} className="text-gray-400" />
+                      <LayoutGrid size={36} className="text-gray-400" />
                     </div>
                   </div>
                   <h3 className="text-2xl font-bold text-gray-900 mb-4">No Shelves Found</h3>

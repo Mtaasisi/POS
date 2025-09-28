@@ -6,6 +6,8 @@ import {
   ArrowUpRight, ArrowDownRight, Target, Award
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { salesAnalyticsService } from '../../lats/lib/salesAnalyticsService';
+import { AnalyticsService } from '../../lats/lib/analyticsService';
 
 interface BusinessAnalyticsTabProps {
   isActive: boolean;
@@ -66,54 +68,64 @@ const BusinessAnalyticsTab: React.FC<BusinessAnalyticsTabProps> = ({ isActive, t
       setLoading(true);
       setError(null);
       
-      // Mock data - replace with actual API call
-      const mockData: AnalyticsData = {
+      console.log('📊 Loading business analytics for period:', timeRange);
+      
+      // Fetch data from multiple services
+      const [salesData, salesStats, inventoryData, customerData] = await Promise.all([
+        salesAnalyticsService.getSalesAnalytics(timeRange),
+        salesAnalyticsService.getSalesStats(),
+        AnalyticsService.getInventoryAnalytics(),
+        AnalyticsService.getCustomerAnalytics()
+      ]);
+      
+      if (!salesData || !salesStats || !inventoryData || !customerData) {
+        setError('Failed to load analytics data from one or more services');
+        return;
+      }
+      
+      const analyticsData: AnalyticsData = {
         sales: {
-          total: 12500000,
-          today: 450000,
-          thisWeek: 3200000,
-          thisMonth: 12500000,
-          growth: 12.5,
-          topProducts: [
-            { name: 'iPhone Screen Replacement', sales: 45, revenue: 3600000 },
-            { name: 'Laptop Diagnostics', sales: 32, revenue: 480000 },
-            { name: 'Windows Installation', sales: 28, revenue: 700000 },
-            { name: 'Data Recovery', sales: 15, revenue: 1125000 },
-            { name: 'Virus Removal', sales: 42, revenue: 840000 }
-          ]
+          total: salesStats.total_revenue,
+          today: salesStats.today_revenue,
+          thisWeek: salesData.metrics.totalSales,
+          thisMonth: salesStats.this_month_revenue,
+          growth: salesData.metrics.growthRate,
+          topProducts: salesData.topProducts.map(product => ({
+            name: product.name,
+            sales: product.quantity,
+            revenue: product.sales
+          }))
         },
         customers: {
-          total: 1250,
-          new: 45,
-          active: 890,
-          growth: 8.3,
-          topCustomers: [
-            { name: 'John Doe', purchases: 12, totalSpent: 850000 },
-            { name: 'Sarah Smith', purchases: 8, totalSpent: 620000 },
-            { name: 'Mike Johnson', purchases: 15, totalSpent: 1100000 },
-            { name: 'Lisa Brown', purchases: 6, totalSpent: 480000 },
-            { name: 'Alex Wilson', purchases: 10, totalSpent: 750000 }
-          ]
+          total: customerData.totalCustomers,
+          new: customerData.newCustomers,
+          active: customerData.activeCustomers,
+          growth: customerData.customerGrowth,
+          topCustomers: customerData.topCustomers.map(customer => ({
+            name: customer.name,
+            purchases: customer.purchases,
+            totalSpent: customer.totalSpent
+          }))
         },
         inventory: {
-          totalItems: 1247,
-          lowStock: 23,
-          outOfStock: 5,
-          value: 8500000,
-          topCategories: [
-            { name: 'Electronics', items: 456, value: 3200000 },
-            { name: 'Accessories', items: 234, value: 1200000 },
-            { name: 'Tools', items: 189, value: 950000 },
-            { name: 'Software', items: 156, value: 780000 },
-            { name: 'Parts', items: 212, value: 1370000 }
-          ]
+          totalItems: inventoryData.totalProducts,
+          lowStock: inventoryData.lowStockItems,
+          outOfStock: inventoryData.outOfStockItems,
+          value: inventoryData.totalValue,
+          topCategories: inventoryData.topCategories.map(category => ({
+            name: category.name,
+            items: category.items,
+            value: category.value
+          }))
         }
       };
       
-      setAnalyticsData(mockData);
-    } catch (err) {
-      console.error('Error loading analytics data:', err);
-      setError('Failed to load analytics data');
+      setAnalyticsData(analyticsData);
+      console.log('✅ Business analytics data loaded:', analyticsData);
+    } catch (error) {
+      console.error('❌ Error loading business analytics:', error);
+      setError('Failed to load business analytics data. Please try again.');
+      toast.error('Failed to load analytics data');
     } finally {
       setLoading(false);
     }

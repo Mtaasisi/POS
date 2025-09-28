@@ -38,13 +38,13 @@ class DebugManager {
           console.error(prefix, message, ...args);
           break;
         case 'warn':
-          console.warn(prefix, message, ...args);
+
           break;
         case 'info':
-          console.info(prefix, message, ...args);
+
           break;
         case 'debug':
-          console.log(prefix, message, ...args);
+
           break;
       }
     }

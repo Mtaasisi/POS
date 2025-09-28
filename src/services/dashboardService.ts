@@ -329,6 +329,20 @@ class DashboardService {
   // Get financial statistics (updated)
   private async getFinancialStats() {
     try {
+      // Check if user is authenticated first
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError || !user) {
+        console.warn('User not authenticated, returning empty financial stats');
+        return {
+          todayRevenue: 0,
+          weeklyRevenue: 0,
+          monthlyRevenue: 0,
+          totalRevenue: 0,
+          pendingAmount: 0
+        };
+      }
+      
       const today = new Date().toISOString().split('T')[0];
       const weekAgo = new Date();
       weekAgo.setDate(weekAgo.getDate() - 7);
@@ -459,9 +473,42 @@ class DashboardService {
   // Get today's appointments
   async getTodayAppointments(limit: number = 5): Promise<AppointmentSummary[]> {
     try {
-      // Appointments table doesn't exist yet, return empty array for now
-      // TODO: Implement when appointments table is created
-      return [];
+      const today = new Date();
+      const todayString = today.toISOString().split('T')[0]; // YYYY-MM-DD format
+
+      const { data: appointments, error } = await supabase
+        .from('appointments')
+        .select(`
+          id,
+          service_type,
+          status,
+          appointment_date,
+          appointment_time,
+          priority,
+          notes,
+          customers(name, phone)
+        `)
+        .eq('appointment_date', todayString)
+        .order('appointment_time', { ascending: true })
+        .limit(limit);
+
+      if (error) {
+        console.error('Error fetching appointments:', error);
+        return [];
+      }
+
+      return appointments?.map(appointment => ({
+        id: appointment.id,
+        type: appointment.service_type,
+        status: appointment.status,
+        scheduledTime: `${appointment.appointment_date}T${appointment.appointment_time}`,
+        priority: appointment.priority,
+        customerName: appointment.customers?.name || 'Unknown',
+        customerPhone: appointment.customers?.phone || '',
+        deviceName: 'No device', // No device relationship in current schema
+        notes: appointment.notes || ''
+      })) || [];
+
     } catch (error) {
       console.error('Error fetching today appointments:', error);
       return [];
@@ -471,34 +518,39 @@ class DashboardService {
   // Get inventory alerts
   async getInventoryAlerts(limit: number = 5): Promise<InventoryAlert[]> {
     try {
+      // First get all products, then filter in JavaScript since Supabase doesn't support column comparison in filters
       const { data: products, error } = await supabase
         .from('lats_product_variants')
         .select(`
           id, quantity, min_quantity, name
         `)
-        .lte('quantity', supabase.sql`min_quantity`)
-        .order('quantity', { ascending: true })
-        .limit(limit);
+        .order('quantity', { ascending: true });
 
       if (error) throw error;
 
-      return products?.map(p => {
-        const currentStock = p.quantity || 0;
-        const minStock = p.min_quantity || 0;
-        let alertLevel: 'low' | 'critical' | 'out-of-stock' = 'low';
-        
-        if (currentStock === 0) alertLevel = 'out-of-stock';
-        else if (currentStock < minStock * 0.5) alertLevel = 'critical';
-        
-        return {
-          id: p.id,
-          productName: p.name || 'Unknown Product',
-          currentStock,
-          minimumStock: minStock,
-          category: 'General', // Default category since we can't join with products table
-          alertLevel
-        };
-      }) || [];
+      // Filter products where quantity <= min_quantity and apply limit
+      const alerts = products
+        ?.filter(p => (p.quantity || 0) <= (p.min_quantity || 0))
+        ?.slice(0, limit)
+        ?.map(p => {
+          const currentStock = p.quantity || 0;
+          const minStock = p.min_quantity || 0;
+          let alertLevel: 'low' | 'critical' | 'out-of-stock' = 'low';
+          
+          if (currentStock === 0) alertLevel = 'out-of-stock';
+          else if (currentStock < minStock * 0.5) alertLevel = 'critical';
+          
+          return {
+            id: p.id,
+            productName: p.name || 'Unknown Product',
+            currentStock,
+            minimumStock: minStock,
+            category: 'General', // Default category since we can't join with products table
+            alertLevel
+          };
+        }) || [];
+
+      return alerts;
     } catch (error) {
       console.error('Error fetching inventory alerts:', error);
       return [];
@@ -564,6 +616,14 @@ class DashboardService {
   // Get payment activities
   private async getPaymentActivities(limit: number): Promise<RecentActivity[]> {
     try {
+      // Check if user is authenticated first
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError || !user) {
+        console.warn('User not authenticated, returning empty payment activities');
+        return [];
+      }
+      
       const { data: payments, error } = await supabase
         .from('customer_payments')
         .select('id, amount, method, payment_date, customer_id')
@@ -600,6 +660,22 @@ class DashboardService {
   // Get financial summary (updated)
   async getFinancialSummary(): Promise<FinancialSummary> {
     try {
+      // Check if user is authenticated first
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError || !user) {
+        console.warn('User not authenticated, returning empty financial summary');
+        return {
+          totalRevenue: 0,
+          monthlyRevenue: 0,
+          weeklyRevenue: 0,
+          todayRevenue: 0,
+          outstandingAmount: 0,
+          paymentMethods: [],
+          revenueGrowth: 0
+        };
+      }
+      
       const today = new Date().toISOString().split('T')[0];
       const weekAgo = new Date();
       weekAgo.setDate(weekAgo.getDate() - 7);

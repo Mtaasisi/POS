@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Building2, Grid3X3, Plus, Search, Trash2, Copy, Download, ChevronRight, ChevronDown } from "lucide-react";
+import { ArrowLeft, Building2, LayoutGrid, Plus, Search, Trash2, Copy, Download, ChevronRight, ChevronDown } from "lucide-react";
 import { toast } from "react-hot-toast";
 import GlassButton from "../../../../features/shared/components/ui/GlassButton";
 import { supabase } from "../../../../lib/supabaseClient";
@@ -459,7 +459,7 @@ const StorageRoomDetails: React.FC = () => {
             Export CSV
           </GlassButton>
           <GlassButton onClick={() => setShowGenerator(v => !v)} variant="secondary">
-            <Grid3X3 className="w-4 h-4 mr-2" />
+            <LayoutGrid className="w-4 h-4 mr-2" />
             {showGenerator ? "Close Generator" : "Generate Layout"}
           </GlassButton>
           <GlassButton onClick={() => setShowAdd(v => !v)} className="bg-blue-600 text-white">
@@ -556,7 +556,7 @@ const StorageRoomDetails: React.FC = () => {
               ))}
               <div>
                 <GlassButton onClick={handleGenerateFromRows} className="bg-purple-600 text-white">
-                  <Grid3X3 className="w-4 h-4 mr-2" />
+                  <LayoutGrid className="w-4 h-4 mr-2" />
                   Generate Shelves
                 </GlassButton>
               </div>

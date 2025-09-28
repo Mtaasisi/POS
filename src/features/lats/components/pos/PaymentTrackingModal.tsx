@@ -12,6 +12,7 @@ import {
   ReconciliationRecord,
   SoldItem
 } from '../../../../lib/paymentTrackingService';
+import { useBodyScrollLock } from '../../../../hooks/useBodyScrollLock';
 
 interface PaymentTrackingModalProps {
   isOpen: boolean;
@@ -601,6 +602,9 @@ const PaymentTrackingModal: React.FC<PaymentTrackingModalProps> = ({ isOpen, onC
         return 'text-orange-600 bg-orange-100';
       case 'failed':
         return 'text-red-600 bg-red-100';
+      case 'stopped':
+      case 'cancelled':
+        return 'text-purple-600 bg-purple-100';
       default:
         return 'text-gray-600 bg-gray-100';
     }
@@ -609,12 +613,14 @@ const PaymentTrackingModal: React.FC<PaymentTrackingModalProps> = ({ isOpen, onC
   // Handle payment action
   const handlePaymentAction = async (paymentId: string, action: string, source: 'device_payment' | 'pos_sale') => {
     try {
-      let newStatus: 'completed' | 'pending' | 'failed';
+      let newStatus: 'completed' | 'pending' | 'failed' | 'stopped' | 'cancelled';
       
       if (action === 'confirm') {
         newStatus = 'completed';
       } else if (action === 'reject') {
         newStatus = 'failed';
+      } else if (action === 'stop' || action === 'cancel') {
+        newStatus = 'stopped';
       } else {
         return;
       }
@@ -651,6 +657,9 @@ const PaymentTrackingModal: React.FC<PaymentTrackingModalProps> = ({ isOpen, onC
       }
     }
   };
+
+  // Prevent body scroll when modal is open
+  useBodyScrollLock(isOpen);
 
   if (!isOpen) return null;
 

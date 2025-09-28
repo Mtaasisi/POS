@@ -20,6 +20,11 @@ export interface GeneralSettings {
   confirm_delete: boolean;
   show_confirmations: boolean;
   enable_sound_effects: boolean;
+  sound_volume: number;
+  enable_click_sounds: boolean;
+  enable_cart_sounds: boolean;
+  enable_payment_sounds: boolean;
+  enable_delete_sounds: boolean;
   enable_animations: boolean;
   enable_caching: boolean;
   cache_duration: number;
@@ -428,14 +433,14 @@ export class POSSettingsAPI {
     if (currentUserCache && (Date.now() - currentUserCache.timestamp) < USER_CACHE_DURATION) {
       // Only log cached user access occasionally to reduce spam
       if (Math.random() < 0.01) { // 1% chance to log
-        console.log(`🔐 Using cached user:`, { id: currentUserCache.user.id, email: currentUserCache.user.email });
+
       }
       return currentUserCache.user;
     }
     
     // If there's already a refresh in progress, wait for it
     if (cacheRefreshPromise) {
-      console.log(`⏳ Waiting for existing auth refresh...`);
+
       return await cacheRefreshPromise;
     }
     
@@ -451,8 +456,7 @@ export class POSSettingsAPI {
 
   // Separate method for actual auth refresh
   private static async performAuthRefresh() {
-    console.log(`🔐 Getting current user from Supabase auth...`);
-    
+
     // Get current session first
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     
@@ -461,7 +465,7 @@ export class POSSettingsAPI {
     }
     
     if (!session) {
-      console.log(`⚠️ No active session found, trying to get user...`);
+
     }
     
     const { data: { user }, error } = await supabase.auth.getUser();
@@ -469,16 +473,12 @@ export class POSSettingsAPI {
     if (error) {
       console.error(`❌ Auth error:`, error);
     }
-    
-    console.log(`👤 Auth response:`, { user: user ? { id: user.id, email: user.email } : null, error });
-    
+
     if (!user) {
       console.error(`❌ User not authenticated`);
       throw new Error('User not authenticated');
     }
-    
-    console.log(`✅ User authenticated:`, { id: user.id, email: user.email });
-    
+
     // Cache the user
     currentUserCache = { user, timestamp: Date.now() };
     return user;
@@ -487,7 +487,7 @@ export class POSSettingsAPI {
   // Clear user cache (call this on logout or when needed)
   static clearUserCache() {
     currentUserCache = null;
-    console.log(`🧹 User cache cleared`);
+
   }
 
   // Get default settings for a specific table
@@ -607,9 +607,7 @@ export class POSSettingsAPI {
     try {
       const user = await this.getCurrentUser();
       const tableName = SETTINGS_TABLES[tableKey];
-      
-      console.log(`🔍 Loading ${tableKey} settings for user ${user.id} from table ${tableName}`);
-      
+
       // First, try to get existing records
       const { data: existingData, error: existingError } = await supabase
         .from(tableName)
@@ -617,11 +615,10 @@ export class POSSettingsAPI {
         .eq('user_id', user.id);
 
       if (existingError) {
-        console.log(`⚠️ Error checking existing ${tableKey} settings:`, existingError);
-        
+
         // Handle 406 Not Acceptable errors (RLS policy issues)
         if (existingError.code === '406' || existingError.message?.includes('Not Acceptable')) {
-          console.log(`⚠️ 406 error for ${tableKey} settings - RLS policy issue, returning default settings`);
+
           return this.getDefaultSettings(tableKey, user.id) as T;
         }
         
@@ -633,7 +630,7 @@ export class POSSettingsAPI {
       // Check if we have existing records
       if (existingData && existingData.length > 0) {
         if (existingData.length === 1) {
-          console.log(`✅ Successfully loaded ${tableKey} settings:`, existingData[0]);
+
           return existingData[0] as T;
         } else {
           console.log(`⚠️ Multiple ${tableKey} settings found (${existingData.length} records), using the first one`);
@@ -643,8 +640,7 @@ export class POSSettingsAPI {
       }
 
       // No existing records found, create a default one
-      console.log(`📝 No existing ${tableKey} settings found, creating default record`);
-      
+
       const defaultRecord = this.getDefaultSettings(tableKey, user.id);
       
       const { data: insertData, error: insertError } = await supabase
@@ -658,7 +654,7 @@ export class POSSettingsAPI {
         // Return default settings even if insert fails
         return defaultRecord as T;
       } else {
-        console.log(`✅ Created default record for ${tableKey}:`, insertData);
+
         return insertData as T;
       }
     } catch (error) {
@@ -679,22 +675,18 @@ export class POSSettingsAPI {
     tableKey: SettingsTableKey,
     settings: Omit<T, 'id' | 'user_id' | 'created_at' | 'updated_at'>
   ): Promise<T | null> {
-    console.log(`🔧 POSSettingsAPI.saveSettings called for ${tableKey}`);
-    console.log(`📊 Settings data:`, settings);
-    
+
+
     try {
-      console.log(`👤 Getting current user...`);
+
       const user = await this.getCurrentUser();
-      console.log(`👤 Current user:`, user);
-      
+
       const tableName = SETTINGS_TABLES[tableKey];
-      console.log(`🗃️ Table name: ${tableName}`);
-      
+
       // Note: Table existence check removed as information_schema is not accessible via REST API
-      console.log(`🔍 Proceeding with settings operation for table: ${tableName}`);
-      
+
       // Check if settings already exist
-      console.log(`🔍 Checking for existing settings for user ${user.id}...`);
+
       const { data: existing, error: checkError } = await supabase
         .from(tableName)
         .select('id')
@@ -705,17 +697,12 @@ export class POSSettingsAPI {
         console.error(`❌ Error checking existing settings:`, checkError);
       }
 
-      console.log(`📋 Existing settings:`, existing);
-
       if (existing) {
         // Update existing settings
-        console.log(`🔄 Updating existing settings...`);
+
         // Remove id field from update data to avoid conflicts
         const { id, ...updateData } = settings;
-        console.log(`📝 Update data:`, {
-          ...updateData,
-          user_id: user.id
-        });
+
         const { data, error } = await supabase
           .from(tableName)
           .update({
@@ -725,8 +712,6 @@ export class POSSettingsAPI {
           .eq('user_id', user.id)
           .select()
           .single();
-
-        console.log(`🗃️ Database update response:`, { data, error });
 
         if (error) {
           console.error(`❌ Error updating ${tableKey} settings:`, error);
@@ -743,12 +728,10 @@ export class POSSettingsAPI {
           throw error;
         }
 
-        console.log(`✅ Settings updated successfully in database:`, data);
-        console.log(`📊 Updated record ID:`, data.id);
-        console.log(`🕒 Updated at:`, data.updated_at);
-        
+
+
         // Verify the data was actually updated by reading it back
-        console.log(`🔍 Verifying data was updated in database...`);
+
         const { data: verifyData, error: verifyError } = await supabase
           .from(tableName)
           .select('*')
@@ -758,13 +741,13 @@ export class POSSettingsAPI {
         if (verifyError) {
           console.error(`❌ Verification failed:`, verifyError);
         } else {
-          console.log(`✅ Data verification successful:`, verifyData);
-          console.log(`📊 Verified record updated in database with ID:`, verifyData.id);
-          console.log(`🕒 Last updated:`, verifyData.updated_at);
+
+
+
         }
         
         // Show total count of records in the table
-        console.log(`📊 Getting total record count...`);
+
         const { count, error: countError } = await supabase
           .from(tableName)
           .select('id', { count: 'exact', head: true });
@@ -772,18 +755,14 @@ export class POSSettingsAPI {
         if (countError) {
           console.error(`❌ Error getting count:`, countError);
         } else {
-          console.log(`📈 Total records in ${tableName}: ${count}`);
+
         }
         
         return data as T;
       } else {
         // Insert new settings
-        console.log(`➕ Inserting new settings...`);
-        console.log(`📝 Insert data:`, {
-          ...settings,
-          user_id: user.id
-        });
-        
+
+
         const { data, error } = await supabase
           .from(tableName)
           .insert({
@@ -792,8 +771,6 @@ export class POSSettingsAPI {
           })
           .select()
           .single();
-
-        console.log(`🗃️ Database insert response:`, { data, error });
 
         if (error) {
           console.error(`❌ Error creating ${tableKey} settings:`, error);
@@ -810,12 +787,10 @@ export class POSSettingsAPI {
           throw error;
         }
 
-        console.log(`✅ Settings created successfully in database:`, data);
-        console.log(`📊 New record ID:`, data.id);
-        console.log(`🕒 Created at:`, data.created_at);
-        
+
+
         // Verify the data was actually saved by reading it back
-        console.log(`🔍 Verifying data was saved to database...`);
+
         const { data: verifyData, error: verifyError } = await supabase
           .from(tableName)
           .select('*')
@@ -825,12 +800,12 @@ export class POSSettingsAPI {
         if (verifyError) {
           console.error(`❌ Verification failed:`, verifyError);
         } else {
-          console.log(`✅ Data verification successful:`, verifyData);
-          console.log(`📊 Verified record exists in database with ID:`, verifyData.id);
+
+
         }
         
         // Show total count of records in the table
-        console.log(`📊 Getting total record count...`);
+
         const { count, error: countError } = await supabase
           .from(tableName)
           .select('id', { count: 'exact', head: true });
@@ -838,11 +813,10 @@ export class POSSettingsAPI {
         if (countError) {
           console.error(`❌ Error getting count:`, countError);
         } else {
-          console.log(`📈 Total records in ${tableName}: ${count}`);
+
         }
-        
-        console.log(`🎉 SAVE OPERATION COMPLETED SUCCESSFULLY`);
-        console.log(`📊 Final result:`, data);
+
+
         console.log(`🕒 Operation completed at:`, new Date().toISOString());
         return data as T;
       }
@@ -1028,8 +1002,8 @@ export const POSSettingsService = {
   // General Settings
   loadGeneralSettings: () => POSSettingsAPI.loadSettings<GeneralSettings>('general'),
   saveGeneralSettings: (settings: Omit<GeneralSettings, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => {
-    console.log(`🔧 POSSettingsService.saveGeneralSettings called`);
-    console.log(`📊 Settings:`, settings);
+
+
     return POSSettingsAPI.saveSettings('general', settings);
   },
   updateGeneralSettings: (updates: Partial<GeneralSettings>) => 

@@ -3,6 +3,7 @@ import { BarChart3, TrendingUp, DollarSign, Users, Package, Download, X, Refresh
 import GlassCard from '../../../shared/components/ui/GlassCard';
 import GlassButton from '../../../shared/components/ui/GlassButton';
 import { salesAnalyticsService, SalesAnalyticsData } from '../../lib/salesAnalyticsService';
+import { useBodyScrollLock } from '../../../../hooks/useBodyScrollLock';
 
 interface SalesAnalyticsModalProps {
   isOpen: boolean;
@@ -10,7 +11,7 @@ interface SalesAnalyticsModalProps {
 }
 
 const SalesAnalyticsModal: React.FC<SalesAnalyticsModalProps> = ({ isOpen, onClose }) => {
-  const [analyticsPeriod, setAnalyticsPeriod] = useState<'1d' | '7d' | '30d' | '90d'>('7d');
+  const [analyticsPeriod, setAnalyticsPeriod] = useState<'1d' | '7d' | '30d' | '90d'>('1d');
   const [analyticsData, setAnalyticsData] = useState<SalesAnalyticsData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +66,9 @@ const SalesAnalyticsModal: React.FC<SalesAnalyticsModalProps> = ({ isOpen, onClo
     a.click();
     window.URL.revokeObjectURL(url);
   };
+
+  // Prevent body scroll when modal is open
+  useBodyScrollLock(isOpen);
 
   if (!isOpen) return null;
 

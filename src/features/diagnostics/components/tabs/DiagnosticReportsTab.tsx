@@ -27,7 +27,7 @@ const DiagnosticReportsTab: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'in_progress' | 'completed' | 'submitted_for_review'>('all');
 
   useEffect(() => {
-    if (currentUser && ['admin', 'technician'].includes(currentUser.role)) {
+    if (currentUser && ['admin'].includes(currentUser.role)) {
       loadData();
     }
   }, [currentUser]);
@@ -74,7 +74,7 @@ const DiagnosticReportsTab: React.FC = () => {
     toast('Export functionality coming soon...');
   };
 
-  if (!currentUser || !['admin', 'technician'].includes(currentUser.role)) {
+  if (!currentUser || !['admin'].includes(currentUser.role)) {
     return (
       <GlassCard className="p-6">
         <div className="text-center">

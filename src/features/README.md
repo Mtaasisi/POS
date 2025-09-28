@@ -65,13 +65,14 @@ feature-name/
 
 ### 4. Devices (`features/devices/`)
 **Purpose:** Device management and tracking
-- **Pages:** NewDevicePage, DeviceDetailPage
-- **Components:** DeviceCard, DeviceDetailHeader, BarcodeScanner, RepairChecklist, StatusUpdateForm
+- **Pages:** NewDevicePage
+- **Components:** DeviceCard, DeviceDetailHeader, BarcodeScanner, StatusUpdateForm, DiagnosticChecklistModal
 
 ### 5. Diagnostics (`features/diagnostics/`)
 **Purpose:** Diagnostic tools and reports
 - **Pages:** AssignedDiagnosticsPage, NewDiagnosticRequestPage, DiagnosticReportsPage, DiagnosticDevicePage
 - **Components:** DiagnosticChecklist, DiagnosticDeviceCard
+- **Note:** Device repair diagnostics now use DiagnosticChecklistModal from devices feature for consistency
 
 
 
@@ -82,7 +83,7 @@ feature-name/
 
 ### 7. Inventory (`features/inventory/`)
 **Purpose:** Inventory and product management
-- **Pages:** InventoryManagementPage, NewInventoryPage, ProductDetailPage, ProductEditPage, SparePartsPage
+- **Pages:** InventoryManagementPage, NewInventoryPage, ProductDetailPage, ProductEditPage, InventorySparePartsPage
 - **Components:** InventoryDashboard, SparePartUsageModal
 
 ### 8. Backup (`features/backup/`)
