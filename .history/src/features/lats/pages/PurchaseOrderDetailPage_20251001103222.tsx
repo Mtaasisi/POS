@@ -2965,45 +2965,46 @@ TERMS AND CONDITIONS:
                                 <Send className="w-4 h-4" />
                                 Send to Supplier
                               </button>
-                            </>
-                          )}
 
-                          {/* Step 3: Sent - Waiting for supplier confirmation */}
-                          {purchaseOrder.status === 'sent' && (
-                            <>
-                              <div className="text-center py-4">
-                                <Send className="w-12 h-12 text-blue-500 mx-auto mb-3" />
-                                <h3 className="text-lg font-semibold text-white mb-2">Sent to Supplier</h3>
-                                <p className="text-gray-300 text-sm mb-4">
-                                  Waiting for supplier confirmation
-                                </p>
-                              </div>
-                              
+                              {/* Quick skip to received for testing */}
                               <button
                                 onClick={async () => {
                                   try {
                                     const success = await PurchaseOrderService.updateOrderStatus(
                                       purchaseOrder.id,
-                                      'confirmed',
+                                      'received',
                                       currentUser?.id || ''
                                     );
                                     if (success) {
-                                      toast.success('Order confirmed by supplier');
+                                      toast.success('Status updated to received - Ready for quality check!');
                                       await loadPurchaseOrder();
                                     } else {
                                       toast.error('Failed to update order status');
                                     }
                                   } catch (error) {
-                                    toast.error('Failed to confirm order');
+                                    toast.error('Failed to update order status');
                                   }
                                 }}
-                                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium text-sm"
+                                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors font-medium text-sm"
                               >
-                                <CheckCircle className="w-4 h-4" />
-                                Mark as Confirmed
+                                <Zap className="w-4 h-4" />
+                                Skip to Received (Testing)
                               </button>
+                            </>
+                          )}
 
-                              {/* Make Payment button */}
+                          {/* Step 3: Approved (sent/confirmed) - Must pay before receiving */}
+                          {(purchaseOrder.status === 'sent' || purchaseOrder.status === 'confirmed') && (
+                            <>
+            {/* Debug logging */}
+            {console.log('🔍 PurchaseOrderDetailPage: Payment status check:', {
+              status: purchaseOrder.status,
+              paymentStatus: purchaseOrder.paymentStatus,
+              totalPaid: purchaseOrder.totalPaid,
+              purchaseOrder: purchaseOrder
+            })}
+                              
+                              {/* Show payment button if not fully paid */}
                               {((purchaseOrder.paymentStatus === 'unpaid' || purchaseOrder.paymentStatus === 'partial') || !purchaseOrder.paymentStatus) && (
                                 <button
                                   onClick={handleMakePayment}
@@ -3014,7 +3015,7 @@ TERMS AND CONDITIONS:
                                 </button>
                               )}
                               
-                              {/* Cancel Order button */}
+                              {/* Cancel Order button - only show if not paid */}
                               {((purchaseOrder.paymentStatus === 'unpaid' || purchaseOrder.paymentStatus === 'partial') || !purchaseOrder.paymentStatus) && (
                                 <button
                                   onClick={handleCancelOrder}
@@ -3024,63 +3025,15 @@ TERMS AND CONDITIONS:
                                   Cancel Order
                                 </button>
                               )}
-                            </>
-                          )}
-
-                          {/* Step 4: Confirmed - Ready to ship */}
-                          {purchaseOrder.status === 'confirmed' && (
-                            <>
-                              <div className="text-center py-4">
-                                <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-3" />
-                                <h3 className="text-lg font-semibold text-white mb-2">Confirmed by Supplier</h3>
-                                <p className="text-gray-300 text-sm mb-4">
-                                  Order confirmed and ready to ship
-                                </p>
-                              </div>
                               
-                              <button
-                                onClick={async () => {
-                                  try {
-                                    const success = await PurchaseOrderService.updateOrderStatus(
-                                      purchaseOrder.id,
-                                      'shipped',
-                                      currentUser?.id || ''
-                                    );
-                                    if (success) {
-                                      toast.success('Order marked as shipped');
-                                      await loadPurchaseOrder();
-                                    } else {
-                                      toast.error('Failed to update order status');
-                                    }
-                                  } catch (error) {
-                                    toast.error('Failed to update shipping status');
-                                  }
-                                }}
-                                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium text-sm"
-                              >
-                                <Truck className="w-4 h-4" />
-                                Mark as Shipped
-                              </button>
-
-                              {/* Make Payment button */}
-                              {((purchaseOrder.paymentStatus === 'unpaid' || purchaseOrder.paymentStatus === 'partial') || !purchaseOrder.paymentStatus) && (
+                              {/* Only show receive if fully paid */}
+                              {(purchaseOrder.paymentStatus === 'paid') && (
                                 <button
-                                  onClick={handleMakePayment}
-                                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors font-medium text-sm"
+                                  onClick={handleReceive}
+                                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium text-sm"
                                 >
-                                  <CreditCard className="w-4 h-4" />
-                                  Make Payment
-                                </button>
-                              )}
-                              
-                              {/* Cancel Order button */}
-                              {((purchaseOrder.paymentStatus === 'unpaid' || purchaseOrder.paymentStatus === 'partial') || !purchaseOrder.paymentStatus) && (
-                                <button
-                                  onClick={handleCancelOrder}
-                                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium text-sm"
-                                >
-                                  <XCircle className="w-4 h-4" />
-                                  Cancel Order
+                                  <CheckSquare className="w-4 h-4" />
+                                  Receive Order
                                 </button>
                               )}
                             </>
@@ -3147,7 +3100,7 @@ TERMS AND CONDITIONS:
                               <strong>Debug:</strong> Quality Check button not showing. Current status: <strong>{purchaseOrder.status}</strong>. 
                               Button only shows for 'received', 'quality_checked', or 'completed' status.
                               <br />
-                              <strong>Valid statuses:</strong> draft → pending_approval → approved → sent → confirmed → shipped → received → quality_checked → completed
+                              <strong>Valid statuses:</strong> draft → pending_approval → approved → sent → confirmed → processing → shipped → received → quality_checked → completed
                             </div>
                           )}
 
