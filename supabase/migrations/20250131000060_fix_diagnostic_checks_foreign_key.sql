@@ -91,3 +91,5 @@ COMMENT ON COLUMN diagnostic_checks.image_url IS 'URL to any images taken during
 
 
 
+
+
