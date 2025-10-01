@@ -96,4 +96,6 @@ tmp/
 # Exclude specific large files
 crm_system/database/
 GitHub-Backup/
-*.pdf
+*.pdftigopesa.pdf
+crm_system/database/crm.db
+crm_system/
