@@ -1,0 +1,26 @@
+{
+  "name": "lats-thumbnail-scripts",
+  "version": "1.0.0",
+  "description": "Scripts for analyzing and fixing thumbnail issues in LATS inventory system",
+  "main": "analyze-thumbnails.js",
+  "scripts": {
+    "analyze": "node analyze-thumbnails.js",
+    "fix": "node fix-thumbnails.js",
+    "regenerate": "node regenerate-thumbnails.js",
+    "install-deps": "npm install"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.38.0",
+    "dotenv": "^16.3.1",
+    "sharp": "^0.32.6"
+  },
+  "devDependencies": {},
+  "keywords": [
+    "thumbnails",
+    "inventory",
+    "lats",
+    "image-processing"
+  ],
+  "author": "LATS Team",
+  "license": "MIT"
+}

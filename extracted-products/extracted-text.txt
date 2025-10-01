@@ -1,0 +1,47 @@
+
+PRODUCT CATALOG - ACCOUNTING VOUCHER
+
+Product Name: Samsung Galaxy S23
+Description: Latest Samsung smartphone with advanced camera
+SKU: SAM-GS23-001
+Category: Electronics
+Cost Price: 850,000 TZS
+Selling Price: 1,200,000 TZS
+Stock Quantity: 50
+Min Stock Level: 5
+Supplier: Samsung Electronics
+Specifications:
+- Screen Size: 6.1 inches
+- Storage: 128GB
+- RAM: 8GB
+- Camera: 50MP Main Camera
+
+Product Name: iPhone 15 Pro
+Description: Apple's flagship smartphone with titanium design
+SKU: APP-IP15P-001
+Category: Electronics
+Cost Price: 1,200,000 TZS
+Selling Price: 1,800,000 TZS
+Stock Quantity: 30
+Min Stock Level: 3
+Supplier: Apple Inc
+Specifications:
+- Screen Size: 6.1 inches
+- Storage: 256GB
+- RAM: 8GB
+- Camera: 48MP Main Camera
+
+Product Name: Dell XPS 13 Laptop
+Description: Premium ultrabook with 13-inch display
+SKU: DEL-XPS13-001
+Category: Computers
+Cost Price: 2,500,000 TZS
+Selling Price: 3,500,000 TZS
+Stock Quantity: 15
+Min Stock Level: 2
+Supplier: Dell Technologies
+Specifications:
+- Processor: Intel Core i7
+- RAM: 16GB
+- Storage: 512GB SSD
+- Display: 13.4-inch 4K

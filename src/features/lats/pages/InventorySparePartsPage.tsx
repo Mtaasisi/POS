@@ -899,7 +899,7 @@ const InventorySparePartsPage: React.FC = () => {
                         images={part.images ? part.images.map((url, index) => ({
                           id: `spare-part-${part.id}-${index}`,
                           url: url,
-                          thumbnailUrl: url,
+                          thumbnailUrl: url, // TODO: Generate proper thumbnail URL
                           fileName: `spare-part-${index + 1}`,
                           fileSize: 0,
                           isPrimary: index === 0,
@@ -1036,7 +1036,7 @@ const InventorySparePartsPage: React.FC = () => {
                               images={part.images ? part.images.map((url, index) => ({
                                 id: `spare-part-${part.id}-${index}`,
                                 url: url,
-                                thumbnailUrl: url,
+                                thumbnailUrl: url, // TODO: Generate proper thumbnail URL
                                 fileName: `spare-part-${index + 1}`,
                                 fileSize: 0,
                                 isPrimary: index === 0,
