@@ -19,7 +19,8 @@ import {
   Cpu, Palette, Ruler, Unplug, Battery, Monitor, Camera, FileSpreadsheet,
   Truck, RefreshCw, Settings
 } from 'lucide-react';
-import { toast } from '../../../lib/toastUtils';
+import { toast } from 'react-hot-toast';
+import { logPurchaseOrderError, validateProductId, withErrorHandling } from '../lib/errorLogger';
 // XLSX will be imported dynamically when needed
 import { useInventoryStore } from '../stores/useInventoryStore';
 import { PurchaseOrder } from '../types/inventory';
