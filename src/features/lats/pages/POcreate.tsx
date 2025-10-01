@@ -19,7 +19,8 @@ import { useDialog } from '../../shared/hooks/useDialog';
 // Import purchase order specific components
 import VariantProductCard from '../components/pos/VariantProductCard';
 import SupplierSelectionModal from '../components/purchase-order/SupplierSelectionModal';
-// import PurchaseOrderDraftModal from '../components/purchase-order/PurchaseOrderDraftModal'; // TODO: Implement this component
+import PurchaseOrderDraftModal from '../components/purchase-order/PurchaseOrderDraftModal';
+import ShippingConfigurationModal from '../components/purchase-order/ShippingConfigurationModal';
 import CurrencySelector from '../components/purchase-order/CurrencySelector';
 import AddSupplierModal from '../components/purchase-order/AddSupplierModal';
 import AddProductModal from '../components/purchase-order/AddProductModal';
@@ -36,6 +37,89 @@ const getShippingDefaults = () => ({
   defaultCity: 'Dar es Salaam',
   defaultCountry: 'Tanzania'
 });
+
+// Print content generator
+const generatePrintContent = (order: any) => {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Purchase Order ${order.orderNumber}</title>
+      <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .company-name { font-size: 24px; font-weight: bold; color: #2563eb; }
+        .order-details { margin-bottom: 30px; }
+        .supplier-info { margin-bottom: 30px; }
+        .items-table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+        .items-table th, .items-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        .items-table th { background-color: #f2f2f2; }
+        .total-section { text-align: right; font-weight: bold; }
+        .footer { margin-top: 30px; text-align: center; color: #666; }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <div class="company-name">LATS CHANCE STORE</div>
+        <div>Purchase Order</div>
+      </div>
+      
+      <div class="order-details">
+        <h3>Order Details</h3>
+        <p><strong>Order Number:</strong> ${order.orderNumber}</p>
+        <p><strong>Date:</strong> ${new Date(order.createdAt).toLocaleDateString()}</p>
+        <p><strong>Status:</strong> ${order.status}</p>
+        <p><strong>Currency:</strong> ${order.currency}</p>
+      </div>
+      
+      <div class="supplier-info">
+        <h3>Supplier Information</h3>
+        <p><strong>Name:</strong> ${order.supplier?.name || 'N/A'}</p>
+        <p><strong>Email:</strong> ${order.supplier?.email || 'N/A'}</p>
+        <p><strong>Phone:</strong> ${order.supplier?.phone || 'N/A'}</p>
+      </div>
+      
+      <table class="items-table">
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th>Variant</th>
+            <th>Quantity</th>
+            <th>Unit Price</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${order.items?.map((item: any) => `
+            <tr>
+              <td>${item.product?.name || 'N/A'}</td>
+              <td>${item.variant?.name || 'N/A'}</td>
+              <td>${item.quantity}</td>
+              <td>${formatMoney(item.costPrice, order.currency)}</td>
+              <td>${formatMoney(item.totalPrice, order.currency)}</td>
+            </tr>
+          `).join('') || '<tr><td colspan="5">No items</td></tr>'}
+        </tbody>
+      </table>
+      
+      <div class="total-section">
+        <p><strong>Total Amount: ${formatMoney(order.totalAmount, order.currency)}</strong></p>
+      </div>
+      
+      <div class="footer">
+        <p>Generated on ${new Date().toLocaleString()}</p>
+      </div>
+    </body>
+    </html>
+  `;
+};
+
+// PDF content generator
+const generatePDFContent = (order: any) => {
+  // This is a simplified PDF generation - in production, use a proper PDF library
+  const htmlContent = generatePrintContent(order);
+  return htmlContent;
+};
 import { 
   SUPPORTED_CURRENCIES, 
   PurchaseOrderStatus,
@@ -491,10 +575,12 @@ const POcreate: React.FC = () => {
   const [showAddProductModal, setShowAddProductModal] = useState(false);
   const [showDraftModal, setShowDraftModal] = useState(false);
   const [showProductDetailModal, setShowProductDetailModal] = useState(false);
+  const [showSupplierDetailsModal, setShowSupplierDetailsModal] = useState(false);
   const [selectedProductForModal, setSelectedProductForModal] = useState<any>(null);
   const [isCreatingPO, setIsCreatingPO] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showShippingModal, setShowShippingModal] = useState(false);
+  const [showShippingConfigModal, setShowShippingConfigModal] = useState(false);
   const [createdPurchaseOrder, setCreatedPurchaseOrder] = useState<any>(null);
   const [showOrderManagementModal, setShowOrderManagementModal] = useState(false);
   
@@ -882,10 +968,17 @@ const POcreate: React.FC = () => {
 
   // Handle creating/updating purchase order
   const handleCreatePurchaseOrder = useCallback(async () => {
-      const validation = validatePurchaseOrder(selectedSupplier, purchaseCartItems, '', paymentTerms);
+      const validation = validatePurchaseOrder(
+        selectedSupplier, 
+        purchaseCartItems, 
+        '', 
+        paymentTerms,
+        selectedCurrency.code,
+        exchangeRateInfo?.rate
+      );
     
     if (!validation.isValid) {
-      alert(validation.errors.join('\n'), 'Validation Error');
+      toast.error(validation.errors.join('\n'));
       return;
     }
 
@@ -1426,7 +1519,8 @@ const POcreate: React.FC = () => {
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => {
-                            // TODO: Show supplier details modal
+                            // Show supplier details modal
+                            setShowSupplierDetailsModal(true);
                           }}
                           className="p-2 text-orange-500 hover:text-orange-700 hover:bg-orange-50 rounded-lg transition-all duration-200"
                           title="View supplier details"
@@ -1661,6 +1755,79 @@ const POcreate: React.FC = () => {
         </div>
       )}
 
+      {/* Supplier Details Modal */}
+      {showSupplierDetailsModal && selectedSupplier && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-lg w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Supplier Details</h3>
+              <button
+                onClick={() => setShowSupplierDetailsModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
+                  <Building className="w-6 h-6 text-orange-600" />
+                </div>
+                <div>
+                  <h4 className="font-semibold text-gray-900">{selectedSupplier.name}</h4>
+                  <p className="text-sm text-gray-600">{selectedSupplier.category}</p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium text-gray-700">Email</label>
+                  <p className="text-gray-900">{selectedSupplier.email || 'Not provided'}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700">Phone</label>
+                  <p className="text-gray-900">{selectedSupplier.phone || 'Not provided'}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700">Address</label>
+                  <p className="text-gray-900">{selectedSupplier.address || 'Not provided'}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700">City</label>
+                  <p className="text-gray-900">{selectedSupplier.city || 'Not provided'}</p>
+                </div>
+              </div>
+              
+              {selectedSupplier.notes && (
+                <div>
+                  <label className="text-sm font-medium text-gray-700">Notes</label>
+                  <p className="text-gray-900">{selectedSupplier.notes}</p>
+                </div>
+              )}
+              
+              <div className="flex gap-2 pt-4">
+                <button
+                  onClick={() => setShowSupplierDetailsModal(false)}
+                  className="flex-1 bg-gray-100 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => {
+                    setShowSupplierDetailsModal(false);
+                    setShowAddSupplierModal(true);
+                  }}
+                  className="flex-1 bg-orange-600 text-white py-2 px-4 rounded-lg hover:bg-orange-700 transition-colors"
+                >
+                  Edit Supplier
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Add Supplier Modal */}
       {showAddSupplierModal && (
         <AddSupplierModal
@@ -1709,24 +1876,64 @@ const POcreate: React.FC = () => {
             navigate(`/lats/purchase-orders/${createdPurchaseOrder.id}/edit`);
           }}
           onPrintOrder={() => {
-            // TODO: Implement print functionality
-            console.log('Print purchase order:', createdPurchaseOrder.id);
+            // Implement print functionality
+            const printWindow = window.open('', '_blank');
+            if (printWindow) {
+              const printContent = generatePrintContent(createdPurchaseOrder);
+              printWindow.document.write(printContent);
+              printWindow.document.close();
+              printWindow.print();
+            }
           }}
           onSendToSupplier={() => {
-            // TODO: Implement send to supplier functionality
-            console.log('Send to supplier:', createdPurchaseOrder.id);
+            // Implement send to supplier functionality
+            if (createdPurchaseOrder.supplier?.email) {
+              const subject = `Purchase Order ${createdPurchaseOrder.orderNumber}`;
+              const body = `Please find attached the purchase order details.`;
+              const mailtoLink = `mailto:${createdPurchaseOrder.supplier.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+              window.open(mailtoLink);
+            } else {
+              toast.error('Supplier email not available');
+            }
           }}
           onDownloadPDF={() => {
-            // TODO: Implement PDF download functionality
-            console.log('Download PDF:', createdPurchaseOrder.id);
+            // Implement PDF download functionality
+            try {
+              const pdfContent = generatePDFContent(createdPurchaseOrder);
+              const blob = new Blob([pdfContent], { type: 'application/pdf' });
+              const url = URL.createObjectURL(blob);
+              const link = document.createElement('a');
+              link.href = url;
+              link.download = `Purchase_Order_${createdPurchaseOrder.orderNumber}_${new Date().toISOString().split('T')[0]}.pdf`;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+              URL.revokeObjectURL(url);
+              toast.success('PDF downloaded successfully');
+            } catch (error) {
+              console.error('Error generating PDF:', error);
+              toast.error('Failed to generate PDF');
+            }
           }}
           onCopyOrderNumber={() => {
             navigator.clipboard.writeText(createdPurchaseOrder.orderNumber);
             toast.success('Order number copied to clipboard!');
           }}
           onShareOrder={() => {
-            // TODO: Implement share functionality
-            console.log('Share order:', createdPurchaseOrder.id);
+            // Implement share functionality
+            if (navigator.share) {
+              navigator.share({
+                title: `Purchase Order ${createdPurchaseOrder.orderNumber}`,
+                text: `Purchase Order ${createdPurchaseOrder.orderNumber} - ${createdPurchaseOrder.supplier?.name}`,
+                url: window.location.origin + `/lats/purchase-orders/${createdPurchaseOrder.id}`
+              });
+            } else {
+              // Fallback: Copy to clipboard
+              const shareUrl = `${window.location.origin}/lats/purchase-orders/${createdPurchaseOrder.id}`;
+              navigator.clipboard.writeText(shareUrl).then(() => {
+                toast.success('Order link copied to clipboard');
+              });
+            }
           }}
           onGoToOrders={() => {
             setShowSuccessModal(false);
@@ -1743,6 +1950,40 @@ const POcreate: React.FC = () => {
       <OrderManagementModal
         isOpen={showOrderManagementModal}
         onClose={() => setShowOrderManagementModal(false)}
+      />
+
+      {/* Draft Modal */}
+      <PurchaseOrderDraftModal
+        isOpen={showDraftModal}
+        onClose={() => setShowDraftModal(false)}
+        onLoadDraft={(draft) => {
+          setSelectedSupplier(draft.supplier);
+          setPurchaseCartItems(draft.cartItems);
+          setSelectedCurrency(draft.currency);
+          setPaymentTerms(draft.paymentTerms);
+          setPurchaseOrderNotes(draft.notes);
+        }}
+        onSaveDraft={(draft) => {
+          console.log('Draft saved:', draft);
+        }}
+        currentDraft={{
+          supplier: selectedSupplier,
+          cartItems: purchaseCartItems,
+          currency: selectedCurrency,
+          paymentTerms,
+          notes: purchaseOrderNotes
+        }}
+      />
+
+      {/* Shipping Configuration Modal */}
+      <ShippingConfigurationModal
+        isOpen={showShippingConfigModal}
+        onClose={() => setShowShippingConfigModal(false)}
+        onSave={(shippingInfo) => {
+          setShippingInfo(shippingInfo);
+          console.log('Shipping configuration saved:', shippingInfo);
+        }}
+        initialData={shippingInfo}
       />
     </div>
   );

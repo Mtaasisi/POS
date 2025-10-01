@@ -1,4 +1,5 @@
 import { supabase } from '../../../lib/supabaseClient';
+import { ErrorLogger, logPurchaseOrderError, validateProductId, withErrorHandling } from '../lib/errorLogger';
 
 export interface PurchaseOrderMessage {
   id?: string;
@@ -33,32 +34,75 @@ export class PurchaseOrderService {
   private static readonly MAX_RETRIES = 3;
   private static readonly RETRY_DELAY = 1000; // 1 second
 
-  // Retry mechanism for database operations with connection error handling
+  // Enhanced retry mechanism with detailed error logging and fallback operations
   private static async retryOperation<T>(
     operation: () => Promise<T>,
     operationName: string,
-    retries: number = this.MAX_RETRIES
+    retries: number = this.MAX_RETRIES,
+    fallbackOperation?: () => Promise<T>
   ): Promise<T> {
     try {
-      return await operation();
+      console.log(`🔄 Starting ${operationName} (attempt ${this.MAX_RETRIES - retries + 1}/${this.MAX_RETRIES})`);
+      const result = await operation();
+      console.log(`✅ ${operationName} completed successfully`);
+      return result;
     } catch (error: any) {
+      // Enhanced error logging with detailed context
+      const errorContext = {
+        operation: operationName,
+        attempt: this.MAX_RETRIES - retries + 1,
+        maxRetries: this.MAX_RETRIES,
+        errorCode: error?.code,
+        errorMessage: error?.message,
+        errorDetails: error?.details,
+        errorHint: error?.hint,
+        timestamp: new Date().toISOString(),
+        userAgent: navigator.userAgent,
+        url: window.location.href
+      };
+
+      console.error(`❌ ${operationName} failed (attempt ${this.MAX_RETRIES - retries + 1}/${this.MAX_RETRIES}):`, {
+        ...errorContext,
+        fullError: error
+      });
+
       const isConnectionError = error?.message?.includes('ERR_CONNECTION_CLOSED') || 
                                error?.message?.includes('Failed to fetch') ||
                                error?.message?.includes('net::ERR_CONNECTION_CLOSED') ||
                                error?.code === 'PGRST301' ||
-                               error?.code === 'PGRST116';
+                               error?.code === 'PGRST116' ||
+                               error?.code === 'PGRST301';
+
+      const isDatabaseError = error?.code?.startsWith('PGRST') || 
+                             error?.code?.startsWith('42') ||
+                             error?.code?.startsWith('23');
+
+      // Log specific error types
+      if (isConnectionError) {
+        console.warn(`🌐 Connection error detected: ${error.message}`);
+      } else if (isDatabaseError) {
+        console.warn(`🗄️ Database error detected: Code ${error.code} - ${error.message}`);
+      } else {
+        console.warn(`⚠️ Unknown error type: ${error.message}`);
+      }
       
-      console.error(`❌ ${operationName} failed (attempt ${this.MAX_RETRIES - retries + 1}/${this.MAX_RETRIES}):`, error);
-      
-      if (retries > 1 && isConnectionError) {
+      if (retries > 1) {
         const delay = this.RETRY_DELAY * (this.MAX_RETRIES - retries + 1); // Exponential backoff
-        console.log(`🔄 Retrying ${operationName} in ${delay}ms due to connection error...`);
+        console.log(`🔄 Retrying ${operationName} in ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
-        return this.retryOperation(operation, operationName, retries - 1);
-      } else if (retries > 1) {
-        console.log(`🔄 Retrying ${operationName} in ${this.RETRY_DELAY}ms...`);
-        await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAY));
-        return this.retryOperation(operation, operationName, retries - 1);
+        return this.retryOperation(operation, operationName, retries - 1, fallbackOperation);
+      }
+      
+      // Try fallback operation if available
+      if (fallbackOperation) {
+        console.log(`🔄 Attempting fallback operation for ${operationName}...`);
+        try {
+          const fallbackResult = await fallbackOperation();
+          console.log(`✅ Fallback operation for ${operationName} succeeded`);
+          return fallbackResult;
+        } catch (fallbackError) {
+          console.error(`❌ Fallback operation for ${operationName} also failed:`, fallbackError);
+        }
       }
       
       // If it's a connection error and we've exhausted retries, return empty data instead of throwing
@@ -67,20 +111,27 @@ export class PurchaseOrderService {
         return [] as T;
       }
       
-      throw error;
+      // Enhanced error throwing with context
+      const enhancedError = new Error(`Purchase Order Service Error: ${operationName} failed after ${this.MAX_RETRIES} attempts. Original error: ${error.message}`);
+      (enhancedError as any).originalError = error;
+      (enhancedError as any).context = errorContext;
+      throw enhancedError;
     }
   }
 
   // Communication functions
   static async getMessages(purchaseOrderId: string): Promise<PurchaseOrderMessage[]> {
-    try {
+    return this.retryOperation(async () => {
       const { data, error } = await supabase
         .from('purchase_order_messages')
         .select('*')
         .eq('purchase_order_id', purchaseOrderId)
         .order('timestamp', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching messages:', error);
+        throw error;
+      }
       
       // Map database fields to TypeScript interface
       return (data || []).map((msg: any) => ({
@@ -91,14 +142,11 @@ export class PurchaseOrderService {
         type: msg.type,
         timestamp: msg.timestamp
       }));
-    } catch (error) {
-      console.error('Error fetching messages:', error);
-      return [];
-    }
+    }, 'get_messages');
   }
 
   static async sendMessage(message: Omit<PurchaseOrderMessage, 'id' | 'timestamp'>): Promise<boolean> {
-    try {
+    return this.retryOperation(async () => {
       const { error } = await supabase
         .from('purchase_order_messages')
         .insert({
@@ -109,88 +157,88 @@ export class PurchaseOrderService {
           timestamp: new Date().toISOString()
         });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error sending message:', error);
+        throw error;
+      }
       return true;
-    } catch (error) {
-      console.error('Error sending message:', error);
-      return false;
-    }
+    }, 'send_message');
   }
 
   // Payment functions - Updated to use new payment system
   static async getPayments(purchaseOrderId: string): Promise<PurchaseOrderPayment[]> {
-    try {
-      // Use the new payment history function
+    return this.retryOperation(async () => {
       const { data, error } = await supabase
-        .rpc('get_purchase_order_payment_history', {
-          purchase_order_id_param: purchaseOrderId
-        });
+        .from('purchase_order_payments')
+        .select('*')
+        .eq('purchase_order_id', purchaseOrderId)
+        .order('timestamp', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching payments:', error);
+        throw error;
+      }
       
       // Map database fields to TypeScript interface
       return (data || []).map((payment: any) => ({
         id: payment.id,
-        purchaseOrderId: purchaseOrderId,
-        method: payment.payment_method,
+        purchaseOrderId: payment.purchase_order_id,
+        method: payment.method,
         amount: payment.amount,
         currency: payment.currency,
-        status: 'completed', // All payments in history are completed
+        status: payment.status,
         reference: payment.reference,
-        timestamp: payment.created_at
+        timestamp: payment.timestamp
       }));
-    } catch (error) {
-      console.error('Error fetching payments:', error);
-      return [];
-    }
+    }, 'get_payments');
   }
 
   static async addPayment(payment: Omit<PurchaseOrderPayment, 'id' | 'timestamp'>): Promise<boolean> {
-    try {
+    return this.retryOperation(async () => {
       const { error } = await supabase
         .from('purchase_order_payments')
         .insert({
           purchase_order_id: payment.purchaseOrderId,
-          payment_method: payment.method,
+          method: payment.method,
           amount: payment.amount,
           currency: payment.currency,
           status: payment.status,
           reference: payment.reference,
-          payment_date: new Date().toISOString()
+          timestamp: new Date().toISOString()
         });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error adding payment:', error);
+        throw error;
+      }
       return true;
-    } catch (error) {
-      console.error('Error adding payment:', error);
-      return false;
-    }
+    }, 'add_payment');
   }
 
   // Audit functions
   static async getAuditHistory(purchaseOrderId: string): Promise<PurchaseOrderAudit[]> {
-    try {
+    return this.retryOperation(async () => {
       const { data, error } = await supabase
         .from('purchase_order_audit')
         .select('*')
         .eq('purchase_order_id', purchaseOrderId)
         .order('timestamp', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching audit history:', error);
+        throw error;
+      }
       
       // Map database fields to TypeScript interface
       return (data || []).map((audit: any) => ({
         id: audit.id,
         purchaseOrderId: audit.purchase_order_id,
         action: audit.action,
-        user: audit.user,
+        user: audit.user_id || audit.created_by,
         details: audit.details,
         timestamp: audit.timestamp
       }));
-    } catch (error) {
-      console.error('Error fetching audit history:', error);
-      return [];
-    }
+    }, 'get_audit_history');
   }
 
   static async addAuditEntry(audit: Omit<PurchaseOrderAudit, 'id' | 'timestamp'>): Promise<boolean> {
@@ -206,18 +254,37 @@ export class PurchaseOrderService {
         userId = user.id;
       }
 
-      const { error } = await supabase
-        .from('purchase_order_audit')
-        .insert({
-          purchase_order_id: audit.purchaseOrderId,
-          action: audit.action,
-          user_id: userId,
-          created_by: userId,
-          details: audit.details,
-          timestamp: new Date().toISOString()
-        });
+      // Try using the helper function first (more secure)
+      const { data: auditId, error: functionError } = await supabase.rpc('log_purchase_order_audit', {
+        p_purchase_order_id: audit.purchaseOrderId,
+        p_action: audit.action,
+        p_details: audit.details,
+        p_user_id: userId
+      });
 
-      if (error) throw error;
+      if (functionError) {
+        console.warn('Helper function failed, trying direct insert:', functionError);
+        
+        // Fallback to direct insert
+        const { error: insertError } = await supabase
+          .from('purchase_order_audit')
+          .insert({
+            purchase_order_id: audit.purchaseOrderId,
+            action: audit.action,
+            user_id: userId,
+            created_by: userId,
+            details: audit.details,
+            timestamp: new Date().toISOString()
+          });
+
+        if (insertError) {
+          console.error('Direct insert also failed:', insertError);
+          return false;
+        }
+      } else {
+        console.log('✅ Audit entry added successfully with ID:', auditId);
+      }
+
       return true;
     } catch (error) {
       console.error('Error adding audit entry:', error);
@@ -232,7 +299,7 @@ export class PurchaseOrderService {
     userId: string,
     additionalData?: any
   ): Promise<{ success: boolean; message: string }> {
-    try {
+    return this.retryOperation(async () => {
       const { error } = await supabase
         .from('lats_purchase_orders')
         .update({
@@ -241,7 +308,10 @@ export class PurchaseOrderService {
         })
         .eq('id', purchaseOrderId);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error updating order status:', error);
+        throw error;
+      }
 
       // Add audit entry
       await this.addAuditEntry({
@@ -256,10 +326,218 @@ export class PurchaseOrderService {
       });
 
       return { success: true, message: 'Order status updated successfully' };
-    } catch (error) {
-      console.error('Error updating order status:', error);
-      return { success: false, message: 'Failed to update order status' };
-    }
+    }, 'update_order_status');
+  }
+
+  // Shipped Items Management Functions with enhanced error handling and fallback queries
+  static async loadShippedItems(purchaseOrderId: string): Promise<any[]> {
+    return withErrorHandling(async () => {
+      console.log(`🔄 Starting loadShippedItems for purchase order: ${purchaseOrderId}`);
+      
+      // Enhanced product ID validation
+      const purchaseOrderValidation = validateProductId(purchaseOrderId, 'Purchase Order ID');
+      if (!purchaseOrderValidation.isValid) {
+        throw new Error(purchaseOrderValidation.error);
+      }
+
+      const trimmedId = purchaseOrderId.trim();
+      console.log(`🔍 Processing purchase order ID: "${trimmedId}" (length: ${trimmedId.length})`);
+
+      return this.retryOperation(
+        // Main operation with joins
+        async () => {
+          console.log('🔄 Attempting main query with product/variant joins...');
+          const { data, error } = await supabase
+            .from('lats_purchase_order_items')
+            .select(`
+              *,
+              product:lats_products(id, name, sku, description),
+              variant:lats_product_variants(id, name, sku)
+            `)
+            .eq('purchase_order_id', trimmedId);
+
+          if (error) {
+            // Log detailed database error
+            logPurchaseOrderError('load_shipped_items_main_query', error, {
+              purchaseOrderId: trimmedId,
+              operation: 'load_shipped_items'
+            }, {
+              code: error.code,
+              message: error.message,
+              details: error.details,
+              hint: error.hint,
+              table: 'lats_purchase_order_items'
+            });
+            throw error;
+          }
+
+          console.log(`✅ Main query succeeded, found ${data?.length || 0} items`);
+          
+          // Map the data to ensure proper structure and validate product IDs
+          const mappedData = (data || []).map((item, index) => {
+            console.log(`🔍 Processing item ${index + 1}:`, {
+              itemId: item.id,
+              productId: item.product_id,
+              variantId: item.variant_id,
+              hasProduct: !!item.product,
+              hasVariant: !!item.variant
+            });
+
+            // Validate product ID exists
+            if (!item.product_id) {
+              console.warn(`⚠️ Item ${item.id} has no product_id`);
+              logPurchaseOrderError('missing_product_id', new Error('Missing product_id'), {
+                purchaseOrderId: trimmedId,
+                productId: item.product_id,
+                variantId: item.variant_id,
+                itemId: item.id
+              });
+            }
+
+            // Validate variant ID exists
+            if (!item.variant_id) {
+              console.warn(`⚠️ Item ${item.id} has no variant_id`);
+              logPurchaseOrderError('missing_variant_id', new Error('Missing variant_id'), {
+                purchaseOrderId: trimmedId,
+                productId: item.product_id,
+                variantId: item.variant_id,
+                itemId: item.id
+              });
+            }
+
+            return {
+              ...item,
+              name: item.product?.name || item.variant?.name || 'Unknown Product',
+              sku: item.product?.sku || item.variant?.sku || 'N/A',
+              description: item.product?.description || '',
+              productName: item.product?.name || 'Unknown Product',
+              variantName: item.variant?.name || 'Default Variant'
+            };
+          });
+
+          console.log(`✅ Successfully mapped ${mappedData.length} items with product information`);
+          return mappedData;
+        },
+        'load_shipped_items',
+        this.MAX_RETRIES,
+        // Fallback operation without joins
+        async () => {
+          console.log('🔄 Attempting fallback query without joins...');
+          const { data: fallbackData, error: fallbackError } = await supabase
+            .from('lats_purchase_order_items')
+            .select('*')
+            .eq('purchase_order_id', trimmedId);
+
+          if (fallbackError) {
+            // Log detailed fallback error
+            logPurchaseOrderError('load_shipped_items_fallback_query', fallbackError, {
+              purchaseOrderId: trimmedId,
+              operation: 'load_shipped_items_fallback'
+            }, {
+              code: fallbackError.code,
+              message: fallbackError.message,
+              details: fallbackError.details,
+              table: 'lats_purchase_order_items'
+            });
+            throw fallbackError;
+          }
+
+          console.log(`⚠️ Fallback query succeeded, found ${fallbackData?.length || 0} items (without product details)`);
+          
+          // Map fallback data with basic information
+          const mappedFallbackData = (fallbackData || []).map((item, index) => {
+            console.log(`🔍 Processing fallback item ${index + 1}:`, {
+              itemId: item.id,
+              productId: item.product_id,
+              variantId: item.variant_id
+            });
+
+            return {
+              ...item,
+              name: `Product ID: ${item.product_id || 'Unknown'}`,
+              sku: `SKU-${item.product_id || 'Unknown'}`,
+              description: 'Product details not available',
+              productName: `Product ID: ${item.product_id || 'Unknown'}`,
+              variantName: `Variant ID: ${item.variant_id || 'Unknown'}`,
+              product: null,
+              variant: null
+            };
+          });
+
+          console.log(`✅ Fallback mapping completed for ${mappedFallbackData.length} items`);
+          return mappedFallbackData;
+        }
+      );
+    }, 'load_shipped_items', { purchaseOrderId }).then(result => {
+      if (result.success) {
+        return result.data || [];
+      } else {
+        throw new Error(result.error);
+      }
+    });
+  }
+
+  static async updateShippedItem(
+    itemId: string, 
+    data: Partial<any>
+  ): Promise<boolean> {
+    return this.retryOperation(async () => {
+      const { error } = await supabase
+        .from('lats_purchase_order_items')
+        .update(data)
+        .eq('id', itemId);
+
+      if (error) {
+        console.error('Error updating shipped item:', error);
+        throw error;
+      }
+      return true;
+    }, 'update_shipped_item');
+  }
+
+  static async markItemAsReceived(
+    shippedItemId: string, 
+    receivedQuantity: number, 
+    notes?: string
+  ): Promise<boolean> {
+    return this.retryOperation(async () => {
+      const { error } = await supabase
+        .from('lats_purchase_order_items')
+        .update({
+          received_quantity: receivedQuantity,
+          notes: notes || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', shippedItemId);
+
+      if (error) {
+        console.error('Error marking item as received:', error);
+        throw error;
+      }
+      return true;
+    }, 'mark_item_received');
+  }
+
+  static async reportDamage(
+    shippedItemId: string, 
+    damageReport: string
+  ): Promise<boolean> {
+    return this.retryOperation(async () => {
+      const { error } = await supabase
+        .from('lats_purchase_order_items')
+        .update({
+          damage_report: damageReport,
+          status: 'damaged',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', shippedItemId);
+
+      if (error) {
+        console.error('Error reporting damage:', error);
+        throw error;
+      }
+      return true;
+    }, 'report_damage');
   }
 
   // Enhanced partial receive functions with serial number support
@@ -456,6 +734,130 @@ export class PurchaseOrderService {
       return {
         success: false,
         message: `Failed to fetch purchase order items: ${error instanceof Error ? error.message : 'Unknown error'}`
+      };
+    }
+  }
+
+  // Complete a purchase order after receiving
+  static async completePurchaseOrder(
+    purchaseOrderId: string,
+    userId: string,
+    completionNotes?: string
+  ): Promise<{
+    success: boolean;
+    data?: any;
+    message?: string;
+    error_code?: string;
+  }> {
+    try {
+      console.log('🔍 [PurchaseOrderService] Completing purchase order:', purchaseOrderId);
+
+      const { data, error } = await supabase
+        .rpc('complete_purchase_order', {
+          purchase_order_id_param: purchaseOrderId,
+          user_id_param: userId,
+          completion_notes: completionNotes || 'Purchase order completed'
+        });
+
+      if (error) throw error;
+
+      // Check if the RPC function returned an error response
+      if (data && !data.success) {
+        console.error('❌ [PurchaseOrderService] Completion failed:', data);
+        return {
+          success: false,
+          message: data.message || 'Failed to complete purchase order',
+          error_code: data.error_code,
+          data: data
+        };
+      }
+
+      console.log('✅ [PurchaseOrderService] Purchase order completed successfully:', data);
+
+      return {
+        success: true,
+        data: data?.data || data,
+        message: data?.message || 'Purchase order completed successfully'
+      };
+    } catch (error) {
+      console.error('❌ [PurchaseOrderService] Error completing purchase order:', error);
+      return {
+        success: false,
+        message: `Failed to complete purchase order: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        error_code: 'NETWORK_ERROR'
+      };
+    }
+  }
+
+  // Check purchase order completion status
+  static async checkCompletionStatus(purchaseOrderId: string): Promise<{
+    success: boolean;
+    data?: {
+      total_items: number;
+      completed_items: number;
+      can_complete: boolean;
+      completion_percentage: number;
+    };
+    message?: string;
+  }> {
+    try {
+      console.log('🔍 [PurchaseOrderService] Checking completion status for PO:', purchaseOrderId);
+
+      const { data, error } = await supabase
+        .rpc('check_purchase_order_completion_status', {
+          purchase_order_id_param: purchaseOrderId
+        });
+
+      if (error) throw error;
+
+      return {
+        success: true,
+        data: data,
+        message: 'Completion status retrieved successfully'
+      };
+    } catch (error) {
+      console.error('❌ [PurchaseOrderService] Error checking completion status:', error);
+      return {
+        success: false,
+        message: `Failed to check completion status: ${error instanceof Error ? error.message : 'Unknown error'}`
+      };
+    }
+  }
+
+  // Fix received quantities for a purchase order
+  static async fixReceivedQuantities(purchaseOrderId: string, userId: string): Promise<{
+    success: boolean;
+    data?: any;
+    message?: string;
+  }> {
+    try {
+      console.log('🔍 [PurchaseOrderService] Fixing received quantities for PO:', purchaseOrderId);
+
+      const { data, error } = await supabase
+        .rpc('fix_purchase_order_received_quantities', {
+          purchase_order_id_param: purchaseOrderId,
+          user_id_param: userId
+        });
+
+      if (error) throw error;
+
+      if (data && !data.success) {
+        return {
+          success: false,
+          message: data.message || 'Failed to fix received quantities'
+        };
+      }
+
+      return {
+        success: true,
+        data: data?.data || data,
+        message: data?.message || 'Received quantities fixed successfully'
+      };
+    } catch (error) {
+      console.error('❌ [PurchaseOrderService] Error fixing received quantities:', error);
+      return {
+        success: false,
+        message: `Failed to fix received quantities: ${error instanceof Error ? error.message : 'Unknown error'}`
       };
     }
   }
@@ -1215,6 +1617,79 @@ export class PurchaseOrderService {
     } catch (error) {
       console.error('Error checking if all items are fully received:', error);
       return false;
+    }
+  }
+
+  // Approval workflow functions
+  static async submitForApproval(
+    purchaseOrderId: string,
+    userId: string,
+    notes: string
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      const { data, error } = await supabase
+        .rpc('submit_po_for_approval', {
+          purchase_order_id_param: purchaseOrderId,
+          user_id_param: userId,
+          approval_notes_param: notes
+        });
+
+      if (error) throw error;
+      return { success: true, message: 'Purchase order submitted for approval' };
+    } catch (error) {
+      console.error('Error submitting for approval:', error);
+      return { 
+        success: false, 
+        message: `Failed to submit for approval: ${error instanceof Error ? error.message : 'Unknown error'}` 
+      };
+    }
+  }
+
+  static async approvePurchaseOrder(
+    purchaseOrderId: string,
+    approverId: string,
+    notes: string
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      const { data, error } = await supabase
+        .rpc('approve_po', {
+          purchase_order_id_param: purchaseOrderId,
+          approver_id_param: approverId,
+          approval_notes_param: notes
+        });
+
+      if (error) throw error;
+      return { success: true, message: 'Purchase order approved' };
+    } catch (error) {
+      console.error('Error approving purchase order:', error);
+      return { 
+        success: false, 
+        message: `Failed to approve purchase order: ${error instanceof Error ? error.message : 'Unknown error'}` 
+      };
+    }
+  }
+
+  static async rejectPurchaseOrder(
+    purchaseOrderId: string,
+    approverId: string,
+    reason: string
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      const { data, error } = await supabase
+        .rpc('reject_po', {
+          purchase_order_id_param: purchaseOrderId,
+          approver_id_param: approverId,
+          rejection_reason: reason
+        });
+
+      if (error) throw error;
+      return { success: true, message: 'Purchase order rejected' };
+    } catch (error) {
+      console.error('Error rejecting purchase order:', error);
+      return { 
+        success: false, 
+        message: `Failed to reject purchase order: ${error instanceof Error ? error.message : 'Unknown error'}` 
+      };
     }
   }
 }

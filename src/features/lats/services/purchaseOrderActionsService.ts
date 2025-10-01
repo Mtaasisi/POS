@@ -175,14 +175,26 @@ export class PurchaseOrderActionsService {
    */
   static async updateItemQualityCheck(itemId: string, status: string, notes?: string): Promise<ActionResult> {
     try {
+      // First, get the purchase_order_id from the item
+      const { data: itemData, error: itemError } = await supabase
+        .from('lats_purchase_order_items')
+        .select('purchase_order_id')
+        .eq('id', itemId)
+        .single();
+
+      if (itemError || !itemData) {
+        throw new Error('Item not found');
+      }
+
       const { error } = await supabase
         .from('purchase_order_quality_checks')
         .insert({
+          purchase_order_id: itemData.purchase_order_id,
           item_id: itemId,
           passed: status === 'passed',
           notes: notes || null,
           checked_by: 'system', // TODO: Get from auth context
-          checked_at: new Date().toISOString()
+          timestamp: new Date().toISOString()
         });
 
       if (error) throw error;
@@ -411,16 +423,35 @@ export class PurchaseOrderActionsService {
         return;
       }
 
-      await supabase
-        .from('purchase_order_audit')
-        .insert({
-          purchase_order_id: orderId,
-          action: action,
-          details: details,
-          user_id: user.id,
-          created_by: user.id,
-          timestamp: new Date().toISOString()
-        });
+      // Try using the helper function first (more secure)
+      const { data: auditId, error: functionError } = await supabase.rpc('log_purchase_order_audit', {
+        p_purchase_order_id: orderId,
+        p_action: action,
+        p_details: details,
+        p_user_id: user.id
+      });
+
+      if (functionError) {
+        console.warn('Helper function failed, trying direct insert:', functionError);
+        
+        // Fallback to direct insert
+        const { error: insertError } = await supabase
+          .from('purchase_order_audit')
+          .insert({
+            purchase_order_id: orderId,
+            action: action,
+            details: details,
+            user_id: user.id,
+            created_by: user.id,
+            timestamp: new Date().toISOString()
+          });
+
+        if (insertError) {
+          console.error('Direct insert also failed:', insertError);
+        }
+      } else {
+        console.log('✅ Audit logged successfully with ID:', auditId);
+      }
     } catch (error) {
       console.error('Error logging action:', error);
       // Don't throw error to avoid breaking the main action

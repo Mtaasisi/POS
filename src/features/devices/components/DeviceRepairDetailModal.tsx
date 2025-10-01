@@ -4,7 +4,7 @@ import { Device, DeviceStatus } from '../../../types';
 import { useAuth } from '../../../context/AuthContext';
 import { useDevices } from '../../../context/DevicesContext';
 import { useCustomers } from '../../../context/CustomersContext';
-import { toast } from 'react-hot-toast';
+import { toast } from '../../../lib/toastUtils';
 import { formatCurrency } from '../../../lib/customerApi';
 import { supabase } from '../../../lib/supabaseClient';
 import { useNavigate } from 'react-router-dom';

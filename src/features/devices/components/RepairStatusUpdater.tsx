@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Device, DeviceStatus, User } from '../../../types';
 import { supabase } from '../../../lib/supabaseClient';
-import { toast } from 'react-hot-toast';
+import { toast } from '../../../lib/toastUtils';
 import { 
   CheckCircle, 
   Clock, 
@@ -24,7 +24,7 @@ import GlassButton from '../../shared/components/ui/GlassButton';
 import DiagnosticChecklistModal from './DiagnosticChecklistModal';
 // import SparePartsSelector from '../../repair/components/SparePartsSelector';
 import { createRepairPart, createRepairParts, getRepairParts, RepairPart } from '../../lats/lib/sparePartsApi';
-import { toast } from 'react-hot-toast';
+import { toast } from '../../../lib/toastUtils';
 import { formatCurrency } from '../../../lib/customerApi';
 import { supabase } from '../../../lib/supabaseClient';
 import { validateDeviceHandover, getDevicePaymentInfo } from '../../../utils/paymentValidation';

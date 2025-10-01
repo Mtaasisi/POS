@@ -74,15 +74,32 @@ export const validatePurchaseOrder = (
   supplier: any, 
   cartItems: any[], 
   _expectedDelivery: string, // Optional parameter, prefixed with _ to indicate unused
-  paymentTerms: string
+  paymentTerms: string,
+  currency?: string,
+  exchangeRate?: number
 ) => {
   const errors: string[] = [];
   
   if (!supplier) errors.push('Please select a supplier');
   if (cartItems.length === 0) errors.push('Please add items to the purchase order');
-  // Expected delivery is now optional - can be set later
-  // if (!expectedDelivery) errors.push('Please set expected delivery date');
   if (!paymentTerms) errors.push('Please select payment terms');
+  
+  // Currency validation
+  if (currency && currency !== 'TZS') {
+    if (!exchangeRate || exchangeRate <= 0) {
+      errors.push('Exchange rate is required for non-TZS currencies');
+    } else if (exchangeRate > 9999.999999) {
+      errors.push('Exchange rate is too large (maximum 9999.999999)');
+    }
+  }
+  
+  // Validate cart items
+  cartItems.forEach((item, index) => {
+    if (!item.productId) errors.push(`Item ${index + 1}: Product is required`);
+    if (!item.variantId) errors.push(`Item ${index + 1}: Variant is required`);
+    if (!item.quantity || item.quantity <= 0) errors.push(`Item ${index + 1}: Valid quantity is required`);
+    if (!item.costPrice || item.costPrice <= 0) errors.push(`Item ${index + 1}: Valid cost price is required`);
+  });
   
   return {
     isValid: errors.length === 0,

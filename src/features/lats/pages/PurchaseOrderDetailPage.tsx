@@ -13,21 +13,23 @@ import {
   TrendingUp, BarChart3, Target, Calculator, Banknote, Receipt,
   Copy, Share2, Archive, History, Store, Info, Plus, Minus,
   RotateCcw, Shield, Percent, Layers, QrCode, Eye, MessageSquare,
-  FileImage, Upload, CheckCircle2, AlertTriangle, ThumbsUp,
+  FileImage, Upload, CheckCircle2, CheckCircle, AlertTriangle, ThumbsUp,
   ThumbsDown, ExternalLink, Zap, Users, CreditCard, Calendar as CalendarIcon,
   Hash, Tag, Scale, Hand, Fingerprint, Radio, XCircle, HardDrive,
   Cpu, Palette, Ruler, Unplug, Battery, Monitor, Camera, FileSpreadsheet,
   Truck, RefreshCw, Settings
 } from 'lucide-react';
-import { toast } from 'react-hot-toast';
+import { toast } from '../../../lib/toastUtils';
 // XLSX will be imported dynamically when needed
 import { useInventoryStore } from '../stores/useInventoryStore';
 import { PurchaseOrder } from '../types/inventory';
 import { PurchaseOrderService } from '../services/purchaseOrderService';
+import { QualityCheckService } from '../services/qualityCheckService';
 
 // Import components directly for debugging
 import PaymentsPopupModal from '../../../components/PaymentsPopupModal';
 import SerialNumberReceiveModal from '../components/purchase-order/SerialNumberReceiveModal';
+import ApprovalModal from '../components/purchase-order/ApprovalModal';
 import PurchaseOrderActionsService from '../services/purchaseOrderActionsService';
 
 // Import enhanced inventory components - REMOVED: These components don't exist
@@ -38,6 +40,9 @@ import PurchaseOrderActionsService from '../services/purchaseOrderActionsService
 // import ItemHistoryModal from '../components/inventory/ItemHistoryModal';
 // import BulkActionsToolbar from '../components/inventory/BulkActionsToolbar';
 // import InventorySearchFilters from '../components/inventory/InventorySearchFilters';
+
+// Import Quality Check components
+import { QualityCheckModal, QualityCheckSummary, QualityCheckDetailsModal } from '../components/quality-check';
 
 // Simple ShippingTracker component
 const ShippingTracker: React.FC<{
@@ -113,6 +118,9 @@ const PurchaseOrderDetailPage: React.FC<PurchaseOrderDetailPageProps> = ({ editM
   const [showShippingModal, setShowShippingModal] = useState(false);
   const [showShippingTracker, setShowShippingTracker] = useState(false);
   const [showNotesModal, setShowNotesModal] = useState(false);
+  const [showQualityCheckModal, setShowQualityCheckModal] = useState(false);
+  const [showQualityCheckDetailsModal, setShowQualityCheckDetailsModal] = useState(false);
+  const [selectedQualityCheckId, setSelectedQualityCheckId] = useState<string>('');
   
   // Enhanced error handling and confirmation states
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
@@ -153,6 +161,8 @@ const PurchaseOrderDetailPage: React.FC<PurchaseOrderDetailPageProps> = ({ editM
     }
   ]);
   const [qualityChecks, setQualityChecks] = useState<any[]>([]);
+  const [qualityCheckItems, setQualityCheckItems] = useState<any[]>([]);
+  const [isLoadingQualityCheckItems, setIsLoadingQualityCheckItems] = useState(false);
   const [receivedItems, setReceivedItems] = useState<any[]>([]);
   const [isLoadingReceivedItems, setIsLoadingReceivedItems] = useState(false);
   const [orderNotes, setOrderNotes] = useState<any[]>([]);
@@ -467,10 +477,12 @@ const PurchaseOrderDetailPage: React.FC<PurchaseOrderDetailPageProps> = ({ editM
           }
           break;
         case 'received':
-          // Load received items from database using migrated function
+          // Load received items and quality check items from database
           if (purchaseOrder) {
             setIsLoadingReceivedItems(true);
+            setIsLoadingQualityCheckItems(true);
             try {
+              // Load received items
               console.log('🔍 [PurchaseOrderDetailPage] Loading received items for PO:', purchaseOrder.id);
               const receivedData = await PurchaseOrderService.getReceivedItems(purchaseOrder.id);
               console.log('🔍 [PurchaseOrderDetailPage] Received items response:', receivedData);
@@ -481,11 +493,25 @@ const PurchaseOrderDetailPage: React.FC<PurchaseOrderDetailPageProps> = ({ editM
                 console.error('❌ Failed to load received items:', receivedData.message);
                 toast.error('Failed to load received items');
               }
+              
+              // Load quality check items to show what's already checked
+              console.log('🔍 [PurchaseOrderDetailPage] Loading quality check summary for PO:', purchaseOrder.id);
+              const qcSummary = await QualityCheckService.getQualityCheckSummary(purchaseOrder.id);
+              if (qcSummary.success && qcSummary.data) {
+                console.log('✅ [PurchaseOrderDetailPage] Quality check summary loaded:', qcSummary.data);
+                // Load detailed quality check items
+                const qcItemsData = await QualityCheckService.getQualityCheckItems(qcSummary.data.qualityCheckId);
+                if (qcItemsData.success) {
+                  setQualityCheckItems(qcItemsData.data || []);
+                  console.log('✅ [PurchaseOrderDetailPage] Quality check items loaded:', qcItemsData.data?.length || 0, 'items');
+                }
+              }
             } catch (error) {
-              console.error('❌ Failed to load received items:', error);
-              toast.error('Failed to load received items');
+              console.error('❌ Failed to load received/quality check items:', error);
+              toast.error('Failed to load items');
             } finally {
               setIsLoadingReceivedItems(false);
+              setIsLoadingQualityCheckItems(false);
             }
           }
           break;
@@ -684,6 +710,58 @@ const PurchaseOrderDetailPage: React.FC<PurchaseOrderDetailPageProps> = ({ editM
     }
   };
 
+  // Approval functions
+  const handleSubmitForApproval = async () => {
+    if (!purchaseOrder) return;
+    
+    try {
+      const response = await PurchaseOrderService.submitForApproval(purchaseOrder.id, currentUser?.id || '', 'Submitted for approval via page UI');
+      if (response.success) {
+        await loadPurchaseOrder();
+        toast.success('Purchase order submitted for approval');
+      } else {
+        toast.error(response.message);
+      }
+    } catch (error) {
+      console.error('Error submitting for approval:', error);
+      toast.error('Failed to submit for approval');
+    }
+  };
+
+  const handleApprove = async (notes: string) => {
+    if (!purchaseOrder) return;
+    
+    try {
+      const response = await PurchaseOrderService.approvePurchaseOrder(purchaseOrder.id, currentUser?.id || '', notes);
+      if (response.success) {
+        await loadPurchaseOrder();
+        toast.success('Purchase order approved');
+      } else {
+        toast.error(response.message);
+      }
+    } catch (error) {
+      console.error('Error approving purchase order:', error);
+      toast.error('Failed to approve purchase order');
+    }
+  };
+
+  const handleReject = async (reason: string) => {
+    if (!purchaseOrder) return;
+    
+    try {
+      const response = await PurchaseOrderService.rejectPurchaseOrder(purchaseOrder.id, currentUser?.id || '', reason);
+      if (response.success) {
+        await loadPurchaseOrder();
+        toast.success('Purchase order rejected');
+      } else {
+        toast.error(response.message);
+      }
+    } catch (error) {
+      console.error('Error rejecting purchase order:', error);
+      toast.error('Failed to reject purchase order');
+    }
+  };
+
   // Missing shipping functions
   const handleViewShipping = () => {
     setShowShippingModal(true);
@@ -790,7 +868,66 @@ const PurchaseOrderDetailPage: React.FC<PurchaseOrderDetailPageProps> = ({ editM
   };
 
   const handleQualityControl = () => {
-    setShowQualityControlModal(true);
+    setShowQualityCheckModal(true);
+  };
+
+  const handleQualityCheckComplete = async () => {
+    if (!purchaseOrder) return;
+    
+    try {
+      // Reload purchase order to get latest data
+      await loadPurchaseOrder();
+      
+      // Determine next status based on current status and quality check results
+      let nextStatus = purchaseOrder.status;
+      
+      // Status progression logic
+      switch (purchaseOrder.status) {
+        case 'received':
+          // After quality check, move to 'quality_checked' or 'completed'
+          nextStatus = 'quality_checked';
+          break;
+        case 'quality_checked':
+          // If already quality checked, move to completed
+          nextStatus = 'completed';
+          break;
+        case 'partial_received':
+          // If partially received, stay as partial until fully received
+          nextStatus = 'partial_received';
+          break;
+        default:
+          // For other statuses, move to next logical step
+          if (purchaseOrder.status === 'sent' || purchaseOrder.status === 'shipped') {
+            nextStatus = 'received';
+          } else {
+            nextStatus = 'completed';
+          }
+      }
+      
+      // Update purchase order status to next step
+      const response = await updatePurchaseOrder(purchaseOrder.id, {
+        status: nextStatus
+      });
+      
+      if (response.ok) {
+        const statusMessages = {
+          'quality_checked': 'Quality check completed - Items ready for inventory',
+          'completed': 'Quality check completed - Purchase order finalized',
+          'received': 'Items received and ready for quality check',
+          'partial_received': 'Partial receive completed'
+        };
+        
+        const message = statusMessages[nextStatus] || 'Quality check completed successfully';
+        toast.success(message);
+        console.log(`✅ Quality check completed, PO status updated to: ${nextStatus}`);
+      } else {
+        console.warn('Quality check completed but status update failed:', response.message);
+        toast.success('Quality check completed successfully');
+      }
+    } catch (error) {
+      console.error('Error updating purchase order status after quality check:', error);
+      toast.success('Quality check completed successfully');
+    }
   };
 
   const handleQualityCheck = async (itemId: string, status: 'passed' | 'failed' | 'attention') => {
@@ -1149,6 +1286,89 @@ const PurchaseOrderDetailPage: React.FC<PurchaseOrderDetailPageProps> = ({ editM
     } catch (error) {
       console.error('Receive error:', error);
       toast.error('Failed to receive purchase order');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCompleteOrder = async () => {
+    if (!purchaseOrder) return;
+    
+    try {
+      setIsSaving(true);
+      
+      // First, check completion status
+      const statusResult = await PurchaseOrderService.checkCompletionStatus(purchaseOrder.id);
+      if (statusResult.success && statusResult.data) {
+        console.log('📊 Current completion status:', statusResult.data);
+        
+        // If not all items are completed, try to fix the data
+        if (!statusResult.data.can_complete && statusResult.data.total_items > 0) {
+          console.log('🔧 Attempting to fix received quantities...');
+          toast.info('Fixing received quantities...');
+          
+          const fixResult = await PurchaseOrderService.fixReceivedQuantities(
+            purchaseOrder.id,
+            currentUser?.id || ''
+          );
+          
+          if (fixResult.success) {
+            toast.success('Received quantities fixed successfully!');
+            console.log('✅ Fix result:', fixResult.data);
+          } else {
+            console.warn('⚠️ Fix attempt failed:', fixResult.message);
+          }
+        }
+      }
+      
+      // Now attempt completion
+      const result = await PurchaseOrderService.completePurchaseOrder(
+        purchaseOrder.id,
+        currentUser?.id || '',
+        'Purchase order completed after receiving all items'
+      );
+      
+      if (result.success) {
+        toast.success('Purchase order completed successfully!');
+        console.log('✅ Order completion details:', result.data);
+        
+        // Reload purchase order data to show updated status
+        await loadPurchaseOrder();
+        
+        // Show completion summary
+        if (result.data) {
+          console.log('📊 Completion Summary:', {
+            orderNumber: result.data.order_number,
+            totalItems: result.data.total_items,
+            completedItems: result.data.completed_items,
+            completionDate: result.data.completion_date
+          });
+        }
+        
+      } else {
+        // Handle specific error codes with better messages
+        let errorMessage = result.message || 'Completion failed';
+        
+        if (result.error_code === 'P0001') {
+          errorMessage = 'Cannot complete: Not all items have been fully received. Please check the received quantities.';
+        } else if (result.error_code === 'P0002') {
+          errorMessage = 'Cannot complete: Purchase order is not in received status.';
+        } else if (result.error_code === 'P0003') {
+          errorMessage = 'Cannot complete: No items found in this purchase order.';
+        }
+        
+        toast.error(errorMessage);
+        
+        // Log detailed error information
+        console.error('❌ Completion failed:', {
+          error_code: result.error_code,
+          message: result.message,
+          data: result.data
+        });
+      }
+    } catch (error) {
+      console.error('Completion error:', error);
+      toast.error('Failed to complete purchase order');
     } finally {
       setIsSaving(false);
     }
@@ -2006,11 +2226,14 @@ TERMS AND CONDITIONS:
   };
 
   const formatCurrency = (amount: number, currencyCode: string = 'TZS') => {
+    // Ensure amount is a valid number
+    const safeAmount = isNaN(amount) ? 0 : amount;
+    
     // Format the number with proper locale
     const formattedAmount = new Intl.NumberFormat('en-TZ', {
       minimumFractionDigits: 0,
       maximumFractionDigits: 2
-    }).format(amount);
+    }).format(safeAmount);
     
     // Add currency symbol/code based on currency (excluding CNY)
     switch (currencyCode?.toUpperCase()) {
@@ -2029,6 +2252,71 @@ TERMS AND CONDITIONS:
         return formattedAmount;
       default:
         return `${currencyCode} ${formattedAmount}`;
+    }
+  };
+
+  // Helper function to safely calculate average cost per item
+  const calculateAverageCostPerItem = (totalAmount: number, items: any[]) => {
+    if (!items || items.length === 0) return 0;
+    
+    const totalQuantity = items.reduce((sum, item) => sum + (item.quantity || 0), 0);
+    if (totalQuantity === 0) return 0;
+    
+    return totalAmount / totalQuantity;
+  };
+
+  // Helper function to validate currency consistency
+  const validateCurrencyConsistency = (purchaseOrder: any) => {
+    const issues = [];
+    
+    // Check if currency is properly set
+    if (!purchaseOrder.currency) {
+      issues.push('Currency not set - defaulting to TZS');
+    }
+    
+    // Check for exchange rate inconsistencies
+    if (purchaseOrder.currency && purchaseOrder.currency !== 'TZS') {
+      if (!purchaseOrder.exchangeRate || purchaseOrder.exchangeRate === 1.0) {
+        issues.push('Exchange rate missing for non-TZS currency');
+      }
+      if (!purchaseOrder.totalAmountBaseCurrency) {
+        issues.push('Base currency amount not calculated');
+      }
+    }
+    
+    return issues;
+  };
+
+  // Get currency display info
+  const getCurrencyDisplayInfo = (purchaseOrder: any) => {
+    const currency = purchaseOrder.currency || 'TZS';
+    const hasExchangeRate = purchaseOrder.exchangeRate && purchaseOrder.exchangeRate !== 1.0;
+    const baseAmount = purchaseOrder.totalAmountBaseCurrency;
+    
+    return {
+      currency,
+      hasExchangeRate,
+      baseAmount,
+      isMultiCurrency: currency !== 'TZS' && hasExchangeRate
+    };
+  };
+
+  // Helper function to calculate TZS equivalent
+  const calculateTZSEquivalent = (amount: number, currency: string, exchangeRate?: number) => {
+    if (currency === 'TZS' || !exchangeRate || exchangeRate === 1.0) {
+      return amount;
+    }
+    return Math.round(amount * exchangeRate);
+  };
+
+  // Helper function to format exchange rate display
+  const formatExchangeRate = (rate: number) => {
+    if (rate >= 1000) {
+      return rate.toLocaleString('en-US', { maximumFractionDigits: 0 });
+    } else if (rate >= 1) {
+      return rate.toFixed(2);
+    } else {
+      return rate.toFixed(6);
     }
   };
 
@@ -2448,13 +2736,13 @@ TERMS AND CONDITIONS:
               <Edit className="w-4 h-4" />
               Edit Order
             </button>
-                              <button
-                                onClick={handleApproveOrder}
-                                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium text-sm"
-                              >
-                                <CheckSquare className="w-4 h-4" />
-                                Approve Order
-                              </button>
+            <button
+              onClick={handleSubmitForApproval}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium text-sm"
+            >
+              <Shield className="w-4 h-4" />
+              Submit for Approval
+            </button>
                               <button
                                 onClick={handleDelete}
                                 className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium text-sm"
@@ -2465,7 +2753,89 @@ TERMS AND CONDITIONS:
                             </>
                           )}
                           
-                          {/* Step 2: Approved (sent/confirmed) - Must pay before receiving */}
+                          {/* Step 2: Pending Approval - Waiting for manager approval */}
+                          {purchaseOrder.status === 'pending_approval' && (
+                            <>
+                              <div className="text-center py-4">
+                                <Clock className="w-12 h-12 text-yellow-500 mx-auto mb-3" />
+                                <h3 className="text-lg font-semibold text-white mb-2">Pending Approval</h3>
+                                <p className="text-gray-300 text-sm mb-4">
+                                  This purchase order is waiting for manager approval
+                                </p>
+                                <button
+                                  onClick={() => setShowApprovalModal(true)}
+                                  className="flex items-center gap-2 px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors font-medium text-sm mx-auto"
+                                >
+                                  <Shield className="w-4 h-4" />
+                                  Review Approval
+                                </button>
+                              </div>
+                            </>
+                          )}
+
+                          {/* Step 2.5: Approved - Ready to send to supplier */}
+                          {purchaseOrder.status === 'approved' && (
+                            <>
+                              <div className="text-center py-4">
+                                <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-3" />
+                                <h3 className="text-lg font-semibold text-white mb-2">Approved</h3>
+                                <p className="text-gray-300 text-sm mb-4">
+                                  This purchase order has been approved and is ready to send to supplier
+                                </p>
+                              </div>
+                              
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    const success = await PurchaseOrderService.updateOrderStatus(
+                                      purchaseOrder.id,
+                                      'sent',
+                                      currentUser?.id || ''
+                                    );
+                                    if (success) {
+                                      toast.success('Purchase order sent to supplier');
+                                      await loadPurchaseOrder();
+                                    } else {
+                                      toast.error('Failed to update order status');
+                                    }
+                                  } catch (error) {
+                                    toast.error('Failed to send order to supplier');
+                                  }
+                                }}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium text-sm"
+                              >
+                                <Send className="w-4 h-4" />
+                                Send to Supplier
+                              </button>
+
+                              {/* Quick skip to received for testing */}
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    const success = await PurchaseOrderService.updateOrderStatus(
+                                      purchaseOrder.id,
+                                      'received',
+                                      currentUser?.id || ''
+                                    );
+                                    if (success) {
+                                      toast.success('Status updated to received - Ready for quality check!');
+                                      await loadPurchaseOrder();
+                                    } else {
+                                      toast.error('Failed to update order status');
+                                    }
+                                  } catch (error) {
+                                    toast.error('Failed to update order status');
+                                  }
+                                }}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors font-medium text-sm"
+                              >
+                                <Zap className="w-4 h-4" />
+                                Skip to Received (Testing)
+                              </button>
+                            </>
+                          )}
+
+                          {/* Step 3: Approved (sent/confirmed) - Must pay before receiving */}
                           {(purchaseOrder.status === 'sent' || purchaseOrder.status === 'confirmed') && (
                             <>
             {/* Debug logging */}
@@ -2568,14 +2938,35 @@ TERMS AND CONDITIONS:
                           )}
 
                           {/* Quality Check - Only show if received or partially received */}
-                          {((purchaseOrder.status === 'received' || purchaseOrder.status === 'partial_received') && 
-                            purchaseOrder.paymentStatus === 'paid') && (
+                          {/* DEBUG: Current status is: {purchaseOrder.status} */}
+                          {/* Quality Check Button - Show for received orders */}
+                          {(purchaseOrder.status === 'received' || purchaseOrder.status === 'quality_checked' || purchaseOrder.status === 'completed') && (
                             <button
                               onClick={handleQualityControl}
                               className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors font-medium text-sm"
                             >
-                              <Shield className="w-4 h-4" />
-                              Quality Check
+                              <PackageCheck className="w-4 h-4" />
+                              {purchaseOrder.status === 'quality_checked' ? 'Re-check Quality' : 'Quality Check'}
+                            </button>
+                          )}
+                          
+                          {/* DEBUG: Show status for troubleshooting */}
+                          {purchaseOrder.status !== 'received' && purchaseOrder.status !== 'partial_received' && purchaseOrder.status !== 'quality_checked' && purchaseOrder.status !== 'completed' && (
+                            <div className="w-full p-2 bg-yellow-100 border border-yellow-300 rounded-lg text-sm text-yellow-800">
+                              <strong>Debug:</strong> Quality Check button not showing. Current status: <strong>{purchaseOrder.status}</strong>. 
+                              Button only shows for 'received', 'quality_checked', or 'completed' status.
+                            </div>
+                          )}
+
+                          {/* Complete Order - Only show if received and all items are fully received */}
+                          {purchaseOrder.status === 'received' && (
+                            <button
+                              onClick={handleCompleteOrder}
+                              disabled={isSaving}
+                              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-lg transition-colors font-medium text-sm"
+                            >
+                              <CheckCircle className="w-4 h-4" />
+                              {isSaving ? 'Completing...' : 'Complete Order'}
                             </button>
                           )}
 
@@ -3072,6 +3463,79 @@ TERMS AND CONDITIONS:
           {/* Received Items Tab */}
           {activeTab === 'received' && (
             <div className="space-y-6">
+              {/* Quality Check Summary */}
+              {purchaseOrder && (
+                <QualityCheckSummary 
+                  purchaseOrderId={purchaseOrder.id}
+                  onViewDetails={(qcId) => {
+                    console.log('View quality check details:', qcId);
+                    setSelectedQualityCheckId(qcId);
+                    setShowQualityCheckDetailsModal(true);
+                  }}
+                  onItemsReceived={async () => {
+                    // Refresh received items and purchase order
+                    await loadPurchaseOrder();
+                    await refreshReceivedItems();
+                  }}
+                />
+              )}
+
+              {/* Quality Check Items - Show what's already checked */}
+              {qualityCheckItems.length > 0 && (
+                <div className="bg-white border border-gray-200 rounded-xl p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <CheckCircle className="w-5 h-5 text-blue-600" />
+                    <h3 className="font-semibold">Quality Checked Items</h3>
+                    <span className="text-sm text-gray-500">({qualityCheckItems.length} items checked)</span>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    {qualityCheckItems.map((item) => (
+                      <div key={item.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+                        <div className="flex-1">
+                          <p className="font-medium text-gray-900">
+                            {item.purchaseOrderItem?.product?.name || 'Unknown Product'}
+                            {item.purchaseOrderItem?.variant?.name && (
+                              <span className="text-gray-600"> - {item.purchaseOrderItem.variant.name}</span>
+                            )}
+                          </p>
+                          <p className="text-sm text-gray-500 mt-1">
+                            Criteria: {item.criteriaName}
+                          </p>
+                          {item.notes && (
+                            <p className="text-sm text-gray-600 mt-1">Note: {item.notes}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <div className="text-sm">
+                            <span className="text-gray-600">Checked: </span>
+                            <span className="font-medium">{item.quantityChecked || 0}</span>
+                          </div>
+                          {item.result === 'pass' && (
+                            <div className="flex items-center gap-2 px-3 py-1 bg-green-100 text-green-700 rounded-full">
+                              <CheckCircle className="w-4 h-4" />
+                              <span className="text-sm font-medium">Passed ({item.quantityPassed || 0})</span>
+                            </div>
+                          )}
+                          {item.result === 'fail' && (
+                            <div className="flex items-center gap-2 px-3 py-1 bg-red-100 text-red-700 rounded-full">
+                              <XCircle className="w-4 h-4" />
+                              <span className="text-sm font-medium">Failed ({item.quantityFailed || 0})</span>
+                            </div>
+                          )}
+                          {item.result === 'na' && (
+                            <div className="flex items-center gap-2 px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full">
+                              <AlertCircle className="w-4 h-4" />
+                              <span className="text-sm font-medium">Pending</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Search and Filters */}
               <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
                 <div className="flex items-center gap-2 pb-2 border-b border-gray-100">
@@ -3268,7 +3732,9 @@ TERMS AND CONDITIONS:
                   <p className="text-gray-600">No received items found</p>
                   <p className="text-sm text-gray-500 mt-2">
                     {receivedItems.length === 0 
-                      ? 'Items will appear here once they are received and added to inventory'
+                      ? qualityCheckItems.length > 0
+                        ? 'Quality check completed! Click "Receive to Inventory" button above to add these items to inventory'
+                        : 'Items will appear here once they are received and added to inventory'
                       : 'No items match your current filters'
                     }
                   </p>
@@ -3610,22 +4076,76 @@ TERMS AND CONDITIONS:
           )}
           {activeTab === 'analytics' && loadedTabs.has('analytics') && (
             <div className="space-y-6">
+              {/* Currency Validation Warnings */}
+              {(() => {
+                const currencyIssues = validateCurrencyConsistency(purchaseOrder);
+                const currencyInfo = getCurrencyDisplayInfo(purchaseOrder);
+                
+                if (currencyIssues.length > 0) {
+                  return (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                        <h4 className="text-sm font-semibold text-yellow-800">Currency Issues Detected</h4>
+                      </div>
+                      <ul className="text-xs text-yellow-700 space-y-1">
+                        {currencyIssues.map((issue, index) => (
+                          <li key={index}>• {issue}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
               {/* Cost Analysis */}
               <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
                 <div className="flex items-center gap-2 pb-2 border-b border-gray-100">
                   <Calculator className="w-5 h-5 text-green-600" />
                   <h3 className="text-sm font-semibold text-gray-800">Cost Analysis</h3>
+                  {/* Currency indicator */}
+                  <div className="ml-auto flex items-center gap-2">
+                    <div className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded">
+                      {purchaseOrder.currency || 'TZS'}
+                    </div>
+                    {purchaseOrder.exchangeRate && purchaseOrder.exchangeRate !== 1.0 && (
+                      <div className="px-2 py-1 bg-orange-100 text-orange-700 text-xs font-medium rounded">
+                        1 {purchaseOrder.currency} = {formatExchangeRate(purchaseOrder.exchangeRate)} TZS
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="text-center p-3 bg-green-50 rounded-lg">
                     <div className="text-xs font-medium text-green-700 uppercase tracking-wide mb-1">Total Cost</div>
                     <div className="text-lg font-bold text-green-900">{formatCurrency(purchaseOrder.totalAmount, purchaseOrder.currency)}</div>
+                    {purchaseOrder.exchangeRate && purchaseOrder.exchangeRate !== 1.0 && (
+                      <div className="text-xs text-gray-500 mt-1">
+                        ≈ TZS {purchaseOrder.totalAmountBaseCurrency ? 
+                          purchaseOrder.totalAmountBaseCurrency.toLocaleString() : 
+                          calculateTZSEquivalent(purchaseOrder.totalAmount, purchaseOrder.currency || 'USD', purchaseOrder.exchangeRate).toLocaleString()
+                        }
+                      </div>
+                    )}
                   </div>
                   <div className="text-center p-3 bg-blue-50 rounded-lg">
                     <div className="text-xs font-medium text-blue-700 uppercase tracking-wide mb-1">Avg Cost/Item</div>
                     <div className="text-lg font-bold text-blue-900">
-                      {formatCurrency(purchaseOrder.totalAmount / purchaseOrder.items.length, purchaseOrder.currency)}
+                      {formatCurrency(
+                        calculateAverageCostPerItem(purchaseOrder.totalAmount, purchaseOrder.items), 
+                        purchaseOrder.currency
+                      )}
                     </div>
+                    {purchaseOrder.exchangeRate && purchaseOrder.exchangeRate !== 1.0 && (
+                      <div className="text-xs text-gray-500 mt-1">
+                        ≈ TZS {calculateTZSEquivalent(
+                          calculateAverageCostPerItem(purchaseOrder.totalAmount, purchaseOrder.items), 
+                          purchaseOrder.currency || 'USD', 
+                          purchaseOrder.exchangeRate
+                        ).toLocaleString()}
+                      </div>
+                    )}
                   </div>
                   <div className="text-center p-3 bg-purple-50 rounded-lg">
                     <div className="text-xs font-medium text-purple-700 uppercase tracking-wide mb-1">Total Quantity</div>
@@ -3885,39 +4405,6 @@ TERMS AND CONDITIONS:
           />
         )}
 
-        {/* Approval Confirmation Modal */}
-        {showApprovalModal && (
-          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                  <CheckCircle2 className="w-5 h-5 text-green-600" />
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900">Approve Purchase Order</h3>
-              </div>
-              
-              <p className="text-gray-600 mb-6">
-                Are you sure you want to approve this purchase order? This action will change the status to "Sent" and notify the supplier.
-              </p>
-              
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowApprovalModal(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleApproveOrder}
-                  disabled={isSaving}
-                  className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium disabled:opacity-50"
-                >
-                  {isSaving ? 'Approving...' : 'Approve Order'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Partial Receive Modal */}
         {showPartialReceiveModal && (
@@ -4050,80 +4537,28 @@ TERMS AND CONDITIONS:
           </div>
         )}
 
-        {/* Quality Control Modal */}
-        {showQualityControlModal && (
-          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center gap-3 mb-4 p-6 border-b border-gray-100">
-                <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
-                  <Shield className="w-5 h-5 text-purple-600" />
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900">Quality Control Check</h3>
-              </div>
-              
-              <div className="p-6 space-y-4">
-                <div className="text-sm text-gray-600">
-                  Perform quality checks on received items. Mark items as passed, failed, or needs attention.
-                </div>
-                
-                <div className="space-y-4">
-                  {purchaseOrder.items.map((item, index) => (
-                    <div key={index} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <div>
-                          <h4 className="font-medium text-gray-900">{item.name}</h4>
-                          <p className="text-sm text-gray-500">SKU: {item.sku}</p>
-                        </div>
-                        <div className="text-sm text-gray-600">
-                          Qty: {item.receivedQuantity || 0}/{item.quantity}
-                        </div>
-                      </div>
-                      
-                      <div className="flex gap-2">
-                        <button
-                          className="flex-1 px-3 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors text-sm font-medium"
-                          onClick={() => handleQualityCheck(item.id, 'passed')}
-                        >
-                          <CheckCircle2 className="w-4 h-4 inline mr-1" />
-                          Pass
-                        </button>
-                        <button
-                          className="flex-1 px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm font-medium"
-                          onClick={() => handleQualityCheck(item.id, 'failed')}
-                        >
-                          <XCircle className="w-4 h-4 inline mr-1" />
-                          Fail
-                        </button>
-                        <button
-                          className="flex-1 px-3 py-2 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200 transition-colors text-sm font-medium"
-                          onClick={() => handleQualityCheck(item.id, 'attention')}
-                        >
-                          <AlertTriangle className="w-4 h-4 inline mr-1" />
-                          Review
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                
-                <div className="flex gap-3 pt-4 border-t border-gray-100">
-                  <button
-                    onClick={() => setShowQualityControlModal(false)}
-                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleCompleteQualityCheck}
-                    className="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors font-medium"
-                  >
-                    Complete Quality Check
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
+        {/* Quality Check Modal - New Enhanced System */}
+        {purchaseOrder && (
+          <QualityCheckModal
+            purchaseOrderId={purchaseOrder.id}
+            isOpen={showQualityCheckModal}
+            onClose={() => setShowQualityCheckModal(false)}
+            onComplete={async () => {
+              setShowQualityCheckModal(false);
+              await handleQualityCheckComplete();
+            }}
+          />
         )}
+
+        {/* Quality Check Details Modal */}
+        <QualityCheckDetailsModal
+          qualityCheckId={selectedQualityCheckId}
+          isOpen={showQualityCheckDetailsModal}
+          onClose={() => {
+            setShowQualityCheckDetailsModal(false);
+            setSelectedQualityCheckId('');
+          }}
+        />
 
         {/* Notes Modal */}
         {showNotesModal && (
@@ -4807,6 +5242,18 @@ TERMS AND CONDITIONS:
               </button>
             </div>
           </div>
+        )}
+
+        {/* Approval Modal */}
+        {showApprovalModal && (
+          <ApprovalModal
+            isOpen={showApprovalModal}
+            onClose={() => setShowApprovalModal(false)}
+            purchaseOrder={purchaseOrder}
+            onApprove={handleApprove}
+            onReject={handleReject}
+            onSubmitForApproval={handleSubmitForApproval}
+          />
         )}
       </div>
     </div>

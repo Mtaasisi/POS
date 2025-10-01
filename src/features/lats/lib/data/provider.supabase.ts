@@ -2499,10 +2499,20 @@ class SupabaseDataProvider implements LatsDataProvider {
 
   async getPurchaseOrder(id: string): Promise<ApiResponse<PurchaseOrder>> {
     try {
-      // Validate input
+      // Enhanced input validation with detailed logging
       if (!id || typeof id !== 'string') {
-        console.error('❌ Invalid purchase order ID:', id);
-        return { ok: false, message: 'Invalid purchase order ID provided' };
+        console.error('❌ Invalid purchase order ID provided:', {
+          id,
+          type: typeof id,
+          isNull: id === null,
+          isUndefined: id === undefined,
+          isEmpty: id === '',
+          timestamp: new Date().toISOString()
+        });
+        return { 
+          ok: false, 
+          message: `Invalid purchase order ID: Expected string, got ${typeof id}. ID value: ${id}` 
+        };
       }
 
       // Enhanced debugging for UUID validation
@@ -2522,32 +2532,100 @@ class SupabaseDataProvider implements LatsDataProvider {
         console.error('❌ Invalid UUID format for purchase order ID:', {
           originalId: id,
           trimmedId,
+          expectedFormat: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
+          actualFormat: trimmedId,
           uuidRegex: uuidRegex.toString(),
-          testResult: uuidRegex.test(trimmedId)
+          testResult: uuidRegex.test(trimmedId),
+          timestamp: new Date().toISOString()
         });
-        return { ok: false, message: 'Invalid purchase order ID format' };
+        return { 
+          ok: false, 
+          message: `Invalid purchase order ID format: "${trimmedId}". Expected UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` 
+        };
       }
 
       console.log('🔍 DEBUG: Fetching purchase order with ID:', trimmedId);
 
-      // Fetch purchase order without joins to avoid foreign key issues with retry
+      // Fetch purchase order with enhanced error handling and fallback queries
       const order = await this.retryOperation(
+        // Main operation
         async () => {
+          console.log('🔄 Executing main query for purchase order...');
           const { data, error } = await supabase
             .from('lats_purchase_orders')
             .select('*')
             .eq('id', trimmedId)
             .single();
           
-          if (error) throw error;
+          if (error) {
+            console.error('❌ Main query failed with error:', {
+              code: error.code,
+              message: error.message,
+              details: error.details,
+              hint: error.hint,
+              purchaseOrderId: trimmedId,
+              timestamp: new Date().toISOString()
+            });
+            throw error;
+          }
+          
+          console.log('✅ Main query succeeded, found purchase order:', {
+            id: data?.id,
+            orderNumber: data?.order_number,
+            status: data?.status,
+            supplierId: data?.supplier_id,
+            timestamp: new Date().toISOString()
+          });
+          
           return data;
         },
-        'get_purchase_order'
+        'get_purchase_order',
+        this.MAX_RETRIES,
+        // Fallback operation - try with different query structure
+        async () => {
+          console.log('🔄 Attempting fallback query for purchase order...');
+          const { data: fallbackData, error: fallbackError } = await supabase
+            .from('lats_purchase_orders')
+            .select('*')
+            .eq('id', trimmedId);
+          
+          if (fallbackError) {
+            console.error('❌ Fallback query also failed:', {
+              code: fallbackError.code,
+              message: fallbackError.message,
+              details: fallbackError.details,
+              purchaseOrderId: trimmedId,
+              timestamp: new Date().toISOString()
+            });
+            throw fallbackError;
+          }
+          
+          if (!fallbackData || fallbackData.length === 0) {
+            console.warn('⚠️ Fallback query returned no data');
+            throw new Error('Purchase order not found');
+          }
+          
+          const orderData = fallbackData[0];
+          console.log('✅ Fallback query succeeded:', {
+            id: orderData?.id,
+            orderNumber: orderData?.order_number,
+            status: orderData?.status,
+            timestamp: new Date().toISOString()
+          });
+          
+          return orderData;
+        }
       );
 
       if (!order) {
-        console.error('❌ Purchase order not found or empty result');
-        return { ok: false, message: 'Purchase order not found' };
+        console.error('❌ Purchase order not found after all attempts:', {
+          purchaseOrderId: trimmedId,
+          timestamp: new Date().toISOString()
+        });
+        return { 
+          ok: false, 
+          message: `Purchase order with ID "${trimmedId}" not found in database` 
+        };
       }
       
       console.log('🔍 DEBUG: Fetched purchase order from database:', {

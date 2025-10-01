@@ -131,36 +131,94 @@ export const usePurchaseOrderStore = create<PurchaseOrderState>()(
       },
 
       getPurchaseOrder: async (id: string) => {
+        console.log(`🔄 Starting getPurchaseOrder with ID: ${id}`);
         set({ isLoading: true, error: null });
+        
         try {
+          // Enhanced input validation
           if (!id) {
             const errorMsg = 'Purchase order ID is required';
+            console.error('❌ Missing purchase order ID:', { id, type: typeof id });
             set({ error: errorMsg, isLoading: false });
             return;
           }
 
-          console.log('🔍 DEBUG: Getting purchase order with ID:', id);
+          if (typeof id !== 'string') {
+            const errorMsg = `Invalid purchase order ID type: Expected string, got ${typeof id}`;
+            console.error('❌ Invalid purchase order ID type:', { id, type: typeof id });
+            set({ error: errorMsg, isLoading: false });
+            return;
+          }
+
+          const trimmedId = id.trim();
+          if (trimmedId === '') {
+            const errorMsg = 'Purchase order ID cannot be empty or whitespace only';
+            console.error('❌ Empty purchase order ID after trimming:', { originalId: id, trimmedId });
+            set({ error: errorMsg, isLoading: false });
+            return;
+          }
+
+          // Validate UUID format
+          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          if (!uuidRegex.test(trimmedId)) {
+            const errorMsg = `Invalid purchase order ID format: "${trimmedId}". Expected UUID format.`;
+            console.error('❌ Invalid UUID format:', { 
+              originalId: id, 
+              trimmedId, 
+              expectedFormat: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' 
+            });
+            set({ error: errorMsg, isLoading: false });
+            return;
+          }
+
+          console.log('🔍 Validated purchase order ID, fetching from inventory store:', trimmedId);
           
           const inventoryStore = useInventoryStore.getState();
-          const response = await inventoryStore.getPurchaseOrder(id);
+          const response = await inventoryStore.getPurchaseOrder(trimmedId);
+          
+          console.log('🔍 Response from inventory store:', {
+            ok: response.ok,
+            hasData: !!response.data,
+            message: response.message,
+            dataId: response.data?.id
+          });
           
           if (response.ok && response.data) {
-            console.log('✅ DEBUG: Purchase order loaded successfully:', response.data.id);
+            console.log('✅ Purchase order loaded successfully:', {
+              id: response.data.id,
+              orderNumber: response.data.orderNumber,
+              status: response.data.status,
+              supplierName: response.data.supplier?.name
+            });
             set({ currentPO: response.data, isLoading: false });
           } else {
-            const errorMsg = response.message || 'Failed to get purchase order';
-            console.error('❌ DEBUG: Failed to get purchase order:', errorMsg);
+            const errorMsg = response.message || 'Failed to get purchase order from server';
+            console.error('❌ Failed to get purchase order:', {
+              error: errorMsg,
+              response: response,
+              purchaseOrderId: trimmedId
+            });
             set({ error: errorMsg, isLoading: false });
           }
         } catch (error) {
-          console.error('❌ DEBUG: Exception getting purchase order:', error);
+          console.error('❌ Exception getting purchase order:', {
+            error,
+            purchaseOrderId: id,
+            errorMessage: error instanceof Error ? error.message : 'Unknown error',
+            errorStack: error instanceof Error ? error.stack : undefined,
+            timestamp: new Date().toISOString()
+          });
           
           let errorMsg = 'Failed to get purchase order';
           if (error instanceof Error) {
             if (error.message.includes('network') || error.message.includes('fetch')) {
-              errorMsg = 'Network error: Please check your internet connection';
+              errorMsg = 'Network error: Please check your internet connection and try again';
             } else if (error.message.includes('timeout')) {
-              errorMsg = 'Request timeout: Please try again';
+              errorMsg = 'Request timeout: The server is taking too long to respond';
+            } else if (error.message.includes('permission') || error.message.includes('unauthorized')) {
+              errorMsg = 'Permission denied: You do not have access to this purchase order';
+            } else if (error.message.includes('not found')) {
+              errorMsg = `Purchase order with ID "${id}" not found`;
             } else {
               errorMsg = `Error: ${error.message}`;
             }
@@ -249,25 +307,92 @@ export const usePurchaseOrderStore = create<PurchaseOrderState>()(
         }
       },
 
-      // Shipped Items actions (placeholder for future implementation)
+      // Shipped Items actions - IMPLEMENTED
       loadShippedItems: async (purchaseOrderId: string) => {
-        // TODO: Implement shipped items loading
-        console.log('Loading shipped items for PO:', purchaseOrderId);
+        set({ isLoading: true, error: null });
+        try {
+          const inventoryStore = useInventoryStore.getState();
+          const response = await inventoryStore.getShippedItems(purchaseOrderId);
+          
+          if (response.ok && response.data) {
+            set({ shippedItems: response.data, isLoading: false });
+          } else {
+            set({ error: 'Failed to load shipped items', isLoading: false });
+          }
+        } catch (error) {
+          console.error('Error loading shipped items:', error);
+          set({ error: 'Failed to load shipped items', isLoading: false });
+        }
       },
 
       updateShippedItem: async (id: string, data: Partial<ShippedItem>) => {
-        // TODO: Implement shipped item update
-        console.log('Updating shipped item:', id, data);
+        set({ isUpdating: true, error: null });
+        try {
+          const inventoryStore = useInventoryStore.getState();
+          const response = await inventoryStore.updateShippedItem(id, data);
+          
+          if (response.ok) {
+            // Update local state
+            const currentItems = get().shippedItems;
+            const updatedItems = currentItems.map(item => 
+              item.id === id ? { ...item, ...data } : item
+            );
+            set({ shippedItems: updatedItems, isUpdating: false });
+          } else {
+            set({ error: 'Failed to update shipped item', isUpdating: false });
+          }
+        } catch (error) {
+          console.error('Error updating shipped item:', error);
+          set({ error: 'Failed to update shipped item', isUpdating: false });
+        }
       },
 
       markItemAsReceived: async (shippedItemId: string, receivedQuantity: number, notes?: string) => {
-        // TODO: Implement mark as received
-        console.log('Marking item as received:', shippedItemId, receivedQuantity, notes);
+        set({ isUpdating: true, error: null });
+        try {
+          const inventoryStore = useInventoryStore.getState();
+          const response = await inventoryStore.markShippedItemAsReceived(shippedItemId, receivedQuantity, notes);
+          
+          if (response.ok) {
+            // Update local state
+            const currentItems = get().shippedItems;
+            const updatedItems = currentItems.map(item => 
+              item.id === shippedItemId 
+                ? { ...item, receivedQuantity, status: 'received', notes: notes || item.notes }
+                : item
+            );
+            set({ shippedItems: updatedItems, isUpdating: false });
+          } else {
+            set({ error: 'Failed to mark item as received', isUpdating: false });
+          }
+        } catch (error) {
+          console.error('Error marking item as received:', error);
+          set({ error: 'Failed to mark item as received', isUpdating: false });
+        }
       },
 
       reportDamage: async (shippedItemId: string, damageReport: string) => {
-        // TODO: Implement damage reporting
-        console.log('Reporting damage:', shippedItemId, damageReport);
+        set({ isUpdating: true, error: null });
+        try {
+          const inventoryStore = useInventoryStore.getState();
+          const response = await inventoryStore.reportShippedItemDamage(shippedItemId, damageReport);
+          
+          if (response.ok) {
+            // Update local state
+            const currentItems = get().shippedItems;
+            const updatedItems = currentItems.map(item => 
+              item.id === shippedItemId 
+                ? { ...item, status: 'damaged', damageReport, notes: damageReport }
+                : item
+            );
+            set({ shippedItems: updatedItems, isUpdating: false });
+          } else {
+            set({ error: 'Failed to report damage', isUpdating: false });
+          }
+        } catch (error) {
+          console.error('Error reporting damage:', error);
+          set({ error: 'Failed to report damage', isUpdating: false });
+        }
       },
 
       // Cart management

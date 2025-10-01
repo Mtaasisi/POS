@@ -128,6 +128,9 @@ const EditProductPageWithAuth: React.FC = () => {
 const EditProductPageContent: React.FC = () => {
   const { productId } = useParams<{ productId: string }>();
   const navigate = useNavigate();
+  
+  // Debug: Log the product ID from URL params
+  console.log('🔍 EditProductPage - Product ID from URL:', productId);
   const [categories, setCategories] = useState<Category[]>([]);
 
   const [storeLocations, setStoreLocations] = useState<StoreLocation[]>([]);
@@ -342,22 +345,100 @@ const EditProductPageContent: React.FC = () => {
 
 
   const loadProductData = async () => {
-    if (!productId) return;
+    if (!productId) {
+      console.error('❌ No product ID provided');
+      toast.error('No product ID provided');
+      return;
+    }
     
+    if (!supabase) {
+      console.error('❌ Supabase client not available');
+      toast.error('Database connection not available');
+      return;
+    }
+    
+    console.log('🔄 Loading product data for ID:', productId);
     setIsLoadingProduct(true);
     try {
-      // First try to get product with images
+      // First try to get product with variants using explicit foreign key
       let { data: product, error } = await supabase!
         .from('lats_products')
         .select(`
           *,
-          variants:lats_product_variants(*)
+          variants:lats_product_variants!product_id(*)
         `)
         .eq('id', productId)
         .single();
 
+      console.log('📊 Database query result:', { product, error });
+
       if (error) {
-        throw error;
+        console.error('❌ Database error:', error);
+        
+        // If it's a relationship error, try loading product and variants separately
+        if (error.message?.includes('more than one relationship') || error.message?.includes('Could not embed')) {
+          console.log('🔄 Relationship error detected, trying separate queries...');
+          
+          // Load product without variants first
+          const { data: productOnly, error: productError } = await supabase!
+            .from('lats_products')
+            .select('*')
+            .eq('id', productId)
+            .single();
+          
+          if (productError) {
+            console.error('❌ Product query failed:', productError);
+            throw productError;
+          }
+          
+          if (!productOnly) {
+            console.error('❌ No product found with ID:', productId);
+            toast.error(`Product with ID ${productId} not found`);
+            return;
+          }
+          
+          // Load variants separately
+          const { data: variants, error: variantsError } = await supabase!
+            .from('lats_product_variants')
+            .select('*')
+            .eq('product_id', productId);
+          
+          if (variantsError) {
+            console.warn('⚠️ Could not load variants:', variantsError);
+            // Continue without variants
+            product = { ...productOnly, variants: [] };
+          } else {
+            console.log('✅ Loaded product and variants separately');
+            product = { ...productOnly, variants: variants || [] };
+          }
+        } else {
+          throw error;
+        }
+      } else if (!product) {
+        console.error('❌ No product found with ID:', productId);
+        
+        // Try alternative query without variants join in case of join issues
+        console.log('🔄 Trying alternative query without variants...');
+        const { data: fallbackProduct, error: fallbackError } = await supabase!
+          .from('lats_products')
+          .select('*')
+          .eq('id', productId)
+          .single();
+        
+        if (fallbackError) {
+          console.error('❌ Fallback query also failed:', fallbackError);
+          toast.error(`Product with ID ${productId} not found`);
+          return;
+        }
+        
+        if (fallbackProduct) {
+          console.log('✅ Fallback query succeeded, using product without variants');
+          // Use the fallback product and set variants to empty
+          product = { ...fallbackProduct, variants: [] };
+        } else {
+          toast.error(`Product with ID ${productId} not found`);
+          return;
+        }
       }
       
       if (product) {
@@ -474,9 +555,28 @@ const EditProductPageContent: React.FC = () => {
           setShowVariants(false);
         }
       }
-    } catch (error) {
-      console.error('Error loading product:', error);
-      toast.error('Failed to load product data');
+    } catch (error: any) {
+      console.error('❌ Error loading product:', error);
+      
+      // Provide more specific error messages
+      let errorMessage = 'Failed to load product data';
+      
+      if (error?.code === 'PGRST116') {
+        errorMessage = `Product with ID "${productId}" not found in database`;
+      } else if (error?.code === 'PGRST301') {
+        errorMessage = 'Database connection error. Please check your internet connection.';
+      } else if (error?.message) {
+        errorMessage = `Database error: ${error.message}`;
+      }
+      
+      toast.error(errorMessage);
+      console.error('❌ Detailed error info:', {
+        code: error?.code,
+        message: error?.message,
+        details: error?.details,
+        hint: error?.hint,
+        productId
+      });
     } finally {
       setIsLoadingProduct(false);
     }
