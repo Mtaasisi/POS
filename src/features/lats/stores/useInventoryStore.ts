@@ -702,10 +702,8 @@ export const useInventoryStore = create<InventoryState>()(
         };
 
         // Check cache if no filters applied and cache is valid
-        // Temporarily disabled to test supplier data loading and ensure fresh data
-        if (false && !filters && state.isCacheValid('products')) {
-          console.log('🔍 [useInventoryStore] Using cached products (supplier data may be outdated)');
-
+        if (!filters && state.isCacheValid('products')) {
+          console.log('🔍 [useInventoryStore] Using cached products');
           set({ products: state.dataCache.products || [] });
           return;
         }
@@ -840,6 +838,21 @@ export const useInventoryStore = create<InventoryState>()(
           }
         } catch (error) {
           console.error('Exception in loadProducts:', error);
+          
+          // Check if it's a connection or authentication error
+          if (error instanceof Error && (
+            error.message.includes('fetch failed') || 
+            error.message.includes('Invalid API key') ||
+            error.message.includes('connection')
+          )) {
+            console.error('❌ Database connection failed - check Supabase configuration');
+            set({ 
+              error: 'Database connection failed. Please check your Supabase configuration in .env file.',
+              isLoading: false,
+              isDataLoading: false
+            });
+            return;
+          }
 
           // Create fallback sample categories and products so the interface works
 
