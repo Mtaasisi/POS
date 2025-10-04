@@ -128,8 +128,6 @@ export class ErrorLogger {
     // Database error messages
     if (error.code) {
       switch (error.code) {
-        case 'PGRST301':
-          return 'Database connection error: Please check your internet connection and try again';
         case 'PGRST116':
           return 'Resource not found: The requested purchase order does not exist';
         case 'PGRST301':
