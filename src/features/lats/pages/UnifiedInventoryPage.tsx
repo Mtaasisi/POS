@@ -782,6 +782,11 @@ const UnifiedInventoryPage: React.FC = () => {
                   {dbStatus === 'connected' ? 'Database Connected' : 
                    dbStatus === 'connecting' ? 'Connecting...' : 'Connection Error'}
                 </span>
+                {dbStatus === 'error' && (
+                  <span className="text-xs text-red-500 ml-2">
+                    Check Supabase config in .env
+                  </span>
+                )}
                 {isDataLoading && (
                   <div className="flex items-center gap-1">
                     <RefreshCw className="w-3 h-3 animate-spin text-blue-500" />

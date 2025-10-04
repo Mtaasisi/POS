@@ -267,7 +267,7 @@ const StockValueCalculator: React.FC = () => {
                 <span className="font-semibold text-yellow-600">{data.lowStockProducts}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-green-600">✅ Well Stocked (>5):</span>
+                <span className="text-green-600">✅ Well Stocked ({'>'}5):</span>
                 <span className="font-semibold text-green-600">{data.wellStockedProducts}</span>
               </div>
             </div>
