@@ -2895,6 +2895,14 @@ class SupabaseDataProvider implements LatsDataProvider {
         return value && value.trim() !== '' ? value : null;
       };
 
+      // Helper function to ensure variant_id is not empty string or default
+      const toVariantIdOrNull = (value: string | undefined): string | null => {
+        if (!value || value.trim() === '') return null;
+        // If it's a default variant (starts with 'default-'), return null
+        if (value.startsWith('default-')) return null;
+        return value;
+      };
+
 
       // Get current user
       const { data: { user } } = await supabase.auth.getUser();
@@ -2969,7 +2977,7 @@ class SupabaseDataProvider implements LatsDataProvider {
         const itemsToInsert = data.items.map(item => ({
           purchase_order_id: order.id,
           product_id: item.productId,
-          variant_id: item.variantId,
+          variant_id: toVariantIdOrNull(item.variantId),
           quantity: item.quantity,
           cost_price: item.costPrice,
           total_price: item.quantity * item.costPrice,
@@ -2987,13 +2995,43 @@ class SupabaseDataProvider implements LatsDataProvider {
 
         console.log('🔍 DEBUG: Items data to insert:', itemsToInsert);
 
+        // Validate items data before insertion
+        const validatedItems = itemsToInsert.filter(item => {
+          if (!item.product_id) {
+            console.error('❌ Item missing product_id:', item);
+            return false;
+          }
+          if (!item.quantity || item.quantity <= 0) {
+            console.error('❌ Item has invalid quantity:', item);
+            return false;
+          }
+          if (!item.cost_price || item.cost_price <= 0) {
+            console.error('❌ Item has invalid cost_price:', item);
+            return false;
+          }
+          return true;
+        });
+
+        if (validatedItems.length === 0) {
+          throw new Error('No valid items to insert');
+        }
+
+        console.log('✅ DEBUG: Validated items for insertion:', validatedItems);
+
         const { data: insertedItems, error: itemsError } = await supabase
           .from('lats_purchase_order_items')
-          .insert(itemsToInsert)
+          .insert(validatedItems)
           .select();
 
         if (itemsError) {
           console.error('❌ Error saving purchase order items:', itemsError);
+          console.error('❌ Items that failed to insert:', validatedItems);
+          console.error('❌ Error details:', {
+            message: itemsError.message,
+            details: itemsError.details,
+            hint: itemsError.hint,
+            code: itemsError.code
+          });
           throw itemsError;
         }
 
