@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { supabase, onAuthStateChange } from '../lib/supabaseClient';
 import { safeQuery, SupabaseErrorHandler } from '../utils/supabaseErrorHandler';
 
 export interface PaymentRow {
@@ -257,10 +257,13 @@ export const PaymentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     fetchPayments();
     
-    // Listen for authentication state changes with debouncing
+    // Listen for authentication state changes with debouncing using centralized handler
     let authTimeout: NodeJS.Timeout;
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('Auth state changed:', event, session?.user?.id);
+    const unsubscribe = onAuthStateChange((event, session) => {
+      // Only log significant events
+      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
+        console.log('Auth state changed:', event, session?.user?.id);
+      }
       
       // Clear previous timeout to debounce rapid auth changes
       if (authTimeout) {
@@ -282,7 +285,7 @@ export const PaymentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (authTimeout) {
         clearTimeout(authTimeout);
       }
-      subscription.unsubscribe();
+      unsubscribe();
     };
   }, []);
 
