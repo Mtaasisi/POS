@@ -542,7 +542,7 @@ class SupabaseDataProvider implements LatsDataProvider {
       const limit = Math.min(filters?.limit || 100, 200); // Increased from 50 to 100, max 200 items per page
       const offset = (page - 1) * limit;
 
-      // Build a simplified query to avoid complex joins that may be failing
+      // Build a comprehensive query to fetch all product data including direct pricing
       let query = supabase
         .from('lats_products')
         .select(`
@@ -559,6 +559,55 @@ class SupabaseDataProvider implements LatsDataProvider {
           condition,
           created_at,
           updated_at,
+          sku,
+          cost_price,
+          selling_price,
+          stock_quantity,
+          min_stock_level,
+          attributes,
+          internal_notes,
+          specification,
+          metadata,
+          storage_room_id,
+          store_shelf_id,
+          status,
+          weight,
+          length,
+          width,
+          height,
+          cbm,
+          shipping_class,
+          requires_special_handling,
+          usd_price,
+          eur_price,
+          exchange_rate,
+          base_currency,
+          last_order_date,
+          last_order_quantity,
+          pending_quantity,
+          order_status,
+          shipping_status,
+          tracking_number,
+          expected_delivery,
+          shipping_agent,
+          shipping_carrier,
+          storage_room_name,
+          shelf_name,
+          store_location_name,
+          is_refrigerated,
+          requires_ladder,
+          freight_cost,
+          delivery_cost,
+          insurance_cost,
+          customs_cost,
+          handling_cost,
+          total_shipping_cost,
+          shipping_cost_currency,
+          shipping_cost_per_unit,
+          shipping_cost_per_kg,
+          shipping_cost_per_cbm,
+          brand_id,
+          barcode,
           lats_categories(id, name, description, color),
           lats_suppliers(id, name, contact_person, email, phone)
         `, { count: 'exact' })
@@ -919,36 +968,11 @@ class SupabaseDataProvider implements LatsDataProvider {
             }
           }
 
-          // Fetch images in batches
-          const batchSize = 10;
-          for (let i = 0; i < limitedProductIds.length; i += batchSize) {
-            const batch = limitedProductIds.slice(i, i + batchSize);
-            try {
-              const { data: batchImages, error: batchError } = await supabase
-                .from('product_images')
-                .select('product_id, image_url, thumbnail_url, is_primary, file_name, file_size, mime_type')
-                .in('product_id', batch)
-                .order('is_primary', { ascending: false });
-
-              if (!batchError) {
-                productImages.push(...(batchImages || []));
-                console.log(`📸 Fetched ${batchImages?.length || 0} images for batch ${i / batchSize + 1}`);
-              } else {
-                console.error('❌ Error fetching images batch:', batchError);
-              }
-            } catch (batchError) {
-              console.error('❌ Exception fetching images batch:', batchError);
-            }
-          }
+          // Images are already included in the main product query, so we don't need to fetch them separately
+          // The product.images field contains the image URLs directly
+          console.log('📸 Using images from product.images field directly');
           
-          console.log(`📸 Total images fetched: ${productImages.length}`);
-          if (productImages.length > 0) {
-            console.log('🔍 Sample images:', productImages.slice(0, 2).map(img => ({
-              product_id: img.product_id,
-              image_url: img.image_url?.substring(0, 50) + '...',
-              is_primary: img.is_primary
-            })));
-          }
+          console.log(`📸 Using images from product.images field for ${limitedProductIds.length} products`);
         } catch (error) {
           console.error('❌ Exception fetching related data:', error);
           // Continue processing even if related data fetching fails
@@ -987,19 +1011,27 @@ class SupabaseDataProvider implements LatsDataProvider {
       }
       
       const transformedProducts = (data || []).map((product: any) => {
-        // Group images by product
-        const productImageList = productImages
-          .filter((img: any) => img.product_id === product.id)
-          .map((img: any) => img.image_url);
+        // Use images directly from product.images field (array of URLs)
+        const productImageList = Array.isArray(product.images) ? product.images.filter(Boolean) : [];
 
         // Get variants for this product
         const productVariantList = productVariants.filter(v => v.product_id === product.id) || [];
 
+        // Check if product uses variants or direct pricing
+        const metadata = product.metadata ? JSON.parse(product.metadata) : {};
+        const useVariants = metadata.useVariants !== false; // Default to true if not specified
+
         // Enhanced debug logging for all products
         console.log(`🔍 DEBUG: Transforming product "${product.name}" (${product.id}):`, {
           productId: product.id,
+          useVariants: useVariants,
           variantsFound: productVariantList.length,
           imagesFound: productImageList.length,
+          directPricing: {
+            selling_price: product.selling_price,
+            cost_price: product.cost_price,
+            stock_quantity: product.stock_quantity
+          },
           supplierId: product.supplier_id,
           hasLatsSuppliers: !!product.lats_suppliers,
           latsSuppliers: product.lats_suppliers,
@@ -1022,19 +1054,42 @@ class SupabaseDataProvider implements LatsDataProvider {
           }
         }
 
-        // Get price information from variants
-        const variantPrices = productVariantList
-          .map((v: any) => v.selling_price)
-          .filter(price => price !== null && price !== undefined && price >= 0); // Allow 0 prices
-        
-        const lowestPrice = variantPrices.length > 0 ? Math.min(...variantPrices) : 0;
-        const highestPrice = variantPrices.length > 0 ? Math.max(...variantPrices) : 0;
-        const priceRange = lowestPrice === highestPrice 
-          ? lowestPrice 
-          : `${lowestPrice} - ${highestPrice}`;
+        // Determine pricing based on whether product uses variants or direct pricing
+        let lowestPrice = 0;
+        let highestPrice = 0;
+        let priceRange = '0';
+        let costPrice = 0;
+
+        if (useVariants && productVariantList.length > 0) {
+          // Use variant pricing
+          const variantPrices = productVariantList
+            .map((v: any) => v.selling_price)
+            .filter(price => price !== null && price !== undefined && price >= 0);
+          
+          const variantCostPrices = productVariantList
+            .map((v: any) => v.cost_price)
+            .filter(price => price !== null && price !== undefined && price >= 0);
+          
+          lowestPrice = variantPrices.length > 0 ? Math.min(...variantPrices) : 0;
+          highestPrice = variantPrices.length > 0 ? Math.max(...variantPrices) : 0;
+          costPrice = variantCostPrices.length > 0 ? Math.min(...variantCostPrices) : 0;
+          priceRange = lowestPrice === highestPrice ? lowestPrice : `${lowestPrice} - ${highestPrice}`;
+        } else {
+          // Use direct product pricing
+          lowestPrice = product.selling_price || 0;
+          highestPrice = product.selling_price || 0;
+          costPrice = product.cost_price || 0;
+          priceRange = product.selling_price ? product.selling_price.toString() : '0';
+          
+          console.log(`💰 [SupabaseDataProvider] Using direct pricing for product "${product.name}":`, {
+            selling_price: product.selling_price,
+            cost_price: product.cost_price,
+            stock_quantity: product.stock_quantity
+          });
+        }
 
         // DEBUG: Log price calculation details
-        if (productVariantList.length > 0 && variantPrices.length === 0) {
+        if (useVariants && productVariantList.length > 0 && lowestPrice === 0) {
           console.warn('⚠️ [SupabaseDataProvider] Product has variants but no valid prices:', {
             productId: product.id,
             productName: product.name,
@@ -1050,32 +1105,27 @@ class SupabaseDataProvider implements LatsDataProvider {
               isUndefined: v.selling_price === undefined
             }))
           });
-          
-          // Set a default price of 0 for products with no valid prices
-          console.log(`💡 [SupabaseDataProvider] Setting default price of 0 for product "${product.name}"`);
         }
 
         return {
           id: product.id,
           name: product.name,
-          shortDescription: '',
-          sku: productVariantList[0]?.sku || '',
-
+          shortDescription: product.description ? product.description.substring(0, 100) : '',
+          sku: useVariants && productVariantList.length > 0 
+            ? productVariantList[0]?.sku 
+            : (product.sku || `SKU-${product.id.substring(0, 8).toUpperCase()}`),
+          description: product.description || '',
           categoryId: product.category_id,
-
           supplierId: product.supplier_id,
-          images: replacePlaceholderImages(productImageList.length > 0 ? productImageList : []),
+          images: replacePlaceholderImages(productImageList),
           isActive: product.is_active ?? true,
-          totalQuantity: product.total_quantity || 0,
+          totalQuantity: useVariants && productVariantList.length > 0 
+            ? productVariantList.reduce((sum: number, v: any) => sum + (v.quantity || 0), 0)
+            : (product.stock_quantity || product.total_quantity || 0),
           totalValue: product.total_value || 0,
-          // Add price information from variants
+          // Use the calculated pricing
           price: lowestPrice,
-          costPrice: (() => {
-            const variantCostPrices = productVariantList
-              .map((v: any) => v.cost_price)
-              .filter(price => price !== null && price !== undefined && price > 0);
-            return variantCostPrices.length > 0 ? Math.min(...variantCostPrices) : 0;
-          })(),
+          costPrice: costPrice,
           priceRange: priceRange,
           condition: product.condition || 'new',
           internalNotes: product.internal_notes || '',
@@ -1111,38 +1161,57 @@ class SupabaseDataProvider implements LatsDataProvider {
           isRefrigerated: product.lats_store_shelves?.is_refrigerated || false,
           requiresLadder: product.lats_store_shelves?.requires_ladder || false,
           // Include variants with simplified data structure
-          variants: productVariantList.map((variant: any) => {
-            // Get variant-specific images
-            const variantImageList = variantImages
-              .filter((img: any) => img.variant_id === variant.id)
-              .map((img: any) => ({
-                id: img.id,
-                url: img.image_url,
-                thumbnailUrl: img.thumbnail_url,
-                fileName: img.file_name,
-                fileSize: img.file_size,
-                isPrimary: img.is_primary,
-                uploadedAt: img.created_at
-              }));
+          variants: useVariants && productVariantList.length > 0 
+            ? productVariantList.map((variant: any) => {
+                // Get variant-specific images
+                const variantImageList = variantImages
+                  .filter((img: any) => img.variant_id === variant.id)
+                  .map((img: any) => ({
+                    id: img.id,
+                    url: img.image_url,
+                    thumbnailUrl: img.thumbnail_url,
+                    fileName: img.file_name,
+                    fileSize: img.file_size,
+                    isPrimary: img.is_primary,
+                    uploadedAt: img.created_at
+                  }));
 
-            return {
-              id: variant.id,
-              productId: variant.product_id,
-              sku: variant.sku,
-              name: variant.name,
-              attributes: variant.attributes || {},
-              costPrice: variant.cost_price || 0,
-              sellingPrice: variant.selling_price || 0,
-              quantity: variant.quantity || 0,
-              min_quantity: variant.min_quantity || 0,
-              max_quantity: null, // Column was removed in migration
-              images: variantImageList, // Add variant-specific images
-              weight: null, // Column was removed in migration
-              dimensions: null, // Column was removed in migration
-              createdAt: variant.created_at || new Date().toISOString(),
-              updatedAt: variant.updated_at || new Date().toISOString()
-            };
-          }),
+                return {
+                  id: variant.id,
+                  productId: variant.product_id,
+                  sku: variant.sku,
+                  name: variant.name,
+                  attributes: variant.attributes || {},
+                  costPrice: variant.cost_price || 0,
+                  sellingPrice: variant.selling_price || 0,
+                  quantity: variant.quantity || 0,
+                  min_quantity: variant.min_quantity || 0,
+                  max_quantity: null, // Column was removed in migration
+                  images: variantImageList, // Add variant-specific images
+                  weight: null, // Column was removed in migration
+                  dimensions: null, // Column was removed in migration
+                  createdAt: variant.created_at || new Date().toISOString(),
+                  updatedAt: variant.updated_at || new Date().toISOString()
+                };
+              })
+            : [{
+                // Create a default variant for products that don't use variants
+                id: `default-${product.id}`,
+                productId: product.id,
+                sku: product.sku || `SKU-${product.id.substring(0, 8).toUpperCase()}`,
+                name: product.name || 'Default Variant',
+                attributes: product.attributes || {},
+                costPrice: product.cost_price || 0,
+                sellingPrice: product.selling_price || 0,
+                quantity: product.stock_quantity || product.total_quantity || 0,
+                min_quantity: product.min_stock_level || 1,
+                max_quantity: null,
+                images: [],
+                weight: null,
+                dimensions: null,
+                createdAt: product.created_at || new Date().toISOString(),
+                updatedAt: product.updated_at || new Date().toISOString()
+              }],
           createdAt: product.created_at,
           updatedAt: product.updated_at
         };
