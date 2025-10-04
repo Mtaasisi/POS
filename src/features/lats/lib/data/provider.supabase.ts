@@ -863,7 +863,6 @@ class SupabaseDataProvider implements LatsDataProvider {
                 product_id: productId,
                 name: 'Default Variant',
                 sku: `SKU-${Math.random().toString(36).substr(2, 8).toUpperCase()}`,
-
                 cost_price: Math.floor(Math.random() * 50) + 10,
                 selling_price: Math.floor(Math.random() * 100) + 50,
                 quantity: Math.floor(Math.random() * 50) + 5,
@@ -880,6 +879,39 @@ class SupabaseDataProvider implements LatsDataProvider {
                 sku: sampleVariant.sku,
                 price: sampleVariant.selling_price,
                 stock: sampleVariant.quantity
+              });
+            }
+          }
+
+          // Ensure every product has at least one variant
+          const productsWithoutVariants = limitedProductIds.filter(productId => 
+            !productVariants.some(variant => variant.product_id === productId)
+          );
+          
+          for (const productId of productsWithoutVariants) {
+            const product = data?.find(p => p.id === productId);
+            if (product) {
+              const defaultVariant = {
+                id: `default-${productId}`,
+                product_id: productId,
+                name: product.name || 'Default Variant',
+                sku: product.name ? `SKU-${product.name.replace(/[^a-zA-Z0-9]/g, '').substring(0, 8).toUpperCase()}` : `SKU-${Math.random().toString(36).substr(2, 8).toUpperCase()}`,
+                cost_price: 0,
+                selling_price: 0,
+                quantity: product.total_quantity || 0,
+                min_quantity: 1,
+                attributes: {},
+                weight: null,
+                dimensions: null,
+                created_at: product.created_at || new Date().toISOString(),
+                updated_at: product.updated_at || new Date().toISOString()
+              };
+              
+              productVariants.push(defaultVariant);
+              console.log(`🔧 Created default variant for product ${productId}:`, {
+                sku: defaultVariant.sku,
+                price: defaultVariant.selling_price,
+                stock: defaultVariant.quantity
               });
             }
           }
@@ -1057,12 +1089,11 @@ class SupabaseDataProvider implements LatsDataProvider {
 
         return {
           id: product.id,
-          name: product.name,
-          shortDescription: '',
-          sku: productVariantList[0]?.sku || '',
-
+          name: product.name || 'Unnamed Product',
+          shortDescription: product.description ? product.description.substring(0, 100) : '',
+          sku: productVariantList[0]?.sku || `SKU-${product.id.substring(0, 8).toUpperCase()}`,
+          description: product.description || '',
           categoryId: product.category_id,
-
           supplierId: product.supplier_id,
           images: replacePlaceholderImages(productImageList.length > 0 ? productImageList : []),
           isActive: product.is_active ?? true,
@@ -1073,7 +1104,7 @@ class SupabaseDataProvider implements LatsDataProvider {
           costPrice: (() => {
             const variantCostPrices = productVariantList
               .map((v: any) => v.cost_price)
-              .filter(price => price !== null && price !== undefined && price > 0);
+              .filter(price => price !== null && price !== undefined && price >= 0);
             return variantCostPrices.length > 0 ? Math.min(...variantCostPrices) : 0;
           })(),
           priceRange: priceRange,
@@ -1087,7 +1118,14 @@ class SupabaseDataProvider implements LatsDataProvider {
             color: productCategory.color,
             createdAt: productCategory.created_at,
             updatedAt: productCategory.updated_at
-          } : undefined,
+          } : {
+            id: 'uncategorized',
+            name: 'Uncategorized',
+            description: 'Products without a category',
+            color: '#6B7280',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          },
 
           supplier: productSupplier ? {
             id: productSupplier.id,
@@ -1100,7 +1138,18 @@ class SupabaseDataProvider implements LatsDataProvider {
             notes: productSupplier.notes,
             createdAt: productSupplier.created_at,
             updatedAt: productSupplier.updated_at
-          } : undefined,
+          } : {
+            id: 'no-supplier',
+            name: 'No Supplier',
+            contactPerson: '',
+            email: '',
+            phone: '',
+            address: '',
+            website: '',
+            notes: 'Product without supplier information',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          },
           // Add shelf information
           shelfName: product.lats_store_shelves?.name || '',
           shelfCode: product.lats_store_shelves?.code || '',
@@ -1128,17 +1177,19 @@ class SupabaseDataProvider implements LatsDataProvider {
             return {
               id: variant.id,
               productId: variant.product_id,
-              sku: variant.sku,
-              name: variant.name,
+              sku: variant.sku || `SKU-${variant.id.substring(0, 8).toUpperCase()}`,
+              name: variant.name || 'Default Variant',
               attributes: variant.attributes || {},
               costPrice: variant.cost_price || 0,
               sellingPrice: variant.selling_price || 0,
               quantity: variant.quantity || 0,
-              min_quantity: variant.min_quantity || 0,
+              minQuantity: variant.min_quantity || 0,
+              min_quantity: variant.min_quantity || 0, // Keep both for compatibility
               max_quantity: null, // Column was removed in migration
               images: variantImageList, // Add variant-specific images
               weight: null, // Column was removed in migration
               dimensions: null, // Column was removed in migration
+              isActive: true, // Default to active
               createdAt: variant.created_at || new Date().toISOString(),
               updatedAt: variant.updated_at || new Date().toISOString()
             };
