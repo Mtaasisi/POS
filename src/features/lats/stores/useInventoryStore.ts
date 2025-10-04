@@ -19,6 +19,7 @@ import { latsEventBus, LatsEventType } from '../lib/data/eventBus';
 import { latsAnalyticsService as latsAnalytics } from '../lib/analytics';
 import { supabase } from '../../../lib/supabaseClient';
 import { processLatsData, processCategoriesOnly, processProductsOnly, processSuppliersOnly, validateDataIntegrity, emergencyDataCleanup } from '../lib/dataProcessor';
+import { ensureProductDataIntegrity, validateProductCompleteness } from '../lib/productDataUtils';
 import { categoryService } from '../lib/categoryService';
 import { 
   getActiveSuppliers as getActiveSuppliersApi, 
@@ -781,7 +782,9 @@ export const useInventoryStore = create<InventoryState>()(
               costPrice: product.costPrice,
               hasSupplier: !!product.supplier,
               hasCategory: !!product.category,
-              hasVariants: product.variants && product.variants.length > 0
+              hasVariants: product.variants && product.variants.length > 0,
+              variantCount: product.variants?.length || 0,
+              primaryVariant: product.variants?.[0]
             })));
             
             // DEBUG: Check for missing information in store data
@@ -793,12 +796,26 @@ export const useInventoryStore = create<InventoryState>()(
               stock: 0
             };
             
+            const completenessStats = {
+              excellent: 0,
+              good: 0,
+              needsWork: 0,
+              poor: 0
+            };
+            
             processedProducts.forEach(product => {
-              if (!product.supplier) missingInfoCount.supplier++;
-              if (!product.category) missingInfoCount.category++;
+              if (!product.supplier || product.supplier.id === 'no-supplier') missingInfoCount.supplier++;
+              if (!product.category || product.category.id === 'uncategorized') missingInfoCount.category++;
               if (!product.variants || product.variants.length === 0) missingInfoCount.variants++;
               if (!product.price || product.price === 0) missingInfoCount.price++;
               if (!product.totalQuantity || product.totalQuantity === 0) missingInfoCount.stock++;
+              
+              // Check completeness
+              const validation = validateProductCompleteness(product);
+              if (validation.completeness >= 90) completenessStats.excellent++;
+              else if (validation.completeness >= 70) completenessStats.good++;
+              else if (validation.completeness >= 50) completenessStats.needsWork++;
+              else completenessStats.poor++;
             });
             
             console.log('🔍 [InventoryStore] DEBUG - Missing information in store:', {
@@ -810,7 +827,8 @@ export const useInventoryStore = create<InventoryState>()(
                 variants: Math.round((missingInfoCount.variants / processedProducts.length) * 100),
                 price: Math.round((missingInfoCount.price / processedProducts.length) * 100),
                 stock: Math.round((missingInfoCount.stock / processedProducts.length) * 100)
-              }
+              },
+              completenessStats
             });
 
             set({ 
@@ -1058,8 +1076,14 @@ export const useInventoryStore = create<InventoryState>()(
           if (response.ok) {
             // Clear products cache to force reload
             get().clearCache('products');
-            await get().loadProducts();
+            // Force refresh products to ensure new product appears
+            await get().forceRefreshProducts();
             latsAnalytics.track('product_created', { productId: response.data?.id });
+            
+            // Dispatch event to notify other components
+            window.dispatchEvent(new CustomEvent('productDataUpdated', {
+              detail: { updatedProducts: [response.data?.id] }
+            }));
           } else {
             set({ error: response.message || 'Failed to create product' });
           }
@@ -1082,8 +1106,16 @@ export const useInventoryStore = create<InventoryState>()(
           const response = await provider.updateProduct(id, product);
           
           if (response.ok) {
-            await get().loadProducts();
+            // Clear products cache to force reload
+            get().clearCache('products');
+            // Force refresh products to ensure updated product appears
+            await get().forceRefreshProducts();
             latsAnalytics.track('product_updated', { productId: id });
+            
+            // Dispatch event to notify other components
+            window.dispatchEvent(new CustomEvent('productDataUpdated', {
+              detail: { updatedProducts: [id] }
+            }));
           } else {
             set({ error: response.message || 'Failed to update product' });
           }

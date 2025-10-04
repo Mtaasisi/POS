@@ -5,6 +5,7 @@
 
 import { processProductImages, cleanupImageData, emergencyUrlCleanup } from './imageUtils';
 import { Product, Category, Supplier } from '../types/inventory';
+import { ensureProductDataIntegrity } from './productDataUtils';
 
 /**
  * Generate a simple SVG placeholder image as a data URL
@@ -220,7 +221,10 @@ export function processCategoriesOnly(categories: Category[]): Category[] {
 }
 
 export function processProductsOnly(products: Product[]): Product[] {
-  return processProductData(products || []);
+  const processedProducts = processProductData(products || []);
+  
+  // Ensure data integrity for each product
+  return processedProducts.map(product => ensureProductDataIntegrity(product));
 }
 
 export function processSuppliersOnly(suppliers: Supplier[]): Supplier[] {
