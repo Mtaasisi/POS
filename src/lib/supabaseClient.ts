@@ -42,18 +42,20 @@ const isBrowser = typeof window !== 'undefined';
 // Create single instance with enhanced configuration to fix 400/406 errors
 export const supabase = createClient<Database>(config.url, config.key, {
   auth: {
-    // Enable automatic session refresh
+    // Disable automatic session refresh when no session exists
     autoRefreshToken: true,
     // Persist session in localStorage
     persistSession: true,
     // Detect session in URL (for magic links, etc.)
-    detectSessionInUrl: true,
+    detectSessionInUrl: false, // Disable to prevent unnecessary checks
     // Storage key for session - CHANGED to clear cache
     storageKey: 'lats-app-auth-token',
     // Storage interface (only use localStorage in browser)
     storage: isBrowser ? window.localStorage : undefined,
     // Add flow type to prevent auth errors
     flowType: 'pkce',
+    // Disable debug mode to reduce console spam
+    debug: false,
   },
   // Enable real-time subscriptions with basic configuration
   realtime: {
@@ -296,6 +298,38 @@ export const monitorConnection = (intervalMs: number = 30000) => {
   }, intervalMs);
   
   return () => clearInterval(interval);
+};
+
+// Custom auth state manager to prevent excessive auth checks
+let authStateInitialized = false;
+let authStateCallbacks: Array<(event: string, session: any) => void> = [];
+
+// Enhanced auth state change handler
+export const onAuthStateChange = (callback: (event: string, session: any) => void) => {
+  authStateCallbacks.push(callback);
+  
+  // Only initialize auth state once
+  if (!authStateInitialized) {
+    authStateInitialized = true;
+    
+    supabase.auth.onAuthStateChange((event, session) => {
+      // Only log significant events, not every INITIAL_SESSION
+      if (event !== 'INITIAL_SESSION' || session) {
+        console.log(`🔐 Auth state changed: ${event}`, session ? 'authenticated' : 'not authenticated');
+      }
+      
+      // Call all registered callbacks
+      authStateCallbacks.forEach(cb => cb(event, session));
+    });
+  }
+  
+  // Return unsubscribe function
+  return () => {
+    const index = authStateCallbacks.indexOf(callback);
+    if (index > -1) {
+      authStateCallbacks.splice(index, 1);
+    }
+  };
 };
 
 // Auto-run tests when this module is imported

@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { supabase, onAuthStateChange } from '../lib/supabaseClient';
 import { retryWithBackoff } from '../lib/supabaseClient';
 import { toast } from 'react-hot-toast';
 // Removed POSSettingsAPI import to avoid circular dependency
@@ -442,9 +442,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       };
 
-    // Set up auth state change listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      logInfo('AuthProvider', `Auth state change: ${event}`, session?.user?.email);
+    // Set up auth state change listener using centralized handler
+    const unsubscribe = onAuthStateChange((event, session) => {
+      // Only log significant events
+      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED') {
+        logInfo('AuthProvider', `Auth state change: ${event}`, session?.user?.email);
+      }
       
       if (event === 'SIGNED_IN' && session?.user) {
         logInfo('AuthProvider', `User signed in: ${session.user.email}`);
@@ -473,7 +476,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Cleanup function
     return () => {
       logInfo('AuthProvider', 'Cleaning up AuthProvider');
-      subscription.unsubscribe();
+      unsubscribe();
       authProviderMountCount.current--;
       // Don't reset globalAuthProviderInitialized on cleanup to prevent re-initialization
     };
