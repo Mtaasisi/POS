@@ -6,7 +6,7 @@ export default defineConfig(({ command, mode }) => {
   const server = {
     port: 3000,
     host: 'localhost',
-    strictPort: true, // Don't try other ports if 3000 is busy
+    strictPort: false, // Allow Vite to find an available port
     hmr: {
       port: 3001, // Use different port for HMR WebSocket
       host: 'localhost',
