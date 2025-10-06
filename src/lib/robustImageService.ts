@@ -431,9 +431,9 @@ export class RobustImageService {
     const extension = file.name.split('.').pop()?.toLowerCase() || 'jpg';
     
     // Clean the productId to make it safe for storage paths
-    // Remove or replace problematic characters for Supabase storage
+    // Keep hyphens and alphanumeric characters, only replace truly problematic characters
     const cleanProductId = productId
-      .replace(/[^a-zA-Z0-9]/g, '_') // Replace non-alphanumeric characters with underscores
+      .replace(/[^a-zA-Z0-9-]/g, '_') // Replace non-alphanumeric characters except hyphens with underscores
       .replace(/_+/g, '_') // Replace multiple underscores with single underscore
       .replace(/^_|_$/g, ''); // Remove leading/trailing underscores
     
