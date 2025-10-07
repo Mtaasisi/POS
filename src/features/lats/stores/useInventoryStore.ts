@@ -739,12 +739,21 @@ export const useInventoryStore = create<InventoryState>()(
         
         try {
           const provider = getLatsProvider();
+          
+          console.log('🔍 [useInventoryStore] About to call provider.getProducts with filters:', safeFilters);
 
           // Race between the actual request and timeout
           const response = await Promise.race([
             provider.getProducts(safeFilters),
             timeoutPromise
           ]);
+
+          console.log('🔍 [useInventoryStore] Provider response:', {
+            ok: response.ok,
+            message: response.message,
+            hasData: !!response.data,
+            dataLength: response.data?.data?.length || 0
+          });
 
           if (response.ok) {
             // Handle paginated response structure

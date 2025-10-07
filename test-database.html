@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .log { background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Database Connection Test</h1>
+    <button onclick="testConnection()">Test Database Connection</button>
+    <div id="results"></div>
+
+    <script>
+        const supabaseUrl = 'https://jxhzveborezjhsmzsgbc.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHp2ZWJvcmV6amhzbXpzZ2JjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3MTE1MjQsImV4cCI6MjA2ODI4NzUyNH0.pIug4PlJ3Q14GxcYilW-u0blByYoyeOfN3q9RNIjgfw';
+        
+        const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+        
+        function log(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `log ${type}`;
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            document.getElementById('results').appendChild(div);
+        }
+        
+        async function testConnection() {
+            document.getElementById('results').innerHTML = '';
+            log('Starting database connection test...', 'info');
+            
+            try {
+                // Test 1: Basic connection
+                log('Testing basic connection...', 'info');
+                const { data: healthCheck, error: healthError } = await supabase
+                    .from('lats_products')
+                    .select('id')
+                    .limit(1);
+                
+                if (healthError) {
+                    log(`❌ Basic connection failed: ${healthError.message}`, 'error');
+                    return;
+                }
+                log('✅ Basic connection successful', 'success');
+                
+                // Test 2: Get product count
+                log('Getting product count...', 'info');
+                const { count: totalCount, error: countError } = await supabase
+                    .from('lats_products')
+                    .select('*', { count: 'exact', head: true });
+                
+                if (countError) {
+                    log(`❌ Count query failed: ${countError.message}`, 'error');
+                    return;
+                }
+                
+                log(`📊 Total products: ${totalCount}`, 'info');
+                
+                if (totalCount === 0) {
+                    log('📭 No products found in database', 'error');
+                    return;
+                }
+                
+                // Test 3: Get sample products
+                log('Fetching sample products...', 'info');
+                const { data: products, error: productsError } = await supabase
+                    .from('lats_products')
+                    .select('id, name, sku, is_active, total_quantity, created_at')
+                    .limit(5)
+                    .order('created_at', { ascending: false });
+                
+                if (productsError) {
+                    log(`❌ Products query failed: ${productsError.message}`, 'error');
+                    return;
+                }
+                
+                log(`✅ Found ${products.length} sample products:`, 'success');
+                products.forEach((product, index) => {
+                    log(`  ${index + 1}. ${product.name} (SKU: ${product.sku || 'N/A'}) - Active: ${product.is_active} - Stock: ${product.total_quantity || 0}`, 'info');
+                });
+                
+                // Test 4: Check categories
+                log('Checking categories...', 'info');
+                const { data: categories, error: categoriesError } = await supabase
+                    .from('lats_categories')
+                    .select('id, name')
+                    .limit(5);
+                
+                if (categoriesError) {
+                    log(`❌ Categories query failed: ${categoriesError.message}`, 'error');
+                } else {
+                    log(`✅ Found ${categories.length} categories: ${categories.map(c => c.name).join(', ')}`, 'success');
+                }
+                
+                // Test 5: Check suppliers
+                log('Checking suppliers...', 'info');
+                const { data: suppliers, error: suppliersError } = await supabase
+                    .from('lats_suppliers')
+                    .select('id, name')
+                    .limit(5);
+                
+                if (suppliersError) {
+                    log(`❌ Suppliers query failed: ${suppliersError.message}`, 'error');
+                } else {
+                    log(`✅ Found ${suppliers.length} suppliers: ${suppliers.map(s => s.name).join(', ')}`, 'success');
+                }
+                
+                log('🎉 Database test completed successfully!', 'success');
+                
+            } catch (error) {
+                log(`💥 Unexpected error: ${error.message}`, 'error');
+                console.error('Full error:', error);
+            }
+        }
+        
+        // Auto-run test on page load
+        window.addEventListener('load', () => {
+            setTimeout(testConnection, 1000);
+        });
+    </script>
+</body>
+</html>
